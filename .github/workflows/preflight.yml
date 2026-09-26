@@ -1,0 +1,29 @@
+name: preflight
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  repository-preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check required files
+        run: |
+          test -f README.md
+          test -f docs/MASTER_ROADMAP.md
+          test -f docs/AI-00_REQUIREMENTS_AND_ARCHITECTURE.md
+          test -f docs/GIT_AND_SECURITY_BOUNDARY.md
+          test -f .gitignore
+          test -f .env.example
+      - name: Check secret files are absent
+        run: |
+          test ! -f .env
+          test ! -f credentials.json
+          ! find . -type f \( -name '*.pem' -o -name '*.key' \) | grep -q .
+      - name: Check shell syntax
+        run: |
+          bash -n scripts/bootstrap/preflight.sh
+          bash -n tests/unit/test_repository_layout.sh

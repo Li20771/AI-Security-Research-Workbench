@@ -1,0 +1,10 @@
+version: 1
+rules:
+  - task_class: simple
+    model_profile: fast
+  - task_class: complex-security
+    model_profile: strong
+  - task_class: multimodal
+    model_profile: multimodal
+  - task_class: independent-review
+    agent: codex

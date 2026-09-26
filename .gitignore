@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+credentials.json
+secrets/
+
+# Agent local state
+.ai/
+workspace-state/
+*.session.json
+
+# Generated data
+evidence/runs/*
+!evidence/runs/.gitkeep
+benchmarks/results/*
+!benchmarks/results/.gitkeep
+artifacts/
+
+# Editors
+.vscode/
+*.swp

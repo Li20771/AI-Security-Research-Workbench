@@ -1,0 +1,9 @@
+workspaces:
+  - id: securitylab
+    repository: Li20771/SecurityLab
+    enabled: false
+    access_profile: readonly
+    context:
+      - roadmap
+      - architecture
+      - test-status

@@ -1,0 +1,14 @@
+providers:
+  deepseek:
+    enabled: false
+    api_key_env: DEEPSEEK_API_KEY
+    model: deepseek-flash
+  mimo:
+    enabled: false
+    api_key_env: MIMO_API_KEY
+    model: ""
+  openai-compatible:
+    enabled: false
+    base_url_env: OPENAI_COMPATIBLE_BASE_URL
+    api_key_env: OPENAI_COMPATIBLE_API_KEY
+    model: ""
