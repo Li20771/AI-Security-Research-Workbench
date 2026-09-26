@@ -420,7 +420,11 @@ Benchmark 不比较“谁更聪明”，而比较任务数据：
 
 ---
 
-## 15. Architecture Freeze Decisions
+## 15. Repository status
+
+AI-00 remains IN PROGRESS. Repository foundation and architecture alignment are complete; AI-01 DSH baseline execution and GitHub main protection verification remain open.
+
+## 16. Architecture Freeze Decisions
 
 当前冻结：
 
@@ -472,9 +476,29 @@ AI cache 不能成为唯一事实源。
 
 Model routing v2 必须建立在真实 benchmark 数据上。
 
+### F-13
+
+Model Router is a Workbench core service and never grants permissions.
+
+### F-14
+
+Research tool adapters are separate from the Security Tools plugin.
+
+### F-15
+
+Key normalized Evidence is durable; raw logs and AI caches may be disposable.
+
+### F-16
+
+Long-running workflows are a separate bounded Workbench layer.
+
+### F-17
+
+SecurityLab remains independently versioned and owns research truth.
+
 ---
 
-## 16. Open Questions
+## 17. Open Questions
 
 以下问题允许在 AI-01 之后实现时继续细化，不阻塞 AI-00：
 
@@ -490,7 +514,7 @@ Model routing v2 必须建立在真实 benchmark 数据上。
 
 ---
 
-## 17. AI-00 Exit Criteria
+## 18. AI-00 Exit Criteria
 
 AI-00 只有在以下全部明确后才能退出：
 
@@ -504,5 +528,5 @@ AI-00 只有在以下全部明确后才能退出：
 - [x] Evidence model
 - [x] Context hierarchy
 - [x] Roadmap
-- [ ] 将上述冻结内容转化为实际 repository policy/config
+- [x] 将上述冻结内容转化为实际 repository policy/config
 - [ ] AI-01 DSH baseline execution plan
