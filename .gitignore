@@ -8,6 +8,7 @@ __pycache__/
 node_modules/
 npm-debug.log*
 yarn-debug.log*
+pnpm-debug.log*
 
 # Secrets
 .env
@@ -16,6 +17,7 @@ yarn-debug.log*
 *.pem
 *.key
 *.p12
+*.pfx
 credentials.json
 secrets/
 
@@ -24,13 +26,20 @@ secrets/
 workspace-state/
 *.session.json
 
-# Generated data
+# Generated evidence / benchmark / workflow data
 evidence/runs/*
 !evidence/runs/.gitkeep
 benchmarks/results/*
 !benchmarks/results/.gitkeep
+workflows/runs/*
+!workflows/runs/.gitkeep
+workflows/checkpoints/*
+!workflows/checkpoints/.gitkeep
 artifacts/
+reports/generated/
 
 # Editors
 .vscode/
+.idea/
 *.swp
+*.swo
