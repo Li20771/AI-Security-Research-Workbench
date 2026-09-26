@@ -66,6 +66,8 @@ DeepSeek      MiMo       OpenAI-compatible providers
 - [Master Roadmap](docs/MASTER_ROADMAP.md)
 - [AI-00 Requirements & Architecture](docs/AI-00_REQUIREMENTS_AND_ARCHITECTURE.md)
 - [Git & Security Boundary](docs/GIT_AND_SECURITY_BOUNDARY.md)
+- [Project Status](docs/PROJECT_STATUS.md)
+- [Evidence Lifecycle](docs/architecture/EVIDENCE_LIFECYCLE.md)
 
 ## 与 SecurityLab 的关系
 

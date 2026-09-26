@@ -107,3 +107,16 @@ BLOCKED
 NOT_RUN
 UNKNOWN
 ```
+
+
+## Evidence lifecycle
+
+Normalized key Evidence is durable and linked to workspace + branch + SHA. Raw large logs may be artifact-only. AI cache is disposable and rebuildable.
+
+## Routing
+
+Router selects eligible Agent/provider/model profiles. It never grants permissions.
+
+```text
+Router != Guard
+```

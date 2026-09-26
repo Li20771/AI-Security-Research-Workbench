@@ -1,0 +1,17 @@
+version: 1
+experiment:
+  experiment_id: string
+  agent: string
+  provider: string
+  model: string
+  workspace: string
+  base_sha: string
+  branch: string
+  approval: string|null
+  tools: []
+  changes:
+    files: []
+    diff_summary: string
+  tests: []
+  final_status: PASS|FAIL|BLOCKED|NOT_RUN|UNKNOWN
+  timestamp: string

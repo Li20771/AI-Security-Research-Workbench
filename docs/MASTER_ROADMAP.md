@@ -47,6 +47,24 @@ Workbench 应能把同一套 Agent 能力复用于其他安全研究 workspace�
         SecurityLab
 ```
 
+## 1.1 Architecture alignment decisions
+
+### Routing boundary
+
+Model Router is a Workbench core service, not a DSH plugin. Router selects eligible Agent/provider/model profiles but never grants permissions. Guard remains authoritative.
+
+### Tool boundary
+
+The first-class tool adapter families are Git, GitHub, Terminal, MCP, Tests, Vehicle Network, Firmware, and Reverse Engineering. The Security Tools plugin composes these adapters.
+
+### Workflow boundary
+
+Long-running execution has a dedicated `workflows/` layer with definitions, checkpoints, runs, and policies. Generated run data is disposable unless promoted to durable Evidence.
+
+### Evidence boundary
+
+Evidence is split into raw run output, normalized durable records, benchmark results, and audit/review records. Key normalized Evidence is durable; large raw logs may be artifact-only.
+
 ## 2. Governance model
 
 权限分层：
@@ -138,7 +156,7 @@ read
 
 ---
 
-## AI-03 — SecurityLab Context Plugin
+## AI-03 — Context Plugin
 
 目标：让 Agent 不依赖聊天记录获得项目上下文。
 
@@ -245,6 +263,8 @@ Timestamp
 
 - Git / GitHub
 - test runners
+- Terminal
+- MCP
 - vcan
 - can-utils
 - ISO-TP / UDS

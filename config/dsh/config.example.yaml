@@ -1,0 +1,8 @@
+agent:
+  role: primary
+  workspace_mode: controlled
+permissions:
+  default_level: read
+  allow_main_write: false
+  allow_system_change: false
+  allow_remote_change: false
