@@ -41,7 +41,7 @@
 
 ## AI-00 remaining exit items
 1. Freeze and execute the AI-01 DSH baseline plan.
-2. Independently verify GitHub `main` branch protection and required checks.
+2. Independently verify GitHub `main` branch protection and required checks through an available authoritative interface.
 
 ## Status semantics
 `PASS` `FAIL` `BLOCKED` `NOT_RUN` `UNKNOWN`

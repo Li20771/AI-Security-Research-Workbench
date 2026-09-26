@@ -47,7 +47,7 @@ Workbench 应能把同一套 Agent 能力复用于其他安全研究 workspace�
         SecurityLab
 ```
 
-## 2. Architecture alignment decisions
+## 1.1 Architecture alignment decisions
 
 ### Routing boundary
 
@@ -156,7 +156,7 @@ read
 
 ---
 
-## AI-03 — SecurityLab Context Plugin
+## AI-03 — Context Plugin
 
 目标：让 Agent 不依赖聊天记录获得项目上下文。
 
@@ -263,6 +263,8 @@ Timestamp
 
 - Git / GitHub
 - test runners
+- Terminal
+- MCP
 - vcan
 - can-utils
 - ISO-TP / UDS

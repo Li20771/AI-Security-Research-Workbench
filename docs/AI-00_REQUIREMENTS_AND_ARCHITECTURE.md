@@ -1,6 +1,6 @@
 # AI-00 — Requirements & Architecture Freeze
 
-> Status: **IN PROGRESS**  
+> Status: **IN PROGRESS**
 > Date baseline: **2026-09-26**
 
 ## 1. Problem Statement
@@ -530,3 +530,4 @@ AI-00 只有在以下全部明确后才能退出：
 - [x] Roadmap
 - [x] 将上述冻结内容转化为实际 repository policy/config
 - [ ] AI-01 DSH baseline execution plan
+- [ ] GitHub main branch protection independently verified
