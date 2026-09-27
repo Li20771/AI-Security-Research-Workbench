@@ -18,6 +18,9 @@ jobs:
           test -f docs/GIT_AND_SECURITY_BOUNDARY.md
           test -f .gitignore
           test -f .env.example
+      - name: Check repository layout
+        run: |
+          bash tests/unit/test_repository_layout.sh
       - name: Check secret files are absent
         run: |
           test ! -f .env

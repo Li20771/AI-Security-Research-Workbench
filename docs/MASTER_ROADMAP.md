@@ -19,33 +19,41 @@ Workbench 应能把同一套 Agent 能力复用于其他安全研究 workspace�
 # 1. Target Architecture
 
 ```text
-                         Human
-                  architecture / approval
-                            |
-             +--------------+--------------+
-             |                             |
-       DSH Main Agent               Codex Second Agent
-             |                             |
-      model/provider layer          model/provider layer
-             |                             |
-        +----+----+                   +----+----+
-        |         |                   |         |
-     DeepSeek    MiMo            OpenAI API   Domestic APIs
-        |         |
-        +----+----+
-             |
-     Context / Guard / Evidence
-             |
-       Research Tool Layer
-             |
-      Git / GitHub / MCP /
- CAN / ISO-TP / UDS / QEMU / GDB /
-      Ghidra / AFL++ / YARA / ...
-             |
-          Workspace
-             |
-        SecurityLab
+                           Human
+                    architecture / approval
+                              |
+                    +---------+---------+
+                    |   Workbench Core |
+                    |                 |
+                    |  Model Router   |
+                    +---------|-------+
+                              |
+                 +------------+------------+
+                 |                         |
+          DSH Main Agent             Codex Second Agent
+                 |                         |
+                 +------------+------------+
+                              |
+                    Provider / Model Layer
+                              |
+                 +------------+------------+
+                 |                         |
+          DeepSeek / MiMo        OpenAI-compatible
+                              |
+                 Context / Guard / Evidence
+                              |
+                    Research Tool Adapters
+                              |
+                    Git / GitHub / MCP /
+             CAN / ISO-TP / UDS / QEMU / GDB /
+                 Ghidra / AFL++ / YARA / ...
+                              |
+                         Workspace
+                              |
+                         SecurityLab
 ```
+
+**Planning identity:** Plugin 5 / AI-07 — Model Router v1. Architectural classification: Workbench core service, not a DSH plugin.
 
 ## 1.1 Architecture alignment decisions
 
@@ -284,7 +292,9 @@ Timestamp
 
 ---
 
-## AI-07 — Model Router v1
+## AI-07 — Plugin 5: Model Router v1
+
+> Planning identity: Plugin 5. Architectural classification: Workbench core service, not a DSH plugin.
 
 目标：建立可解释的规则路由，不追求一开始就做自主学习路由。
 
@@ -486,6 +496,42 @@ AI-00
 ```
 
 说明：AI-02~06 属于基础能力区，可以在基线稳定后并行推进；AI-10 需要 AI-08/09 与验证能力；AI-12 必须建立在 AI-11 的真实数据上。
+    
+## 2.1 Standard phase execution and completion path
+
+Every AI phase follows the same path. The current phase and current work item are recorded in `docs/PROJECT_STATUS.md`.
+
+```text
+START
+  -> read PROJECT_STATUS
+  -> read current MASTER_ROADMAP phase
+  -> read phase requirements / design
+  -> verify branch + base SHA + working tree
+  -> create task branch + task/experiment ID
+  -> IMPLEMENT
+  -> VERIFY
+  -> record Evidence
+  -> review scope + diff
+  -> PR / approval gate
+  -> MERGE checkpoint
+  -> update PROJECT_STATUS
+  -> next phase
+```
+
+A phase is not complete merely because code exists. Its exit requires:
+
+- declared scope completed
+- required validation executed
+- evidence recorded
+- known blockers explicitly classified
+- exit criteria satisfied
+- status updated before the next phase begins
+
+### Phase start rule
+
+At the beginning of every work session, do not choose work from memory or from the directory tree. Use `docs/PROJECT_STATUS.md` as the single current-work entry point, then follow the phase dependency and exit criteria in this roadmap.
+
+
 
 ---
 
