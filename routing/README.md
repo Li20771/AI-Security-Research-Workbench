@@ -2,6 +2,10 @@
 
 Workbench core service for Model Router.
 
+Planning identity:
+- Plugin 5 / AI-07 — Model Router v1
+- Architectural classification: Workbench core service, not a DSH plugin.
+
 Responsibilities:
 
 - Select eligible Agent / Provider / Model profiles.
