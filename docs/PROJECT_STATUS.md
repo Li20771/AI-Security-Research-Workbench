@@ -4,6 +4,43 @@
 ## Current stage
 **AI-00 — Requirements / Architecture Freeze**
 
+## Start Here
+
+This file is the single entry point for deciding what to do next.
+
+### Current work item
+
+Finish AI-00 exit prerequisites. Do not start implementation of later phases from memory or from the directory tree.
+
+1. Produce and freeze the AI-01 DSH baseline execution plan.
+2. Independently verify GitHub `main` branch protection and required checks.
+3. After both are complete, close AI-00 and start AI-01.
+
+### Session start sequence
+
+```text
+PROJECT_STATUS.md
+    -> MASTER_ROADMAP.md (current phase)
+    -> current phase requirements / design
+    -> git branch / SHA / working tree
+    -> task branch
+    -> implementation
+    -> verification + evidence
+    -> PR / approval
+    -> merge checkpoint
+    -> update PROJECT_STATUS.md
+```
+
+### Do not start yet
+
+- AI-02 DeepSeek + MiMo Model Layer
+- AI-03 Context Plugin implementation
+- AI-04 Guard implementation
+- AI-05 Evidence implementation
+- AI-06 Security Tools implementation
+- AI-07 Router implementation
+
+
 ## Completed
 
 ### Repository foundation
@@ -40,7 +77,7 @@
 - Long-running workflow implementation
 
 ## AI-00 remaining exit items
-1. Freeze and execute the AI-01 DSH baseline plan.
+1. Freeze the AI-01 DSH baseline execution plan.
 2. Independently verify GitHub `main` branch protection and required checks through an available authoritative interface.
 
 ## Status semantics
