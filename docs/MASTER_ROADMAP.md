@@ -284,7 +284,9 @@ Timestamp
 
 ---
 
-## AI-07 — Model Router v1
+## AI-07 — Plugin 5: Model Router v1
+
+> Planning identity: Plugin 5. Architectural classification: Workbench core service, not a DSH plugin.
 
 目标：建立可解释的规则路由，不追求一开始就做自主学习路由。
 
