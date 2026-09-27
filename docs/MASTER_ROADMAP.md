@@ -117,7 +117,7 @@ read
 - Git 安全约束
 - 长期演进路线
 
-状态：**当前阶段**
+状态：**已完成**
 
 ---
 
@@ -572,8 +572,8 @@ SecurityLab
 
 | Stage | Status |
 | --- | --- |
-| AI-00 | **IN PROGRESS** |
-| AI-01 | NOT STARTED |
+| AI-00 | **COMPLETE** |
+| AI-01 | **IN PROGRESS** |
 | AI-02 | NOT STARTED |
 | AI-03 | NOT STARTED |
 | AI-04 | NOT STARTED |
