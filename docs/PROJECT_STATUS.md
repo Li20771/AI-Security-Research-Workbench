@@ -2,7 +2,9 @@
 > Baseline: 2026-09-26
 
 ## Current stage
-**AI-00 — Requirements / Architecture Freeze**
+**AI-01 — DSH Baseline**
+
+AI-00 architecture and repository baseline is complete. The GitHub `main` branch protection requirement is **BLOCKED** by the current GitHub Free/private-repository plan and is retained as a documented platform limitation; it is not treated as a PASS.
 
 ## Start Here
 
@@ -10,23 +12,19 @@ This file is the single entry point for deciding what to do next.
 
 ### Current work item
 
-Finish AI-00 exit prerequisites. Do not start implementation of later phases from memory or from the directory tree.
+**AI-01 — DSH Baseline**
 
-AI-01 execution plan is frozen at [docs/AI-01_DSH_BASELINE_EXECUTION_PLAN.md](AI-01_DSH_BASELINE_EXECUTION_PLAN.md). It becomes active only after AI-00 exits.
-
-1. Produce and freeze the AI-01 DSH baseline execution plan.
-2. Independently verify GitHub `main` branch protection and required checks.
-3. After both are complete, close AI-00 and start AI-01.
+The AI-01 execution plan is frozen at [docs/AI-01_DSH_BASELINE_EXECUTION_PLAN.md](AI-01_DSH_BASELINE_EXECUTION_PLAN.md).
 
 ### Session start sequence
 
 ```text
 PROJECT_STATUS.md
     -> MASTER_ROADMAP.md (current phase)
-    -> current phase requirements / design
-    -> git branch / SHA / working tree
-    -> task branch
-    -> implementation
+    -> AI-01_DSH_BASELINE_EXECUTION_PLAN.md
+    -> verify branch / SHA / working tree
+    -> create AI-01 task/experiment ID
+    -> baseline execution
     -> verification + evidence
     -> PR / approval
     -> merge checkpoint
@@ -41,7 +39,6 @@ PROJECT_STATUS.md
 - AI-05 Evidence implementation
 - AI-06 Security Tools implementation
 - AI-07 Router implementation
-
 
 ## Completed
 
@@ -78,9 +75,13 @@ PROJECT_STATUS.md
 - Cross-Agent Review implementation
 - Long-running workflow implementation
 
-## AI-00 remaining exit items
-1. Freeze the AI-01 DSH baseline execution plan.
-2. Independently verify GitHub `main` branch protection and required checks through an available authoritative interface.
+## AI-00 final gate status
+
+- Architecture / repository baseline: **PASS**
+- AI-01 execution plan: **PASS / FROZEN**
+- GitHub `main` branch protection: **BLOCKED** — current GitHub Free/private-repository plan does not enforce repository rulesets.
+
+This platform limitation is documented and is not converted to PASS.
 
 ## Status semantics
 `PASS` `FAIL` `BLOCKED` `NOT_RUN` `UNKNOWN`
