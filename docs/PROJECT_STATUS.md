@@ -12,6 +12,8 @@ This file is the single entry point for deciding what to do next.
 
 Finish AI-00 exit prerequisites. Do not start implementation of later phases from memory or from the directory tree.
 
+AI-01 execution plan is frozen at [docs/AI-01_DSH_BASELINE_EXECUTION_PLAN.md](AI-01_DSH_BASELINE_EXECUTION_PLAN.md). It becomes active only after AI-00 exits.
+
 1. Produce and freeze the AI-01 DSH baseline execution plan.
 2. Independently verify GitHub `main` branch protection and required checks.
 3. After both are complete, close AI-00 and start AI-01.
