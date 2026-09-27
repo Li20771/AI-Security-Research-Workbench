@@ -496,6 +496,8 @@ AI-00
 ```
 
 说明：AI-02~06 属于基础能力区，可以在基线稳定后并行推进；AI-10 需要 AI-08/09 与验证能力；AI-12 必须建立在 AI-11 的真实数据上。
+
+AI-00 platform limitation: GitHub `main` branch protection is BLOCKED under the current GitHub Free/private-repository plan. This does not block AI-01; it remains an explicit external limitation.
     
 ## 2.1 Standard phase execution and completion path
 

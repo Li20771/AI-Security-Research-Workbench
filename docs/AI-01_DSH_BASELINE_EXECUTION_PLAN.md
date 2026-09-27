@@ -3,7 +3,7 @@
 > Status: **FROZEN**
 > Phase: AI-01 — DSH Baseline
 > Prerequisite: AI-00 architecture / repository baseline
-> Rule: Do not begin AI-02+ implementation before AI-01 exit.
+> Rule: AI-01 is the current active phase. Do not begin AI-02+ implementation before AI-01 exit.
 
 ## 1. Purpose
 
