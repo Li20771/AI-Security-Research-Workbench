@@ -15,30 +15,39 @@ Workbench 不是一个单一模型，也不是 DSH 的 fork。
 目标架构：
 
 ```text
-                    Human
-              架构 / 批准 / 决策
-                       |
-          +------------+------------+
-          |                         |
-      DSH Main Agent          Codex Second Agent
-          |                         |
-     Model Router               Provider Layer
-          |                         |
-   +------+------+          +------+------+
-   |             |          |             |
-DeepSeek      MiMo       OpenAI-compatible providers
-   |             |
-   +------+------+ 
-          |
-       Tools / MCP
-          |
-   +------+------+----------------------+
-   |             |                      |
- Git/GitHub   Security Tools      Workspace Context
-   |             |                      |
-   +-------------+----------------------+
-                       |
-                   SecurityLab
+                           Human
+                    架构 / 批准 / 决策
+                              |
+                    +---------+---------+
+                    |   Workbench Core |
+                    |                 |
+                    |    Model Router |
+                    |         |       |
+                    +---------|-------+
+                              |
+                 +------------+------------+
+                 |                         |
+          DSH Main Agent             Codex Second Agent
+                 |                         |
+                 +------------+------------+
+                              |
+                    Provider / Model Layer
+                              |
+                 +------------+------------+
+                 |                         |
+          DeepSeek / MiMo        OpenAI-compatible
+                              |
+                        Tools / MCP
+                              |
+             +----------------+----------------+
+             |                                 |
+        Git / GitHub                     Security Tools
+             |                                 |
+             +----------------+----------------+
+                              |
+                    Workspace / Context
+                              |
+                         SecurityLab
 ```
 
 ## 设计原则
