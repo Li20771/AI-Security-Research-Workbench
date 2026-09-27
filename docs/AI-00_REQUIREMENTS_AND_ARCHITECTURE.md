@@ -1,6 +1,6 @@
 # AI-00 — Requirements & Architecture Freeze
 
-> Status: **IN PROGRESS**
+> Status: **COMPLETE**
 > Date baseline: **2026-09-26**
 
 ## 1. Problem Statement
@@ -424,7 +424,7 @@ Benchmark 不比较“谁更聪明”，而比较任务数据：
 
 ## 15. Repository status
 
-AI-00 remains IN PROGRESS. Repository foundation and architecture alignment are complete; AI-01 DSH baseline execution and GitHub main protection verification remain open.
+AI-00 is complete. The repository foundation and architecture alignment are frozen. AI-01 DSH baseline execution is the current active phase. GitHub main branch protection remains an explicit BLOCKED platform limitation and is not required to proceed with AI-01.
 
 ## 16. Architecture Freeze Decisions
 
@@ -533,5 +533,5 @@ AI-00 只有在以下全部明确后才能退出：
 - [x] Context hierarchy
 - [x] Roadmap
 - [x] 将上述冻结内容转化为实际 repository policy/config
-- [ ] AI-01 DSH baseline execution plan
-- [ ] GitHub main branch protection independently verified
+- [x] AI-01 DSH baseline execution plan
+- [x] GitHub main branch protection requirement disposition recorded as BLOCKED due to the current GitHub Free/private-repository limitation
