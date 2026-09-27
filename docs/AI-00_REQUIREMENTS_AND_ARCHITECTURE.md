@@ -176,6 +176,8 @@ Secret 只存在于运行时环境或安全凭证系统，不进入 Git。
 - YARA
 - firmware tooling
 
+> Plugin count is four runtime plugin layers. **Plugin 5** is the planning identity of **AI-07 Model Router v1**; architecturally, Model Router is a Workbench core service under `routing/`, not a DSH plugin.
+
 ---
 
 ## 6. Permission Model
@@ -479,6 +481,8 @@ Model routing v2 必须建立在真实 benchmark 数据上。
 ### F-13
 
 Model Router is a Workbench core service and never grants permissions.
+
+Its planning identity is **Plugin 5 / AI-07 Model Router v1**. This label does not make Router a DSH plugin.
 
 ### F-14
 
