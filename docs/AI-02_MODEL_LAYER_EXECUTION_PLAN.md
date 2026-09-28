@@ -340,7 +340,8 @@ Rules:
 - `protocol.family` names the **wire protocol family**, not the vendor. Both in-scope providers
   declare `openai_compatible_chat`.
 - The protocol family determines the adapter. The provider profile determines endpoint,
-  credential, and transport.
+  credential, and protocol. **Runtime config supplies transport settings** (§5.11): transport is
+  not profile data, and a profile carrying it is rejected on load.
 - `protocol.version` is the protocol revision the adapter targets, not the provider's API version
   string.
 - "OpenAI-compatible" is a **declaration of intent, not a guarantee.** Compatibility is partial
@@ -1436,3 +1437,36 @@ table), §16.1 (D-16).
 No boundary, scope, or deliverable changed. This is a consistency correction within AI-02-A, not a
 scope change: the same correction applied uniformly, with no effect on what AI-02-B is required to
 build. Documentation only — still zero production code.
+
+**Amendment 2 — 2026-09-28 — transport ownership.**
+
+A second internal conflict was found between §5.4 and §5.11. §5.4 rule 2 stated that "the provider
+profile determines endpoint, credential, and transport", while §5.11 closes with "Transport
+settings are runtime config, not profile data."
+
+§5.11 governs. §5.4 rule 2 was the inconsistent side and is corrected:
+
+```text
+The provider profile determines endpoint, credential, and protocol.
+Runtime config supplies transport settings.
+```
+
+This amendment makes the document match the AI-02-B1 implementation, which had followed §5.4
+rule 2 and placed a `transport` field on the provider profile. That was corrected in the
+implementation before this amendment: `ProviderProfile` no longer has the field, the loader
+rejects a profile carrying one, and the adapter takes transport settings as an explicit runtime
+input. The document now describes that layering rather than contradicting it.
+
+Corrected in: §5.4 (rule 2). The §5.11 text was already correct and is unchanged.
+
+The layer split is unchanged from what §5.11 already required:
+
+```text
+providers/<id>/provider.yaml    identity, protocol, endpoint, credential.ref, models
+config/providers/*.yaml         enabled, runtime overrides, transport
+```
+
+No other frozen semantics changed — not the provider/model two-level structure, provider
+identity, endpoint composition, the credential reference grammar, protocol family, model
+references, the capability truth model, the error taxonomy, retry policy, live-test rules, or
+the Router and AI-09 exclusions. Documentation only: zero production code, one file.
