@@ -200,9 +200,16 @@ Three rules the counters enforce:
   an observation — the block code carries that verdict, so no registry lookup
   is needed and there is no `unknown-provider` bucket.
 
-  `MetricAggregator(known_model_refs=...)` optionally enforces the same rule
-  against an explicit list of registered models. It is off by default, keeping
-  metrics free of a registry dependency.
+  `MetricAggregator` **requires** `known_model_refs` — the set of models the
+  caller vouches for. There is no default, because a default would accept
+  anything, and §9.4 would then hold on the invocation path but not at the
+  collection boundary. Metrics never load the registry themselves: a registry,
+  a test fixture, or a narrower allowlist all work, and an empty set collects
+  nothing.
+
+  Attribution is an argument the caller supplies, not a property of a ref. A
+  synthetic model is collectable once it is declared, which is the explicit
+  act the rule asks for.
 
 Raw latency samples are kept alongside the aggregates; a mean alone cannot be
 re-analysed.

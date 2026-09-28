@@ -481,33 +481,33 @@ class MetricAggregator:
     The catalog defaults to empty, so no cost is projected until a price is
     supplied explicitly.
 
-    `known_model_refs` is optional. Supply it to enforce §9.4 against an
-    external list of registered models:
+    `known_model_refs` is **required**: it is the attribution authority, the
+    set of models the caller vouches for. Without it there would be a default
+    that accepts anything, and §9.4 would hold on the invocation path but not
+    at the collection boundary -- a hand-built observation for a model that
+    does not exist would be collectable.
 
         MetricAggregator(
             as_of=..., known_model_refs=load_all_model_profiles()
         )
 
-    Without it, attribution is still enforced by the block-code rule -- a call
-    the invocation layer blocked for naming a non-existent provider or model
-    can never become an observation -- but a hand-built observation is not
-    checked against the registry. That keeps metrics free of a registry
-    dependency while leaving the caller able to add one.
+    Metrics never load the registry itself. The authority is supplied, so this
+    module keeps no dependency on where the list came from -- a registry, a
+    test fixture, or a narrower allowlist all work. An empty set is a valid
+    explicit choice and collects nothing.
     """
 
     def __init__(
         self,
         *,
         as_of: date,
+        known_model_refs: Iterable[str],
         catalog: PricingCatalog | None = None,
-        known_model_refs: Iterable[str] | None = None,
         observations: Iterable[MetricObservation] = (),
     ) -> None:
         self._as_of = as_of
         self._catalog = empty_catalog() if catalog is None else catalog
-        self._known_refs = (
-            None if known_model_refs is None else frozenset(known_model_refs)
-        )
+        self._known_refs = frozenset(known_model_refs)
         self._observations: list[MetricObservation] = []
         self._declined = 0
         for observation in observations:
@@ -535,15 +535,16 @@ class MetricAggregator:
         return self._declined
 
     @property
-    def known_model_refs(self) -> frozenset[str] | None:
+    def known_model_refs(self) -> frozenset[str]:
+        """The models this aggregator treats as real (§9.4)."""
         return self._known_refs
 
     def record(self, observation: MetricObservation) -> MetricObservation:
         """Record one observation. Returns it unchanged.
 
         Raises `UnattributableObservationError` when the observation names a
-        model outside `known_model_refs`, so a caller cannot collect something
-        it should not have built.
+        model the attribution authority does not vouch for, so a caller cannot
+        collect something it should not have built.
 
         Observing does not modify the observed value: `MetricObservation` and
         `InvocationResult` are both frozen, and the reference is retained, not
@@ -553,14 +554,11 @@ class MetricAggregator:
             raise MetricsError(
                 f"expected MetricObservation, got {type(observation).__name__}"
             )
-        if (
-            self._known_refs is not None
-            and observation.model_ref not in self._known_refs
-        ):
+        if observation.model_ref not in self._known_refs:
             raise UnattributableObservationError(
-                f"{observation.model_ref} is not a registered model; metrics "
-                "that cannot be attributed to a real provider and model are "
-                "not collected (§9.4)"
+                f"{observation.model_ref} is not among the models this "
+                "aggregator vouches for; metrics that cannot be attributed to "
+                "a real provider and model are not collected (§9.4)"
             )
         self._observations.append(observation)
         return observation

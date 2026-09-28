@@ -79,9 +79,29 @@ def blocked(**kwargs) -> MetricObservation:
     return observed(InvocationStatus.BLOCKED, **kwargs)
 
 
-def aggregator(*observations, catalog=None) -> MetricAggregator:
+#: The models this suite vouches for, declared explicitly so that no test
+#: relies on a production default that would accept anything. The synthetic
+#: refs at the end exist to exercise grouping; that they are "real" only
+#: within this declared set is the point -- attribution is an argument the
+#: caller supplies, not a property intrinsic to a ref.
+REGISTERED_IN_TESTS = frozenset(
+    {
+        DEEPSEEK_REF,
+        MIMO_REF,
+        "mimo/mimo-v2.6-flash",
+        "deepseek/shared-name",
+        "mimo/shared-name",
+        "synthetic/example",
+    }
+)
+
+
+def aggregator(
+    *observations, catalog=None, known_model_refs=REGISTERED_IN_TESTS
+) -> MetricAggregator:
     return MetricAggregator(
         as_of=AT,
+        known_model_refs=known_model_refs,
         catalog=catalog,
         observations=observations,
     )
@@ -445,7 +465,7 @@ class TestAttributionRequiresRealEntities:
 
     def test_an_unattributable_block_is_not_collected(self):
         """Declining is visible through `declined_count`, never silent."""
-        collector = MetricAggregator(as_of=AT)
+        collector = MetricAggregator(as_of=AT, known_model_refs=REGISTERED_IN_TESTS)
         with pytest.raises(MetricsError):
             collector.record(
                 observed(InvocationStatus.BLOCKED, block_code=BlockCode.UNKNOWN_PROVIDER)
@@ -461,26 +481,78 @@ class TestAttributionRequiresRealEntities:
         )
         assert collector.snapshot().overall.blocked_count == 3
 
-    def test_a_registry_check_can_be_supplied(self):
-        collector = MetricAggregator(
-            as_of=AT, known_model_refs={DEEPSEEK_REF}
-        )
-        with pytest.raises(MetricsError, match="not a registered model"):
+    def test_a_narrower_authority_refuses_a_real_but_unlisted_model(self):
+        collector = MetricAggregator(as_of=AT, known_model_refs={DEEPSEEK_REF})
+        with pytest.raises(MetricsError, match="vouches for"):
             collector.record(succeeded(ref=MIMO_REF))
         assert collector.observation_count == 0
 
-    def test_a_registered_ref_passes_the_registry_check(self):
+    def test_a_registered_ref_passes_the_authority_check(self):
         collector = MetricAggregator(as_of=AT, known_model_refs={DEEPSEEK_REF})
         collector.record(succeeded(ref=DEEPSEEK_REF))
         assert collector.observation_count == 1
 
-    def test_no_known_refs_means_no_registry_dependency(self):
-        """Metrics do not reach for the registry on their own."""
-        assert MetricAggregator(as_of=AT).known_model_refs is None
+    def test_an_attribution_authority_is_required(self):
+        """There is no default that would accept anything (§9.4).
 
-    def test_the_registry_check_is_optional_and_off_by_default(self):
-        collector = aggregator(succeeded(ref="synthetic/example"))
+        Without one, §9.4 would hold on the invocation path but not at the
+        collection boundary, and a hand-built observation naming a model that
+        does not exist would be collectable.
+        """
+        with pytest.raises(TypeError):
+            MetricAggregator(as_of=AT)  # type: ignore[call-arg]
+
+    def test_an_empty_authority_collects_nothing(self):
+        """Deny-all is a valid explicit choice, and fails closed."""
+        collector = MetricAggregator(as_of=AT, known_model_refs=frozenset())
+        with pytest.raises(MetricsError, match="vouches for"):
+            collector.record(succeeded(ref=DEEPSEEK_REF))
+        assert collector.observation_count == 0
+
+    def test_a_synthetic_ref_is_refused_when_nobody_vouches_for_it(self):
+        collector = MetricAggregator(
+            as_of=AT, known_model_refs=REGISTERED_IN_TESTS
+        )
+        with pytest.raises(MetricsError, match="vouches for"):
+            collector.record(succeeded(ref="synthetic/not-declared"))
+        assert collector.observation_count == 0
+
+    def test_a_synthetic_ref_collects_once_it_is_declared(self):
+        """Attribution is an argument the caller supplies, not a property of
+        the ref -- declaring it is the explicit act the rule requires."""
+        collector = MetricAggregator(
+            as_of=AT,
+            known_model_refs=REGISTERED_IN_TESTS | {"synthetic/not-declared"},
+        )
+        collector.record(succeeded(ref="synthetic/not-declared"))
         assert collector.snapshot().overall.request_count == 1
+
+    def test_a_refused_observation_creates_no_bucket(self):
+        collector = MetricAggregator(as_of=AT, known_model_refs=REGISTERED_IN_TESTS)
+        with pytest.raises(MetricsError):
+            collector.record(succeeded(ref="ghost/model"))
+
+        snapshot = collector.snapshot()
+        assert snapshot.by_model == {}
+        assert snapshot.by_provider == {}
+        assert snapshot.overall.request_count == 0
+
+    def test_metrics_never_load_the_registry_themselves(self):
+        """The authority is supplied; this module has no registry dependency.
+
+        Asserted against the module namespace and its import statements, not
+        against the source text: the docstring shows a caller-side example
+        that names the loader, and prose is not a dependency.
+        """
+        import pathlib
+
+        import providers.metrics as metrics_module
+
+        assert "load_all_model_profiles" not in vars(metrics_module)
+
+        source = pathlib.Path(metrics_module.__file__).read_text(encoding="utf-8")
+        assert "from providers.model_registry" not in source
+        assert "import model_registry" not in source
 
 
 class TestLatency:
@@ -754,7 +826,7 @@ class TestImmutabilityAndSafety:
         result = invoker.invoke(request)
         before = dataclasses.asdict(result)
 
-        aggregator = MetricAggregator(as_of=AT)
+        aggregator = MetricAggregator(as_of=AT, known_model_refs=REGISTERED_IN_TESTS)
         aggregator.record_invocation(request, result)
 
         assert dataclasses.asdict(result) == before
@@ -811,7 +883,7 @@ class TestEndToEndWithTheInvoker:
             fake_transport_factory.success(completion_payload())
         ).invoke(request)
 
-        collector = MetricAggregator(as_of=AT)
+        collector = MetricAggregator(as_of=AT, known_model_refs=REGISTERED_IN_TESTS)
         observation = collector.record_invocation(request, result)
 
         assert observation.status is InvocationStatus.SUCCESS
@@ -828,7 +900,7 @@ class TestEndToEndWithTheInvoker:
         request = self._request(stream=True)
         result = invoker_factory(transport).invoke(request)
 
-        collector = MetricAggregator(as_of=AT)
+        collector = MetricAggregator(as_of=AT, known_model_refs=REGISTERED_IN_TESTS)
         observation = collector.record_invocation(request, result)
 
         assert observation.status is InvocationStatus.BLOCKED
@@ -855,7 +927,7 @@ class TestEndToEndWithTheInvoker:
             fake_transport_factory.success(completion_payload())
         ).invoke(request)
 
-        collector = MetricAggregator(as_of=AT)
+        collector = MetricAggregator(as_of=AT, known_model_refs=REGISTERED_IN_TESTS)
         collector.record_invocation(request, result)
         snapshot = collector.snapshot()
 
@@ -870,7 +942,7 @@ class TestEndToEndWithTheInvoker:
             fake_transport_factory.success(), environ={}
         ).invoke(request)
 
-        collector = MetricAggregator(as_of=AT)
+        collector = MetricAggregator(as_of=AT, known_model_refs=REGISTERED_IN_TESTS)
         observation = collector.record_invocation(request, result)
 
         assert observation.status is InvocationStatus.BLOCKED
@@ -881,7 +953,7 @@ class TestEndToEndWithTheInvoker:
         self, invoker_factory, fake_transport_factory, completion_payload
     ):
         """Observing first, then invoking, changes nothing about the invocation."""
-        collector = MetricAggregator(as_of=AT)
+        collector = MetricAggregator(as_of=AT, known_model_refs=REGISTERED_IN_TESTS)
         collector.record(succeeded(total_ms=1))
 
         transport = fake_transport_factory.success(completion_payload())
@@ -900,7 +972,7 @@ class TestEndToEndWithTheInvoker:
         result = invoker_factory(transport).invoke(request)
         assert result.blocked.code is BlockCode.UNKNOWN_PROVIDER
 
-        collector = MetricAggregator(as_of=AT)
+        collector = MetricAggregator(as_of=AT, known_model_refs=REGISTERED_IN_TESTS)
         assert collector.record_invocation(request, result) is None
         assert collector.observation_count == 0
         assert collector.declined_count == 1
@@ -912,7 +984,7 @@ class TestEndToEndWithTheInvoker:
         request = self._request(model_ref="deepseek/not-a-real-model")
         result = invoker_factory(transport).invoke(request)
 
-        collector = MetricAggregator(as_of=AT)
+        collector = MetricAggregator(as_of=AT, known_model_refs=REGISTERED_IN_TESTS)
         assert collector.record_invocation(request, result) is None
         assert collector.declined_count == 1
 
@@ -923,7 +995,7 @@ class TestEndToEndWithTheInvoker:
         request = self._request(stream=True)
         result = invoker_factory(transport).invoke(request)
 
-        collector = MetricAggregator(as_of=AT)
+        collector = MetricAggregator(as_of=AT, known_model_refs=REGISTERED_IN_TESTS)
         observation = collector.record_invocation(request, result)
 
         assert observation is not None
