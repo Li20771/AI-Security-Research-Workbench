@@ -22,12 +22,18 @@ Implemented so far:
 - **AI-02-B3** — the normalized invocation boundary: request/result types, the
   capability gate, provider -> normalized response mapping, and finish-state
   handling. A caller never sees a provider's JSON shape.
+- **AI-02-B4** — metrics observation and aggregation, plus pricing metadata
+  and cost projection.
 
-Not implemented, by contract: metrics (AI-02-B4), the CI restructuring
-(AI-02-B5), live connectivity verification (AI-02-B6), Model Router (AI-07),
-and the generic `openai_compatible_chat` *provider* at
-`providers/openai-compatible/`, which stays a reserved extension point for
-AI-09.
+Not implemented, by contract: the CI restructuring (AI-02-B5), live
+connectivity verification (AI-02-B6), Model Router (AI-07), and the generic
+`openai_compatible_chat` *provider* at `providers/openai-compatible/`, which
+stays a reserved extension point for AI-09.
+
+The relationship between the layers is one-way. Metrics consume invocation
+results; nothing here feeds back into a call. No module in this package
+selects a model, ranks one against another, or moves a capability toward
+VERIFIED.
 
 A request needing an unverified capability is refused before any provider
 activity. Since every shipped capability is UNKNOWN, only plain text calls can

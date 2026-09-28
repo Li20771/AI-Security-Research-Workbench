@@ -53,6 +53,8 @@ providers/
   model_profile.py     model profile types           (contract §6, §8)
   model_registry.py    model profile loading
   invocation.py        normalized invocation         (contract §7, §5.8)
+  metrics.py           metric observation/aggregation (contract §9)
+  pricing.py           pricing metadata, cost         (contract §9.3)
   deepseek/provider.yaml         declared provider profile
   deepseek/models/*.yaml         declared model profiles
   mimo/provider.yaml             declared provider profile
@@ -158,6 +160,45 @@ and a tool call is neither an error nor a final answer.
 A pre-flight refusal carries a `BlockReason`, not a provider `ErrorClass`:
 no provider was contacted, so no provider-layer class applies. Reusing one
 would blur a policy decision with something a provider did.
+
+## Metrics
+
+`MetricAggregator.record(...)` takes an observation built from an invocation
+result and produces aggregates. The relationship is **one-way**: metrics
+record facts and never feed back into a call.
+
+```text
+InvocationResult  ->  MetricObservation  ->  MetricAggregate
+```
+
+No module here selects, ranks, or falls back between models. Aggregates are
+available overall and broken down by provider, model, experiment, and task
+class.
+
+Three rules the counters enforce:
+
+- **`BLOCKED` is not a failure.** A refused call counts as a request and lands
+  in `blocked_count`; an unconfigured environment must not look like a failing
+  provider.
+- **Unknown is not zero.** An unreported count stays `None` and increments
+  `usage_unknown_count`. Totals sum only what was measured and carry
+  `is_complete: false` when anything was not.
+- **Unattributable calls are not collected.** An observation must name a real
+  provider and model — there is no `unknown-provider` bucket.
+
+Raw latency samples are kept alongside the aggregates; a mean alone cannot be
+re-analysed.
+
+### Pricing
+
+Pricing is **metadata, never logic** (§9.3). The default catalog is empty: no
+price ships with AI-02, and there is no per-model branch and no fallback price.
+
+A cost exists only when a dated record applies *and* every component that
+record prices has a measured count. Otherwise `estimated_cost` is `None` with
+a reason — never `0`, because zero claims the call was free, which is a
+different statement from "we cannot say". Token counts are the durable fact;
+cost is a projection that changes when the price list does.
 
 ## Rules
 
