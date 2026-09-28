@@ -27,6 +27,9 @@ from providers.registry import (
 )
 
 
+pytestmark = pytest.mark.layer1
+
+
 def _write(path, body: str):
     """Write a profile body verbatim.
 

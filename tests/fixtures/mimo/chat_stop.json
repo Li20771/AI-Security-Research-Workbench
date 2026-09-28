@@ -1,0 +1,21 @@
+{
+  "id": "chatcmpl-fixture-mimo-stop",
+  "object": "chat.completion",
+  "created": 1758998400,
+  "model": "mimo-v2.6-pro",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "fixture answer"
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 7,
+    "completion_tokens": 3,
+    "total_tokens": 10
+  }
+}

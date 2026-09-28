@@ -20,6 +20,9 @@ from providers.transport import (
 )
 
 
+pytestmark = pytest.mark.layer1
+
+
 class TestDefaults:
     def test_frozen_defaults(self):
         settings = TransportSettings()

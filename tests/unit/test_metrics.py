@@ -34,6 +34,9 @@ from providers.metrics import (
 from providers.pricing import PricingCatalog, PricingRecord
 from providers.protocol import FinishState
 
+
+pytestmark = pytest.mark.layer2
+
 AT = date(2026, 9, 28)
 DEEPSEEK_REF = "deepseek/deepseek-flash"
 MIMO_REF = "mimo/mimo-v2.6-pro"

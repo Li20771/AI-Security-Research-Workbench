@@ -22,6 +22,9 @@ from providers.model_profile import (
 
 from tests.unit.test_model_profile import make_profile
 
+
+pytestmark = pytest.mark.layer1
+
 FROZEN_STATES = {"DECLARED", "VERIFIED", "NOT_VERIFIED", "UNAVAILABLE", "UNKNOWN"}
 
 

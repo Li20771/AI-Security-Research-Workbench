@@ -34,6 +34,9 @@ from providers.model_profile import (
 from providers.protocol import FinishState
 from providers.transport import TransportSettings
 
+
+pytestmark = pytest.mark.layer2
+
 ALL_CAPABILITIES = tuple(CapabilityName)
 
 

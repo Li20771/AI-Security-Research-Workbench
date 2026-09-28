@@ -23,6 +23,9 @@ from providers.invocation import (
 from providers.model_profile import StructuredOutputMode
 
 
+pytestmark = pytest.mark.layer2
+
+
 def _request(**overrides) -> InvocationRequest:
     base = {
         "model_ref": "deepseek/deepseek-flash",

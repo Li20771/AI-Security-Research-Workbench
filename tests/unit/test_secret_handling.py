@@ -17,6 +17,9 @@ from providers.errors import ErrorClass, ProviderError
 from providers.protocol import adapter_for
 from providers.redaction import REDACTED, redact
 
+
+pytestmark = pytest.mark.layer2
+
 PLACEHOLDER = "sk-test-placeholder-not-a-real-key-000000"
 ENV_NAME = "WORKBENCH_TEST_CREDENTIAL"
 

@@ -27,6 +27,9 @@ from providers.credential import (
 )
 from providers.errors import ErrorClass, ErrorStage
 
+
+pytestmark = pytest.mark.layer1
+
 VALID_REF = "env:DEEPSEEK_API_KEY"
 PLACEHOLDER = "test-key-not-a-real-key"
 

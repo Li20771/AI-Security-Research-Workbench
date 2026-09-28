@@ -20,6 +20,9 @@ from providers.invocation import (
 from providers.protocol import FinishState, TransportFailureKind, TransportResult
 
 
+pytestmark = pytest.mark.layer2
+
+
 def _request(**overrides) -> InvocationRequest:
     base = {
         "model_ref": "deepseek/deepseek-flash",
