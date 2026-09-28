@@ -765,9 +765,15 @@ invocation_result:
   usage: { ... }                   # §9.2
   finish_state: STOP | LENGTH | TOOL_CALLS | CONTENT_FILTER | ERROR | UNKNOWN
   latency: { total_ms: null, ttfb_ms: null }
-  error: null                      # §5.9 shape when status != SUCCESS
+  error: null                      # §5.9 shape — provider-layer failures only
   attempts: 1
   raw_response_ref: null
+  blocked: null                    # invocation-layer refusal; see below
+    # code: CAPABILITY_NOT_VERIFIED | UNKNOWN_PROVIDER
+    #     | UNKNOWN_MODEL | CREDENTIAL_CONFIG_DEFECT
+    # detail: <text>
+    # required_capability: null    # set when code = CAPABILITY_NOT_VERIFIED
+    # actual_status: null          # the capability status actually recorded
 ```
 
 Rules:
@@ -778,6 +784,21 @@ Rules:
   without consulting external state.
 - `model_id` echoes the **effective** model id the provider was asked for — if an alias or
   redirect occurred, it is recorded rather than hidden.
+- `BLOCKED` means the invocation was refused **before any provider activity**. Nothing was sent,
+  so no provider finish reason exists and a `BLOCKED` result always carries
+  `finish_state: UNKNOWN`. `finish_state: ERROR` means a *provider* signalled failure (§7.3) and
+  is therefore never used for a refusal.
+- A `BLOCKED` result carries its reason in exactly one of two places:
+  - **Invocation-layer refusal** — `blocked` is populated and `error` is `null`. The `code`
+    names the policy decision. These have no provider taxonomy class because no provider was
+    contacted.
+  - **Credential precondition** — `error` carries `CREDENTIAL_MISSING` or
+    `CREDENTIAL_UNSUPPORTED` (§5.3), which are frozen provider taxonomy classes, and `blocked`
+    is `null`.
+- **No provider `ErrorClass` is introduced for an invocation-layer refusal.** The provider
+  taxonomy describes provider-layer outcomes (D-6, D-16); reusing a class for a pre-flight
+  policy decision would blur that boundary and imply a provider interaction that never
+  happened. The two representations stay separate on purpose.
 
 ### 7.3 Finish state
 
@@ -1509,3 +1530,34 @@ semantics, and changes nothing about the protocol family, the adapter, or any pr
 declaration. §6.7 and §6.8 are unchanged and remain the sole definition of `streaming` and of
 capability `source`. No boundary, scope, or implementation change: documentation only, zero
 production code, one file.
+
+**Amendment 4 — 2026-09-28 — invocation-layer block representation.**
+
+§7.2 defined `status: BLOCKED` but never said how a *pre-flight refusal* is represented. It
+stated only that `error` carries the §5.9 shape when `status != SUCCESS`, which presumes a
+provider-layer failure — and a refusal has none, because no provider was contacted.
+
+AI-02-B3 must distinguish a provider failure from a pre-flight policy refusal, so this amendment
+adds an optional `blocked` field to the §7.2 result and states the rules explicitly. The
+previous text is otherwise unchanged.
+
+What the amendment settles:
+
+1. `BLOCKED` means refused before any provider activity, so `finish_state` is **`UNKNOWN`**.
+   `finish_state: ERROR` is reserved for a provider signalling failure (§7.3) and is never used
+   for a refusal.
+2. An invocation-layer refusal populates `blocked` and leaves `error` null. Its `code` is one of
+   `CAPABILITY_NOT_VERIFIED`, `UNKNOWN_PROVIDER`, `UNKNOWN_MODEL`, `CREDENTIAL_CONFIG_DEFECT`.
+3. A credential precondition populates `error` with `CREDENTIAL_MISSING` or
+   `CREDENTIAL_UNSUPPORTED` — both already frozen taxonomy classes — and leaves `blocked` null.
+4. **No new provider `ErrorClass` is added**, and the §5.10 taxonomy is unchanged. Reusing an
+   existing class for a policy refusal would blur the boundary D-6 and D-16 draw, and would
+   imply a provider interaction that never happened.
+
+`blocked` is a field on the invocation result, not a member of the provider error taxonomy. The
+two represent different layers and are deliberately not merged.
+
+No other frozen semantics changed: not the provider/model two-level structure, provider identity,
+endpoint composition, the credential reference grammar, protocol family, model references, the
+capability truth model, the error taxonomy, retry policy, live-test rules, or the Router and
+AI-09 exclusions.
