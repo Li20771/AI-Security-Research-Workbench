@@ -265,7 +265,27 @@ Using only the permitted vocabulary:
 | `WindowsApps` Sandbox package | **UNKNOWN** — access denied |
 | System32 Sandbox binaries | **ABSENT** |
 | Start Menu entry | **ABSENT** |
-| Sandbox runnable | **ABSENT** |
+| Sandbox runnable | **UNKNOWN** |
+
+> **Scope of the `UNKNOWN` on runnability.** The legacy Optional Feature / System32 execution
+> path is unavailable on this image, but the complete Store-delivered Sandbox application
+> cannot be classified as runnable or non-runnable because the all-users AppX and WindowsApps
+> queries were access-denied.
+>
+> The evidence model is therefore split, and the split is what matters here:
+>
+> ```text
+> legacy Optional Feature path   Containers-DisposableClientVM  = ABSENT
+>                                System32 legacy binaries       = ABSENT
+> Store / AppX path              AppX all-users                 = UNKNOWN
+>                                WindowsApps                    = UNKNOWN
+>                                ---------------------------------------------
+>                                complete Sandbox runnable      = UNKNOWN
+> ```
+>
+> The `ABSENT` results establish that the **legacy path** is unavailable. They do **not**
+> establish that no Sandbox can run on this machine, because the Store-delivered route was
+> never observed — it was **access-denied**, which is not the same as absent.
 
 Nothing was marked `REGISTERED_DISABLED` — that is precisely the category CP9 implied
 ("not enabled, but enableable") and precisely what the evidence **does not** support.
@@ -307,8 +327,9 @@ known to be **too optimistic** — the obstacle is not permission alone.
 be added to this image at all** (`Get-WindowsCapability -Online`, and checking whether an FoD
 or Windows Update source can supply it). That is the cheapest thing still unknown, and it
 decides between the two remaining options. If the image cannot accept the feature, fall back
-to a **third-party hypervisor or separate hardware** — Sandbox is then simply not an option on
-this machine.
+to a **third-party hypervisor or separate hardware**. This checkpoint does **not** establish
+that Sandbox is unavailable in every form — only that the **legacy Optional Feature path** is
+absent; the Store-delivered route remains unobserved (§11).
 
 ## 14. Why no clean install was executed here
 
@@ -409,6 +430,7 @@ Documentation-only checkpoint.
 | WindowsApps Sandbox package | **UNKNOWN** (access denied) |
 | System32 Sandbox binaries | **ABSENT** |
 | Start Menu entry | **ABSENT** |
+| **Sandbox runnable** | **UNKNOWN** — legacy path ABSENT; Store/AppX path never observed (access-denied) |
 | component-store residue | **PRESENT** |
 | registered feature | **NO** |
 | Best next path | elevated determination of whether the feature can be added (FoD/capability); else third-party hypervisor or separate hardware |
