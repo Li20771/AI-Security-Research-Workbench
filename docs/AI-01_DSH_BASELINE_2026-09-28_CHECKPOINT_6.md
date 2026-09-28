@@ -336,12 +336,22 @@ Added at this checkpoint:
 | Workbench `main` unmodified | **PASS** — work on a branch |
 | `PROJECT_STATUS.md` unmodified | **PASS** — deliberately not touched (§8) |
 | No DSH modification | **PASS** — no install/uninstall, no config change, no process action |
-| No plugin installed, uninstalled, enabled or executed | **PASS** — observation only |
-| No experimental feature toggled | **PASS** |
+| No plugin state was changed during this checkpoint | **PASS** — no plugin was installed, uninstalled, enabled, disabled, or executed; the existing enablement states were only observed |
+| No plugin toggle was clicked or switched | **PASS** — the 6 `已开` / 1 `未开` states in §3.3 are the pre-existing states as found, not results of this checkpoint |
 | No CLI executed | **PASS** |
 | No credential or token access | **PASS** |
 | No Context / Guard / Evidence / Security Tools / tool adapter / Model Router implemented | **PASS** |
 | No AI-02 work started | **PASS** |
+
+> **On "no plugin was enabled".** Read the table above together with §3.3: the Plugin List
+> shows **six entries enabled and one disabled**, and those are the **pre-existing** states as
+> found. What this checkpoint did not do is **change** any of them.
+>
+> > No plugin state was changed during this checkpoint; existing enablement states were
+> > observation-only.
+>
+> The rows above must not be read as "no plugin is enabled in DSH" — that would contradict
+> §3.3. See also limitation 20, which keeps "enabled" distinct from "executed".
 
 ## 11. Rollback point
 
