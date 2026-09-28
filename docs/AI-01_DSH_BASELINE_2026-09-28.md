@@ -203,9 +203,11 @@ the SecurityLab binding, its `createdAt`/`updatedAt` timestamps, and session
 > **Consequence: startup evidence for future checkpoints must come from process and
 > port observation, not from DSH's own log files.**
 
-**Graceful process termination and restart were not completed in Checkpoint #1** and are
-recorded as `NOT_RUN` (§8). Force-kill (`Stop-Process`) was deliberately **not** used: it
-tests neither graceful shutdown nor restart recovery, and would misrepresent the result.
+**Termination and restart WERE completed in Checkpoint #1.** See §5.4 (graceful termination),
+§5.5 (restart and configuration persistence), and capability entries #6 and #7 in §8.
+Force-kill (`Stop-Process`) was deliberately **not** used at any point: it tests neither
+graceful shutdown nor restart recovery, and would have misrepresented the result. All
+termination evidence above comes from the application's own Quit path, not from a forced kill.
 
 ## 6. Configuration baseline (no secrets)
 
@@ -329,14 +331,17 @@ No credential value appears anywhere in this document or this commit.
 Confirmed visually in the DSH UI: the workspace list shows **SecurityLab**, standard mode
 (`标准模式`), with a session attached.
 
-### 7.2 Independence and controlled access
+### 7.2 Independence, controlled access, and read-only enforcement
 
-| Requirement | Result | Evidence |
-| --- | --- | --- |
-| SecurityLab independent of Workbench | PASS | separate repo, remote `git@github.com:Li20771/SecurityLab.git`, path `D:\SecurityLab` |
-| Access is controlled | PASS | via DSH workspace registration only; no filesystem shortcut from Workbench |
-| No modification of SecurityLab | PASS | controlled read performed; `git status --short` returned **0** files before and after |
-| Read-only enforced by default | **FAIL / NOT IMPLEMENTED** | see below |
+These are **three distinct claims** and they are classified separately below. Only the first
+two are PASS. **Read-only enforcement is not implemented.**
+
+| # | Claim | Result | Evidence |
+| --- | --- | --- | --- |
+| A | SecurityLab workspace binding | **PASS** | registered in `~/.dsh/storages/workspace.json` (§7.1); visible in the DSH UI |
+| B | Controlled read observation | **PASS** | `AGENTS.md` and `README.md` read; `git status --short` returned **0** files before and after |
+| C | Read-only enforcement | **FAIL / NOT_IMPLEMENTED** | see below |
+| — | SecurityLab independent of Workbench | **PASS** | separate repo, remote `git@github.com:Li20771/SecurityLab.git`, path `D:\SecurityLab` |
 
 SecurityLab state at checkpoint (read-only observation):
 
@@ -346,16 +351,25 @@ HEAD   : efa836ff9225f6226ca8a76615f3f45c31110d58
 status : clean (0 modified files)
 ```
 
-Controlled read executed (read-only): `AGENTS.md`, `README.md`. Integrity re-checked after:
-still 0 dirty files.
+Controlled read executed: `AGENTS.md`, `README.md`. Integrity re-checked after: still 0 dirty files.
 
-> **Honest limitation — read-only is not enforced.**
+> **A and B do NOT imply C.**
+>
+> Claim B is an **observation about what was actually done** during this checkpoint — files
+> were read and nothing was modified. It is **not** evidence that a read-only permission
+> control exists or was exercised. No such control was exercised, because none exists yet.
+>
 > `workspaces/workspaces.example.yaml` declares `access_profile: readonly`, but that is a
-> Workbench-side *example file* that is not consumed by DSH. The DSH workspace registry
-> (§7.1) carries **no read-only flag**, and no Guard/permission plugin exists yet
-> (Guard is AI-04, explicitly out of AI-01 scope).
-> Therefore read-only is currently a **policy intent, not an enforced control**.
-> This is recorded as FAIL/NOT_IMPLEMENTED, **not** as PASS.
+> Workbench-side *example file* that **nothing consumes**. The DSH workspace registry (§7.1)
+> carries **no read-only flag**, and no Guard/permission plugin exists yet (Guard is AI-04,
+> explicitly out of AI-01 scope).
+>
+> Therefore read-only is currently a **policy intent, not an enforced control**. Until Guard
+> exists, SecurityLab write-protection rests entirely on human and process discipline.
+> Claim C is recorded as **FAIL / NOT_IMPLEMENTED** and must not be read as PASS.
+>
+> This section deliberately avoids the phrase "controlled read-only access": claims A/B
+> (binding, observation) and claim C (enforcement) are separate, and only A/B pass.
 
 ## 8. Capability classification
 
@@ -410,7 +424,7 @@ with a manual procedure provided at [§9.1](#91-manual-verification-procedure-fo
 | Clean installation/start procedure documented | BLOCKED — install observed, not re-run |
 | Startup/restart behaviour verified | PASS — startup, graceful exit, restart and persistence all verified (§5.1–§5.5) |
 | Known-good configuration recorded without secrets | PASS |
-| Controlled workspace binding verified | PASS (binding + read) |
+| Controlled workspace binding verified | PASS — binding (§7.1) plus controlled read observation (§7.2 A/B). Read-only **enforcement** is a separate claim and is FAIL (§7.2 C); it is not part of this criterion. |
 | Required baseline Agent behavior verified | NOT_RUN |
 | Required plugin/tool behavior verified | NOT_RUN |
 | Permission boundaries verified | NOT_RUN (Guard = AI-04) |
