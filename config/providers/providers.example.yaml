@@ -1,14 +1,93 @@
+# Provider runtime configuration — EXAMPLE.
+#
+# Copy to providers.yaml to use. Never commit a file with a credential value.
+#
+# Layer boundary (AI-02 contract D-1):
+#   providers/<id>/provider.yaml   reviewable identity and protocol facts
+#   config/providers/*.yaml        runtime selection, enablement, overrides
+#
+# This file selects and enables. It does not define identity or protocol, and
+# it never carries a credential value — only a reference in the frozen
+# grammar: env:<VAR_NAME>. Any other scheme is reserved and unimplemented;
+# a bare value here is a configuration defect, not a credential.
+#
+# Everything below is DECLARED, not VERIFIED. Endpoints and API model ids are
+# unverified until AI-02-B6 observes them.
+#
+# Defaults are fail-closed: a provider without an explicit `enabled: true` is
+# disabled. Nothing is enabled yet, because nothing has been verified.
+
+version: 1
+
 providers:
   deepseek:
     enabled: false
-    api_key_env: DEEPSEEK_API_KEY
-    model: deepseek-flash
+
+    protocol:
+      family: openai_compatible_chat
+      version: v1
+
+    endpoint:
+      base_url: https://api.deepseek.com
+      path_template: /chat/completions
+      source: declared
+      verified_at: null
+      evidence_ref: null
+
+    credential:
+      ref: env:DEEPSEEK_API_KEY
+      kind: api_key
+      required: true
+
+    models:
+      - deepseek/deepseek-flash
+
+    transport:
+      timeout_connect_ms: 10000
+      timeout_total_ms: 120000
+      max_retries: 0
+      verify_tls: true
+
   mimo:
     enabled: false
-    api_key_env: MIMO_API_KEY
-    model: ""
+
+    protocol:
+      family: openai_compatible_chat
+      version: v1
+
+    endpoint:
+      # Note the /v1 segment. DeepSeek's base URL has none. Base URLs are
+      # composed with path_template exactly as written; no prefix is injected.
+      base_url: https://api.xiaomimimo.com/v1
+      path_template: /chat/completions
+      source: declared
+      verified_at: null
+      evidence_ref: null
+
+    credential:
+      ref: env:MIMO_API_KEY
+      kind: api_key
+      required: true
+
+    models:
+      - mimo/mimo-v2.6-pro
+      - mimo/mimo-v2.6-flash
+
+    transport:
+      timeout_connect_ms: 10000
+      timeout_total_ms: 120000
+      max_retries: 0
+      verify_tls: true
+
+  # Reserved extension point. NOT part of AI-02 and NOT implemented.
+  #
+  # A generic OpenAI-compatible provider is AI-09 work. Its presence here is a
+  # placeholder so the slot is not silently lost, and it must stay disabled
+  # and without a profile under providers/. Sharing a protocol family with
+  # DeepSeek and MiMo does not make this a third implemented provider: those
+  # two keep separate profiles precisely so attribution survives (D-2, §3.7).
   openai-compatible:
     enabled: false
-    base_url_env: OPENAI_COMPATIBLE_BASE_URL
-    api_key_env: OPENAI_COMPATIBLE_API_KEY
-    model: ""
+    reserved: true
+    reserved_for: AI-09
+    note: "Reserved extension point. No implementation. Do not enable."

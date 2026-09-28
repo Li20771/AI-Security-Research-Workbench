@@ -1,0 +1,7 @@
+# Runtime dependencies for the provider layer.
+#
+# Deliberately minimal. AI-02 ships no model SDK and no HTTP client: the
+# provider skeleton makes no network calls, so it needs neither. PyYAML is
+# required only to read provider profiles and runtime config.
+
+PyYAML>=6.0

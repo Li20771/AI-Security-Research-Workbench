@@ -1,0 +1,5 @@
+-r requirements.txt
+
+# Test tooling. The suite is fully offline: no test requires a network
+# connection, an API key, or a provider endpoint.
+pytest>=8.0

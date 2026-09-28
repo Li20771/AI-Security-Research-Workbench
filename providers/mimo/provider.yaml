@@ -1,0 +1,42 @@
+# MiMo provider profile.
+#
+# Status: DECLARED. Nothing here is VERIFIED.
+#
+# The endpoint and the API model ids are recorded as declared facts. AI-02-B6
+# is the only phase permitted to promote them to verified, and only from a
+# dated observation. A declared endpoint is never treated as reachable,
+# correct, or current (contract §5.2, §8.3).
+#
+# Note the base URL carries a /v1 segment while DeepSeek's does not. That is
+# exactly why base_url and path_template are stored separately and composed
+# without injecting a prefix (contract §5.2, D-4).
+#
+# The credential is a *reference*. No value appears here, and none may.
+# Model capability metadata is deliberately absent: it belongs to AI-02-B2.
+
+provider_id: mimo
+display_name: MiMo
+
+protocol:
+  family: openai_compatible_chat
+  version: v1
+
+endpoint:
+  base_url: https://api.xiaomimimo.com/v1
+  path_template: /chat/completions
+  source: declared
+  verified_at: null
+  evidence_ref: null
+
+credential:
+  ref: env:MIMO_API_KEY
+  kind: api_key
+  required: true
+
+models:
+  - mimo/mimo-v2.6-pro
+  - mimo/mimo-v2.6-flash
+
+# No transport settings here. Timeouts, retries, and TLS verification are
+# runtime config, not profile data (§5.11), and live in
+# config/providers/*.yaml. A profile carrying them is rejected on load.
