@@ -166,6 +166,33 @@ def _require_positive_ms(value: object, name: str) -> int:
     return int(value)
 
 
+def effective_transport_settings(
+    request_timeout_ms: int, settings: TransportSettings
+) -> TransportSettings:
+    """Compose the invocation deadline with the runtime safety ceiling (§5.11).
+
+    `InvocationRequest.timeout_ms` is an invocation-level deadline; runtime
+    config is the operator's ceiling. The effective deadline is the stricter
+    of the two, so a request can **tighten** a budget but never widen one --
+    a caller cannot raise the configured limit by asking for a longer call.
+
+    This returns a `TransportSettings`, which is the only deadline shape the
+    transport accepts. There is no second timeout subsystem: the request
+    deadline is folded into the one that already exists rather than tracked
+    alongside it.
+    """
+    total_ms = min(request_timeout_ms, settings.timeout_total_ms)
+    # Capped by the total so the two stay coherent: a connect deadline longer
+    # than the whole call would never be reachable.
+    connect_ms = min(settings.timeout_connect_ms, total_ms)
+    return TransportSettings(
+        timeout_connect_ms=connect_ms,
+        timeout_total_ms=total_ms,
+        max_retries=settings.max_retries,
+        verify_tls=settings.verify_tls,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class Message:
     """One normalized message (§7.1)."""
@@ -347,13 +374,16 @@ class InvocationRequest:
             "structured_output": (
                 {
                     "mode": str(self.structured_output.mode),
+                    # `is not None`, never truthiness: an empty schema `{}` is a
+                    # valid schema and must round-trip as `{}`, not collapse to
+                    # null and silently become "no schema supplied".
                     "schema": (
                         dict(self.structured_output.schema)
-                        if self.structured_output.schema
+                        if self.structured_output.schema is not None
                         else None
                     ),
                 }
-                if self.structured_output
+                if self.structured_output is not None
                 else None
             ),
             "generation": {
@@ -475,6 +505,10 @@ class InvocationResult:
     #: `usage_status: UNKNOWN`. `None` on `ERROR`/`BLOCKED`, where no
     #: measurement was taken.
     usage: Usage | None = None
+    #: Why generation stopped. `ERROR` means the *provider* signalled failure
+    #: (§7.3); a pre-flight refusal reached no provider and therefore has no
+    #: finish reason, so it is `UNKNOWN`. `CONTENT_FILTER` is the provider
+    #: stopping on policy grounds, which is an error rather than a success.
     finish_state: FinishState = FinishState.UNKNOWN
     latency: Latency = field(default_factory=Latency)
     error: ProviderError | None = None
@@ -672,7 +706,7 @@ class Invoker:
                 model_id=parsed.model_id,
                 model_ref=request.model_ref,
                 status=InvocationStatus.BLOCKED,
-                finish_state=FinishState.ERROR,
+                finish_state=FinishState.UNKNOWN,
                 blocked=block,
             )
 
@@ -689,7 +723,7 @@ class Invoker:
                 model_id=parsed.model_id,
                 model_ref=request.model_ref,
                 status=InvocationStatus.BLOCKED,
-                finish_state=FinishState.ERROR,
+                finish_state=FinishState.UNKNOWN,
                 error=exc.to_provider_error(),
             )
         except CredentialConfigError as exc:
@@ -702,7 +736,7 @@ class Invoker:
                 model_id=parsed.model_id,
                 model_ref=request.model_ref,
                 status=InvocationStatus.BLOCKED,
-                finish_state=FinishState.ERROR,
+                finish_state=FinishState.UNKNOWN,
                 blocked=BlockReason(
                     code=BlockCode.CREDENTIAL_CONFIG_DEFECT,
                     detail=f"credential reference is a configuration defect: {exc}",
@@ -730,7 +764,10 @@ class Invoker:
             parsed,
             credential=secret.reveal(),
             body=json.dumps(payload),
-            transport_settings=self._context.transport_settings_for(provider.provider_id),
+            transport_settings=effective_transport_settings(
+                request.timeout_ms,
+                self._context.transport_settings_for(provider.provider_id),
+            ),
         )
         call = ProviderCall(profile=provider, model_ref=parsed, request=transport_request)
 
@@ -752,7 +789,7 @@ class Invoker:
             model_id=parsed.model_id,
             model_ref=request.model_ref,
             status=InvocationStatus.BLOCKED,
-            finish_state=FinishState.ERROR,
+            finish_state=FinishState.UNKNOWN,
             blocked=BlockReason(code=code, detail=detail),
         )
 
