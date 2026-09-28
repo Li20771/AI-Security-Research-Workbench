@@ -19,6 +19,9 @@ from providers.protocol import (
 from providers.protocol.base import TransportFailureKind, TransportResult
 from providers.transport import TransportSettings
 
+
+pytestmark = pytest.mark.layer2
+
 FAMILY = "openai_compatible_chat"
 
 

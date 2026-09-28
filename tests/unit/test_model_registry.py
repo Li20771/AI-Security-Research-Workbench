@@ -27,6 +27,9 @@ from providers.model_registry import (
 )
 from providers.registry import providers_root
 
+
+pytestmark = pytest.mark.layer1
+
 MINIMAL_PROVIDER: dict = {
     "provider_id": "example",
     "display_name": "Example",

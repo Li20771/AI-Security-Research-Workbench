@@ -28,6 +28,9 @@ from providers.validate import (
 )
 
 
+pytestmark = pytest.mark.layer1
+
+
 @pytest.fixture
 def example_config():
     return load_provider_config(example_config_path())

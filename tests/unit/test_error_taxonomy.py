@@ -17,6 +17,9 @@ from providers.errors import (
     ProviderError,
 )
 
+
+pytestmark = pytest.mark.layer1
+
 #: Transcribed from contract §5.10. Order matches the document.
 FROZEN_CLASSES: dict[str, bool] = {
     "CREDENTIAL_MISSING": False,

@@ -24,6 +24,9 @@ from providers.pricing import (
     project_cost,
 )
 
+
+pytestmark = pytest.mark.layer2
+
 AT = date(2026, 9, 28)
 DEEPSEEK_REF = "deepseek/deepseek-flash"
 MIMO_REF = "mimo/mimo-v2.6-pro"

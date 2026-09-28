@@ -24,6 +24,9 @@ from providers.model_profile import (
 )
 
 
+pytestmark = pytest.mark.layer1
+
+
 def make_profile(**overrides) -> ModelProfile:
     """A minimal valid profile, with fields overridable per test."""
     base = {

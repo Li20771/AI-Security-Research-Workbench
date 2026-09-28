@@ -12,6 +12,9 @@ import pytest
 from providers.profile import Endpoint, ProfileError
 from providers.protocol import adapter_for
 
+
+pytestmark = pytest.mark.layer1
+
 #: Transcribed from contract §5.5 and the task's declared metadata.
 EXPECTED = {
     "deepseek": "https://api.deepseek.com/chat/completions",

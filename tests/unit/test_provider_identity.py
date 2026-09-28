@@ -16,6 +16,9 @@ from providers.registry import (
     providers_root,
 )
 
+
+pytestmark = pytest.mark.layer1
+
 EXPECTED_PROVIDERS = {
     "deepseek": {
         "display_name": "DeepSeek",

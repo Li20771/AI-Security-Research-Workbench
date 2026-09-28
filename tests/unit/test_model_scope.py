@@ -15,6 +15,9 @@ from providers.model_profile import CapabilityStatus
 from providers.model_registry import available_model_refs
 from providers.validate import AI02_SCOPE_MODELS, main, validate_all
 
+
+pytestmark = pytest.mark.layer1
+
 #: Transcribed from contract §6.4. `display_name` and `model_id` are recorded
 #: as a pair, independently -- the second is not derived from the first.
 FROZEN_IDENTITY: dict[str, dict[str, str]] = {
