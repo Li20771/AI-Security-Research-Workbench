@@ -17,7 +17,7 @@ from providers.invocation import (
     Message,
     MessageRole,
 )
-from providers.protocol import TransportFailureKind, TransportResult
+from providers.protocol import FinishState, TransportFailureKind, TransportResult
 
 
 def _request(**overrides) -> InvocationRequest:
@@ -41,7 +41,20 @@ class TestCredentialPreconditions:
         assert result.error.error_class is ErrorClass.CREDENTIAL_MISSING
         assert result.error.stage is ErrorStage.RESOLVE
         assert result.error.is_precondition
+        # A precondition reached no provider, so there is no finish reason.
+        assert result.finish_state is FinishState.UNKNOWN
+        assert result.blocked is None
         assert transport.requests == []
+
+    def test_a_credential_precondition_uses_the_taxonomy_not_blocked(
+        self, invoker_factory, fake_transport_factory
+    ):
+        """Credential classes are frozen taxonomy members, so `error` carries them."""
+        result = invoker_factory(fake_transport_factory.success(), environ={}).invoke(
+            _request()
+        )
+        assert result.error is not None
+        assert result.blocked is None
 
     def test_unsupported_credential_scheme_blocks(
         self, invoker_factory, fake_transport_factory, all_profiles, model_profiles
@@ -71,6 +84,8 @@ class TestCredentialPreconditions:
 
         assert result.status is InvocationStatus.BLOCKED
         assert result.error.error_class is ErrorClass.CREDENTIAL_UNSUPPORTED
+        assert result.finish_state is FinishState.UNKNOWN
+        assert result.blocked is None
         assert transport.requests == []
 
     def test_missing_and_unsupported_stay_distinct(
@@ -166,8 +181,17 @@ class TestTransportFailures:
     def test_timeout(self, invoker_factory, fake_transport_factory):
         result = invoker_factory(fake_transport_factory.timeout()).invoke(_request())
         assert result.status is InvocationStatus.ERROR
+        # A provider-layer failure DOES have a finish reason, unlike a refusal.
+        assert result.finish_state is FinishState.ERROR
         assert result.error.error_class is ErrorClass.TIMEOUT
         assert not result.ok
+
+    def test_a_provider_failure_is_not_blocked(
+        self, invoker_factory, fake_transport_factory
+    ):
+        result = invoker_factory(fake_transport_factory.timeout()).invoke(_request())
+        assert result.status is not InvocationStatus.BLOCKED
+        assert result.blocked is None
 
     def test_transport_failure(self, invoker_factory, fake_transport_factory):
         result = invoker_factory(fake_transport_factory.transport_error()).invoke(_request())

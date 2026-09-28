@@ -16,6 +16,7 @@ from providers.invocation import (
     UsageStatus,
 )
 from providers.protocol import FinishState
+from providers.transport import TransportSettings
 
 
 def _request(**overrides) -> InvocationRequest:
@@ -441,6 +442,91 @@ class TestLatencyAndAttempts:
 
         assert result.attempts == 1
         assert len(transport.requests) == 1
+
+
+class TestInvocationDeadline:
+    """The request deadline is an invocation-level cap, not metadata.
+
+    Runtime config stays the operator's ceiling: a request may tighten a
+    budget but never widen one, so a caller cannot raise a configured limit
+    by asking for a longer call.
+    """
+
+    RUNTIME = TransportSettings(timeout_connect_ms=10_000, timeout_total_ms=120_000)
+
+    def _sent_request(self, invoker_factory, fake_transport_factory, payload, timeout_ms):
+        transport = fake_transport_factory.success(payload)
+        invoker_factory(transport, settings=self.RUNTIME).invoke(
+            _request(timeout_ms=timeout_ms)
+        )
+        return transport.requests[0]
+
+    def test_a_shorter_request_tightens_the_total_deadline(
+        self, invoker_factory, fake_transport_factory, completion_payload
+    ):
+        request = self._sent_request(
+            invoker_factory, fake_transport_factory, completion_payload(), 1_000
+        )
+        assert request.timeout_total_ms == 1_000
+        assert request.timeout_total_ms < self.RUNTIME.timeout_total_ms
+
+    def test_a_longer_request_cannot_raise_the_runtime_ceiling(
+        self, invoker_factory, fake_transport_factory, completion_payload
+    ):
+        request = self._sent_request(
+            invoker_factory, fake_transport_factory, completion_payload(), 180_000
+        )
+        assert request.timeout_total_ms == self.RUNTIME.timeout_total_ms
+        assert request.timeout_total_ms == 120_000
+
+    def test_a_request_shorter_than_connect_reduces_connect_coherently(
+        self, invoker_factory, fake_transport_factory, completion_payload
+    ):
+        request = self._sent_request(
+            invoker_factory, fake_transport_factory, completion_payload(), 500
+        )
+        assert request.timeout_connect_ms == 500
+        assert request.timeout_total_ms == 500
+
+    @pytest.mark.parametrize("timeout_ms", [1, 500, 10_000, 120_000, 180_000])
+    def test_connect_never_exceeds_total(
+        self, timeout_ms, invoker_factory, fake_transport_factory, completion_payload
+    ):
+        request = self._sent_request(
+            invoker_factory, fake_transport_factory, completion_payload(), timeout_ms
+        )
+        assert request.timeout_connect_ms <= request.timeout_total_ms
+
+    def test_the_deadline_is_never_looser_than_either_bound(
+        self, invoker_factory, fake_transport_factory, completion_payload
+    ):
+        for timeout_ms in (1, 500, 10_000, 120_000, 180_000):
+            request = self._sent_request(
+                invoker_factory, fake_transport_factory, completion_payload(), timeout_ms
+            )
+            assert request.timeout_total_ms <= min(timeout_ms, self.RUNTIME.timeout_total_ms)
+
+    def test_other_transport_settings_are_preserved(
+        self, invoker_factory, fake_transport_factory, completion_payload
+    ):
+        """Composition adjusts deadlines only; it does not invent settings."""
+        transport = fake_transport_factory.success(completion_payload())
+        runtime = TransportSettings(
+            timeout_connect_ms=10_000, timeout_total_ms=120_000, max_retries=0, verify_tls=True
+        )
+        invoker_factory(transport, settings=runtime).invoke(_request(timeout_ms=1_000))
+
+        request = transport.requests[0]
+        assert request.verify_tls is True
+
+    def test_a_blocked_call_sends_nothing_regardless_of_deadline(
+        self, invoker_factory, fake_transport_factory
+    ):
+        transport = fake_transport_factory.success()
+        invoker_factory(transport, settings=self.RUNTIME).invoke(
+            _request(timeout_ms=1, stream=True)
+        )
+        assert transport.requests == []
 
 
 class TestOutboundBody:

@@ -139,6 +139,53 @@ class TestStructuredOutput:
         with pytest.raises(InvocationError, match="schema"):
             StructuredOutputRequest(StructuredOutputMode.NONE, schema={"type": "object"})
 
+    def test_an_empty_schema_round_trips_as_an_empty_map(self):
+        """`{}` is a valid schema, and must not collapse to null.
+
+        A truthiness check would turn "an empty schema was supplied" into "no
+        schema was supplied", silently changing the request.
+        """
+        request = _request(
+            structured_output=StructuredOutputRequest(
+                StructuredOutputMode.JSON_SCHEMA, {}
+            )
+        )
+        serialized = request.to_dict()["structured_output"]
+        assert serialized["schema"] == {}
+        assert serialized["schema"] is not None
+
+    def test_a_populated_schema_round_trips(self):
+        schema = {"type": "object", "properties": {"a": {"type": "string"}}}
+        request = _request(
+            structured_output=StructuredOutputRequest(
+                StructuredOutputMode.JSON_SCHEMA, schema
+            )
+        )
+        assert request.to_dict()["structured_output"]["schema"] == schema
+
+    def test_an_empty_schema_survives_to_the_protocol_spec(self):
+        request = _request(
+            structured_output=StructuredOutputRequest(
+                StructuredOutputMode.JSON_SCHEMA, {}
+            )
+        )
+        assert request.structured_output.to_spec().schema == {}
+
+    def test_an_empty_schema_reaches_the_protocol_body(self):
+        from providers.protocol import adapter_for
+
+        request = _request(
+            structured_output=StructuredOutputRequest(
+                StructuredOutputMode.JSON_SCHEMA, {}
+            )
+        )
+        body = adapter_for("openai_compatible_chat").build_payload(
+            model_id="deepseek-flash",
+            messages=[m.to_dict() for m in request.messages],
+            structured_output=request.structured_output.to_spec(),
+        )
+        assert body["response_format"]["json_schema"]["schema"] == {}
+
     def test_modes_are_not_interchangeable(self):
         schema_request = StructuredOutputRequest(
             StructuredOutputMode.JSON_SCHEMA, schema={"type": "object"}

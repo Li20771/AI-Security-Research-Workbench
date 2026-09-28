@@ -31,6 +31,7 @@ from providers.model_profile import (
     Provenance,
     StructuredOutputMode,
 )
+from providers.protocol import FinishState
 from providers.transport import TransportSettings
 
 ALL_CAPABILITIES = tuple(CapabilityName)
@@ -382,6 +383,75 @@ class TestGateOrdering:
 
         assert result.blocked.required_capability is CapabilityName.TOOL_CALLING
         assert transport.requests == []
+
+
+class TestBlockedResultShape:
+    """A refusal reached no provider, so it has no provider finish reason.
+
+    §7.3 defines `ERROR` as "provider signalled failure". Nothing was sent, so
+    writing `ERROR` here would claim an interaction that never happened.
+    """
+
+    def test_a_capability_block_has_unknown_finish_state(
+        self, fake_transport_factory, credentials_env, model_profiles, all_profiles
+    ):
+        transport = fake_transport_factory.success()
+        invoker = _invoker(transport, credentials_env, model_profiles, all_profiles)
+
+        result = invoker.invoke(_request(stream=True))
+
+        assert result.status is InvocationStatus.BLOCKED
+        assert result.finish_state is FinishState.UNKNOWN
+        assert result.finish_state is not FinishState.ERROR
+
+    def test_a_capability_block_carries_no_provider_error(
+        self, fake_transport_factory, credentials_env, model_profiles, all_profiles
+    ):
+        transport = fake_transport_factory.success()
+        invoker = _invoker(transport, credentials_env, model_profiles, all_profiles)
+
+        result = invoker.invoke(_request(tools=({"type": "function"},)))
+
+        assert result.error is None
+        assert result.blocked is not None
+        assert result.blocked.code is BlockCode.CAPABILITY_NOT_VERIFIED
+
+    @pytest.mark.parametrize(
+        "code,request_kwargs,model_ref",
+        [
+            (BlockCode.CAPABILITY_NOT_VERIFIED, {"stream": True}, "deepseek/deepseek-flash"),
+            (BlockCode.UNKNOWN_MODEL, {}, "deepseek/not-a-real-model"),
+            (BlockCode.UNKNOWN_PROVIDER, {}, "openai-compatible/gpt"),
+        ],
+    )
+    def test_every_invocation_layer_block_has_the_same_shape(
+        self,
+        code,
+        request_kwargs,
+        model_ref,
+        fake_transport_factory,
+        credentials_env,
+        model_profiles,
+        all_profiles,
+    ):
+        transport = fake_transport_factory.success()
+        invoker = _invoker(transport, credentials_env, model_profiles, all_profiles)
+
+        result = invoker.invoke(_request(model_ref=model_ref, **request_kwargs))
+
+        assert result.status is InvocationStatus.BLOCKED, code
+        assert result.finish_state is FinishState.UNKNOWN, code
+        assert result.error is None, code
+        assert result.blocked is not None, code
+        assert result.blocked.code is code
+        assert transport.requests == [], code
+
+    def test_a_blocked_result_is_never_a_success(
+        self, fake_transport_factory, credentials_env, model_profiles, all_profiles
+    ):
+        transport = fake_transport_factory.success()
+        invoker = _invoker(transport, credentials_env, model_profiles, all_profiles)
+        assert not invoker.invoke(_request(stream=True)).ok
 
 
 class TestGenerationDefaultsDoNotGate:
