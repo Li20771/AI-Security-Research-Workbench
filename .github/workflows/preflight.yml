@@ -30,3 +30,35 @@ jobs:
         run: |
           bash -n scripts/bootstrap/preflight.sh
           bash -n tests/unit/test_repository_layout.sh
+
+  provider-tests:
+    runs-on: ubuntu-latest
+    # No credentials are provided to this job, by design. The provider layer
+    # is offline: a suite that needed an API key could not run here, and
+    # requiring one would make the gate untestable in a clean environment.
+    env:
+      DEEPSEEK_API_KEY: ""
+      MIMO_API_KEY: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+      - name: Check Python syntax
+        run: |
+          python -m compileall -q providers tests
+      - name: Provider/config validation
+        run: |
+          python -m providers.validate
+      - name: Run unit tests
+        run: |
+          python -m pytest
+      - name: Confirm the suite ran without credentials
+        run: |
+          test -z "${DEEPSEEK_API_KEY:-}"
+          test -z "${MIMO_API_KEY:-}"
+          echo "provider layer validated and tested with no credential present"

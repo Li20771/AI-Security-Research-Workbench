@@ -1,0 +1,39 @@
+# DeepSeek provider profile.
+#
+# Status: DECLARED. Nothing here is VERIFIED.
+#
+# The endpoint and the API model id are recorded as declared facts. AI-02-B6
+# is the only phase permitted to promote them to verified, and only from a
+# dated observation. A declared endpoint is never treated as reachable,
+# correct, or current (contract §5.2, §8.3).
+#
+# The credential is a *reference*. No value appears here, and none may.
+# Model capability metadata is deliberately absent: it belongs to AI-02-B2.
+
+provider_id: deepseek
+display_name: DeepSeek
+
+protocol:
+  family: openai_compatible_chat
+  version: v1
+
+endpoint:
+  base_url: https://api.deepseek.com
+  path_template: /chat/completions
+  source: declared
+  verified_at: null
+  evidence_ref: null
+
+credential:
+  ref: env:DEEPSEEK_API_KEY
+  kind: api_key
+  required: true
+
+models:
+  - deepseek/deepseek-flash
+
+transport:
+  timeout_connect_ms: 10000
+  timeout_total_ms: 120000
+  max_retries: 0
+  verify_tls: true
