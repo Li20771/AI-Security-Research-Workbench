@@ -1,0 +1,12 @@
+# Shell scripts must be LF on every platform.
+#
+# Without this, a Windows checkout with `core.autocrlf=true` writes these files
+# with CRLF, and a POSIX shell cannot run them: `set -euo pipefail` becomes
+# `set -euo pipefail\r` and fails with "invalid option name", and `do\r` is a
+# syntax error. Git already stores these blobs with LF, so CI on Linux is
+# unaffected -- but the scripts are unrunnable for anyone who checks out on
+# Windows, which Layer 0 exercises directly.
+#
+# Scoped to shell scripts only: nothing else in the repository depends on its
+# line endings.
+*.sh text eol=lf
