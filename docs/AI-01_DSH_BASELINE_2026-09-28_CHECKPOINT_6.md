@@ -373,7 +373,7 @@ Documentation-only checkpoint.
 | `bash tests/unit/test_repository_layout.sh` | PASS |
 | `git status` | clean except the new document |
 | `git diff --stat` | 1 file added |
-| `git rev-parse HEAD` | recorded in §13 |
+| `git rev-parse HEAD` | `e09cf3d859dcfd571698ee55813f7eb91687160b` — HEAD at validation time, i.e. the commit this revision builds on (the document itself was still uncommitted while these commands ran). Any SHA written into the document goes stale the moment that document is committed, so the authoritative record of which commit introduces which revision is git history and PR #13, not a value re-typed into the body. |
 | Diff scope | only `docs/AI-01_DSH_BASELINE_2026-09-28_CHECKPOINT_6.md` |
 
 ## 13. Final status
