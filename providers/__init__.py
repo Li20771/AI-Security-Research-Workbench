@@ -19,12 +19,20 @@ Implemented so far:
   protocol adapter interface, and the transport settings shape.
 - **AI-02-B2** — model profile schema, the three in-scope model profiles,
   model registry/loading, and provider <-> model reference validation.
+- **AI-02-B3** — the normalized invocation boundary: request/result types, the
+  capability gate, provider -> normalized response mapping, and finish-state
+  handling. A caller never sees a provider's JSON shape.
 
-Not implemented, by contract: normalized invocation (AI-02-B3), metrics
-(AI-02-B4), live connectivity verification (AI-02-B6), Model Router (AI-07),
+Not implemented, by contract: metrics (AI-02-B4), the CI restructuring
+(AI-02-B5), live connectivity verification (AI-02-B6), Model Router (AI-07),
 and the generic `openai_compatible_chat` *provider* at
 `providers/openai-compatible/`, which stays a reserved extension point for
 AI-09.
+
+A request needing an unverified capability is refused before any provider
+activity. Since every shipped capability is UNKNOWN, only plain text calls can
+currently reach a transport at all -- tool calls, structured output, and
+streaming are all gated off.
 
 No capability in this package is VERIFIED. Every shipped capability is
 UNKNOWN and every limit is null, because nothing has been observed yet. Only

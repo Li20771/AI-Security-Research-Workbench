@@ -74,16 +74,21 @@ class TestSuccessPath:
         assert response.provider_id == "deepseek"
         assert response.model_id == "deepseek-flash"
 
-    def test_envelope_carries_no_content_in_b1(
+    def test_envelope_carries_content_after_b3(
         self, deepseek_profile, fake_transport_factory, body
     ):
-        """Field mapping is AI-02-B3. B1 validates shape and attributes only."""
+        """AI-02-B1 validated shape only and left field mapping to B3.
+
+        B3 implemented the mapping, so the envelope now carries the content
+        fields rather than leaving them `None`. The attribution assertions
+        above are unchanged: which provider and model answered is still
+        recorded independently of what the payload contained.
+        """
         response = adapter_for(FAMILY).send(
             _call(deepseek_profile, body), fake_transport_factory.success()
         )
-        assert response.text is None
-        assert response.usage is None
-        assert response.finish_state is FinishState.UNKNOWN
+        assert response.text == "ok"
+        assert response.error is None
 
     def test_request_is_recorded_by_the_transport(
         self, deepseek_profile, fake_transport_factory, body

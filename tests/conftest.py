@@ -163,3 +163,75 @@ def mimo_pro(model_profiles):
 @pytest.fixture
 def mimo_flash(model_profiles):
     return model_profiles["mimo/mimo-v2.6-flash"]
+
+
+#: Synthetic credentials. Never a real key, and never used against a network --
+#: the only transport in this suite is `FakeTransport`.
+PLACEHOLDER_CREDENTIAL = "sk-test-placeholder-not-a-real-key-000000"
+
+
+@pytest.fixture
+def credentials_env() -> dict[str, str]:
+    """An environment where both providers' credential references resolve."""
+    return {
+        "DEEPSEEK_API_KEY": PLACEHOLDER_CREDENTIAL,
+        "MIMO_API_KEY": PLACEHOLDER_CREDENTIAL,
+    }
+
+
+@pytest.fixture
+def invoker_factory(model_profiles, all_profiles, credentials_env):
+    """Build an `Invoker` over a supplied transport.
+
+    Defaults to an environment where credentials resolve, so a test exercises
+    the path it names rather than tripping the credential precondition. Pass
+    `environ={}` explicitly to test the no-credential path.
+
+    Transport settings come from runtime config, matching production wiring.
+    """
+    from providers.invocation import InvocationContext, Invoker
+    from providers.transport import TransportSettings
+
+    def build(transport, *, environ=credentials_env, clock=None, settings=None):
+        context = InvocationContext(
+            providers=all_profiles,
+            models=model_profiles,
+            transport=transport,
+            transport_settings_for=lambda _provider_id: (
+                TransportSettings() if settings is None else settings
+            ),
+            environ=environ,
+        )
+        if clock is None:
+            return Invoker(context)
+        return Invoker(context, clock=clock)
+
+    return build
+
+
+@pytest.fixture
+def completion_payload():
+    """A minimal, well-formed chat-completion response body."""
+
+    def build(**overrides):
+        payload = {
+            "id": "chatcmpl-fake-0001",
+            "object": "chat.completion",
+            "model": "deepseek-flash",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {"role": "assistant", "content": "hello"},
+                    "finish_reason": "stop",
+                }
+            ],
+            "usage": {
+                "prompt_tokens": 11,
+                "completion_tokens": 7,
+                "total_tokens": 18,
+            },
+        }
+        payload.update(overrides)
+        return payload
+
+    return build

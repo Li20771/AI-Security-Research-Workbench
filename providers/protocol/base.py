@@ -20,7 +20,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any, ClassVar, Mapping
+from typing import Any, ClassVar, Mapping, Sequence
 
 from providers.errors import ErrorClass, ErrorStage, ProviderError
 from providers.profile import ModelRef, ProviderProfile
@@ -186,6 +186,19 @@ class ProviderResponse:
 
 
 @dataclass(frozen=True, slots=True)
+class StructuredOutputSpec:
+    """A structured-output request in protocol-neutral terms (§6.7, §7.1).
+
+    `mode` distinguishes `json_schema` from `json_object` and the two are never
+    treated alike: `json_object` guarantees JSON but **not** schema
+    conformance.
+    """
+
+    mode: str
+    schema: Mapping[str, Any] | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class ProviderCall:
     """One provider call: profile + model reference + composed request."""
 
@@ -235,6 +248,37 @@ class ProtocolAdapter(ABC):
         """
 
     @abstractmethod
+    def build_payload(
+        self,
+        *,
+        model_id: str,
+        messages: Sequence[Mapping[str, Any]],
+        tools: Sequence[Mapping[str, Any]] = (),
+        structured_output: StructuredOutputSpec | None = None,
+        temperature: float | None = None,
+        max_output: int | None = None,
+        stop: Sequence[str] = (),
+        stream: bool = False,
+    ) -> Mapping[str, Any]:
+        """Serialize normalized request fields into this protocol's body.
+
+        Takes normalized primitives rather than a Workbench request object, so
+        the protocol layer never depends on the invocation layer and the
+        dependency runs one way only.
+
+        `model_id` is the API model id and is the only model string that may
+        appear in the body. A display name or a provider id must never be sent
+        as `model` (§6.3). Workbench metadata is internal attribution and is
+        not sent (§7.4).
+        """
+
+    @abstractmethod
+    def parse_response(
+        self, profile: ProviderProfile, model_ref: ModelRef, payload: Any
+    ) -> ProviderResponse:
+        """Turn a successful provider payload into the normalized envelope."""
+
+    @abstractmethod
     def classify_http_status(
         self, http_status: int | None, *, message: str | None = None
     ) -> ProviderError:
@@ -243,12 +287,6 @@ class ProtocolAdapter(ABC):
     @abstractmethod
     def classify_transport_failure(self, result: TransportResult) -> ProviderError:
         """Map a transport failure to a typed error."""
-
-    @abstractmethod
-    def parse_response(
-        self, profile: ProviderProfile, model_ref: ModelRef, payload: Any
-    ) -> ProviderResponse:
-        """Turn a successful provider payload into the normalized envelope."""
 
     #: Provider error text is diagnostic, not payload. Cap what is retained.
     MAX_ERROR_MESSAGE_CHARS: ClassVar[int] = 2000
@@ -336,6 +374,7 @@ __all__ = [
     "ProviderCall",
     "ProviderResponse",
     "SENSITIVE_HEADERS",
+    "StructuredOutputSpec",
     "Transport",
     "TransportFailureKind",
     "TransportRequest",
