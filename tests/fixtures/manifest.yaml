@@ -1,0 +1,62 @@
+# Layer 3 fixture manifest — contract §12.4.
+#
+# Every fixture under this directory must appear here with a provenance of
+# `synthetic` or `scrubbed`. The loader rejects an undeclared fixture and an
+# undeclared provenance, so an unlabelled payload cannot become a regression
+# baseline by accident.
+#
+# These payloads pin *our* normalization logic. They are not evidence of what
+# either provider returns. Only AI-02-B6 may promote a capability, and only
+# from a dated observation.
+
+version: 1
+
+fixtures:
+  - path: deepseek/chat_stop.json
+    provider_id: deepseek
+    provenance: synthetic
+    note: >-
+      Minimal chat completion with a reported usage block, for the plain text
+      and finish_state STOP path.
+
+  - path: deepseek/chat_tool_calls.json
+    provider_id: deepseek
+    provenance: synthetic
+    note: >-
+      Tool call with null content, for the flattening path and to prove tool
+      calls never leak into text.
+
+  - path: deepseek/chat_reasoning.json
+    provider_id: deepseek
+    provenance: synthetic
+    note: >-
+      Reasoning content alongside an answer, for the separation path.
+
+  - path: deepseek/error_401.json
+    provider_id: deepseek
+    provenance: synthetic
+    note: >-
+      Authentication error body carrying an obviously synthetic key-shaped
+      placeholder, so redaction has something to remove. Not a real
+      credential, and never was one.
+
+  - path: mimo/chat_stop.json
+    provider_id: mimo
+    provenance: synthetic
+    note: >-
+      Plain completion from the second provider, to prove both providers
+      normalize through the same shared adapter.
+
+  - path: mimo/chat_length.json
+    provider_id: mimo
+    provenance: synthetic
+    note: >-
+      Truncated output, for the finish_state LENGTH path: a truncation warning
+      that must not read as STOP.
+
+  - path: mimo/chat_no_usage.json
+    provider_id: mimo
+    provenance: synthetic
+    note: >-
+      Completion with no usage block, for the zero-versus-unknown rule: an
+      unreported count stays null and never becomes 0.

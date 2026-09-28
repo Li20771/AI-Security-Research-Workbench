@@ -1,0 +1,7 @@
+{
+  "error": {
+    "message": "Authentication failed for key sk-fixture-not-a-real-key",
+    "type": "authentication_error",
+    "code": "invalid_api_key"
+  }
+}
