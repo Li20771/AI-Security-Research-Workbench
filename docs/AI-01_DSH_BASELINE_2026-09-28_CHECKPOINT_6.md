@@ -20,6 +20,14 @@ re-classifies criterion #8, and updates the AI-01 blocker summary.
 
 This checkpoint **only records an observation**. It does not widen it (§4).
 
+> **Revision 2 note.** The operator subsequently confirmed the page identity and observed the
+> per-entry enablement states. This revision therefore:
+> (a) replaces the earlier, over-conservative "plugin-related panel / capability entries"
+> wording with the confirmed identity — the page is explicitly **插件列表** (Plugin List),
+> §3.2; and (b) adds the observed **enabled/disabled states**, §3.3.
+> The scope exclusions are unchanged, and §4.1's caution about entry #2 is **strengthened**,
+> because that entry is now observed as enabled.
+
 ## 2. Baseline
 
 | Item | Value |
@@ -32,7 +40,7 @@ This checkpoint **only records an observation**. It does not widen it (§4).
 | DSH run | 5 processes, started `2026-09-28 10:32:20` |
 | Loopback | `127.0.0.1:19387` |
 | SecurityLab HEAD | `efa836ff9225f6226ca8a76615f3f45c31110d58` |
-| Observation reported | `2026-09-28 11:56` (local) |
+| Observation reported | `2026-09-28 11:56` (local); enablement states confirmed in revision 2 |
 | Observation performed in | the DSH run started `2026-09-28 10:32:20` — i.e. **the current build** |
 
 ## 3. The observation
@@ -42,6 +50,7 @@ This checkpoint **only records an observation**. It does not widen it (§4).
 ```text
 Evidence class :  Human GUI observation
 Run scope      :  current-run   (the DSH instance started 2026-09-28 10:32:20)
+UI surface     :  DSH GUI → 插件列表   (the Plugin List page)
 ```
 
 This is **not** `stale-artifact`, **not** `inferred`, and **not** `config-level`. It is a
@@ -54,30 +63,64 @@ prohibition on the session token.
 
 ### 3.2 Panel / UI scope
 
-The operator opened the DSH GUI panel that lists plugin / capability entries and read the
-entries and their descriptions off the screen.
+The operator opened the DSH GUI page whose title is explicitly **插件列表** — the **Plugin
+List**.
 
-**What was observed is a UI surface.** The scope of this evidence is exactly that: the panel
-presented these entries. Nothing about how the panel is produced, populated, or backed was
-observed.
+This is a **confirmed identification**, and it is a correction to how an earlier revision of
+this checkpoint described it. It is explicitly **not** a general settings page and **not** a
+general experimental-features list. The entries, their descriptions, and their
+enabled/disabled state were read off that page.
+
+**What was observed is a UI surface.** The scope of this evidence is exactly that: the Plugin
+List page presented these entries and these toggle states. Nothing about how the page is
+produced, populated, or backed was observed.
 
 ### 3.3 The seven observed entries (verbatim)
 
 Recorded exactly as observed, including the one entry for which the operator reported no
-description. **No description has been supplied or invented for it.**
+description. **No description has been supplied or invented for it.** Enabled/disabled state
+is recorded as displayed.
 
-| # | Entry | Description as displayed |
-| --- | --- | --- |
-| 1 | 智能体团队实验性 | 启用团队协作、团队工具、成员列表和共享任务看板。 |
-| 2 | 自动授权审查实验性 | 提供自动审查权限模式，由模型在每次工具调用前判断是否授权。 |
-| 3 | 语音输入实验性 | 在本机使用 SenseVoice 转写录音；首次使用需安装依赖。 |
-| 4 | 终端 | 限制每条命令最多能跑多久、最多输出多少内容。 |
-| 5 | Agent 循环 | 控制 Agent 派发工具调用的方式。 |
-| 6 | 子智能体 | 设置子智能体的递归层级、数量和模型。 |
-| 7 | 网页搜索 | *(no description reported — recorded as observed, not filled in)* |
+| # | Entry | Description as displayed | Enabled |
+| --- | --- | --- | --- |
+| 1 | 智能体团队实验性 | 启用团队协作、团队工具、成员列表和共享任务看板。 | **已开** |
+| 2 | 自动授权审查实验性 | 提供自动审查权限模式，由模型在每次工具调用前判断是否授权。 | **已开** |
+| 3 | 语音输入实验性 | 在本机使用 SenseVoice 转写录音；首次使用需安装依赖。 | **未开** |
+| 4 | 终端 | 限制每条命令最多能跑多久、最多输出多少内容。 | **已开** |
+| 5 | Agent 循环 | 控制 Agent 派发工具调用的方式。 | **已开** |
+| 6 | 子智能体 | 设置子智能体的递归层级、数量和模型。 | **已开** |
+| 7 | 网页搜索 | *(no description reported — recorded as observed, not filled in)* | **已开，但需要设置搜索提供方** |
 
 Four entries carry an `实验性` (experimental) marker; three do not. That distinction is part
 of what was displayed and is recorded as such; no meaning is assigned to it here.
+
+### 3.4 Two entries requiring explicit care
+
+#### 3.4.1 Entry 7 — 网页搜索
+
+```text
+enabled    = yes
+functional = NOT_RUN / not established
+dependency = search provider configuration required
+```
+
+The page states that a **search provider must be configured**. No provider was configured,
+no search was executed, and no result was observed.
+
+> **Entry 7 is NOT recorded as "web search works".** "Enabled" here means only that the
+> toggle reads as on in the Plugin List. Functional behaviour is `NOT_RUN` and is not
+> established by this observation.
+
+#### 3.4.2 Entry 3 — 语音输入
+
+```text
+enabled = no
+```
+
+This entry appears in the Plugin List but is **not enabled**.
+
+> **Its presence in the Plugin List must not be read as it being enabled or active.** The
+> page also notes that first use requires installing dependencies; that step was not taken.
 
 ## 4. Scope limits — what this checkpoint does NOT establish
 
@@ -87,33 +130,39 @@ Per the evidence rule for this checkpoint, the observation is **not** extended t
 - ❌ specific **plugin IDs** for any entry
 - ❌ any **implementation code location** (no file, module or bundle was inspected)
 - ❌ whether any entry is provided by a particular **bundle** or by the base profile
-- ❌ whether any entry is **enabled**, active, or merely listed
+- ❌ whether any entry's functionality **executes successfully** — no entry was run
+- ❌ **plugin API execution** success for any entry
 - ❌ the **plugin loading mechanism** — CP4 §4.1/§4.2 already characterized that separately
   from configuration and stale artifacts; this checkpoint adds nothing to it
 - ❌ whether these entries are **plugins** in the sense the profile bundle list uses
-  (CP4 §4.1) — the panel is a UI surface, and its entries are recorded as displayed
+  (CP4 §4.1) — the page is a UI surface, and its entries are recorded as displayed
 
-> **This checkpoint proves exactly one thing:** the plugin-related panel of the currently
-> running DSH GUI **actually presented these seven capability entries**, with the
-> descriptions shown above. Nothing further is claimed.
+> **This checkpoint establishes exactly this:** the currently running DSH GUI shows a page
+> titled **插件列表** (Plugin List) that **presents these seven entries**, with the
+> descriptions displayed and the **enablement states** recorded in §3.3. Nothing further is
+> claimed. In particular, "enabled" is a **toggle state**, not evidence that the feature
+> works or that anything was executed.
 
 ### 4.1 A specific caution about entry #2
 
 Entry 2 (自动授权审查实验性 — "automatic authorization review", described as providing an
-automatic review permission mode where the model judges whether to authorize before each
-tool call) is **permission-adjacent by description**.
+automatic review permission mode where the model judges whether to authorize before each tool
+call) is **permission-adjacent**, and it is now additionally observed as **已开 (enabled)**.
 
-**It does not change criterion #9, and must not be used to.** Reasons:
+**It still does not change criterion #9, and must not be used to. An enabled toggle is not
+enforcement evidence.** Reasons:
 
-- it is a **displayed description of an experimental UI entry** — the text says what the
-  feature is *for*, not that any enforcement is configured or active;
-- its **enabled/disabled state was not observed** and is not recorded;
-- **no permission decision was exercised, allowed, or denied** through it;
-- criterion #9 requires *"allowed + blocked cases"* as executed evidence. A UI label is not
-  an executed case.
+- the observed **已开 is a toggle state** on a settings-like page. It shows the feature is
+  switched on — *not* that any permission decision has been made, applied, or enforced;
+- **no permission decision was exercised, allowed, or denied through it.** No tool call was
+  routed through this mode and no allowed/blocked case was produced;
+- the entry is marked **实验性** (experimental);
+- criterion #9 requires *"allowed + blocked cases"* as **executed** evidence. A toggle state
+  is not an executed case — this is exactly the inference CP5 §6.2 warns against, and the
+  newly observed "已开" makes that warning *more* important, not less.
 
-Recording this explicitly so that a later reader cannot mistake a checkbox description for
-verified enforcement. Criterion #9 stays exactly as CP5 left it (§6).
+Recording this explicitly so that a later reader cannot mistake an enabled toggle for verified
+enforcement. Criterion #9 stays exactly as CP5 left it (§6).
 
 ## 5. Criterion #8 — `Required plugin/tool behavior verified`
 
@@ -129,23 +178,30 @@ CP6:  PASS
 | Half | Evidence | Status |
 | --- | --- | --- |
 | **Tool** side | CP2 §4 — response, `git rev-parse HEAD`, `README.md` read, context retrieval (human-executed; SHA and README paragraph cross-checked outside DSH) | **PASS** |
-| **Plugin** side | §3 above — current-run human GUI observation of the plugin panel | **PASS** |
+| **Plugin** side | §3 above — current-run human GUI observation of the **插件列表** page: entries, descriptions, and enablement states | **PASS** |
 
-Both halves of the criterion now rest on direct observation of the current build. CP5's
-stated unblock condition was specifically a human GUI reading of the plugin panel; that is
-what was obtained, so the criterion is no longer `BLOCKED`.
+CP5's stated unblock condition was specifically *"a human opens the DSH GUI plugin panel and
+reports the loaded plugin list."* Three things are now confirmed:
+
+1. the page is explicitly the **插件列表** (Plugin List), not a generic settings or
+   experimental-features page;
+2. the plugin entries are **directly observable** in the current running instance;
+3. their **enabled/disabled state** is directly observable.
+
+That is the condition CP5 asked for, so the criterion is no longer `BLOCKED`. The tool half
+continues to rest on CP2's human-executed evidence.
 
 ### 5.3 Mandatory scope qualifier
 
-> **This closes the plugin/tool exit criterion only at the evidence scope actually observed.
-> It does not establish package-level plugin identities or source-level implementation
-> details.**
+> **This PASS establishes current-build plugin-list presence and observed enablement state.
+> It does not establish execution success or package/source-level identity.**
 
 The criterion asks whether *required plugin/tool behaviour is verified*. It is satisfied at
-the level of: *the current build presents these plugin-related capability entries, and the
-agent-level tool behaviours were verified in CP2.* It is **not** satisfied at the level of
-naming packages, identifying plugin IDs, or locating implementation — none of which was
-attempted or is claimed.
+the level of: *the current build's Plugin List presents these entries with the observed
+enablement states, and the agent-level tool behaviours were verified in CP2.* It is **not**
+satisfied at the level of naming packages, identifying plugin IDs, locating implementation,
+or demonstrating that any plugin's functionality executes — none of which was attempted or is
+claimed. No plugin was run; no plugin API was called.
 
 ## 6. Criteria #3 and #9 — unchanged
 
@@ -253,13 +309,22 @@ All limitations from CP1 §9.2, CP3 §7.2 and CP4 §9 (11–16) and CP5 §11 (17
 
 Added at this checkpoint:
 
-19. **The plugin evidence is a UI-surface observation, not a runtime trace.** It shows what the
-    current build *presents*, not what it *loads*, *enables*, or *executes*. CP4 §4.4's
-    `UNKNOWN` for package-level current-build plugin attribution is **not** resolved by this
-    checkpoint — §5.3 states the exact scope.
-20. **Entry #2 is permission-adjacent by description and must not be read as enforcement**
-    (§4.1). The risk of that misreading is high enough to record as a standing limitation.
-21. **The evidence is a single human observation.** It is not reproducible by the agent and
+19. **The plugin evidence is a direct GUI observation of the 插件列表 page, not a runtime
+    trace.** It shows what the current build *presents* and what its toggles *read as*, not
+    what it *loads* or *executes*. CP4 §4.4's `UNKNOWN` for package-level current-build plugin
+    attribution is **not** resolved by this checkpoint — §5.3 states the exact scope.
+20. **Enablement state is observed; plugin function is not exercised.** Every entry's
+    enabled/disabled state was read from the page, but **no plugin was executed** and no
+    plugin functionality was demonstrated. "已开" is a toggle position, not a working feature.
+21. **Entry #2 is permission-adjacent and is observed as enabled — this must not be read as
+    enforcement** (§4.1). An enabled toggle is not an executed allowed/blocked case. The risk
+    of that misreading is high enough to record as a standing limitation.
+22. **Entry 7 (网页搜索) is enabled but functionally unverified.** It reports that a search
+    provider must be configured; none was configured and no search was run. `enabled = yes`,
+    `functional = NOT_RUN`. It must not be cited as "web search works".
+23. **Entry 3 (语音输入) is disabled.** It appears in the Plugin List but is `未开`. Its
+    presence in the list is not evidence that it is enabled or active.
+24. **The evidence is a single human observation.** It is not reproducible by the agent and
     was not captured as a screenshot or log; it rests on the operator's report, as CP2 did.
 
 ## 10. Boundary integrity
@@ -311,6 +376,8 @@ Documentation-only checkpoint.
 | Base SHA | `61cd31de7a6306a82e08cda7aca21c35b42caff9` |
 | DSH version | `0.1.7-rc.2` (current build, run started `2026-09-28 10:32:20`) |
 | Evidence class | `Human GUI observation` / current-run |
+| UI surface | DSH GUI → **插件列表** (Plugin List) |
+| Entry enablement observed | 6 enabled, 1 disabled (`语音输入实验性` = 未开) |
 | Exit checklist | **11 PASS · 0 FAIL · 2 BLOCKED · 1 NOT_RUN · 0 UNKNOWN** |
 | Criterion #8 | **PASS** (was BLOCKED) — scope per §5.3 |
 | Criteria #3, #9 | **BLOCKED** (unchanged) |
