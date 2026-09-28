@@ -1,0 +1,75 @@
+# MiMo Flash model profile.
+#
+# Status: DECLARED identity only. Nothing here is VERIFIED.
+#
+# This profile records what is *known to be recorded*, and nothing more. Every
+# capability is UNKNOWN, every limit is null, and provenance is empty, because
+# the Workbench has observed none of it. AI-02-B6 is the only phase permitted
+# to promote a capability, and only from a dated observation.
+#
+# Do not fill these in to make the profile look complete. `declared: null` with
+# `status: UNKNOWN` means nobody knows; it does not mean false. A guessed
+# context limit is worse than an absent one, because it silently truncates real
+# work (§6.5).
+#
+# Flash and Pro share a family and version and differ by nothing recorded here.
+# That is deliberate: this profile asserts no capability, so it cannot claim
+# that one tier is faster, cheaper, or weaker than the other. Any such claim
+# needs evidence, and AI-11 is where it would be measured (§6.3).
+#
+# model_id is the API model id, sent verbatim. display_name is human-facing and
+# is never sent. The two are independent records, NOT a derivation (§6.3).
+
+model_ref: mimo/mimo-v2.6-flash
+provider_id: mimo
+model_id: mimo-v2.6-flash
+display_name: MiMo-V2.6-Flash
+family: mimo
+version: "2.6"
+
+limits:
+  context_limit: null
+  max_output: null
+
+modality:
+  input:
+    - text
+  output:
+    - text
+
+capabilities:
+  tool_calling:
+    declared: null
+    verified: null
+    status: UNKNOWN
+    source: null
+
+  structured_output:
+    declared: null
+    verified: null
+    status: UNKNOWN
+    source: null
+
+  streaming:
+    declared: null
+    verified: null
+    status: UNKNOWN
+    source: null
+
+  reasoning:
+    declared: null
+    verified: null
+    status: UNKNOWN
+    source: null
+
+  prompt_caching:
+    declared: null
+    verified: null
+    status: UNKNOWN
+    source: null
+
+provenance:
+  declared_source: null
+  declared_at: null
+  verified_at: null
+  evidence_ref: null

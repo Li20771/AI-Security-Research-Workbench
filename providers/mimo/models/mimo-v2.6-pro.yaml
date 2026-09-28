@@ -1,0 +1,75 @@
+# MiMo Pro model profile.
+#
+# Status: DECLARED identity only. Nothing here is VERIFIED.
+#
+# This profile records what is *known to be recorded*, and nothing more. Every
+# capability is UNKNOWN, every limit is null, and provenance is empty, because
+# the Workbench has observed none of it. AI-02-B6 is the only phase permitted
+# to promote a capability, and only from a dated observation.
+#
+# Do not fill these in to make the profile look complete. `declared: null` with
+# `status: UNKNOWN` means nobody knows; it does not mean false. A guessed
+# context limit is worse than an absent one, because it silently truncates real
+# work (§6.5).
+#
+# Capability must never be inferred from the name. "Pro" is not evidence of a
+# capability, and neither is "V2.6" (§6.3).
+#
+# model_id is the API model id, sent verbatim. display_name is human-facing and
+# is never sent. The two are independent records, NOT a derivation: they happen
+# to look alike here, which is exactly why the rule is about how the value is
+# stored rather than how it happens to read (§6.3).
+
+model_ref: mimo/mimo-v2.6-pro
+provider_id: mimo
+model_id: mimo-v2.6-pro
+display_name: MiMo-V2.6-Pro
+family: mimo
+version: "2.6"
+
+limits:
+  context_limit: null
+  max_output: null
+
+modality:
+  input:
+    - text
+  output:
+    - text
+
+capabilities:
+  tool_calling:
+    declared: null
+    verified: null
+    status: UNKNOWN
+    source: null
+
+  structured_output:
+    declared: null
+    verified: null
+    status: UNKNOWN
+    source: null
+
+  streaming:
+    declared: null
+    verified: null
+    status: UNKNOWN
+    source: null
+
+  reasoning:
+    declared: null
+    verified: null
+    status: UNKNOWN
+    source: null
+
+  prompt_caching:
+    declared: null
+    verified: null
+    status: UNKNOWN
+    source: null
+
+provenance:
+  declared_source: null
+  declared_at: null
+  verified_at: null
+  evidence_ref: null
