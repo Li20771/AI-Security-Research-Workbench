@@ -140,3 +140,26 @@ def runtime_transport():
     from providers.transport import TransportSettings
 
     return TransportSettings()
+
+
+@pytest.fixture
+def model_profiles():
+    """All three registered model profiles, keyed by model ref."""
+    from providers.model_registry import load_all_model_profiles
+
+    return load_all_model_profiles()
+
+
+@pytest.fixture
+def deepseek_flash(model_profiles):
+    return model_profiles["deepseek/deepseek-flash"]
+
+
+@pytest.fixture
+def mimo_pro(model_profiles):
+    return model_profiles["mimo/mimo-v2.6-pro"]
+
+
+@pytest.fixture
+def mimo_flash(model_profiles):
+    return model_profiles["mimo/mimo-v2.6-flash"]
