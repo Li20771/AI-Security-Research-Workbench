@@ -1,0 +1,95 @@
+name: live model verification
+
+# AI-02-B6. Layer 4: opt-in live connectivity verification.
+#
+# This workflow is the ONLY place a provider is contacted, and it is manual.
+# It has no push or pull_request trigger, so it is never part of the default
+# pipeline. tests/../scripts/ci/layer0_policy.py enforces that structurally.
+#
+# A run produces an evidence artefact and nothing else. It does not commit, it
+# does not modify a profile, and it does not promote a capability: promotion is
+# a separate, reviewed human action (§22).
+
+on:
+  workflow_dispatch:
+    inputs:
+      provider_id:
+        description: "Provider to verify. Must be in the live-test allowlist."
+        required: true
+        type: choice
+        options:
+          - deepseek
+          - mimo
+      model_ref:
+        description: "Registered model ref, e.g. deepseek/deepseek-flash"
+        required: true
+        type: string
+      experiment_id:
+        description: "Optional experiment id to attach to the evidence record"
+        required: false
+        type: string
+
+# Read-only. There is no write scope, so no step in this workflow can push a
+# change even if one tried.
+permissions:
+  contents: read
+
+jobs:
+  live-verification:
+    name: "Layer 4 — live connectivity verification"
+    runs-on: ubuntu-latest
+    env:
+      # The opt-in flag. This is the only place it is set anywhere in the
+      # repository, and the runner refuses to do anything without it.
+      WORKBENCH_LIVE_TESTS: "1"
+      # Supplied from repository secrets. Never written to a file, an
+      # artefact, or a log: the runner reads them through the same credential
+      # reference path the offline layers use, and evidence records the
+      # credential's presence, never its value.
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      MIMO_API_KEY: ${{ secrets.MIMO_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Confirm this workflow is the explicit opt-in path
+        run: |
+          test "${WORKBENCH_LIVE_TESTS}" = "1"
+          echo "opt-in flag present: live verification is explicitly enabled"
+
+      - name: "Layer 4 — live verification probe"
+        id: probe
+        continue-on-error: true
+        run: |
+          python scripts/live/run_live_verification.py \
+            --provider "${{ inputs.provider_id }}" \
+            --model-ref "${{ inputs.model_ref }}" \
+            ${{ inputs.experiment_id && format('--experiment-id "{0}"', inputs.experiment_id) || '' }}
+
+      - name: Report the result and its meaning
+        run: |
+          echo "Layer 4 = EXECUTED"
+          echo
+          echo "The probe exit code distinguishes three outcomes:"
+          echo "  0  the run executed; PASS or FAIL is in the evidence record"
+          echo "  2  BLOCKED — a precondition failed, no network activity occurred"
+          echo "  3  NOT_RUN — the opt-in flag was absent, no network activity occurred"
+          echo
+          echo "A live run promotes nothing. Capabilities carry a candidate"
+          echo "status in the evidence record, and applying it to a profile is a"
+          echo "separate reviewed change."
+
+      - name: Upload the evidence record
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-verification-evidence
+          path: evidence/runs/*.yaml
+          if-no-files-found: warn
+          retention-days: 90

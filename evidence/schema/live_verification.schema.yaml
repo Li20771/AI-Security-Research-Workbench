@@ -1,0 +1,64 @@
+# Live verification record — AI-02 contract §11.5 and §14.
+#
+# One record per live run. Written to evidence/runs/, which is gitignored: a
+# live run produces an artefact for review, and promotion into the repository
+# is a separate, deliberate human action (§22). Nothing here is committed
+# automatically.
+#
+# A record describes ONE model at ONE endpoint on ONE date (§24). It does not
+# generalise to another model, another endpoint, or a later date.
+
+version: 1
+live_verification:
+  run_id: string
+  timestamp: string            # ISO-8601 UTC; the observation is dated
+  provider_id: string
+  model_id: string             # the API model id, never a display name
+  model_ref: string            # provider_id/model_id
+  endpoint_host: string|null   # host only; never a URL with userinfo or query
+  status: PASS|FAIL|BLOCKED|NOT_RUN|UNKNOWN
+  experiment_id: string|null
+
+  gate:
+    allowed: bool
+    status: PASS|FAIL|BLOCKED|NOT_RUN|UNKNOWN
+    code: string|null          # opt_in_absent | provider_not_allowlisted |
+                               # unknown_provider | unknown_model |
+                               # credential_missing | credential_unsupported |
+                               # credential_config_defect
+    detail: string|null
+
+  # One entry per probe that was attempted.
+  probes:
+    - probe_id: string
+      capability: string|null  # null for the text baseline probe
+      status: PASS|FAIL|BLOCKED|NOT_RUN|UNKNOWN
+      provider_id: string
+      model_id: string
+      model_ref: string
+      endpoint_host: string|null
+      finish_state: string|null
+      usage_status: string|null
+      error_class: string|null # the frozen §5.10 taxonomy; never a new class
+      latency_ms: integer|null # null when unmeasured, never 0
+      request_id: string|null
+      observed: string         # what was seen; never response text
+      reason: string|null
+
+  # One entry per capability in the catalogue, probed or explicitly declined.
+  # A capability with no safe probe is recorded as NOT_RUN with its reason
+  # rather than being guessed at (§13).
+  observations:
+    - capability: string
+      probe_id: string
+      outcome: PASS|FAIL|INCONCLUSIVE|NOT_RUN
+      observed: string
+      candidate_status: DECLARED|VERIFIED|NOT_VERIFIED|UNAVAILABLE|UNKNOWN
+      reason: string|null
+
+  boundary: string             # restates that a run grants nothing
+
+# Prohibited anywhere in a record (§15):
+#   API keys, Authorization headers, resolved credential values, secret
+#   material, repository file contents, diffs, private prompt context, and raw
+#   provider response bodies. Records carry normalized observations only.
