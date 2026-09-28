@@ -28,7 +28,16 @@ Read-only observation plus safe, non-destructive probes. No install, no uninstal
 download, no DSH configuration change, no DSH process action, no credential access, no
 session token, no GUI automation, no writes to SecurityLab.
 
-Every `PASS` below has direct execution evidence. Evidence is labelled:
+Every `PASS` below is backed by an executed command or a directly observed artifact, and the
+scope of that evidence must match the scope of the claim: a PASS for a *configuration* fact is
+backed by reading that configuration, and a PASS for a *runtime behaviour* is backed by
+observing that behaviour execute.
+
+> **An inference is not evidence.** Where a claim about runtime behaviour would rest only on
+> indirect reasoning — liveness of the application, a rendered surface, or an unrelated
+> successful operation — it is recorded `UNKNOWN`, not `PASS`. This rule is applied at §4.4.
+
+Evidence is labelled:
 
 | Label | Meaning |
 | --- | --- |
@@ -136,10 +145,23 @@ dsh-plugin-desktop`, and SHA-256 for `package.json`, `pnpm-workspace.yaml`,
 | Test | Expected | Actual | Status |
 | --- | --- | --- | --- |
 | New lifecycle telemetry written by the `09-26` or `09-28` startups | new entries | **none** — `logs/` and `lifecycle-events/` still dated `2026-09-15` | **FAIL** (no current-run telemetry is produced) |
-| Plugin runtime active in the current run | working plugin-provided surface | loopback `127.0.0.1:19387` serving; UI rendered; a full agent turn completed (CP2, human-executed) | **PASS** (indirect, current-run) |
+| Specific plugin runtime loaded in the current build | direct attribution of the observed surface to a loaded plugin | loopback `127.0.0.1:19387` serving; UI rendered; a full agent turn completed (CP2, human-executed) — **all consistent with plugin runtime, but none of them attributes the surface to a loaded plugin** | **UNKNOWN** |
 
-The runtime is demonstrably live, but **DSH 0.1.7-rc.2 writes no current-run plugin telemetry
-to these paths.** Plugin-runtime evidence for the current build is therefore indirect only.
+The DSH instance is demonstrably live. But **liveness is not the claim being made here.** The
+claim is that a *specific plugin runtime is loaded in the current build and is what provides
+the observed surface*.
+
+Nothing observed establishes that attribution:
+
+- the three signals above (serving endpoint, rendered UI, completed agent turn) show the
+  application works; they do not identify what provides it;
+- the only endpoint that would enumerate loaded plugins, `/api/plugins`, is **token-gated**
+  and returned `401` (§6.1);
+- **DSH 0.1.7-rc.2 writes no current-run plugin telemetry** to `logs/` or `lifecycle-events/`
+  — the row above and §4.4 confirm nothing was appended by the `09-26` or `09-28` startups.
+
+The attribution would therefore be an **inference**, and per §2 an inference is not evidence.
+This is recorded **`UNKNOWN`**, not `PASS`.
 
 ### 4.5 Generated host/runtime command shims — present but STALE
 
@@ -181,7 +203,7 @@ repository contain **exactly one file each — a placeholder `README.md`** readi
 | --- | --- |
 | How does DSH load/register plugins? | Cordis profile composition: bundles → `cordis.patch.yml` → overlays, `patchReload: live`; market source `community-market` |
 | Is plugin loading observed at runtime? | **Yes — but only via `2026-09-15` stale artifacts** describing `0.1.2-rc.1` |
-| Is a plugin loaded in the current run? | **Yes, indirectly** (UI renders, agent completes turns) — no direct telemetry |
+| Is a specific plugin loaded in the current build? | **UNKNOWN** — the instance is live, but nothing directly attributes the observed surface to a loaded plugin; no current-run telemetry exists and `/api/plugins` is token-gated |
 | Can individual plugin capabilities be enumerated? | **UNKNOWN** — bundle internals (`app.asar`) were not inspected |
 | Are the Workbench plugin layers implemented? | **No** — placeholder READMEs only |
 
@@ -314,7 +336,7 @@ cannot be confused with a DSH permission failure.
 | 1 | Plugin loading mechanism identified (Cordis profile + market) | **PASS** (config-level) |
 | 2 | Plugin composition pipeline observed executing | **PASS** (stale-artifact) |
 | 3 | `dsh-plugin-desktop` loaded and ran | **PASS** (stale-artifact) |
-| 4 | Plugin runtime active in the current run | **PASS** (indirect, current-run) |
+| 4 | Specific plugin runtime loaded in current build | **UNKNOWN** — live instance, but no direct attribution |
 | 5 | Current-run plugin telemetry produced | **FAIL** — none written |
 | 6 | Individual plugin capabilities enumerable | **UNKNOWN** |
 | 7 | Generated host/runtime shims usable | **FAIL** — stale, dead paths |
@@ -332,7 +354,16 @@ cannot be confused with a DSH permission failure.
 | 19 | Workbench Guard implemented | **NOT_IMPLEMENTED** (Workbench, not DSH) |
 | 20 | SecurityLab / Workbench / remote invariants | **PASS** — all ten (§7) |
 
-Tally: **11 PASS, 4 FAIL, 0 BLOCKED, 2 NOT_RUN, 3 UNKNOWN** (20 items).
+Tally (DSH-relevant items — 1–18 and 20): **9 PASS, 4 FAIL, 0 BLOCKED, 2 NOT_RUN, 4 UNKNOWN** — 19 items.
+
+Item 19 (Workbench Guard) is **not** a DSH status and is excluded from that tally. It is
+recorded `NOT_IMPLEMENTED`, which is a statement about the Workbench, not about DSH.
+
+> **Correction note.** An earlier revision of this document reported "11 PASS … 3 UNKNOWN"
+> over 20 items. That breakdown was wrong on two counts: it claimed 11 PASS against 10 PASS
+> rows, and it absorbed the `NOT_IMPLEMENTED` row into no stated category while still
+> totalling 20. Item 4 was additionally mis-classified as `PASS` on indirect grounds (§4.4)
+> and is now `UNKNOWN`. The counts above are derived from the table rather than asserted.
 
 A `FAIL` here means "executed, and the observed behaviour is not what the baseline needs" —
 e.g. shims that are stale, or the absence of any permission configuration. It does not mean
@@ -359,6 +390,11 @@ New in this checkpoint:
 15. **No permission/guard/policy configuration exists in DSH.** Whatever enforcement DSH may
     have internally, none of it is configured. Nothing here should be read as a Workbench
     Guard being present or as DSH having a permissions layer ready to use.
+16. **Plugin-runtime attribution for the current build is unverified (§4.4).** The instance is
+    demonstrably live, but no available observation ties the observed surface to a loaded
+    plugin: current-run telemetry does not exist, and `/api/plugins` is token-gated. Until
+    DSH emits current-run plugin evidence, or a token-free enumeration path is authorized,
+    this stays `UNKNOWN` — and future checkpoints must not quietly upgrade it by inference.
 
 ## 10. Rollback point
 
@@ -394,7 +430,7 @@ Documentation-only checkpoint.
 | SecurityLab HEAD | `efa836ff9225f6226ca8a76615f3f45c31110d58` |
 | **AI-01** | **IN PROGRESS — not complete** |
 | **Checkpoint #4** | **COMPLETE** |
-| **Checkpoint #4 overall status** | **PARTIAL** — 11 PASS, 4 FAIL, 0 BLOCKED, 2 NOT_RUN, 3 UNKNOWN |
+| **Checkpoint #4 overall status** | **PARTIAL** — 9 PASS, 4 FAIL, 0 BLOCKED, 2 NOT_RUN, 4 UNKNOWN (19 DSH items; item 19 excluded — Workbench `NOT_IMPLEMENTED`) |
 
 Not implemented in this checkpoint (per AI-01 §7 and the stated boundary): Context plugin,
 Guard plugin, Evidence plugin, Security Tools plugin, Model Router, DeepSeek/MiMo provider
