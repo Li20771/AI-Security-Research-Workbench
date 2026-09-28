@@ -52,6 +52,7 @@ providers/
     openai_compatible_chat.py    shared adapter for both in-scope providers
   model_profile.py     model profile types           (contract §6, §8)
   model_registry.py    model profile loading
+  invocation.py        normalized invocation         (contract §7, §5.8)
   deepseek/provider.yaml         declared provider profile
   deepseek/models/*.yaml         declared model profiles
   mimo/provider.yaml             declared provider profile
@@ -127,6 +128,36 @@ The directory is a placeholder for **AI-09**. It has no profile, no adapter,
 and no implementation, and the config entry that references it is marked
 `reserved: true` and must stay disabled. Sharing a protocol family with
 DeepSeek and MiMo does not make this a third implemented provider.
+
+## Invocation
+
+`Invoker.invoke(request)` is the normalized boundary. A caller builds an
+`InvocationRequest` and reads an `InvocationResult`; it never sees a
+provider's JSON, and attribution (`provider_id` / `model_id` / `model_ref`)
+travels on the result rather than being inferred from a payload.
+
+```text
+InvocationRequest  ->  model resolution  ->  capability gate
+                   ->  credential resolution  ->  protocol adapter
+                   ->  transport  ->  InvocationResult
+```
+
+**The capability gate refuses before any provider activity.** Tools,
+structured output, and `stream: true` each require their capability to be
+`VERIFIED`; `UNKNOWN`, `NOT_VERIFIED`, `DECLARED` and `UNAVAILABLE` all refuse,
+and a blocked call performs zero transport calls. `stream: true` is never
+silently downgraded to `false`.
+
+Since every shipped capability is `UNKNOWN`, only plain text calls can reach a
+transport today.
+
+`status` is the only success signal. `LENGTH` on a successful call means the
+answer is **truncated**, not complete; `UNKNOWN` never collapses to `STOP`;
+and a tool call is neither an error nor a final answer.
+
+A pre-flight refusal carries a `BlockReason`, not a provider `ErrorClass`:
+no provider was contacted, so no provider-layer class applies. Reusing one
+would blur a policy decision with something a provider did.
 
 ## Rules
 
