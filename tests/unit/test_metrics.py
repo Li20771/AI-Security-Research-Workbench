@@ -29,6 +29,7 @@ from providers.metrics import (
     MetricObservation,
     MetricsError,
     TokenTotals,
+    is_usage_complete,
 )
 from providers.pricing import PricingCatalog, PricingRecord
 from providers.protocol import FinishState
@@ -104,7 +105,7 @@ class TestCounters:
         snapshot = aggregator(
             failed(ErrorClass.SERVER),
             blocked(block_code=BlockCode.CAPABILITY_NOT_VERIFIED),
-            blocked(block_code=BlockCode.UNKNOWN_MODEL),
+            blocked(block_code=BlockCode.CREDENTIAL_CONFIG_DEFECT),
         ).snapshot()
 
         assert snapshot.overall.failure_count == 1
@@ -195,14 +196,15 @@ class TestErrorClassDistribution:
         assert overall.failure_count == 0
 
     def test_block_codes_are_distributed(self):
+        """Codes that name an existing provider and model are collectable."""
         overall = aggregator(
             blocked(block_code=BlockCode.CAPABILITY_NOT_VERIFIED),
             blocked(block_code=BlockCode.CAPABILITY_NOT_VERIFIED),
-            blocked(block_code=BlockCode.UNKNOWN_PROVIDER),
+            blocked(block_code=BlockCode.CREDENTIAL_CONFIG_DEFECT),
         ).snapshot().overall
 
         assert overall.block_code_counts[BlockCode.CAPABILITY_NOT_VERIFIED] == 2
-        assert overall.block_code_counts[BlockCode.UNKNOWN_PROVIDER] == 1
+        assert overall.block_code_counts[BlockCode.CREDENTIAL_CONFIG_DEFECT] == 1
 
 
 class TestUsageZeroVersusUnknown:
@@ -237,7 +239,9 @@ class TestUsageZeroVersusUnknown:
         assert not overall.tokens.is_complete
 
     def test_a_blocked_call_has_unmeasured_usage(self):
-        overall = aggregator(blocked(block_code=BlockCode.UNKNOWN_MODEL)).snapshot().overall
+        overall = aggregator(
+            blocked(block_code=BlockCode.CAPABILITY_NOT_VERIFIED)
+        ).snapshot().overall
         assert overall.tokens.usage_unknown_count == 1
         assert overall.tokens.input_tokens is None
 
@@ -284,6 +288,199 @@ class TestUnknownPropagation:
         ).snapshot().overall
         assert overall.tokens.to_dict().get("usage_status") is None
         assert overall.tokens.input_tokens is None
+
+
+class TestUsageCompleteness:
+    """§9.2: a missing token count is null with `usage_status: UNKNOWN`.
+
+    A `Usage` claiming `REPORTED` while omitting a required count is
+    self-contradictory. It must not be totalled as a measurement, even though
+    its status claims otherwise.
+    """
+
+    def test_fully_reported_usage_is_complete(self):
+        usage = Usage(100, 200, 300, usage_status=UsageStatus.REPORTED)
+        assert is_usage_complete(usage)
+
+    def test_reported_with_a_missing_required_count_is_incomplete(self):
+        usage = Usage(input_tokens=100, output_tokens=None, usage_status=UsageStatus.REPORTED)
+        assert not is_usage_complete(usage)
+
+    def test_reported_with_a_missing_input_is_incomplete(self):
+        usage = Usage(input_tokens=None, output_tokens=200, usage_status=UsageStatus.REPORTED)
+        assert not is_usage_complete(usage)
+
+    def test_a_reported_zero_is_complete(self):
+        """Zero is a measurement; it must not be downgraded to unknown."""
+        usage = Usage(0, 0, 0, usage_status=UsageStatus.REPORTED)
+        assert is_usage_complete(usage)
+        assert usage.input_tokens == 0
+        assert usage.input_tokens is not None
+
+    def test_unknown_usage_is_incomplete(self):
+        assert not is_usage_complete(Usage(usage_status=UsageStatus.UNKNOWN))
+
+    def test_estimated_is_not_complete(self):
+        """AI-02 does not estimate, and an estimate is never REPORTED."""
+        assert not is_usage_complete(Usage(1, 2, 3, usage_status=UsageStatus.ESTIMATED))
+
+    def test_a_missing_cache_count_alone_does_not_make_usage_unknown(self):
+        """§9.1 records cache only where the provider reports it.
+
+        Treating an unreported cache as unknown would mark almost every call
+        incomplete.
+        """
+        usage = Usage(
+            100,
+            200,
+            300,
+            cache_read_tokens=None,
+            cache_write_tokens=None,
+            usage_status=UsageStatus.REPORTED,
+        )
+        assert is_usage_complete(usage)
+
+    def test_partial_reported_usage_is_counted_unknown_in_the_aggregate(self):
+        overall = aggregator(
+            succeeded(
+                usage=Usage(
+                    input_tokens=1_000_000,
+                    output_tokens=None,
+                    usage_status=UsageStatus.REPORTED,
+                )
+            )
+        ).snapshot().overall
+
+        assert overall.tokens.input_tokens == 1_000_000
+        assert overall.tokens.usage_unknown_count == 1
+        assert not overall.tokens.is_complete
+
+    def test_a_complete_call_plus_a_partial_one_is_incomplete(self):
+        overall = aggregator(
+            succeeded(usage=Usage(100, 200, 300, usage_status=UsageStatus.REPORTED)),
+            succeeded(
+                usage=Usage(100, None, None, usage_status=UsageStatus.REPORTED)
+            ),
+        ).snapshot().overall
+
+        assert overall.tokens.usage_unknown_count == 1
+        assert overall.tokens.is_partially_unknown
+
+    def test_the_observation_reports_incompleteness(self):
+        observation = succeeded(
+            usage=Usage(100, None, None, usage_status=UsageStatus.REPORTED)
+        )
+        assert not observation.usage_is_complete
+        assert observation.is_usage_unknown
+
+    def test_token_aggregate_and_cost_agree_on_partial_usage(self):
+        """Both must treat the same partial usage as unknown."""
+        catalog = PricingCatalog(
+            [
+                PricingRecord(
+                    provider_id="deepseek",
+                    model_id="deepseek-flash",
+                    currency="USD",
+                    effective_from=date(2026, 9, 1),
+                    input_per_1m=Decimal("0.10"),
+                    output_per_1m=Decimal("0.20"),
+                )
+            ]
+        )
+        partial = Usage(
+            input_tokens=1_000_000, output_tokens=None, usage_status=UsageStatus.REPORTED
+        )
+        overall = aggregator(succeeded(usage=partial), catalog=catalog).snapshot().overall
+
+        # The token aggregate refuses to call it complete...
+        assert not overall.tokens.is_complete
+        assert overall.tokens.usage_unknown_count == 1
+        # ...and the cost projection equally refuses to price it.
+        assert overall.cost.estimated_cost is None
+
+    def test_token_aggregate_and_cost_agree_on_complete_usage(self):
+        catalog = PricingCatalog(
+            [
+                PricingRecord(
+                    provider_id="deepseek",
+                    model_id="deepseek-flash",
+                    currency="USD",
+                    effective_from=date(2026, 9, 1),
+                    input_per_1m=Decimal("0.10"),
+                    output_per_1m=Decimal("0.20"),
+                )
+            ]
+        )
+        complete = Usage(1_000_000, 500_000, 1_500_000, usage_status=UsageStatus.REPORTED)
+        overall = aggregator(succeeded(usage=complete), catalog=catalog).snapshot().overall
+
+        assert overall.tokens.is_complete
+        assert overall.cost.estimated_cost == Decimal("0.20")
+
+    def test_a_real_zero_survives_into_the_aggregate(self):
+        overall = aggregator(
+            succeeded(usage=Usage(0, 0, 0, usage_status=UsageStatus.REPORTED))
+        ).snapshot().overall
+
+        assert overall.tokens.input_tokens == 0
+        assert overall.tokens.usage_unknown_count == 0
+        assert overall.tokens.is_complete
+
+
+class TestAttributionRequiresRealEntities:
+    """§9.4: a sample that cannot be attributed to a real provider and model
+    is not collected.
+
+    The invocation layer already established that a provider or model does not
+    exist when it blocks the call for that reason, so the block code carries
+    the verdict and no registry lookup is needed.
+    """
+
+    @pytest.mark.parametrize(
+        "code", [BlockCode.UNKNOWN_PROVIDER, BlockCode.UNKNOWN_MODEL]
+    )
+    def test_an_unattributable_block_cannot_become_an_observation(self, code):
+        with pytest.raises(MetricsError, match="real provider and model"):
+            observed(InvocationStatus.BLOCKED, block_code=code)
+
+    def test_an_unattributable_block_is_not_collected(self):
+        """Declining is visible through `declined_count`, never silent."""
+        collector = MetricAggregator(as_of=AT)
+        with pytest.raises(MetricsError):
+            collector.record(
+                observed(InvocationStatus.BLOCKED, block_code=BlockCode.UNKNOWN_PROVIDER)
+            )
+        assert collector.observation_count == 0
+
+    def test_attributable_blocks_are_still_collected(self):
+        """A capability block names a real model, so it is collected."""
+        collector = aggregator(
+            blocked(block_code=BlockCode.CAPABILITY_NOT_VERIFIED),
+            blocked(block_code=BlockCode.CREDENTIAL_CONFIG_DEFECT),
+            blocked(error_class=ErrorClass.CREDENTIAL_MISSING),
+        )
+        assert collector.snapshot().overall.blocked_count == 3
+
+    def test_a_registry_check_can_be_supplied(self):
+        collector = MetricAggregator(
+            as_of=AT, known_model_refs={DEEPSEEK_REF}
+        )
+        with pytest.raises(MetricsError, match="not a registered model"):
+            collector.record(succeeded(ref=MIMO_REF))
+        assert collector.observation_count == 0
+
+    def test_a_registered_ref_passes_the_registry_check(self):
+        collector = MetricAggregator(as_of=AT, known_model_refs={DEEPSEEK_REF})
+        collector.record(succeeded(ref=DEEPSEEK_REF))
+        assert collector.observation_count == 1
+
+    def test_no_known_refs_means_no_registry_dependency(self):
+        """Metrics do not reach for the registry on their own."""
+        assert MetricAggregator(as_of=AT).known_model_refs is None
+
+    def test_the_registry_check_is_optional_and_off_by_default(self):
+        collector = aggregator(succeeded(ref="synthetic/example"))
+        assert collector.snapshot().overall.request_count == 1
 
 
 class TestLatency:
@@ -693,6 +890,52 @@ class TestEndToEndWithTheInvoker:
 
         assert result.status is InvocationStatus.SUCCESS
         assert len(transport.requests) == 1
+
+    def test_a_call_to_an_unregistered_provider_is_declined_end_to_end(
+        self, invoker_factory, fake_transport_factory
+    ):
+        """§9.4 enforced on the real path, with no registry dependency."""
+        transport = fake_transport_factory.success()
+        request = self._request(model_ref="openai-compatible/gpt")
+        result = invoker_factory(transport).invoke(request)
+        assert result.blocked.code is BlockCode.UNKNOWN_PROVIDER
+
+        collector = MetricAggregator(as_of=AT)
+        assert collector.record_invocation(request, result) is None
+        assert collector.observation_count == 0
+        assert collector.declined_count == 1
+
+    def test_a_call_to_an_unregistered_model_is_declined_end_to_end(
+        self, invoker_factory, fake_transport_factory
+    ):
+        transport = fake_transport_factory.success()
+        request = self._request(model_ref="deepseek/not-a-real-model")
+        result = invoker_factory(transport).invoke(request)
+
+        collector = MetricAggregator(as_of=AT)
+        assert collector.record_invocation(request, result) is None
+        assert collector.declined_count == 1
+
+    def test_a_capability_block_is_collected_end_to_end(
+        self, invoker_factory, fake_transport_factory
+    ):
+        transport = fake_transport_factory.success()
+        request = self._request(stream=True)
+        result = invoker_factory(transport).invoke(request)
+
+        collector = MetricAggregator(as_of=AT)
+        observation = collector.record_invocation(request, result)
+
+        assert observation is not None
+        assert collector.declined_count == 0
+        assert collector.snapshot().overall.blocked_count == 1
+
+    def test_the_real_registry_registers_exactly_the_in_scope_models(self):
+        """The set a caller would pass to `known_model_refs`."""
+        from providers.model_registry import load_all_model_profiles
+
+        refs = frozenset(load_all_model_profiles())
+        assert refs == {DEEPSEEK_REF, MIMO_REF, "mimo/mimo-v2.6-flash"}
 
     def test_read_only_views_cannot_be_mutated(self):
         snapshot = aggregator(succeeded()).snapshot()

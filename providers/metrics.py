@@ -59,9 +59,54 @@ from providers.protocol import FinishState
 #: Key used for the whole-corpus aggregate in `MetricsSnapshot`.
 OVERALL_KEY = "*"
 
+#: Counts a *reported* usage must carry for the usage to count as measured
+#: (§9.2).
+#:
+#: Cache counts are deliberately excluded: §9.1 records them "only where the
+#: provider reports them", so a provider that reports no cache is not an
+#: unknown -- treating it as one would mark almost every call incomplete.
+_REQUIRED_USAGE_COUNTS: tuple[str, ...] = ("input_tokens", "output_tokens")
+
+#: Block codes meaning the call named a provider or model that does not exist.
+#:
+#: §9.4: metrics that cannot be attributed to a real provider and model are
+#: not collected. The invocation layer already established that the named
+#: entity is not real -- that is what the block code *means* -- so this needs
+#: no registry lookup. Reading the verdict the invocation already reached is
+#: what keeps metrics free of a registry dependency.
+UNATTRIBUTABLE_BLOCK_CODES: frozenset[BlockCode] = frozenset(
+    {BlockCode.UNKNOWN_PROVIDER, BlockCode.UNKNOWN_MODEL}
+)
+
 
 class MetricsError(ValueError):
     """A metric observation is malformed or inconsistent."""
+
+
+class UnattributableObservationError(MetricsError):
+    """The call named a provider or model that does not exist (§9.4).
+
+    Raised at construction, so an unattributable sample cannot exist to be
+    collected by accident.
+    """
+
+
+def is_usage_complete(usage: Usage) -> bool:
+    """True only when usage was reported *and* its required counts are present.
+
+    §9.2: *"A missing token count is `null` with `usage_status: UNKNOWN`."* A
+    `Usage` claiming `REPORTED` while omitting input or output is therefore
+    self-contradictory. It is treated as incomplete rather than trusted, so
+    the contradiction cannot leak into a total that reads as complete.
+
+    A genuine reported `0` stays complete: zero is a measurement, and only
+    `None` is the absence of one.
+    """
+    if usage.usage_status is not UsageStatus.REPORTED:
+        # UNKNOWN is unknown; ESTIMATED is a local approximation, never
+        # presented as REPORTED (§9.2). Neither counts as measured.
+        return False
+    return all(getattr(usage, name) is not None for name in _REQUIRED_USAGE_COUNTS)
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,6 +170,16 @@ class MetricObservation:
             raise MetricsError("attempts must be an integer")
         if self.attempts < 1:
             raise MetricsError(f"attempts must be >= 1; got {self.attempts}")
+
+        # §9.4: an observation that names a provider or model which does not
+        # exist is not collected, and the strongest form of "not collected" is
+        # not being constructable.
+        if self.block_code in UNATTRIBUTABLE_BLOCK_CODES:
+            raise UnattributableObservationError(
+                f"call named {self.model_ref} but was blocked by "
+                f"{self.block_code.value}; that entity does not exist, so the "
+                "call cannot be attributed to a real provider and model (§9.4)"
+            )
 
         self._check_status_consistency()
         for name in ("request_id", "experiment_id", "task_id", "task_class", "agent", "purpose"):
@@ -191,8 +246,19 @@ class MetricObservation:
         )
 
     @property
+    def usage_is_complete(self) -> bool:
+        """True only when every required count was measured (§9.2)."""
+        return is_usage_complete(self.usage)
+
+    @property
     def is_usage_unknown(self) -> bool:
-        return self.usage.usage_status is UsageStatus.UNKNOWN
+        """True when the usage cannot be totalled as a measurement.
+
+        Covers both a usage nobody reported and a `REPORTED` usage missing a
+        required count: the second is self-contradictory, and counting it as
+        complete would put an unmeasured total into the aggregate.
+        """
+        return not self.usage_is_complete
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -414,6 +480,19 @@ class MetricAggregator:
 
     The catalog defaults to empty, so no cost is projected until a price is
     supplied explicitly.
+
+    `known_model_refs` is optional. Supply it to enforce §9.4 against an
+    external list of registered models:
+
+        MetricAggregator(
+            as_of=..., known_model_refs=load_all_model_profiles()
+        )
+
+    Without it, attribution is still enforced by the block-code rule -- a call
+    the invocation layer blocked for naming a non-existent provider or model
+    can never become an observation -- but a hand-built observation is not
+    checked against the registry. That keeps metrics free of a registry
+    dependency while leaving the caller able to add one.
     """
 
     def __init__(
@@ -421,11 +500,16 @@ class MetricAggregator:
         *,
         as_of: date,
         catalog: PricingCatalog | None = None,
+        known_model_refs: Iterable[str] | None = None,
         observations: Iterable[MetricObservation] = (),
     ) -> None:
         self._as_of = as_of
         self._catalog = empty_catalog() if catalog is None else catalog
+        self._known_refs = (
+            None if known_model_refs is None else frozenset(known_model_refs)
+        )
         self._observations: list[MetricObservation] = []
+        self._declined = 0
         for observation in observations:
             self.record(observation)
 
@@ -441,8 +525,25 @@ class MetricAggregator:
     def observation_count(self) -> int:
         return len(self._observations)
 
+    @property
+    def declined_count(self) -> int:
+        """Calls offered but not collected, because they were unattributable.
+
+        Exposed so a skip is visible rather than silent: a non-zero value is
+        information about the corpus, not an error to swallow.
+        """
+        return self._declined
+
+    @property
+    def known_model_refs(self) -> frozenset[str] | None:
+        return self._known_refs
+
     def record(self, observation: MetricObservation) -> MetricObservation:
         """Record one observation. Returns it unchanged.
+
+        Raises `UnattributableObservationError` when the observation names a
+        model outside `known_model_refs`, so a caller cannot collect something
+        it should not have built.
 
         Observing does not modify the observed value: `MetricObservation` and
         `InvocationResult` are both frozen, and the reference is retained, not
@@ -452,14 +553,33 @@ class MetricAggregator:
             raise MetricsError(
                 f"expected MetricObservation, got {type(observation).__name__}"
             )
+        if (
+            self._known_refs is not None
+            and observation.model_ref not in self._known_refs
+        ):
+            raise UnattributableObservationError(
+                f"{observation.model_ref} is not a registered model; metrics "
+                "that cannot be attributed to a real provider and model are "
+                "not collected (§9.4)"
+            )
         self._observations.append(observation)
         return observation
 
     def record_invocation(
         self, request: InvocationRequest, result: InvocationResult
-    ) -> MetricObservation:
-        """Observe a completed invocation in one step."""
-        return self.record(MetricObservation.from_invocation(request, result))
+    ) -> MetricObservation | None:
+        """Observe a completed invocation.
+
+        Returns `None` when the call is unattributable -- for instance a call
+        blocked for naming an unregistered provider -- and counts it in
+        `declined_count`. Declining rather than raising keeps this usable as
+        the "observe every call" path, while still making the skip visible.
+        """
+        try:
+            return self.record(MetricObservation.from_invocation(request, result))
+        except UnattributableObservationError:
+            self._declined += 1
+            return None
 
     def snapshot(self) -> MetricsSnapshot:
         """Aggregate everything recorded so far."""
@@ -575,7 +695,9 @@ class MetricAggregator:
 
 
 def _totals(usages: list[Usage]) -> TokenTotals:
-    unknown = sum(1 for usage in usages if usage.usage_status is UsageStatus.UNKNOWN)
+    # A usage counts as unknown unless it is genuinely complete, so a
+    # `REPORTED` usage missing a required count lands here too (§9.2).
+    unknown = sum(1 for usage in usages if not is_usage_complete(usage))
     return TokenTotals(
         input_tokens=_sum_known(usage.input_tokens for usage in usages),
         output_tokens=_sum_known(usage.output_tokens for usage in usages),
@@ -667,4 +789,7 @@ __all__ = [
     "MetricsSnapshot",
     "OVERALL_KEY",
     "TokenTotals",
+    "UNATTRIBUTABLE_BLOCK_CODES",
+    "UnattributableObservationError",
+    "is_usage_complete",
 ]

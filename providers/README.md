@@ -171,6 +171,9 @@ record facts and never feed back into a call.
 InvocationResult  ->  MetricObservation  ->  MetricAggregate
 ```
 
+`record_invocation()` returns `None` and counts the call in `declined_count`
+when it cannot be attributed, so a skip is visible rather than silent.
+
 No module here selects, ranks, or falls back between models. Aggregates are
 available overall and broken down by provider, model, experiment, and task
 class.
@@ -183,8 +186,23 @@ Three rules the counters enforce:
 - **Unknown is not zero.** An unreported count stays `None` and increments
   `usage_unknown_count`. Totals sum only what was measured and carry
   `is_complete: false` when anything was not.
-- **Unattributable calls are not collected.** An observation must name a real
-  provider and model — there is no `unknown-provider` bucket.
+
+  A usage is complete only when it was `REPORTED` *and* carries both required
+  counts. A `Usage` claiming `REPORTED` while omitting input or output
+  contradicts §9.2 and is treated as incomplete rather than trusted, so the
+  contradiction cannot leak into a total that reads as complete. A genuine
+  reported `0` stays complete — zero is a measurement. Cache counts are
+  excluded from the requirement: §9.1 records them only where the provider
+  reports them.
+
+- **Unattributable calls are not collected.** A call the invocation layer
+  blocked for naming a provider or model that does not exist can never become
+  an observation — the block code carries that verdict, so no registry lookup
+  is needed and there is no `unknown-provider` bucket.
+
+  `MetricAggregator(known_model_refs=...)` optionally enforces the same rule
+  against an explicit list of registered models. It is off by default, keeping
+  metrics free of a registry dependency.
 
 Raw latency samples are kept alongside the aggregates; a mean alone cannot be
 re-analysed.
