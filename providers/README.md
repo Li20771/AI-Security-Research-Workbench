@@ -7,13 +7,33 @@ Model provider adapters and capability descriptions.
 ```text
 Agent
   |
-Provider          endpoint / authentication / protocol / transport   <- this directory
+Provider          endpoint / authentication / protocol     <- this directory
   |
-Model             model id / capability metadata / limits            <- AI-02-B2
+Model             model id / capability metadata / limits  <- AI-02-B2
 ```
 
-A provider profile owns transport and protocol. It does not own model
-capability: that is a model profile's job, and it arrives in AI-02-B2.
+A provider profile owns identity, endpoint, protocol, and the credential
+reference. It does **not** own transport settings and does **not** own model
+capability. Capability is a model profile's job (AI-02-B2).
+
+## Layer split
+
+```text
+providers/<id>/provider.yaml    identity, protocol, endpoint,
+                                credential.ref, models
+config/providers/*.yaml         enabled, runtime overrides, transport
+```
+
+**Transport settings are runtime config, not profile data (§5.11).** Timeouts,
+retries, and TLS verification live in `config/providers/*.yaml` and are passed
+to the adapter explicitly as `transport_settings`.
+
+The split is enforced structurally rather than by convention:
+
+- `ProviderProfile` has no `transport` field, so the adapter cannot read one
+- the loader **rejects** a provider profile that carries a `transport:` block
+- `build_request()` requires `transport_settings`, so the runtime input cannot
+  be skipped
 
 ## Layout
 
@@ -22,7 +42,7 @@ providers/
   errors.py            typed error taxonomy          (contract §5.9, §5.10)
   redaction.py         credential redaction          (contract §10.3)
   credential.py        reference grammar + resolver  (contract §5.3)
-  transport.py         transport settings            (contract §5.11)
+  transport.py         transport settings TYPE       (runtime config, §5.11)
   profile.py           profile types                 (contract §5.1 - §5.7)
   registry.py          profile loading
   config.py            runtime config loading
@@ -67,6 +87,8 @@ DeepSeek and MiMo does not make this a third implemented provider.
   provider connection.
 - **No `/v1` inference.** `effective_url = base_url + path_template`, exactly.
   No prefix is injected.
+- **No transport in profiles.** Transport settings are runtime config (§5.11);
+  a profile carrying them is rejected on load.
 - **No retries.** `max_retries` is 0 and AI-02 implements no retry loop.
 - **No default model.** The model list has no ordering semantics.
 

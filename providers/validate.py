@@ -29,7 +29,7 @@ from providers.registry import (
     load_provider,
     providers_root,
 )
-from providers.transport import AI02_MAX_RETRIES, TransportConfigError
+from providers.transport import AI02_MAX_RETRIES
 
 #: Providers AI-02 is scoped to freeze (contract §3.2, §5.5).
 AI02_SCOPE_PROVIDERS: frozenset[str] = frozenset({"deepseek", "mimo"})
@@ -50,16 +50,10 @@ def validate_provider_profile(profile: ProviderProfile) -> list[str]:
             "models exposes an empty list rather than a guess"
         )
 
-    if profile.transport.max_retries != AI02_MAX_RETRIES:
+    if "transport" in profile.to_dict():
         problems.append(
-            f"{pid}: max_retries is {profile.transport.max_retries}; AI-02 "
-            f"requires {AI02_MAX_RETRIES} (D-12, no retry loop)"
-        )
-
-    if not profile.transport.verify_tls:
-        problems.append(
-            f"{pid}: verify_tls is disabled; disabling TLS verification is a "
-            "security-relevant change requiring explicit human approval (§5.11)"
+            f"{pid}: profile carries transport settings; they are runtime "
+            "config, not profile data (§5.11)"
         )
 
     if profile.endpoint.source != "declared":
@@ -102,6 +96,28 @@ def validate_example_config(path: Path | None = None) -> list[str]:
     for provider_id in AI02_SCOPE_PROVIDERS:
         if provider_id not in config.providers:
             problems.append(f"example config: missing provider {provider_id!r}")
+            continue
+
+        # Transport settings are runtime config (§5.11), so this is where
+        # their policy is enforced.
+        transport = config.transport_for(provider_id)
+        if config.providers[provider_id].transport is None:
+            problems.append(
+                f"example config: provider {provider_id!r} declares no transport "
+                "settings; timeouts must be explicit (§5.11)"
+            )
+        if transport.max_retries != AI02_MAX_RETRIES:
+            problems.append(
+                f"example config: {provider_id} max_retries is "
+                f"{transport.max_retries}; AI-02 requires {AI02_MAX_RETRIES} "
+                "(D-12, no retry loop)"
+            )
+        if not transport.verify_tls:
+            problems.append(
+                f"example config: {provider_id} disables verify_tls; disabling "
+                "TLS verification is a security-relevant change requiring "
+                "explicit human approval (§5.11)"
+            )
 
     for provider_id in RESERVED_PROVIDERS:
         entry = config.providers.get(provider_id)
@@ -146,7 +162,7 @@ def validate_all(root: Path | None = None) -> list[str]:
     for provider_id in provider_ids:
         try:
             profile = load_provider(provider_id, base)
-        except (RegistryError, ProfileError, TransportConfigError) as exc:
+        except (RegistryError, ProfileError) as exc:
             problems.append(f"{provider_id}: {exc}")
             continue
         problems.extend(validate_provider_profile(profile))

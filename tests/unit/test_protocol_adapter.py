@@ -17,14 +17,31 @@ from providers.protocol import (
     registered_families,
 )
 from providers.protocol.base import TransportFailureKind, TransportResult
+from providers.transport import TransportSettings
 
 FAMILY = "openai_compatible_chat"
 
 
-def _call(profile, body: str, credential: str = "placeholder-credential"):
+def _call(
+    profile,
+    body: str,
+    credential: str = "placeholder-credential",
+    transport_settings: TransportSettings | None = None,
+):
+    """Build a provider call, supplying transport settings explicitly.
+
+    Transport settings are runtime config, not profile data (§5.11), so they
+    are passed in the same way production code passes them.
+    """
     adapter = adapter_for(profile.protocol.family)
     request = adapter.build_request(
-        profile, profile.models[0], credential=credential, body=body
+        profile,
+        profile.models[0],
+        credential=credential,
+        body=body,
+        transport_settings=(
+            TransportSettings() if transport_settings is None else transport_settings
+        ),
     )
     return ProviderCall(profile=profile, model_ref=profile.models[0], request=request)
 
@@ -218,6 +235,54 @@ class TestHttpErrorPath:
         transport = fake_transport_factory.http_error(429, "token rate limit exceeded")
         response = adapter_for(FAMILY).send(_call(deepseek_profile, body), transport)
         assert response.error.error_class is ErrorClass.RATE_LIMIT
+
+
+class TestTransportComesFromRuntimeConfig:
+    """§5.11: the adapter takes transport settings from runtime config.
+
+    These assertions are what make the layering real rather than documented.
+    """
+
+    def test_request_uses_the_supplied_settings(self, deepseek_profile, body):
+        settings = TransportSettings(
+            timeout_connect_ms=1_000, timeout_total_ms=2_000, verify_tls=False
+        )
+        call = _call(deepseek_profile, body, transport_settings=settings)
+        assert call.request.timeout_connect_ms == 1_000
+        assert call.request.timeout_total_ms == 2_000
+        assert call.request.verify_tls is False
+
+    def test_settings_are_not_read_from_the_profile(self, deepseek_profile, body):
+        """The profile has no transport field to read, so nothing can leak in."""
+        assert not hasattr(deepseek_profile, "transport")
+
+        settings = TransportSettings(timeout_connect_ms=4_242, timeout_total_ms=8_484)
+        call = _call(deepseek_profile, body, transport_settings=settings)
+        assert call.request.timeout_connect_ms == 4_242
+        assert call.request.timeout_total_ms == 8_484
+
+    def test_frozen_defaults_apply_when_runtime_config_is_default(
+        self, deepseek_profile, body
+    ):
+        call = _call(deepseek_profile, body, transport_settings=TransportSettings())
+        assert call.request.timeout_connect_ms == 10_000
+        assert call.request.timeout_total_ms == 120_000
+        assert call.request.verify_tls is True
+
+    def test_build_request_requires_transport_settings(self, deepseek_profile, body):
+        """It cannot be omitted, so the runtime input is never skipped."""
+        adapter = adapter_for(FAMILY)
+        with pytest.raises(TypeError):
+            adapter.build_request(
+                deepseek_profile, deepseek_profile.models[0], credential="x", body=body
+            )
+
+    def test_example_config_supplies_transport_for_every_in_scope_provider(
+        self, example_config, all_profiles
+    ):
+        for provider_id in all_profiles:
+            transport = example_config.transport_for(provider_id)
+            assert transport.max_retries == 0, provider_id
 
 
 class TestFailureNeverBecomesSuccess:

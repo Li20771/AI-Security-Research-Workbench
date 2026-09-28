@@ -18,6 +18,7 @@ from providers.config import (
     example_config_path,
     load_provider_config,
 )
+from providers.transport import TransportSettings
 from providers.validate import (
     AI02_SCOPE_PROVIDERS,
     RESERVED_PROVIDERS,
@@ -112,6 +113,78 @@ class TestPreviousContradictionsAreFixed:
     def test_reserved_provider_is_still_present(self, example_config):
         """Gap 7: it is kept, not deleted, and marked out of AI-02 scope."""
         assert RESERVED_PROVIDERS <= set(example_config.providers)
+
+
+class TestTransportBelongsToRuntimeConfig:
+    """§5.11: transport settings are runtime config, not profile data."""
+
+    def test_config_entries_carry_transport(self, example_config):
+        for provider_id in AI02_SCOPE_PROVIDERS:
+            entry = example_config.providers[provider_id]
+            assert entry.transport is not None, provider_id
+
+    def test_transport_for_returns_the_configured_settings(self, example_config):
+        transport = example_config.transport_for("deepseek")
+        assert transport.timeout_connect_ms == 10_000
+        assert transport.timeout_total_ms == 120_000
+        assert transport.max_retries == 0
+        assert transport.verify_tls is True
+
+    def test_transport_for_falls_back_to_defaults_when_absent(self, tmp_path):
+        path = tmp_path / "providers.yaml"
+        path.write_text(
+            textwrap.dedent(
+                """
+                version: 1
+                providers:
+                  deepseek:
+                    enabled: false
+                """
+            ),
+            encoding="utf-8",
+        )
+        config = load_provider_config(path)
+        assert config.transport_for("deepseek") == TransportSettings()
+
+    def test_transport_for_unknown_provider_returns_defaults(self, example_config):
+        assert example_config.transport_for("no-such-provider") == TransportSettings()
+
+    def test_profiles_do_not_carry_transport(self, all_profiles):
+        """The other half of the split: the profile layer must stay clean."""
+        for provider_id, profile in all_profiles.items():
+            assert "transport" not in profile.to_dict(), provider_id
+
+    def test_validation_rejects_disabled_tls_in_config(self, tmp_path, monkeypatch):
+        path = tmp_path / "providers.yaml"
+        path.write_text(
+            textwrap.dedent(
+                """
+                version: 1
+                providers:
+                  deepseek:
+                    enabled: false
+                    transport:
+                      timeout_connect_ms: 10000
+                      timeout_total_ms: 120000
+                      max_retries: 0
+                      verify_tls: false
+                  mimo:
+                    enabled: false
+                    transport:
+                      timeout_connect_ms: 10000
+                      timeout_total_ms: 120000
+                      max_retries: 0
+                      verify_tls: true
+                  openai-compatible:
+                    enabled: false
+                    reserved: true
+                    reserved_for: AI-09
+                """
+            ),
+            encoding="utf-8",
+        )
+        problems = validate_example_config(path)
+        assert any("verify_tls" in p for p in problems)
 
 
 class TestConfigCredentialSafety:

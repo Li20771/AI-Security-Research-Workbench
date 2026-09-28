@@ -37,8 +37,6 @@ models:
   - mimo/mimo-v2.6-pro
   - mimo/mimo-v2.6-flash
 
-transport:
-  timeout_connect_ms: 10000
-  timeout_total_ms: 120000
-  max_retries: 0
-  verify_tls: true
+# No transport settings here. Timeouts, retries, and TLS verification are
+# runtime config, not profile data (§5.11), and live in
+# config/providers/*.yaml. A profile carrying them is rejected on load.

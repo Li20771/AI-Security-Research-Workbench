@@ -96,50 +96,59 @@ class TestRedaction:
 
 
 class TestTransportRequestRedaction:
-    def test_repr_does_not_leak_the_credential(self, deepseek_profile):
-        adapter = adapter_for(deepseek_profile.protocol.family)
-        request = adapter.build_request(
-            deepseek_profile,
-            deepseek_profile.models[0],
+    """Transport settings come from runtime config, not the profile (§5.11)."""
+
+    def _request(self, profile, transport_settings, body: str):
+        adapter = adapter_for(profile.protocol.family)
+        return adapter.build_request(
+            profile,
+            profile.models[0],
             credential=PLACEHOLDER,
-            body=json.dumps({"model": "deepseek-flash"}),
+            body=body,
+            transport_settings=transport_settings,
+        )
+
+    def test_repr_does_not_leak_the_credential(
+        self, deepseek_profile, runtime_transport
+    ):
+        request = self._request(
+            deepseek_profile, runtime_transport, json.dumps({"model": "deepseek-flash"})
         )
         assert PLACEHOLDER not in repr(request)
         assert PLACEHOLDER not in str(request)
 
-    def test_redacted_headers_mask_the_authorization_header(self, deepseek_profile):
-        adapter = adapter_for(deepseek_profile.protocol.family)
-        request = adapter.build_request(
-            deepseek_profile,
-            deepseek_profile.models[0],
-            credential=PLACEHOLDER,
-            body="{}",
-        )
+    def test_redacted_headers_mask_the_authorization_header(
+        self, deepseek_profile, runtime_transport
+    ):
+        request = self._request(deepseek_profile, runtime_transport, "{}")
         headers = request.redacted_headers()
         assert headers["Authorization"] == REDACTED
         # The header name survives, so the request is still diagnosable.
         assert "Authorization" in headers
 
-    def test_body_is_not_rendered(self, deepseek_profile):
-        adapter = adapter_for(deepseek_profile.protocol.family)
-        request = adapter.build_request(
-            deepseek_profile,
-            deepseek_profile.models[0],
-            credential=PLACEHOLDER,
-            body='{"secret":"sensitive"}',
+    def test_body_is_not_rendered(self, deepseek_profile, runtime_transport):
+        request = self._request(
+            deepseek_profile, runtime_transport, '{"secret":"sensitive"}'
         )
         assert "sensitive" not in repr(request)
 
-    def test_credential_never_appears_in_the_url(self, deepseek_profile):
-        adapter = adapter_for(deepseek_profile.protocol.family)
-        request = adapter.build_request(
-            deepseek_profile,
-            deepseek_profile.models[0],
-            credential=PLACEHOLDER,
-            body="{}",
-        )
+    def test_credential_never_appears_in_the_url(
+        self, deepseek_profile, runtime_transport
+    ):
+        request = self._request(deepseek_profile, runtime_transport, "{}")
         assert PLACEHOLDER not in request.url
         assert "@" not in request.url
+
+    def test_runtime_transport_reaches_the_request(
+        self, deepseek_profile, runtime_transport
+    ):
+        """The settings the caller supplies are the ones that get applied."""
+        from providers.transport import TransportSettings
+
+        settings = TransportSettings(timeout_connect_ms=1_234, timeout_total_ms=5_678)
+        request = self._request(deepseek_profile, settings, "{}")
+        assert request.timeout_connect_ms == 1_234
+        assert request.timeout_total_ms == 5_678
 
 
 class TestProviderErrorSanitization:

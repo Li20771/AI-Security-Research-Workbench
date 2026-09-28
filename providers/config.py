@@ -112,6 +112,22 @@ class ProviderConfig:
             sorted(pid for pid, entry in self.providers.items() if entry.reserved)
         )
 
+    def transport_for(self, provider_id: str) -> TransportSettings:
+        """Runtime transport settings for a provider.
+
+        This is the only place a caller should obtain transport settings.
+        They are runtime config, not profile data (§5.11), so they are read
+        from the config entry and handed to the adapter explicitly rather
+        than being attached to a `ProviderProfile`.
+
+        Falls back to the frozen defaults when the entry omits a transport
+        block or the provider is not configured.
+        """
+        entry = self.providers.get(provider_id)
+        if entry is None or entry.transport is None:
+            return TransportSettings()
+        return entry.transport
+
 
 def load_provider_config(path: Path) -> ProviderConfig:
     """Load and validate a runtime provider configuration file."""

@@ -119,3 +119,24 @@ def body() -> str:
             "messages": [{"role": "user", "content": "ping"}],
         }
     )
+
+
+@pytest.fixture
+def example_config():
+    """The checked-in runtime provider config."""
+    from providers.config import example_config_path, load_provider_config
+
+    return load_provider_config(example_config_path())
+
+
+@pytest.fixture
+def runtime_transport():
+    """Runtime transport settings, supplied explicitly to the adapter.
+
+    Transport settings are runtime config, not profile data (§5.11), so tests
+    obtain them the same way production code does -- from config, never from a
+    `ProviderProfile`.
+    """
+    from providers.transport import TransportSettings
+
+    return TransportSettings()

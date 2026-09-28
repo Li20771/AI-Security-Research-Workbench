@@ -25,6 +25,7 @@ from typing import Any, ClassVar, Mapping
 from providers.errors import ErrorClass, ErrorStage, ProviderError
 from providers.profile import ModelRef, ProviderProfile
 from providers.redaction import REDACTED, redact
+from providers.transport import TransportSettings
 
 #: Header names whose values are credentials. Never rendered.
 SENSITIVE_HEADERS: frozenset[str] = frozenset({"authorization", "x-api-key", "api-key"})
@@ -215,12 +216,19 @@ class ProtocolAdapter(ABC):
         *,
         credential: str,
         body: str,
+        transport_settings: TransportSettings,
         method: str = "POST",
     ) -> TransportRequest:
         """Compose a transport request.
 
         `credential` is the revealed secret. Implementations must place it only
         in a request header and must never log, store, or return it.
+
+        `transport_settings` is supplied explicitly by the caller from runtime
+        config. Transport settings are runtime config, not profile data
+        (§5.11), so the adapter must never read them off `profile` -- the
+        profile has no such field, and this signature is what makes that
+        structural rather than a convention.
 
         Request *body* construction from an invocation belongs to AI-02-B3;
         B1 accepts an already-serialized body.

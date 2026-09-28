@@ -27,6 +27,7 @@ from providers.protocol.base import (
     TransportResult,
 )
 from providers.redaction import redact
+from providers.transport import TransportSettings
 
 #: Statuses with an unambiguous meaning in this protocol family.
 _STATUS_RULES: Mapping[int, ErrorClass] = {
@@ -88,6 +89,7 @@ class OpenAICompatibleChatAdapter(ProtocolAdapter):
         *,
         credential: str,
         body: str,
+        transport_settings: TransportSettings,
         method: str = "POST",
     ) -> TransportRequest:
         """Compose the outbound request.
@@ -95,8 +97,11 @@ class OpenAICompatibleChatAdapter(ProtocolAdapter):
         The credential is placed only in the `Authorization` header. The
         returned request never renders it: `TransportRequest.__repr__` and
         `redacted_headers()` mask sensitive header values.
+
+        Timeouts and TLS verification come from `transport_settings`, which the
+        caller supplies from runtime config. Nothing is read off the profile:
+        transport settings are runtime config, not profile data (§5.11).
         """
-        transport = profile.transport
         return TransportRequest(
             method=method,
             url=self.effective_url(profile),
@@ -106,9 +111,9 @@ class OpenAICompatibleChatAdapter(ProtocolAdapter):
                 "Authorization": f"Bearer {credential}",
             },
             body=body,
-            timeout_connect_ms=transport.timeout_connect_ms,
-            timeout_total_ms=transport.timeout_total_ms,
-            verify_tls=transport.verify_tls,
+            timeout_connect_ms=transport_settings.timeout_connect_ms,
+            timeout_total_ms=transport_settings.timeout_total_ms,
+            verify_tls=transport_settings.verify_tls,
         )
 
     def classify_http_status(

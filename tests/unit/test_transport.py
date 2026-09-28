@@ -33,13 +33,17 @@ class TestDefaults:
         assert DEFAULT_TIMEOUT_TOTAL_MS == 120_000
         assert AI02_MAX_RETRIES == 0
 
-    def test_profiles_use_the_frozen_defaults(self, all_profiles):
-        for provider_id, profile in all_profiles.items():
-            transport = profile.transport
+    def test_runtime_config_uses_the_frozen_defaults(self, example_config):
+        """Transport is runtime config (§5.11), so the defaults are checked there."""
+        for provider_id in ("deepseek", "mimo"):
+            transport = example_config.transport_for(provider_id)
             assert transport.max_retries == 0, provider_id
             assert transport.verify_tls is True, provider_id
             assert transport.timeout_connect_ms == 10_000, provider_id
             assert transport.timeout_total_ms == 120_000, provider_id
+
+    def test_transport_for_unconfigured_provider_returns_defaults(self, example_config):
+        assert example_config.transport_for("not-configured") == TransportSettings()
 
 
 class TestTimeoutRejection:

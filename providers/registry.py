@@ -25,10 +25,13 @@ from providers.profile import (
     Protocol,
     ProviderProfile,
 )
-from providers.transport import TransportConfigError, TransportSettings
-
 PROFILE_FILENAME = "provider.yaml"
 
+#: Permitted provider profile fields (§5.1 - §5.7).
+#:
+#: `transport` is deliberately absent: transport settings are runtime config,
+#: not profile data (§5.11). A profile that carries them is rejected rather
+#: than silently ignored, so the layering cannot drift back.
 _PROFILE_KEYS = frozenset(
     {
         "provider_id",
@@ -37,9 +40,11 @@ _PROFILE_KEYS = frozenset(
         "endpoint",
         "credential",
         "models",
-        "transport",
     }
 )
+
+#: Fields that belong to runtime config and are actively rejected in a profile.
+_RUNTIME_ONLY_PROFILE_FIELDS = frozenset({"transport"})
 
 
 class RegistryError(ValueError):
@@ -87,6 +92,13 @@ def load_provider_profile(path: Path) -> ProviderProfile:
 
     unknown = set(raw) - _PROFILE_KEYS
     if unknown:
+        misplaced = sorted(unknown & _RUNTIME_ONLY_PROFILE_FIELDS)
+        if misplaced:
+            raise RegistryError(
+                f"{path}: field(s) {', '.join(misplaced)} belong in runtime config, "
+                "not a provider profile; transport settings are runtime config "
+                "(§5.11). Move them to config/providers/*.yaml."
+            )
         raise RegistryError(
             f"{path}: unknown field(s): {', '.join(sorted(unknown))}"
         )
@@ -144,9 +156,7 @@ def _build_profile(raw: Mapping[str, Any], *, origin: str) -> ProviderProfile:
         if not isinstance(models_raw, list):
             raise RegistryError(f"{origin}: models must be a list")
         models = tuple(ModelRef.parse(entry) for entry in models_raw)
-
-        transport = TransportSettings.from_mapping(raw["transport"])
-    except (CredentialConfigError, TransportConfigError, ProfileError) as exc:
+    except (CredentialConfigError, ProfileError) as exc:
         raise RegistryError(f"{origin}: {exc}") from exc
 
     return ProviderProfile(
@@ -156,7 +166,6 @@ def _build_profile(raw: Mapping[str, Any], *, origin: str) -> ProviderProfile:
         endpoint=endpoint,
         credential=credential,
         models=models,
-        transport=transport,
     )
 
 

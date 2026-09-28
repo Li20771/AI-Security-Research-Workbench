@@ -7,6 +7,7 @@ enforces its shape and refuses anything it cannot represent.
 from __future__ import annotations
 
 import textwrap
+from dataclasses import FrozenInstanceError, fields
 
 import pytest
 
@@ -24,7 +25,6 @@ from providers.registry import (
     load_provider_profile,
     provider_profile_path,
 )
-from providers.transport import TransportSettings
 
 
 def _write(path, body: str):
@@ -59,13 +59,15 @@ MINIMAL_PROFILE = textwrap.dedent(
       required: true
     models:
       - {provider_id}/example-model
-    transport:
-      timeout_connect_ms: 10000
-      timeout_total_ms: 120000
-      max_retries: 0
-      verify_tls: true
     """
 ).lstrip("\n")
+
+#: A profile body carrying transport settings. These belong to runtime config
+#: (§5.11), so a profile with them must be rejected rather than loaded.
+PROFILE_WITH_TRANSPORT = (
+    MINIMAL_PROFILE.format(provider_id="example", display_name="Example")
+    + "\ntransport:\n  timeout_connect_ms: 10000\n  timeout_total_ms: 120000\n"
+)
 
 
 class TestProviderIdValidation:
@@ -154,7 +156,8 @@ class TestRegistryLoading:
         )
         profile = load_provider_profile(path)
         assert profile.provider_id == "example"
-        assert profile.transport == TransportSettings()
+        assert profile.display_name == "Example"
+        assert profile.model_refs == ("example/example-model",)
 
     def test_missing_file_is_reported(self, tmp_path):
         with pytest.raises(RegistryError):
@@ -201,6 +204,122 @@ class TestRegistryLoading:
         path = _write(tmp_path / "example" / "provider.yaml", body)
         with pytest.raises(RegistryError):
             load_provider_profile(path)
+
+
+class TestTransportIsNotProfileData:
+    """§5.11: transport settings are runtime config, not profile data.
+
+    The layering is enforced structurally, not by convention: the profile type
+    has no such field, the field is declared with slots, and the loader rejects
+    any profile that carries one.
+    """
+
+    def test_provider_profile_has_no_transport_field(self):
+        assert "transport" not in {f.name for f in fields(ProviderProfile)}
+
+    def test_provider_profile_has_no_transport_attribute(self, all_profiles):
+        for provider_id, profile in all_profiles.items():
+            assert not hasattr(profile, "transport"), provider_id
+
+    def test_transport_cannot_be_reattached_to_a_profile(self, deepseek_profile):
+        """The layering guarantee is structural: the attribute cannot exist.
+
+        CPython raises `TypeError` rather than `AttributeError` for an
+        undeclared attribute on a `frozen=True, slots=True` dataclass: the
+        generated `__setattr__` compares against the pre-slots class object.
+        The assignment is still refused, which is the property that matters,
+        so this asserts the effect rather than the exception type.
+
+        Declared fields still raise `FrozenInstanceError` normally.
+        """
+        with pytest.raises((AttributeError, TypeError)):
+            deepseek_profile.transport = None  # type: ignore[misc]
+        assert not hasattr(deepseek_profile, "transport")
+
+    def test_declared_fields_still_raise_frozen_instance_error(self, deepseek_profile):
+        with pytest.raises(FrozenInstanceError):
+            deepseek_profile.provider_id = "hacked"  # type: ignore[misc]
+        assert deepseek_profile.provider_id == "deepseek"
+
+    def test_serialized_profile_carries_no_transport(self, all_profiles):
+        for provider_id, profile in all_profiles.items():
+            assert "transport" not in profile.to_dict(), provider_id
+
+    def test_a_profile_carrying_transport_is_rejected(self, tmp_path):
+        path = _write(tmp_path / "example" / "provider.yaml", PROFILE_WITH_TRANSPORT)
+        with pytest.raises(RegistryError, match="runtime config"):
+            load_provider_profile(path)
+
+    def test_rejection_message_points_at_the_right_layer(self, tmp_path):
+        path = _write(tmp_path / "example" / "provider.yaml", PROFILE_WITH_TRANSPORT)
+        with pytest.raises(RegistryError) as excinfo:
+            load_provider_profile(path)
+        message = str(excinfo.value)
+        assert "transport" in message
+        assert "config/providers" in message
+
+    def test_shipped_profiles_contain_no_transport_block(self):
+        for provider_id in ("deepseek", "mimo"):
+            text = provider_profile_path(provider_id).read_text(encoding="utf-8")
+            assert "\ntransport:" not in text, provider_id
+
+    def test_transport_loads_from_runtime_config_instead(self, example_config):
+        """The same settings are available where they belong."""
+        for provider_id in ("deepseek", "mimo"):
+            transport = example_config.transport_for(provider_id)
+            assert transport.max_retries == 0, provider_id
+            assert transport.verify_tls is True, provider_id
+
+
+class TestProtocolSchema:
+    """§5.4 reconciliation: `Protocol` carries `family` and `version` only.
+
+    §5.4's illustrative YAML block also shows `streaming: sse` and
+    `source: declared`, but **no rule in §5.4 defines either field**. Both have
+    authoritative definitions elsewhere, and neither is a provider fact:
+
+    - `streaming` is defined in §6.7 as a *model capability* under the truth
+      model -- object-shaped (`declared` / `verified` / `status` / `source`)
+      and AI-02-B2 scope. A scalar `protocol.streaming` would be a second,
+      differently-shaped field with the same name, and would assert a
+      capability claim that §8.3 forbids asserting without evidence.
+    - `source` is defined for endpoints in §5.2 and for capabilities in §6.8.
+      §5.4 gives it no meaning.
+
+    Adding them to B1 would invent semantics the contract does not define, so
+    they are excluded. These assertions freeze that determination: if either
+    is ever added, it is a deliberate contract amendment, not a drift.
+    """
+
+    def test_protocol_carries_only_family_and_version(self):
+        assert {f.name for f in fields(Protocol)} == {"family", "version"}
+
+    def test_protocol_has_no_streaming_or_source_attributes(self):
+        protocol = Protocol("openai_compatible_chat", "v1")
+        assert not hasattr(protocol, "streaming")
+        assert not hasattr(protocol, "source")
+
+    def test_protocol_serializes_family_and_version_only(self):
+        assert set(Protocol("openai_compatible_chat", "v1").to_dict()) == {
+            "family",
+            "version",
+        }
+
+    def test_shipped_profiles_declare_family_and_version_only(self, all_profiles):
+        for provider_id, profile in all_profiles.items():
+            assert set(profile.protocol.to_dict()) == {"family", "version"}, provider_id
+
+    def test_shipped_profile_yaml_declares_no_streaming(self):
+        """`streaming` is a capability (§6.7), not a provider protocol fact."""
+        for provider_id in ("deepseek", "mimo"):
+            text = provider_profile_path(provider_id).read_text(encoding="utf-8")
+            assert "streaming:" not in text, provider_id
+
+    def test_protocol_fields_must_not_be_empty(self):
+        with pytest.raises(ProfileError):
+            Protocol("", "v1")
+        with pytest.raises(ProfileError):
+            Protocol("openai_compatible_chat", "")
 
 
 class TestB1ScopeDiscipline:

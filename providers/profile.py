@@ -19,7 +19,6 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from providers.credential import CredentialConfigError, CredentialRef
-from providers.transport import TransportSettings
 
 #: Stable machine identity: lowercase, no version, no spaces (§5.1).
 #: `-` and `_` are permitted as internal separators, so the pre-existing
@@ -206,9 +205,14 @@ class CredentialSpec:
 class ProviderProfile:
     """A provider profile (§5.1 - §5.7).
 
-    Carries identity, protocol, endpoint, credential reference, exposed model
-    references, and transport settings. It carries no capability claims and no
-    credential value.
+    Carries identity, protocol, endpoint, credential reference, and the model
+    references the provider exposes. It carries no capability claims, no
+    credential value, and **no transport settings**.
+
+    Transport settings are runtime config, not profile data (§5.11), so they
+    live in `config/providers/*.yaml` and are supplied to the adapter
+    explicitly. Keeping them out of this type is what makes the layering
+    enforceable rather than merely documented.
     """
 
     provider_id: str
@@ -217,7 +221,6 @@ class ProviderProfile:
     endpoint: Endpoint
     credential: CredentialSpec
     models: tuple[ModelRef, ...] = field(default_factory=tuple)
-    transport: TransportSettings = field(default_factory=TransportSettings)
 
     def __post_init__(self) -> None:
         if not PROVIDER_ID_RE.match(self.provider_id or ""):
@@ -247,7 +250,6 @@ class ProviderProfile:
             "endpoint": self.endpoint.to_dict(),
             "credential": self.credential.to_dict(),
             "models": list(self.model_refs),
-            "transport": self.transport.to_dict(),
         }
 
 

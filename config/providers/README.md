@@ -5,13 +5,19 @@ Runtime configuration for the Workbench provider layer.
 ## Layer boundary
 
 ```text
-providers/<id>/provider.yaml    reviewable identity and protocol facts
-config/providers/*.yaml         runtime selection, enablement, overrides
+providers/<id>/provider.yaml    identity, protocol, endpoint,
+                                credential.ref, models
+config/providers/*.yaml         enabled, runtime overrides, transport
 ```
 
 This directory selects and enables. It does not define identity or protocol —
 that is `providers/`' job, reviewed like code. Runtime config never redefines
 capability.
+
+**Transport settings belong here** (§5.11): timeouts, `max_retries`, and
+`verify_tls` are runtime config, not profile data. They are read from this
+file and passed to the adapter explicitly. A provider profile that carries a
+`transport:` block is rejected on load, so the split cannot drift back.
 
 ## Files
 
