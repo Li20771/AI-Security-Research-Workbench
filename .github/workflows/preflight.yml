@@ -1,5 +1,11 @@
 name: preflight
 
+# Layers 0-3 only. Layer 4 (live connectivity verification) is AI-02-B6 and is
+# opt-in behind WORKBENCH_LIVE_TESTS; this workflow never invokes it and
+# contains no provider endpoint, no HTTP client, and no opt-in flag.
+# tests/unit/../scripts/ci/layer0_policy.py asserts all four of those, so the
+# guarantee is checked rather than promised.
+
 on:
   pull_request:
   push:
@@ -7,34 +13,18 @@ on:
 
 jobs:
   repository-preflight:
+    name: "Layer 0 — repository policy"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Check required files
-        run: |
-          test -f README.md
-          test -f docs/MASTER_ROADMAP.md
-          test -f docs/AI-00_REQUIREMENTS_AND_ARCHITECTURE.md
-          test -f docs/GIT_AND_SECURITY_BOUNDARY.md
-          test -f .gitignore
-          test -f .env.example
-      - name: Check repository layout
-        run: |
-          bash tests/unit/test_repository_layout.sh
-      - name: Check secret files are absent
-        run: |
-          test ! -f .env
-          test ! -f credentials.json
-          ! find . -type f \( -name '*.pem' -o -name '*.key' \) | grep -q .
-      - name: Check shell syntax
-        run: |
-          bash -n scripts/bootstrap/preflight.sh
-          bash -n tests/unit/test_repository_layout.sh
+      - name: "Layer 0 — repository policy"
+        run: python3 scripts/ci/layer0_policy.py
 
   provider-tests:
+    name: "Layers 1-3 — offline model layer"
     runs-on: ubuntu-latest
-    # No credentials are provided to this job, by design. The provider layer
-    # is offline: a suite that needed an API key could not run here, and
+    # No credentials are provided to this job, by design. Layers 1-3 are
+    # offline: a suite that needed an API key could not run here, and
     # requiring one would make the gate untestable in a clean environment.
     env:
       DEEPSEEK_API_KEY: ""
@@ -51,14 +41,42 @@ jobs:
       - name: Check Python syntax
         run: |
           python -m compileall -q providers tests
-      - name: Provider/config validation
+
+      - name: "Layer 1 — contract and schema"
         run: |
           python -m providers.validate
-      - name: Run unit tests
+          python -m pytest -m layer1
+
+      - name: "Layer 2 — fake-transport unit tests"
         run: |
-          python -m pytest
+          python -m pytest -m layer2
+
+      - name: "Layer 3 — offline contract fixtures"
+        run: |
+          python -m pytest -m layer3
+
+      - name: "Layer 4 — live connectivity verification"
+        run: |
+          echo "Layer 4 = NOT_RUN"
+          echo
+          echo "Live connectivity verification is AI-02-B6. It is opt-in only: it"
+          echo "requires WORKBENCH_LIVE_TESTS and a resolvable credential, and it"
+          echo "is the only layer permitted to promote a capability to VERIFIED."
+          echo "This workflow does none of that, so no live check ran."
+          echo
+          echo "NOT_RUN != PASS. This run promotes no capability and is not"
+          echo "evidence about either provider."
+
+      - name: Layer status
+        run: |
+          echo "Layer 0 — repository policy ................ EXECUTED"
+          echo "Layer 1 — contract and schema .............. EXECUTED"
+          echo "Layer 2 — fake-transport unit tests ........ EXECUTED"
+          echo "Layer 3 — offline contract fixtures ........ EXECUTED"
+          echo "Layer 4 — live connectivity verification ... NOT_RUN (opt-in only)"
+
       - name: Confirm the suite ran without credentials
         run: |
           test -z "${DEEPSEEK_API_KEY:-}"
           test -z "${MIMO_API_KEY:-}"
-          echo "provider layer validated and tested with no credential present"
+          echo "layers 0-3 validated and tested with no credential present"
