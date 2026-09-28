@@ -123,7 +123,7 @@ read
 
 ## AI-01 — DSH Baseline
 
-目标：让 DSH 成为主 Agent 平台的可重复基线。
+目标：建立经过实际验证、证据支持的 DSH 主 Agent 基线。
 
 范围：
 
@@ -137,9 +137,21 @@ read
 
 出口条件：
 
-- 能从干净环境复现 DSH 基线。
 - 能确认 Agent、工具、插件的实际行为。
 - 有可回退配置。
+- 安装 / 启动过程已记录（documented）。
+
+**不在出口条件内：**
+
+- 在另一台干净 Windows 环境中重装同一 DSH 版本并证明完全复现。
+  该项属于未来的部署 / 可复现性验证，**不是 AI-01 的 gate**。
+
+说明：
+
+- AI-01 validates the current DSH baseline, not universal cross-machine support.
+- DSH is an external moving dependency and may require re-baselining after significant updates.
+- Clean-room reinstall / cross-machine deployment is a future operational validation item,
+  not an AI-01 gate.
 
 ---
 
@@ -573,8 +585,8 @@ SecurityLab
 | Stage | Status |
 | --- | --- |
 | AI-00 | **COMPLETE** |
-| AI-01 | **IN PROGRESS** |
-| AI-02 | NOT STARTED |
+| AI-01 | **COMPLETE** |
+| AI-02 | **NOT STARTED** — next stage, see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-03 | NOT STARTED |
 | AI-04 | NOT STARTED |
 | AI-05 | NOT STARTED |

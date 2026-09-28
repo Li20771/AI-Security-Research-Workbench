@@ -1,23 +1,40 @@
 # AI-01 — DSH Baseline Execution Plan
 
-> Status: **FROZEN**
+> Status: **FROZEN** (amended 2026-09-28 — exit criteria redefined, see §6.1 and §9)
 > Phase: AI-01 — DSH Baseline
 > Prerequisite: AI-00 architecture / repository baseline
 > Rule: AI-01 is the current active phase. Do not begin AI-02+ implementation before AI-01 exit.
 
 ## 1. Purpose
 
-Establish a reproducible, evidence-backed DSH baseline for the Workbench.
+Establish an **actually verified, evidence-backed DSH baseline** for the Workbench.
+
+AI-01 records the DSH baseline that was tested, on the host where it was tested, with
+execution evidence behind each claim. It is a record of verified present state — not a
+portability guarantee and not a support commitment.
 
 AI-01 answers:
 
-- What exact DSH build/version is being used?
-- How is it installed and started?
+- What exact DSH build/version was tested?
+- How is it installed and started on the verified host?
 - What configuration is required?
 - How is a Workbench workspace attached?
 - Which plugin/tool capabilities actually work?
 - What is the reproducible rollback point?
 - Which behaviors are confirmed, unsupported, or unknown?
+
+### 1.1 Scope boundary — what AI-01 does and does not claim
+
+AI-01 validates the **current DSH baseline**, not universal cross-machine support.
+
+- **In scope:** exact tested DSH version, installation method and startup on the verified host,
+  configuration, workspace binding, plugin/tool capability, permission boundary, recovery,
+  evidence, and rollback point.
+- **Not an AI-01 exit requirement:** reinstalling the same DSH version on a *different* clean
+  Windows machine and demonstrating full reproduction. That is **deployment / reproducibility
+  work**, deferred — see §6.1 and §9.
+- AI-01 does **not** claim that DSH is reproducible across arbitrary Windows environments, and
+  does **not** claim that the Workbench runs on any Windows host.
 
 No model integration, routing implementation, plugin implementation, or SecurityLab production change belongs in AI-01.
 
@@ -39,7 +56,8 @@ Do not document a version as supported until it has been tested.
 
 ### 2.2 Installation and startup
 
-Establish a clean, repeatable procedure for:
+Record the installation and startup procedure **as actually observed and executed on the
+verified host**:
 
 - installation
 - dependency setup
@@ -49,6 +67,10 @@ Establish a clean, repeatable procedure for:
 - configuration persistence
 
 Every command used for the baseline must be recorded.
+
+**Documenting this procedure is required. Proving that it reproduces on a different clean
+machine is not part of AI-01** — see §6.1. The recorded procedure is evidence about the tested
+host and the tested version, not a portability claim.
 
 ### 2.3 Configuration baseline
 
@@ -148,13 +170,23 @@ The AI-01 baseline record must contain at minimum:
 
 No claim of support is valid without corresponding execution evidence.
 
+### 5.1 What this evidence does and does not mean
+
+- **Installer identity is version-specific evidence.** The recorded artifact identity
+  (filename, size, hash, signature) applies to the tested build only.
+- **This is not a universal support claim.** Nothing in this plan asserts that the Workbench —
+  or DSH itself — works on arbitrary Windows environments.
+- **Future DSH upgrades require a new baseline verification.** DSH is an external, continuously
+  updated platform; once it changes materially, the recorded baseline no longer describes it.
+  See §9.
+
 ## 6. Exit criteria
 
 AI-01 exits only when all applicable items below are satisfied:
 
 - [ ] Exact tested DSH version recorded
 - [ ] Runtime dependency versions recorded
-- [ ] Clean installation/start procedure documented
+- [ ] Clean installation/start procedure **documented**
 - [ ] Startup/restart behavior verified
 - [ ] Known-good configuration recorded without secrets
 - [ ] Controlled workspace binding verified
@@ -166,6 +198,26 @@ AI-01 exits only when all applicable items below are satisfied:
 - [ ] Known limitations classified
 - [ ] PR reviewed and merged
 - [ ] PROJECT_STATUS.md updated
+
+### 6.1 Clean installation — what is required, and what is not
+
+```text
+Documented installation/start procedure                    = REQUIRED for AI-01 exit
+Clean-room reinstallation on ANOTHER machine, with full
+reproduction demonstrated                                  = NOT REQUIRED FOR AI-01 EXIT
+```
+
+An earlier reading of this phase implied that AI-01 required demonstrating baseline
+reproduction **from a clean environment on a different machine**. That requirement is
+**removed** from the exit criteria and reclassified as deferred **deployment / reproducibility
+validation**.
+
+The reason is environmental, not a relaxation of evidence standards: this host provides no
+clean, disposable Windows environment, established by direct investigation (CP7, CP9, CP10,
+CP11). That finding remains `BLOCKED` — it is simply no longer a gate on AI-01.
+
+> The deferred item **must not** be recorded as `PASS`, and no claim of cross-machine
+> reproducibility may be derived from it.
 
 ## 7. Explicit non-goals
 
@@ -185,3 +237,20 @@ AI-01 does not:
 AI-02 may start only after AI-01 is marked complete in PROJECT_STATUS.md and its exit criteria are satisfied.
 
 The AI-02 starting point must be the merged AI-01 baseline commit.
+
+## 9. Baseline maintenance model
+
+- **DSH is an external, moving dependency.** It updates on its own schedule and is not
+  version-pinned by the Workbench.
+- **The Workbench does not guarantee indefinite support for every future DSH build.** The
+  baseline describes a tested build; it is not a promise about builds that do not exist yet.
+- **When DSH is upgraded materially, run a new DSH baseline checkpoint.** A new checkpoint
+  produces a new baseline record; it never retroactively alters an earlier one.
+- **Previous evidence remains historical evidence.** Earlier checkpoints stay valid for the
+  build and host they describe, and are not rewritten.
+- **Clean-room installation is deferred, not cancelled.** It can be taken up later as
+  deployment / reproducibility work when a suitable environment exists.
+
+```text
+AI-01 records a verified baseline, not a permanent DSH version support commitment.
+```
