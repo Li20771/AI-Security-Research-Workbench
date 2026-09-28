@@ -1,0 +1,74 @@
+# DeepSeek model profile.
+#
+# Status: DECLARED identity only. Nothing here is VERIFIED.
+#
+# This profile records what is *known to be recorded*, and nothing more. Every
+# capability is UNKNOWN, every limit is null, and provenance is empty, because
+# the Workbench has observed none of it. AI-02-B6 is the only phase permitted
+# to promote a capability, and only from a dated observation.
+#
+# Do not fill these in to make the profile look complete. `declared: null` with
+# `status: UNKNOWN` means nobody knows; it does not mean false. A guessed
+# context limit is worse than an absent one, because it silently truncates real
+# work (§6.5).
+#
+# Capability must never be inferred from the name. "Flash" is not evidence of
+# anything (§6.3).
+#
+# model_id is the API model id, sent verbatim. display_name is human-facing and
+# is never sent. The two are independent records, NOT a derivation: no
+# lowercasing or hyphenating of one produces the other (§6.3).
+
+model_ref: deepseek/deepseek-flash
+provider_id: deepseek
+model_id: deepseek-flash
+display_name: DeepSeek-V4.1-Flash
+family: deepseek
+version: "4.1"
+
+limits:
+  context_limit: null
+  max_output: null
+
+modality:
+  input:
+    - text
+  output:
+    - text
+
+capabilities:
+  tool_calling:
+    declared: null
+    verified: null
+    status: UNKNOWN
+    source: null
+
+  structured_output:
+    declared: null
+    verified: null
+    status: UNKNOWN
+    source: null
+
+  streaming:
+    declared: null
+    verified: null
+    status: UNKNOWN
+    source: null
+
+  reasoning:
+    declared: null
+    verified: null
+    status: UNKNOWN
+    source: null
+
+  prompt_caching:
+    declared: null
+    verified: null
+    status: UNKNOWN
+    source: null
+
+provenance:
+  declared_source: null
+  declared_at: null
+  verified_at: null
+  evidence_ref: null

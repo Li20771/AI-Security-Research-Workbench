@@ -50,10 +50,61 @@ providers/
   protocol/
     base.py                      adapter interface, envelope, transport interface
     openai_compatible_chat.py    shared adapter for both in-scope providers
-  deepseek/provider.yaml         declared profile
-  mimo/provider.yaml             declared profile
+  model_profile.py     model profile types           (contract §6, §8)
+  model_registry.py    model profile loading
+  deepseek/provider.yaml         declared provider profile
+  deepseek/models/*.yaml         declared model profiles
+  mimo/provider.yaml             declared provider profile
+  mimo/models/*.yaml             declared model profiles
   openai-compatible/             RESERVED — not implemented, see below
 ```
+
+## Model profiles
+
+Model profiles live beside the provider that exposes them, at
+`providers/<provider_id>/models/<model_id>.yaml`. They are reviewable data,
+not runtime config, and the filename and directory are part of the identity
+contract: a profile whose `model_id` disagrees with its filename, or whose
+`provider_id` disagrees with its directory, is rejected on load.
+
+| Model ref | display name | limits | capabilities |
+| --- | --- | --- | --- |
+| `deepseek/deepseek-flash` | `DeepSeek-V4.1-Flash` | unknown | UNKNOWN |
+| `mimo/mimo-v2.6-pro` | `MiMo-V2.6-Pro` | unknown | UNKNOWN |
+| `mimo/mimo-v2.6-flash` | `MiMo-V2.6-Flash` | unknown | UNKNOWN |
+
+Three models, and that is the whole AI-02 scope. None is a default.
+
+### The truth model, and why the profiles assert nothing
+
+Every capability carries **two axes**: `declared` (what an external source
+claims) and `verified` (what the Workbench observed), plus a `status` from the
+five frozen states. They are never collapsed into one boolean.
+
+```
+DECLARED      an external source claims it; no Workbench execution
+VERIFIED      the Workbench observed it working, with evidence
+NOT_VERIFIED  verification was attempted and was inconclusive
+UNAVAILABLE   the Workbench observed it absent or rejected
+UNKNOWN       no claim and no observation
+```
+
+**No shipped capability is anything but `UNKNOWN`**, and every limit is
+`null`. This is not an unfinished profile — it is the honest record. Nobody
+has checked, so nothing is claimed:
+
+- `UNKNOWN` is not `false`. Unknown means unknown.
+- `declared: null` does not mean "unsupported"; it means nobody said.
+- A guessed context limit is worse than an absent one: it silently truncates
+  real work.
+- Capability is never inferred from a name. `Pro`, `Flash`, `V4.1` are not
+  evidence of anything.
+- Only AI-02-B6 may promote a capability, and only from a dated observation.
+
+A profile declaring `VERIFIED` must carry `verified_at` and `evidence_ref`;
+the schema rejects the claim without them. `structured_output` additionally
+records a `mode`, because `json_object` guarantees JSON but **not** schema
+conformance, and the two must never be consumed alike.
 
 ## Providers in scope
 
