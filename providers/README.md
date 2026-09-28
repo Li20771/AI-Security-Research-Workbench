@@ -53,6 +53,8 @@ providers/
   model_profile.py     model profile types           (contract §6, §8)
   model_registry.py    model profile loading
   invocation.py        normalized invocation         (contract §7, §5.8)
+  metrics.py           metric observation/aggregation (contract §9)
+  pricing.py           pricing metadata, cost         (contract §9.3)
   deepseek/provider.yaml         declared provider profile
   deepseek/models/*.yaml         declared model profiles
   mimo/provider.yaml             declared provider profile
@@ -158,6 +160,70 @@ and a tool call is neither an error nor a final answer.
 A pre-flight refusal carries a `BlockReason`, not a provider `ErrorClass`:
 no provider was contacted, so no provider-layer class applies. Reusing one
 would blur a policy decision with something a provider did.
+
+## Metrics
+
+`MetricAggregator.record(...)` takes an observation built from an invocation
+result and produces aggregates. The relationship is **one-way**: metrics
+record facts and never feed back into a call.
+
+```text
+InvocationResult  ->  MetricObservation  ->  MetricAggregate
+```
+
+`record_invocation()` returns `None` and counts the call in `declined_count`
+when it cannot be attributed, so a skip is visible rather than silent.
+
+No module here selects, ranks, or falls back between models. Aggregates are
+available overall and broken down by provider, model, experiment, and task
+class.
+
+Three rules the counters enforce:
+
+- **`BLOCKED` is not a failure.** A refused call counts as a request and lands
+  in `blocked_count`; an unconfigured environment must not look like a failing
+  provider.
+- **Unknown is not zero.** An unreported count stays `None` and increments
+  `usage_unknown_count`. Totals sum only what was measured and carry
+  `is_complete: false` when anything was not.
+
+  A usage is complete only when it was `REPORTED` *and* carries both required
+  counts. A `Usage` claiming `REPORTED` while omitting input or output
+  contradicts §9.2 and is treated as incomplete rather than trusted, so the
+  contradiction cannot leak into a total that reads as complete. A genuine
+  reported `0` stays complete — zero is a measurement. Cache counts are
+  excluded from the requirement: §9.1 records them only where the provider
+  reports them.
+
+- **Unattributable calls are not collected.** A call the invocation layer
+  blocked for naming a provider or model that does not exist can never become
+  an observation — the block code carries that verdict, so no registry lookup
+  is needed and there is no `unknown-provider` bucket.
+
+  `MetricAggregator` **requires** `known_model_refs` — the set of models the
+  caller vouches for. There is no default, because a default would accept
+  anything, and §9.4 would then hold on the invocation path but not at the
+  collection boundary. Metrics never load the registry themselves: a registry,
+  a test fixture, or a narrower allowlist all work, and an empty set collects
+  nothing.
+
+  Attribution is an argument the caller supplies, not a property of a ref. A
+  synthetic model is collectable once it is declared, which is the explicit
+  act the rule asks for.
+
+Raw latency samples are kept alongside the aggregates; a mean alone cannot be
+re-analysed.
+
+### Pricing
+
+Pricing is **metadata, never logic** (§9.3). The default catalog is empty: no
+price ships with AI-02, and there is no per-model branch and no fallback price.
+
+A cost exists only when a dated record applies *and* every component that
+record prices has a measured count. Otherwise `estimated_cost` is `None` with
+a reason — never `0`, because zero claims the call was free, which is a
+different statement from "we cannot say". Token counts are the durable fact;
+cost is a projection that changes when the price list does.
 
 ## Rules
 
