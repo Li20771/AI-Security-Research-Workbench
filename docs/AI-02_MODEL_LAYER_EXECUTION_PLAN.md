@@ -291,19 +291,37 @@ vault:<path>          reserved
 <literal value>       FORBIDDEN
 ```
 
+Three distinct outcomes. They are **never merged** (§5.10):
+
+```text
+env:<VAR_NAME> unset / empty / whitespace   ->  CREDENTIAL_MISSING      (runtime precondition)
+file: / keyring: / vault: / unknown scheme  ->  CREDENTIAL_UNSUPPORTED  (runtime precondition)
+<literal value>                             ->  configuration rejection (never reaches runtime)
+```
+
 Rules:
 
-- Only `env:` is implemented in AI-02. Reserved schemes must fail closed with
-  `CREDENTIAL_UNSUPPORTED`, never fall back to a literal or an empty value.
+- Only `env:` is implemented in AI-02. A reserved or unrecognised scheme fails closed with
+  `CREDENTIAL_UNSUPPORTED` — it never falls back to a literal, to an empty value, or to treating
+  the reference string as a variable name.
+- **An unsupported scheme is not a missing credential.** `file:/etc/key` is a well-formed
+  reference to a mechanism AI-02 does not implement; it is not an unset variable. The two are
+  separately classed (§5.10) so that an unimplemented mechanism is never reported as a
+  configuration gap, and a genuine configuration gap is never reported as an unimplemented
+  mechanism. Their remedies differ: one needs a credential provisioned, the other needs a
+  supported reference written.
 - Resolution happens **at invocation time**, not at import time, and never at config-load time
   in a way that writes the value anywhere.
 - The resolved value lives only in the request's transport header. It is never returned, logged,
   serialized, put in a metric, or written to Evidence.
 - **Missing and empty are the same failure.** An unset variable and a variable set to `""` or
   whitespace both resolve to `CREDENTIAL_MISSING`.
-- `CREDENTIAL_MISSING` is a **precondition failure raised before any network attempt.** It is not
-  an authentication error discovered by the provider, and it must never be sent as an empty
-  `Authorization` header.
+- A **literal value** in a `ref` field is rejected by configuration/schema validation (§10.3). It
+  is never resolved, never sent, and never treated as a credential — it is a defect, not a runtime
+  error class.
+- `CREDENTIAL_MISSING` and `CREDENTIAL_UNSUPPORTED` are **precondition failures raised before any
+  network attempt.** Neither is an authentication error discovered by the provider, and neither
+  may ever be sent as an empty `Authorization` header.
 - `required: false` is permitted only for providers that genuinely need no credential; it does not
   authorise sending an empty one.
 
@@ -459,7 +477,8 @@ Rules:
 
 | Class | Trigger | Default `retryable` |
 | --- | --- | --- |
-| `CREDENTIAL_MISSING` | credential unset/empty, or unsupported ref scheme — raised **before** any request | no |
+| `CREDENTIAL_MISSING` | credential env var unset, empty, or whitespace — raised **before** any request | no |
+| `CREDENTIAL_UNSUPPORTED` | credential ref uses an unsupported scheme (`file:`, `keyring:`, `vault:`, unknown) — raised **before** any request | no |
 | `AUTHENTICATION` | credential rejected by provider (401/403) | no |
 | `RATE_LIMIT` | transient throttle (429) | yes |
 | `QUOTA_EXHAUSTED` | balance/quota exhausted (402, hard quota) | no |
@@ -477,7 +496,7 @@ The eight error distinctions required by AI-02-A are answered as follows:
 
 | Required distinction | Answer |
 | --- | --- |
-| authentication | `AUTHENTICATION`, and separately `CREDENTIAL_MISSING` for a missing one |
+| authentication | `AUTHENTICATION` (provider rejected the credential) vs `CREDENTIAL_MISSING` (no credential to send) vs `CREDENTIAL_UNSUPPORTED` (reference mechanism not implemented) |
 | timeout | `TIMEOUT`, with `stage` recording connect vs read vs total |
 | rate-limit | `RATE_LIMIT` (transient) vs `QUOTA_EXHAUSTED` (terminal) |
 | protocol | `PROTOCOL` (response violated the contract) vs `INVALID_REQUEST` (we sent a bad request) |
@@ -489,6 +508,12 @@ Rules:
   account.
 - **`PROTOCOL` and `INVALID_REQUEST` are never merged.** One means the provider broke our
   contract; the other means we broke theirs.
+- **`CREDENTIAL_MISSING` and `CREDENTIAL_UNSUPPORTED` are never merged.** One means the runtime
+  environment did not supply a credential; the other means the reference asked for a mechanism
+  AI-02 does not implement. They have different remedies — provisioning a credential versus
+  writing a supported reference — so merging them sends an operator to fix the wrong thing.
+- **A literal credential value is not an error class.** It is rejected by configuration/schema
+  validation (§10.3), never resolved, and never sent, so it never reaches this taxonomy.
 - A failure is never downgraded into a partial success. Partial output produced before a
   `TIMEOUT` is recorded as partial and the call's status is the error.
 - Provider error bodies are **sanitized before they are stored**, because providers echo request
@@ -852,7 +877,7 @@ it** — routing on these numbers is AI-07/AI-12.
 | `request_count` | attempted calls |
 | `success_count` | `status = SUCCESS` |
 | `failure_count` | `status = ERROR` |
-| `blocked_count` | `status = BLOCKED` — e.g. credential missing. **Not a failure** |
+| `blocked_count` | `status = BLOCKED` — e.g. credential missing or unsupported. **Not a failure** |
 | `timeout_count` | the `TIMEOUT` subset of failures, counted separately |
 | `latency` | raw `total_ms` samples plus aggregates; aggregates never replace samples |
 | `input_tokens` | provider-reported |
@@ -949,8 +974,9 @@ secret manager is a reserved scheme, not an implicit permission.
 
 ### 10.3 Enforcement inside the contract
 
-- Config and profiles carry `credential.ref` — a **reference**. A literal value in a ref field is a
-  defect, not a convenience.
+- Config and profiles carry `credential.ref` — a **reference**. A literal value in a ref field is
+  rejected by configuration/schema validation, never resolved, and never sent. It is a defect, not
+  a convenience — and not an error class either.
 - The provider adapter logs the credential's **presence, never its value** (`present` / `missing`).
 - Redaction applies to outbound error text, because providers echo request material into error
   bodies: `Authorization` headers, `api_key`/`token`/`secret`/`password` parameter patterns, and
@@ -971,13 +997,16 @@ requires a real credential** to pass.
 ### 10.5 Fail-closed rule
 
 ```text
-credential missing/empty/unsupported  ->  BLOCKED, before any network attempt
-credential present                    ->  attempt
-anything else                         ->  BLOCKED
+credential env var unset/empty/whitespace  ->  BLOCKED (CREDENTIAL_MISSING), before any network attempt
+credential ref scheme unsupported          ->  BLOCKED (CREDENTIAL_UNSUPPORTED), before any network attempt
+credential ref is a literal value          ->  configuration rejected, never sent
+credential present and scheme supported    ->  attempt
+anything else                              ->  BLOCKED
 ```
 
-A missing credential is never resolved by trying anyway, and an authentication failure is never
-retried as though it were transient.
+A missing credential is never resolved by trying anyway, an unsupported scheme is never resolved by
+guessing at the reference, and an authentication failure is never retried as though it were
+transient.
 
 ---
 
@@ -1019,7 +1048,8 @@ A live test runs only when **all** hold:
 3. the provider is in an explicit live-test allowlist
 
 Absent any one of these, the test records `BLOCKED` with a machine-readable reason
-(`opt_in_absent`, `credential_missing`, `provider_not_allowlisted`), or `NOT_RUN` in CI.
+(`opt_in_absent`, `credential_missing`, `credential_unsupported`, `provider_not_allowlisted`), or
+`NOT_RUN` in CI.
 
 ### 11.4 Live-test safety rules
 
@@ -1080,7 +1110,10 @@ A stub transport returning canned provider-shaped payloads. Asserts normalizatio
 - reasoning content maps to `reasoning` and **never** into `text`
 - `json_object` mode is not reported as schema-enforced
 - credential redaction removes key-shaped strings from error text
-- empty credential ⇒ `CREDENTIAL_MISSING` **with no request sent**
+- empty/unset/whitespace credential ⇒ `CREDENTIAL_MISSING` **with no request sent**
+- unsupported ref scheme (`file:`, `keyring:`, `vault:`, unknown) ⇒ `CREDENTIAL_UNSUPPORTED`
+  **with no request sent**, and never reported as `CREDENTIAL_MISSING`
+- a literal credential value ⇒ rejected by schema validation, **with no request sent**
 - `timeout_ms` is enforced; partial output on timeout is marked partial
 - no result is ever produced with `status: SUCCESS` and a non-null `error`
 
@@ -1130,7 +1163,8 @@ interface; transport settings shape.
 Constraint: **no live network call.** Exercised only through the fake transport.
 Also required: revise `config/providers/providers.example.yaml` per §16.1.
 Exit: profiles validate; refs resolve to refs; a missing credential yields `CREDENTIAL_MISSING`
-before any transport activity.
+and an unsupported ref scheme yields `CREDENTIAL_UNSUPPORTED`, each before any transport activity;
+a literal credential value is rejected by schema validation and never sent.
 
 ### AI-02-B2 — Model profiles
 
@@ -1237,7 +1271,7 @@ No capability claim is valid without a dated observation behind it.
 | Provider-reported usage | may be absent or partial | `usage_status: UNKNOWN`; never `0` (§9.2) |
 | Provider-reported cache tokens | provider-specific | capability-gated; `null` when unreported |
 | Pricing data | changes without notice; may be unpublished | versioned metadata with `effective_from`; cost `null` without a record (§9.3) |
-| Credential provisioning on the host | env vars only in v1 | missing ⇒ `BLOCKED`, fail-closed (§10.5) |
+| Credential provisioning on the host | env vars only in v1 | missing/empty ⇒ `CREDENTIAL_MISSING`; unsupported scheme ⇒ `CREDENTIAL_UNSUPPORTED`; both fail-closed (§10.5) |
 | Provider rate limits and quotas | unknown until observed | `RATE_LIMIT` vs `QUOTA_EXHAUSTED` distinguished (§5.10) |
 | Provider API version drift | breaking change under a stable base URL | dated verification; re-baseline on material change |
 | DSH / Codex consumption surface (AI-01 baseline, AI-08) | how the model layer is called is not yet fixed | AI-02 defines a provider-decoupled contract so this does not bind it |
@@ -1298,6 +1332,15 @@ Verification is a dated observation, not a permanent property.
 **D-15 — AI-02-A changes exactly one file: this document.** The contract is frozen here; the
 config revision it requires is scoped to AI-02-B1. This keeps the freeze reviewable as a single
 artifact and keeps production diff at zero.
+
+**D-16 — `CREDENTIAL_MISSING` and `CREDENTIAL_UNSUPPORTED` are distinct error classes, and a
+literal credential value is neither** (§5.3, §5.10). One means the runtime environment supplied no
+credential; the other means the reference names a mechanism AI-02 does not implement; a literal is
+a configuration defect rejected before runtime. Merging the first two sends an operator to fix the
+wrong cause — provisioning a key that was never missing, or editing a correct reference whose
+scheme is simply unsupported. This decision supersedes an earlier draft of §5.10 that folded
+"unsupported ref scheme" into `CREDENTIAL_MISSING`; §5.3 already required the split, so §5.10 was
+the inconsistent side and is corrected.
 
 #### Required config revision — carried by AI-02-B1
 
@@ -1367,3 +1410,29 @@ architecture freeze, and the current declared model facts (§5.5, §6.4).
 
 AI-02-A does not authorise AI-02-B. AI-02-B begins only after this document is merged and its
 entry criteria (§14.2) are satisfied.
+
+### 17.1 Amendment log
+
+**Amendment 1 — 2026-09-28 — credential error taxonomy clarification.**
+
+A review of this document found an internal definition conflict. §5.3 already required unsupported
+credential reference schemes to fail with `CREDENTIAL_UNSUPPORTED`, while the §5.10 taxonomy table
+folded "credential unset/empty, or unsupported ref scheme" into a single `CREDENTIAL_MISSING`
+class. §5.3 was the correct side; §5.10 was corrected.
+
+The frozen semantics are now unique across the document:
+
+```text
+missing / empty / whitespace  ->  CREDENTIAL_MISSING      (runtime precondition, BLOCKED)
+unsupported reference scheme  ->  CREDENTIAL_UNSUPPORTED  (runtime precondition, BLOCKED)
+literal credential value      ->  configuration rejection, never sent
+```
+
+Corrected in: §5.3 (reference grammar outcomes, rules), §5.10 (taxonomy table, distinction table,
+rules), §9.1 (`blocked_count`), §10.3 (literal rejection), §10.5 (fail-closed block), §11.3
+(opt-in reason codes), §12.3 (layer-2 assertions), §13 (AI-02-B1 exit criteria), §15 (dependency
+table), §16.1 (D-16).
+
+No boundary, scope, or deliverable changed. This is a consistency correction within AI-02-A, not a
+scope change: the same correction applied uniformly, with no effect on what AI-02-B is required to
+build. Documentation only — still zero production code.
