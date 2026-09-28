@@ -331,9 +331,10 @@ Rules:
 protocol:
   family: openai_compatible_chat
   version: v1
-  streaming: sse
-  source: declared
 ```
+
+Streaming support is a model capability (§6.7), and provenance is recorded where defined by the
+endpoint/capability schemas; neither is a Protocol field here.
 
 Rules:
 
@@ -1470,3 +1471,41 @@ No other frozen semantics changed — not the provider/model two-level structure
 identity, endpoint composition, the credential reference grammar, protocol family, model
 references, the capability truth model, the error taxonomy, retry policy, live-test rules, or
 the Router and AI-09 exclusions. Documentation only: zero production code, one file.
+
+**Amendment 3 — 2026-09-28 — §5.4 illustrative YAML.**
+
+The illustrative YAML in §5.4 was over-specified. It showed four fields:
+
+```yaml
+protocol:
+  family: openai_compatible_chat
+  version: v1
+  streaming: sse        # removed
+  source: declared      # removed
+```
+
+Neither of the two removed fields is a Protocol field, and no rule in §5.4 defined either:
+
+- `streaming` belongs to the **model capability** layer, defined in §6.7 under the truth model —
+  object-shaped (`declared` / `verified` / `status` / `source`) and AI-02-B2 scope. A scalar
+  `protocol.streaming` would be a second, differently-shaped field with the same name, and would
+  assert a capability claim §8.3 forbids asserting without evidence.
+- `source` is provenance, recorded where the endpoint schema (§5.2) and the capability schema
+  (§6.8) define it. §5.4 assigned it no meaning.
+
+The illustrative block is therefore reduced to the two fields §5.4 actually defines:
+
+```yaml
+protocol:
+  family: openai_compatible_chat
+  version: v1
+```
+
+This matches the concrete in-scope provider profiles in §5.5, the `Protocol` type in the AI-02-B1
+implementation, and the B1 phase specification. A one-line clarification now follows the block.
+
+This correction only removes ambiguous illustrative fields. It creates no new field, no new
+semantics, and changes nothing about the protocol family, the adapter, or any provider
+declaration. §6.7 and §6.8 are unchanged and remain the sole definition of `streaming` and of
+capability `source`. No boundary, scope, or implementation change: documentation only, zero
+production code, one file.
