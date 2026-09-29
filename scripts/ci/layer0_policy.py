@@ -32,6 +32,7 @@ REQUIRED_FILES = (
     "docs/GIT_AND_SECURITY_BOUNDARY.md",
     "docs/AI-02_MODEL_LAYER_EXECUTION_PLAN.md",
     "docs/AI-03_CONTEXT_PLUGIN_EXECUTION_PLAN.md",
+    "docs/AI-04_GUARD_EXECUTION_PLAN.md",
     ".gitignore",
     ".env.example",
     "config/providers/providers.example.yaml",
