@@ -586,8 +586,8 @@ SecurityLab
 | --- | --- |
 | AI-00 | **COMPLETE** |
 | AI-01 | **COMPLETE** |
-| AI-02 | **NOT STARTED** — next stage, see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
-| AI-03 | NOT STARTED |
+| AI-02 | **COMPLETE** — closed 2026-09-29, see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
+| AI-03 | NOT STARTED — next stage, see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-04 | NOT STARTED |
 | AI-05 | NOT STARTED |
 | AI-06 | NOT STARTED |

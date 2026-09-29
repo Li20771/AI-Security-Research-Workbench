@@ -2,12 +2,14 @@
 > Baseline: 2026-09-26
 
 ## Current stage
-**AI-02 — DeepSeek + MiMo Model Layer**
+**AI-03 — Context Plugin**
 
 AI-00 architecture and repository baseline is complete. **AI-01 DSH Baseline is COMPLETE** — see
-[AI-01 final gate status](#ai-01-final-gate-status).
+[AI-01 final gate status](#ai-01-final-gate-status). **AI-02 Model Layer is COMPLETE** — see
+[AI-02 final gate status](#ai-02-final-gate-status) and
+[AI-02_CLOSEOUT_2026-09-29.md](AI-02_CLOSEOUT_2026-09-29.md).
 
-AI-02 is the current stage but **NOT STARTED**: no AI-02 implementation has begun.
+AI-03 is the current stage but **NOT STARTED**: no AI-03 implementation has begun.
 
 The GitHub `main` branch protection requirement is **BLOCKED** by the current GitHub
 Free/private-repository plan and is retained as a documented platform limitation; it is not
@@ -19,13 +21,18 @@ This file is the single entry point for deciding what to do next.
 
 ### Current work item
 
-**AI-02 — DeepSeek + MiMo Model Layer**
+**AI-03 — Context Plugin**
 
-AI-02 has **not started**. When it begins, it builds on the completed AI-01 baseline commit.
+AI-03 has **not started**. When it begins, it builds on the completed AI-02 merge commit
+`75f7f661f5a0a3c4b2725c8fdeca161efc02c80b`.
 
 The closed AI-01 execution plan remains at
 [docs/AI-01_DSH_BASELINE_EXECUTION_PLAN.md](AI-01_DSH_BASELINE_EXECUTION_PLAN.md)
 (frozen; amended 2026-09-28 — exit criteria redefined, see its §6.1 and §9).
+
+The frozen AI-02 contract remains at
+[docs/AI-02_MODEL_LAYER_EXECUTION_PLAN.md](AI-02_MODEL_LAYER_EXECUTION_PLAN.md)
+(frozen at AI-02-A; amended four times, see its §17.1 amendment log).
 
 ### Session start sequence
 
@@ -44,8 +51,7 @@ PROJECT_STATUS.md
 
 ### Not yet started
 
-- AI-02 DeepSeek + MiMo Model Layer — **current stage, not started**
-- AI-03 Context Plugin implementation
+- AI-03 Context Plugin implementation — **current stage, not started**
 - AI-04 Guard implementation
 - AI-05 Evidence implementation
 - AI-06 Security Tools implementation
@@ -74,7 +80,8 @@ PROJECT_STATUS.md
 
 ## Not yet completed
 - Exact supported DSH/Codex versions
-- Provider connectivity tests
+- Provider connectivity tests — live verification is **NOT_RUN** (AI-02-B6 built
+  the opt-in path; no provider call has been made)
 - Executable Context plugin
 - Executable Guard plugin
 - Executable Evidence/Audit plugin
@@ -131,6 +138,64 @@ Criterion #9         = PASS
 > installation is reproducible across environments, and does **not** claim that all future DSH
 > builds are supported. DSH is an external, continuously updated platform; a material upgrade
 > requires a new baseline checkpoint (execution plan §9).
+
+## AI-02 final gate status
+
+**AI-02 — DeepSeek + MiMo Model Layer: COMPLETE** — closed 2026-09-29. Full evidence in
+[AI-02_CLOSEOUT_2026-09-29.md](AI-02_CLOSEOUT_2026-09-29.md).
+
+```text
+AI-02 overall = COMPLETE
+
+AI-02-A  = PASS / COMPLETE   contract / execution plan / freeze
+AI-02-B1 = PASS / COMPLETE   provider skeleton
+AI-02-B2 = PASS / COMPLETE   model profiles
+AI-02-B3 = PASS / COMPLETE   normalized invocation
+AI-02-B4 = PASS / COMPLETE   metrics
+AI-02-B5 = PASS / COMPLETE   offline tests / CI layers 0-3
+AI-02-B6 = PASS / COMPLETE   opt-in live connectivity verification
+AI-02-C  = COMPLETE          closeout / evidence
+
+Final merge SHA = 75f7f661f5a0a3c4b2725c8fdeca161efc02c80b
+                  (PR #26; parents c90b8251 + 5524b53a)
+
+Offline CI      = PASS
+                  956 passed, 5 deselected
+                  Layer 0 = PASS (12 checks)
+                  layer 1 = 382, layer 2 = 539, layer 3 = 35
+
+Live provider execution = NOT_RUN
+Real provider API calls = 0
+
+SecurityLab        = UNCHANGED
+Router             = UNIMPLEMENTED / UNCHANGED
+openai-compatible  = RESERVED / UNIMPLEMENTED
+```
+
+Verified and recorded:
+
+- provider and model profile schemas, with the capability truth model frozen
+- exactly three model profiles and two provider profiles, registry-validated
+- a provider-decoupled invocation boundary, with a capability gate that refuses
+  before any provider activity
+- metrics with unknown-usage accounting, and pricing as dated metadata with no
+  hardcoded price
+- offline test layers 0–3 wired into CI, Layer 4 excluded by construction
+- an opt-in live verification path that is off by default and cannot run without
+  a human starting it
+
+Outstanding, deferred — **not** AI-02 failures:
+
+- **Live connectivity remains `NOT_RUN`.** No credential was supplied and no
+  provider call was made. §14.3 permits recording `NOT_RUN`; it is not a `PASS`.
+- **`streaming`, `reasoning`, and `prompt_caching` remain `UNKNOWN`.** No safe,
+  bounded, repeatable probe exists for them in this phase.
+- **Endpoints and API model ids remain `DECLARED`.** Unverified until a dated
+  observation exists.
+
+> **No capability in this repository is `VERIFIED`.** Every capability on every
+> model profile is `UNKNOWN`. B6 can produce a *candidate* status for human
+> review; it cannot modify a profile, and it did not.
 
 ## Status semantics
 `PASS` `FAIL` `BLOCKED` `NOT_RUN` `UNKNOWN`
