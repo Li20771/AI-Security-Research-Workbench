@@ -45,6 +45,19 @@ def context():
     return build_context(repository_root())
 
 
+def git_output(*args: str) -> str:
+    """Run git directly, so an assertion compares the plugin against git."""
+    import subprocess
+
+    return subprocess.run(
+        ["git", *args],
+        cwd=repository_root(),
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+
 class TestTheRepositoryReadsAsItself:
     def test_the_workspace_is_this_repository(self, context):
         assert context.workspace.repository == (
@@ -52,21 +65,40 @@ class TestTheRepositoryReadsAsItself:
         )
 
     def test_the_live_git_state_is_present(self, context):
+        """The three subjects every checkout has, attached or detached.
+
+        `git.branch` is deliberately **not** in this set. A detached HEAD has
+        no branch, and `actions/checkout` leaves one on every `pull_request`
+        run, so requiring a branch here would assert a property of the
+        developer's machine rather than a property of the plugin. The original
+        version of this test did exactly that and failed on its first CI run;
+        `test_branch_and_detached_agree` now states the real invariant.
+        """
         subjects = {item.subject for item in context.facts}
-        assert {"git.head", "git.branch", "git.working_tree"} <= subjects
+        assert {"git.head", "git.working_tree", "git.detached"} <= subjects
+
+    def test_branch_and_detached_agree(self, context):
+        """A branch item exists exactly when the checkout is not detached."""
+        facts = {item.subject: item.value for item in context.facts}
+        detached = facts["git.detached"] == "TRUE"
+        assert ("git.branch" in facts) is not detached
+
+    def test_a_branch_item_matches_git_when_present(self, context):
+        """When there is a branch, it is git's branch -- not one we invented."""
+        facts = {item.subject: item.value for item in context.facts}
+        if "git.branch" not in facts:
+            pytest.skip("detached HEAD: there is no branch to compare")
+        assert facts["git.branch"] == git_output("symbolic-ref", "--short", "-q", "HEAD")
 
     def test_the_head_matches_git(self, context):
-        import subprocess
-
-        head = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=repository_root(),
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout.strip()
         item = [i for i in context.facts if i.subject == "git.head"][0]
-        assert item.value == head
+        assert item.value == git_output("rev-parse", "HEAD")
+
+    def test_the_working_tree_matches_git(self, context):
+        facts = {item.subject: item.value for item in context.facts}
+        porcelain = git_output("status", "--porcelain")
+        expected = "CLEAN" if not porcelain.strip() else "DIRTY"
+        assert facts["git.working_tree"] == expected
 
     def test_the_documented_sources_were_read(self, context):
         read = {
