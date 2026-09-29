@@ -202,6 +202,15 @@ Read from this repository through the real pipeline.
 Document revisions are SHA-256 content digests (D-3); git revisions are commit
 SHAs. Every source was `READ`; none was `MISSING`, `REFUSED`, or `BLOCKED`.
 
+**On reproducing this table.** The two kinds of revision behave differently. A
+document digest is a function of the bytes committed, so it still matches after
+later commits. A git-derived revision is the commit that was HEAD *at capture
+time*, so re-running the build after this document is committed reports the new
+HEAD instead of the base SHA. The difference is expected, and it is why the
+cache treats the two kinds with the same key shape but not the same probe: the
+digest is stable evidence about a document, while a commit SHA is evidence about
+a moment.
+
 **Observation, recorded rather than hidden.** The P1 `master_roadmap` and P3
 `design_freeze` sources produced **no items**: neither document contains a
 fenced ```` ```text ```` block with `key = VALUE` declarations, and the
