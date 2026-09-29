@@ -1897,9 +1897,26 @@ decision, and a component that also acts on it cannot be audited separately from
 **D-3 — No `OR` in the condition grammar** (§11.1). OR would make rule precedence depend on how a
 predicate was factored, which is what §12 exists to eliminate.
 
-**D-4 — Specificity is structural, and incomparable rules fall through** (§12.2). A relation
-defined by set inclusion over a closed grammar is decidable; "looks more specific" is not, and
-guessing would break §20.
+**D-4 — Specificity is a structural partial order, linearized rather than compared** (§12.2,
+Amendment 9). Specificity is defined by set inclusion over a closed grammar, which is decidable;
+"looks more specific" is not, and guessing would break §20.
+
+Incomparable rules are a real and intended case, not a gap to be closed by a tie-break. They do not
+override specificity, and they are not resolved by consulting a tie-break: the partial order is
+extended to a total order by the deterministic topological linearization of §12.2.2, and `rule_id`
+chooses only among rules that are *simultaneously available* — those with no remaining specificity
+predecessor.
+
+There is no specificity comparator, and no composite of the form "specificity if comparable,
+otherwise `rule_id`". Policy file order never participates. `rule_id` is not a global lexical
+fallback. It is the deterministic local choice within a linearization step, and that distinction is
+what makes the ordering transitive (§12.0, §24 Amendment 9).
+
+> **This decision was rewritten by Amendment 9.** Its previous wording described incomparable rules
+> as falling through to the `rule_id` tie-break, which is the composite comparator §12.0 forbids and
+> §24 Amendment 9 had to replace. The counterexample that forced the change is retained there as a
+> record of why the earlier rule was wrong; it is not repeated here, because Decisions state what
+> the contract requires, not what it previously required.
 
 **D-5 — Approval UNKNOWN is `BLOCKED`, not `UNKNOWN`** (§8.1). Approval is a precondition this
 contract owns and is fail-closed about; context and capability are truth models this contract
