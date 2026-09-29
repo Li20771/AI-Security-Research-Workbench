@@ -209,7 +209,8 @@ Disposable AI cache
 状态：**COMPLETE** — 契约、实现、验证与证据均已完成（[执行计划](AI-03_CONTEXT_PLUGIN_EXECUTION_PLAN.md)、
 [证据](AI-03_CONTEXT_PLUGIN_EVIDENCE_2026-09-29.md)）。出口条件 C0–C8 全部 `PASS`，
 其中 C8（required CI/tests PASS）由 validated head `7a29197` 上的 required CI run
-`36518367883` = SUCCESS 满足。PR **#28 仍为 OPEN、未 merge**：`main` 尚未包含 AI-03。
+`36518367883` = SUCCESS 满足。PR **#28 已由人工 merge**，merge commit
+`548bc041b31cc0fc9d01af55c527378ba2c42c48`；AI-03 已在 `main` 上。
 
 约束：
 
@@ -600,7 +601,7 @@ SecurityLab
 | AI-00 | **COMPLETE** |
 | AI-01 | **COMPLETE** |
 | AI-02 | **COMPLETE** — closed 2026-09-29, see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
-| AI-03 | **COMPLETE** — C0–C8 PASS; PR #28 open, not merged; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
+| AI-03 | **COMPLETE** — C0–C8 PASS; merged as `548bc041` (PR #28); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-04 | NOT STARTED |
 | AI-05 | NOT STARTED |
 | AI-06 | NOT STARTED |
