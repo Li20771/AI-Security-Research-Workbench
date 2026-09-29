@@ -520,6 +520,38 @@ invalid policy                    -> BLOCKED
 policy digest mismatch            -> BLOCKED
 ```
 
+### 9.2 Policy validation invariants (Amendment 9)
+
+A policy is **valid** only if it satisfies every invariant below. Any violation makes the policy
+invalid, and invalid is `BLOCKED` (§9.1, §21).
+
+```text
+schema version supported
+every closed-vocabulary value is a listed value
+rule_id is unique within the policy
+every predicate is a listed predicate over a listed field, with a literal of the right type
+declared digest matches the canonical form (§20.2)
+```
+
+**`rule_id` uniqueness is load-bearing, not hygiene.** §12.2.2's linearization chooses among
+available rules by `rule_id`, and §20.3 sorts `policy.rules[]` by `rule_id` to compute the policy
+digest. Both depend on the choice being a single rule. A duplicate therefore does not merely
+"confuse" ordering — it makes the emitted sequence a function of something other than the rule set,
+which is the failure mode §12 exists to eliminate.
+
+A duplicate `rule_id` must **never** be resolved by:
+
+```text
+silently overwriting one of the rules
+keeping the first or last occurrence
+relying on dictionary-insertion order
+falling back to policy file order
+```
+
+There is no defined behaviour for duplicate `rule_id`, because there is no defined behaviour: the
+policy is invalid and the request is `BLOCKED`. Detecting the duplicate is Guard's job when it
+verifies a supplied policy; it is not a condition the evaluator has to survive.
+
 A policy that fails to parse, carries an unlisted value in a closed vocabulary, or whose declared
 `digest` does not match its canonical form is **invalid**, and invalid is `BLOCKED`. A digest
 mismatch is not a warning and not a re-computation: it means the snapshot being evaluated is not
@@ -697,22 +729,51 @@ must not present as a clean "the rule does not apply and something else may allo
 
 ---
 
-## 12. Rule ordering (Amendment 2 / B2, Amendment 4 / N1)
+## 12. Rule ordering (Amendment 2 / B2, Amendment 4 / N1, Amendment 9)
 
 Before normal policy-rule evaluation, immutable Guard safety invariants are checked (§15.1). Safety
 invariants cannot be overridden by policy.
 
-For normal policy rules, precedence is the following **total order**:
+For normal policy rules, precedence is:
 
 ```text
 1. immutable Guard safety invariants      checked first, never overridden
 2. lower numeric priority value           priority 0 precedes priority 10
 3. DENY before ALLOW                      at equal priority
-4. structural specificity                 at equal priority and equal effect
-5. canonical rule_id ascending            final total tie-break
+4. deterministic specificity linearization
+                                          at equal priority and equal effect
+5. rule_id ascending                      among simultaneously available,
+                                          mutually incomparable rules
 ```
 
-Policy file order is **never** semantically meaningful.
+Policy file order is **never** semantically meaningful — and §12.2 is how that is made true rather
+than merely asserted.
+
+### 12.0 Steps 4 and 5 are one procedure, not a comparator (Amendment 9)
+
+Steps 1–3 are ordinary comparison keys. **Steps 4 and 5 are not, and must not be implemented as
+one.**
+
+The earlier text presented step 4 as "structural specificity" and step 5 as a "final total
+tie-break", which reads as a single comparator:
+
+```text
+if the specificity relation decides, use it
+otherwise, use rule_id ascending
+```
+
+That composite is **not transitive**, so it defines no total order and no sort can be
+permutation-invariant. §12.2's former claim that "the chain is total because step 5 always applies"
+was false. Amendment 9 (§24) records the defect and its minimal counterexample.
+
+Steps 4 and 5 together are instead a **procedure**: a canonical topological linearization of the
+specificity partial order, defined in §12.2. Replacing a partial order with a total one requires
+choosing an extension; a comparator cannot do it, because a comparator only ever compares two
+elements at a time and can be walked into a cycle.
+
+> **Implementation consequence.** Steps 4–5 must not be expressed as a `sort` with a comparison
+> function. A comparator-shaped implementation of this rule is a defect, not a style choice, and it
+> will pass small tests and fail on the counterexample in §12.2.
 
 ### 12.1 Priority direction (Amendment 4 / N1)
 
@@ -760,12 +821,107 @@ This relation is a partial order, and it is **decidable**: §11 freezes the gram
 and `exists` over a closed field set, so every per-field comparison is a finite set comparison —
 never a general predicate-implication problem.
 
-**Incomparable rules are never guessed at.** When neither `A ⊑ B` nor `B ⊑ A` holds, this step
-does not decide and precedence falls through to step 5, `rule_id` ascending. The chain is total
-because step 5 always applies and `rule_id` is unique within a policy.
+#### 12.2.1 The relation is a partial order, not a sort key (Amendment 9)
 
-No rule may be ordered by which *appears* more specific, by policy file position, by a comment, or
-by any property not defined above.
+`⊏` is **partial**: two rules may be incomparable. It is transitive, but the composite
+"specificity if comparable, otherwise `rule_id`" is **not** transitive, so it is not a total order
+and cannot be used to sort. §12.0 states the implementation consequence; Amendment 9 (§24) records
+the counterexample that forced this.
+
+#### 12.2.2 Deterministic specificity linearization (Amendment 9)
+
+Ordering is performed **within a bucket** — the rules sharing one `priority` **and** one `effect`
+(§12 steps 2 and 3 having already grouped them).
+
+Define a directed relation over the bucket:
+
+```text
+A -> B   iff   A is strictly more specific than B
+```
+
+`A -> B` means **A must be evaluated before B**.
+
+Linearize by deterministic Kahn-style emission:
+
+```text
+remaining = every rule in the bucket
+
+while remaining is not empty:
+
+    available = rules in remaining with no remaining specificity predecessor
+                (that is, no rule R still in `remaining` such that R -> this rule)
+
+    choose the available rule with the lexicographically smallest rule_id
+    emit it
+    remove it from remaining
+```
+
+**Direction, stated explicitly.** `available` is the set of rules that nothing remaining is
+required to precede — equivalently, the currently *most specific* remaining rules. A rule is
+emittable exactly when no more-specific remaining rule must come before it. This document uses
+"available" rather than "maximal" or "minimal" precisely because those two words are read in
+opposite directions by different conventions, and the direction here is load-bearing.
+
+Three properties follow, and each is required:
+
+**1. Every declared specificity relation is preserved.**
+
+```text
+A ⊏ B   =>   A is emitted before B
+```
+
+If `B` were emitted first, `A` would still be in `remaining` with `A -> B`, so `B` would not have
+been available — a contradiction. The linearization therefore *extends* `⊏`; it never overrides it.
+
+**2. The order is unique.**
+
+`⊏` is a partial order, hence acyclic, so `available` is non-empty at every step and the procedure
+terminates. At each step the choice is a single rule, because `rule_id` is unique within a policy
+(§9.2) — so the emitted sequence is a function of the bucket's contents alone.
+
+**3. The order is independent of policy file order.**
+
+The procedure reads only the rules and their `match` constraints. It never consults position, and
+`remaining` is a set. Permuting `policy.rules[]` therefore cannot change the emitted sequence.
+
+Incomparable rules are ordered by `rule_id` ascending **at the moment both are available**. That is
+a local tie-break between simultaneously emittable rules, not a global lexical fallback — the
+distinction is exactly what makes the procedure transitive where the comparator was not.
+
+No rule may be ordered by which *appears* more specific, by policy file position, by a comment, by
+dictionary iteration order, or by any property not defined above.
+
+#### 12.2.3 Worked counterexample
+
+Three rules, one bucket (same `priority`, same `effect`), with the counterexample from Amendment 9:
+
+```text
+X = match { a: eq 1, b: eq 2 }        rule_id r3
+Y = match { a: eq 1 }                 rule_id r1
+Z = match { b: eq 3 }                 rule_id r2
+
+X ⊏ Y     X stricter at b, equal at a          -> X -> Y
+Y ∥ Z     Y stricter at a, Z stricter at b     -> no edge
+Z ∥ X     Z stricter at b, X stricter at a     -> no edge
+```
+
+The directed relation is `X -> Y` only; it is acyclic. Linearization:
+
+```text
+remaining = {X, Y, Z}
+  predecessors within remaining:  X: none   Y: X   Z: none
+  available = {X, Z}                        -> smaller rule_id is r2 = Z, emit Z
+remaining = {X, Y}
+  available = {X}                           -> emit X
+remaining = {Y}
+  available = {Y}                           -> emit Y
+
+emitted order:  Z, X, Y
+```
+
+`X` is emitted before `Y`, as `X ⊏ Y` requires. `Z` precedes both only because it is incomparable
+to them and has the smallest `rule_id` among what was available at that step. Every permutation of
+`policy.rules[]` produces this same sequence.
 
 ---
 
@@ -1212,6 +1368,21 @@ evaluation digest
 
 Generated event identifiers and timestamps may vary.
 
+**Policy rule order is not a semantic input (Amendment 9).** Permuting `policy.rules[]` changes
+nothing:
+
+```text
+policy.digest                   unchanged   (rules are set-semantic, §20.3)
+decision                        unchanged
+selected rule                   unchanged
+ordered semantic evaluation trace  unchanged  (§12.2.2 produces it)
+evaluation_digest               unchanged
+```
+
+The trace still records the canonical evaluation order §12.2.2 produces — it is not re-sorted to
+match the digest's rule order, and it is not read from the policy file. §20.3 distinguishes the two
+orders.
+
 ### 20.2 Canonical form
 
 All digests are computed over a canonical serialization:
@@ -1239,6 +1410,7 @@ order-semantic (serialized in contract order, never sorted)
   the ordered rule trace      §20.5
 
 set-semantic (sorted canonically before hashing)
+  policy.rules[]              sorted by rule_id ascending
   context_refs[]              sorted lexicographically
   capability_state.records[]  sorted by capability_id, then status
   conditions[]                sorted by (field, predicate, canonical value)
@@ -1251,6 +1423,18 @@ constraints, its serialization order cannot matter, and the aggregate `CheckResu
 uniquely determined regardless of that order. A set-semantic collection with an order-dependent
 result would be a latent determinism failure, which is why §14.2's precedence is frozen and total
 rather than left to whichever predicate is evaluated first.
+
+`policy.rules[]` is set-semantic for the same reason, and it is new in Amendment 9. §12 already
+declared policy file order semantically meaningless, but the canonical form did not say so, which
+left two policies with identical rules in a different order hashing to different digests — a
+`policy.digest` that changes when nothing semantic did. Sorting by `rule_id` is well defined
+precisely because §9.2 makes `rule_id` unique.
+
+> **The policy digest and the evaluation trace are different orders, and must not be conflated.**
+> `policy.digest` covers a *canonical representation*, so its rules are sorted by `rule_id` — an
+> arbitrary but stable choice. The evaluation trace records the *semantic evaluation order* that
+> §12.2.2's linearization produces, which is a different sequence and is **not** sorted by
+> `rule_id`. Both are deterministic; neither is derived from the other.
 
 ### 20.4 Runtime-only fields excluded from every digest
 
@@ -1333,6 +1517,7 @@ same semantic inputs -> same decision
 ```text
 missing policy                          -> BLOCKED
 invalid policy                          -> BLOCKED
+duplicate rule_id in policy             -> BLOCKED
 policy digest mismatch                  -> BLOCKED
 policy workspace mismatch               -> DENY
 unknown workspace                       -> BLOCKED
@@ -1581,6 +1766,122 @@ policy supplied, and workspace mismatch.
 *Corrected in: §9.1 (new), §14.0, §14.2 (rewritten), §13.1, §18.2, §20.3, §21, §25 (D-15, D-16),
 §26 (T10 rewritten), §27 (C0, C2, C3).*
 
+**Amendment 9 — deterministic linearization of structural specificity (§12, §12.0, §12.2, §9.2,
+§20, §21, §26, §27).**
+
+Found while beginning AI-04-B, at the point where §12 had to become code. Two gaps, one of which
+is a blocker: it made C2 unsatisfiable and it failed **open**.
+
+**(a) The ordering was not a total order.**
+
+§12 listed step 4 "structural specificity" and step 5 "canonical rule_id ascending — final total
+tie-break", and §12.2 closed with:
+
+> The chain is total because step 5 always applies and `rule_id` is unique within a policy.
+
+That is false. §12.2 defines a **partial** order: two rules may be incomparable. Combining a
+partial order with a total tie-break in the shape
+
+```text
+if the specificity relation decides, use it
+otherwise, use rule_id ascending
+```
+
+produces a composite that is **not transitive**, so it is not a total order and no sort using it
+can be permutation-invariant. Step 5 "always applying" is exactly what fails: a comparator that
+falls back to `rule_id` for incomparable pairs can be walked into a cycle.
+
+*Minimal counterexample.* Three rules in one bucket (equal `priority`, equal `effect`, so §12 step
+3 does not pre-empt step 4):
+
+```text
+X = match { a: eq 1, b: eq 2 }        rule_id r3
+Y = match { a: eq 1 }                 rule_id r1
+Z = match { b: eq 3 }                 rule_id r2
+
+X ⊏ Y     X stricter at b, equal at a
+Y ∥ Z     Y stricter at a, Z stricter at b
+Z ∥ X     Z stricter at b, X stricter at a
+```
+
+The composite comparator yields `X ≺ Y` (specificity), `Y ≺ Z` (rule_id r1 < r2, incomparable),
+`Z ≺ X` (rule_id r2 < r3, incomparable) — **a cycle**, `X ≺ Y ≺ Z ≺ X`. Sorting the same three
+rules under all six permutations produces **three distinct orderings**, where §20 and C2 require
+one. With `X` indeterminate and `Y`, `Z` satisfied, the decision itself flips: `ALLOW` under two
+file orders and `UNKNOWN` under a third.
+
+That last point is why this was treated as a blocker rather than a wart. §14.1 is designed so an
+indeterminate rule stops the walk before a generic allow is consulted — and the composite made
+*whether that rule is reached at all* depend on policy file position, which §12 explicitly
+forbids. A fail-open divergence under a determinism guarantee is a security defect.
+
+**Resolution.** §12.2.2 now defines ordering as a **procedure**, not a comparator: a deterministic
+Kahn-style topological linearization of the `⊏` partial order within each
+`(priority, effect)` bucket, emitting at each step the available rule — one with no remaining
+specificity predecessor — bearing the lexicographically smallest `rule_id`. The relation `⊏` is
+unchanged and nothing is deleted from specificity.
+
+Why it holds:
+
+```text
+A ⊏ B  =>  A is emitted before B
+    if B were emitted first, A would remain with A -> B, so B was not available
+
+the order is unique
+    ⊏ is acyclic, so `available` is never empty and the procedure terminates;
+    rule_id is unique, so each step emits exactly one rule
+
+the order is independent of file order
+    the procedure reads the rules and their match constraints only, and
+    `remaining` is a set
+```
+
+`rule_id` now breaks ties **locally, among simultaneously available incomparable rules**, rather
+than acting as a global lexical fallback. That is precisely the change that restores transitivity.
+
+Worked example in §12.2.3: the counterexample linearizes to `Z, X, Y`, with `X` before `Y` as
+`X ⊏ Y` requires, identically under all six permutations.
+
+**(b) `policy.rules[]` had no declared canonical form.**
+
+§20.3 already declared `match` and `conditions` set-semantic, and §12 already declared policy file
+order semantically meaningless — but the canonical form never said what `policy.rules[]` is. Two
+policies with identical rules in a different order therefore hashed to different `policy.digest`s,
+which is a digest that changes when nothing semantic did. `policy.rules[]` is now set-semantic,
+sorted by `rule_id` before hashing.
+
+This also forced a distinction the contract had left implicit: **`policy.digest` and the evaluation
+trace are different orders.** The digest covers a canonical *representation* (rules sorted by
+`rule_id`, an arbitrary but stable choice); the trace records the *semantic evaluation order*
+§12.2.2 produces, which is not sorted by `rule_id`. Both are deterministic; neither derives from
+the other, and §20.3 now says so.
+
+**(c) `rule_id` uniqueness became a validation invariant.**
+
+§12.2.2's linearization and §20.3's canonical sort both depend on `rule_id` selecting a single
+rule, so uniqueness is load-bearing rather than hygiene. §9.2 now lists the policy validation
+invariants and makes a duplicate `rule_id` an invalid policy — `BLOCKED` (§21), never resolved by
+overwriting, by keeping first or last, by dictionary order, or by file order.
+
+**(d) Tests.** T7 gained sub-case **7g**, which is the counterexample run under every input
+permutation and is the test that would have caught this; 7a–7f all use rule sets a composite
+comparator happens to order consistently. T10 gained **10f** (duplicate `rule_id`) and **10g**
+(rule permutation leaves `policy.digest` and `evaluation_digest` unchanged), and its canonical
+vectors now include the `policy.rules[]` permutation family. C2 was rewritten: steps 4–5 restated
+as one procedure, pass criterion now names totality, determinism, transitivity,
+permutation-invariance and specificity-preservation explicitly, and the forbidden list names
+cycles, file-order dependence, undeclared comparators and composite comparators.
+
+No decision value changed. No predicate, specificity relation, priority direction, or fail-closed
+outcome changed.
+
+*Corrected in: §12 (header and step list), §12.0 (new), §12.2.1–§12.2.3 (rewritten/new), §9.2
+(new), §20.1, §20.3, §21, §25 (D-17), §26 (T7g, T10 10f/10g, vectors), §27 (C2), §29.*
+
+> **Implementation consequence, restated because it is the whole point.** Steps 4–5 must not be
+> implemented as a `sort` with a comparison function. An implementation that does will pass 7a–7f
+> and fail 7g.
+
 ---
 
 ## 25. Decisions and open questions
@@ -1668,6 +1969,29 @@ could vary it per call — and Guard would then be selecting policy in effect, i
 component that both chooses its rules and applies them can authorize anything by choosing a
 permissive rule set, and no amount of evaluation-time rigour would detect it. Where the policy
 comes from remains Q-1; that it arrives from outside Guard does not.
+
+**D-17 — Structural specificity is a partial order; rule evaluation uses deterministic topological
+linearization rather than a composite comparator** (§12.0, §12.2.2). `⊏` is a partial order and
+stays exactly as defined — incomparable rules are a real and intended case, not a defect to be
+defined away. What changed is how it is *used*: ordering is a procedure that extends the partial
+order to a total one, not a comparator that consults `rule_id` whenever specificity is silent.
+
+The distinction is not stylistic. A comparator sees two elements at a time and cannot guarantee a
+consistent global order; combined with a fallback it can be walked into a cycle, which is what
+happened (§24, Amendment 9). A linearization sees the whole bucket and cannot. Concretely:
+`A ⊏ B` implies `A` is emitted before `B`, whereas under the composite comparator that was only
+true when no third rule happened to interfere.
+
+`rule_id` is retained as a tie-break, demoted from a global lexical fallback to a **local choice
+among simultaneously available incomparable rules** — which is what makes the result transitive and
+a function of the rule set alone.
+
+**D-18 — `policy.digest` and the evaluation trace are different orders** (§20.3). The digest
+covers a canonical *representation*, with `policy.rules[]` sorted by `rule_id` — an arbitrary but
+stable choice, since a digest must not depend on how a file was written. The evaluation trace
+records the *semantic evaluation order* of §12.2.2, which is deliberately not that sequence.
+Conflating them would either make the digest file-order-dependent or misreport the order rules were
+actually evaluated in; both are failures the contract exists to prevent.
 
 ### 25.2 Open questions
 
@@ -1804,9 +2128,11 @@ gate in §14.1 step 6 turned the `ALLOW` into `BLOCKED`.
 
 ### T7 — Conflicting rules
 
-**Purpose.** §12 is a total order, and the outcome does not depend on policy file order.
+**Purpose.** §12 produces a total order, and the outcome does not depend on policy file order.
+7g is the one that tests the total order actually holds rather than merely being asserted — see
+§12.0 on why a composite comparator cannot deliver one.
 
-**Setup.** Six sub-cases:
+**Setup.** Seven sub-cases:
 
 ```text
 7a  same priority, DENY vs ALLOW          -> DENY wins (§12 step 3)
@@ -1814,20 +2140,57 @@ gate in §14.1 step 6 turned the `ALLOW` into `BLOCKED`.
 7c  same priority and effect, specific vs generic, both satisfied
                                           -> specific wins (§12 step 4)
 7d  same priority and effect, incomparable specificity
-                                          -> falls through to rule_id ascending (§12 step 5)
+                                          -> ordered by rule_id among available rules (§12 step 5)
 7e  complete tie                          -> rule_id ascending, both orders
 7f  every sub-case above re-run with the rules emitted in reverse order
                                           -> identical decision, rule and trace
+7g  specificity partial-order counterexample  (below)
 ```
 
-**Expected decision.** As listed; 7f must equal its unreversed counterpart in every field.
+**7g — specificity partial-order counterexample.** Three rules in one bucket, constructed so that
+a composite "specificity if comparable, else `rule_id`" comparator would contain a cycle:
 
-**Expected CheckResult.** Per-candidate, in the §12 order, with the ordered trace preserved.
+```text
+R1 = match { a: eq 1, b: eq 2 }     rule_id r3
+R2 = match { a: eq 1 }              rule_id r1
+R3 = match { b: eq 3 }              rule_id r2
 
-**Evidence required.** The ordered rule trace for each sub-case, and an explicit assertion that
-7f's `evaluation_digest` equals the unreversed `evaluation_digest`.
+R1 ⊏ R2      comparable
+R2 ∥ R3      incomparable
+R3 ∥ R1      incomparable
+```
 
-> 7f is the load-bearing one: a policy is a set of rules, and §12 says file order is never
+**Expected decision.** With R2 and R3 satisfied and R1 indeterminate: `ALLOW`, selected rule R2,
+linearized order `R3, R1, R2` (§12.2.3).
+
+**Expected CheckResult.** Per-candidate, in the linearized order.
+
+**Evidence required.** Run the policy under **every permutation** of `policy.rules[]` — all six —
+and assert all six produce:
+
+```text
+same ordered evaluation trace
+same selected rule
+same decision
+same evaluation_digest
+```
+
+plus the specificity-preservation assertion:
+
+```text
+R1 ⊏ R2   =>   R1 appears before R2 in the emitted order, in every permutation
+```
+
+> **7g is the one that would have caught the defect.** 7a–7f all use rule sets whose specificity
+> relation happens to be a chain or has only one incomparable pair, and a composite comparator
+> orders those consistently. 7g is the minimal shape — two rules each more specific than a third
+> at different fields — where the composite cycles, and it is the reason §12.2.2 is a procedure
+> rather than a comparator.
+
+**Evidence required (7a–7f).** The ordered rule trace for each sub-case, and an explicit assertion
+that 7f's `evaluation_digest` equals the unreversed `evaluation_digest`.
+
+> 7f remains load-bearing: a policy is a set of rules, and §12 says file order is never
 > semantically meaningful. Reversing the file must not change the answer.
 
 ### T8 — Default no-rule `DENY`
@@ -1875,6 +2238,8 @@ field:
 10c  an invalid policy: unparseable, or an unlisted value in a closed vocabulary
 10d  no policy supplied at all
 10e  a policy naming a different workspace from the request
+10f  a policy with a duplicate rule_id
+10g  a policy whose rules are emitted in a different order but are otherwise identical
 ```
 
 **Expected decision.**
@@ -1885,6 +2250,8 @@ field:
 10c  BLOCKED
 10d  BLOCKED
 10e  DENY
+10f  BLOCKED   (invalid policy, section 9.2)
+10g  identical to 10a in every field below
 ```
 
 **Expected CheckResult.** The policy precondition is `UNAVAILABLE` for 10b, 10c and 10d — each an
@@ -1900,10 +2267,27 @@ for 10b: declared digest and computed digest, both recorded, and that the mismat
 for 10c: the specific defect that made the policy invalid
 for 10d: policy_id, policy.revision and policy.digest all null in the record
 for 10e: both workspace ids
+for 10f: the duplicated rule_id, and confirmation the policy was rejected rather
+         than one rule silently overwriting the other
+for 10g: policy.digest, decision, selected rule, ordered trace and
+         evaluation_digest, each asserted equal to 10a's
 
 in every case: policy_id, policy.revision and policy.digest appear in the decision
                record (§19) and participate in evaluation_digest (§20.6), except
                where null because no policy was supplied
+```
+
+**10g is a canonicalization test, not an ordering test.** It asserts that
+`policy.rules[]` is set-semantic (§20.3): the same rules in `[R1,R2,R3]`, `[R3,R1,R2]` and
+`[R2,R3,R1]` order must produce the same `policy.digest`. The evaluation trace is **not** compared
+against the rule order — it is the §12.2.2 order, which is a different sequence by design (§20.3).
+
+The canonicalization vectors T14 requires therefore include, as one family:
+
+```text
+semantic input : policy.rules = [R1, R2, R3]  and every permutation
+canonical form : rules sorted by rule_id
+expected       : one SHA-256, identical across all permutations
 ```
 
 **Not tested here.** Whether a policy's `revision` matches some prior revision. AI-04 has no
@@ -2079,7 +2463,9 @@ that every §21 row is consistent with §13.1, §14 and §18.2.
 §18.2 agree with each other.
 
 **Forbidden state.** Any listed area undefined; any two sections disagreeing on the same word or
-outcome; an ordering asserted to be total without a guaranteed final tie-break.
+outcome; an ordering asserted to be total without a *procedure* that makes it so — a claim of
+totality backed only by a tie-break is what Amendment 9 had to correct, and asserting totality is
+not the same as having it.
 
 ### C1 — Workspace isolation
 
@@ -2100,12 +2486,18 @@ able to authorize across workspaces.
 Rule selection — §12, applied end to end:
 
 ```text
-safety invariant
+immutable safety invariant
   -> lower numeric priority
   -> DENY before ALLOW
-  -> structural specificity
-  -> rule_id ascending
+  -> deterministic topological linearization
+     of the structural specificity partial order
+  -> rule_id ascending among currently available,
+     mutually incomparable rules
 ```
+
+Note the shape: steps 4 and 5 are **one procedure**, not a composite comparator (§12.0). The
+linearization replaces a partial order with a total one by choosing an extension; a comparator
+cannot do this, and a comparator-shaped implementation is a defect.
 
 Predicate aggregation — §14.2, a total precedence over a set of predicate results:
 
@@ -2118,17 +2510,32 @@ Total, therefore commutative and associative, therefore permutation-invariant: t
 evaluated or serialized in. This is what allows §20.3 to declare those collections set-semantic
 without introducing an order-dependent result underneath a determinism guarantee.
 
-**Required evidence.** T7 sub-cases 7a–7f, including the reversal case; T14 both parts; and a case
-that permutes the predicates within one `match` and within one `conditions[]`, asserting the
-aggregate and the `evaluation_digest` are unchanged.
+**Required evidence.** T7 sub-cases 7a–7g, including the reversal case **and** 7g's
+partial-order counterexample run under every input permutation; T14 both parts; a case that
+permutes predicates within one `match` and within one `conditions[]`; and a case asserting that
+permuting `policy.rules[]` leaves `policy.digest` and `evaluation_digest` unchanged (§20.1).
 
 **Pass criterion.** Identical semantic inputs produce an identical decision, selected rule,
-ordered trace, context refs and evaluation digest — including when the policy's rules are emitted
-in a different order, and when the predicates within a rule are.
+ordered trace, context refs and evaluation digest, and the ordering is:
 
-**Forbidden state.** Any tie broken by file order, by specificity when rules are incomparable
-without falling through, or by anything not in the §12 chain; any aggregate that varies with
-predicate order.
+```text
+1. total                    every pair of rules is ordered
+2. deterministic            a function of the rule set alone
+3. transitive               no cycle exists
+4. permutation-invariant    policy file order never participates
+5. specificity-preserving   A ⊏ B implies A is evaluated before B
+```
+
+**Forbidden state.**
+
+```text
+a cycle in the ordering
+policy file order, or dictionary-iteration order, affecting the result
+an undeclared comparator
+an implicit tie-break
+a composite "specificity else rule_id" comparator
+any aggregate that varies with predicate order
+```
 
 ### C3 — Fail-closed behaviour
 
@@ -2376,7 +2783,7 @@ Base branch        = main
 Base SHA           = 548bc041b31cc0fc9d01af55c527378ba2c42c48
 Working tree       = clean at start
 Work branch        = feature/ai-04-guard-contract
-Amendments         = 8 applied before freeze
+Amendments         = 9 applied before freeze (9 added after AI-04-B began)
 Production code    = 0 lines changed
 Guard code         = not written
 Policy files       = none
@@ -2391,6 +2798,10 @@ Exit gates         = C0-C10 defined (section 27)
 Next sub-phase     = AI-04-B, constrained by section 28
 Input boundary     = Guard.evaluate(request, policy) - frozen (section 9.1, D-16)
 Aggregation        = UNAVAILABLE > INDETERMINATE > REJECTED > SATISFIED - frozen (section 14.2)
+Rule ordering      = deterministic topological linearization of the specificity
+                     partial order - frozen (section 12.2.2, D-17)
+Policy rules array = set-semantic, sorted by rule_id for the digest - frozen (section 20.3, D-18)
+Policy validity    = duplicate rule_id makes a policy invalid - frozen (section 9.2)
 
 Deferred, and NOT PASS:
   Guard implementation            AI-04-B
