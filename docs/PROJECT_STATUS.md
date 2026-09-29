@@ -30,11 +30,16 @@ This file is the single entry point for deciding what to do next.
 
 ```text
 branch           = feature/ai-03-context-plugin
-validated head   = 7a29197f2b7eb09d0cd51c4dcd1332b6aaa2a011
+validated head   = 7a29197f2b7eb09d0cd51c4dcd1332b6aaa2a011  (last code commit)
 PR               = #28 (OPEN, MERGEABLE, not merged)
-required CI      = SUCCESS (run 36518367883)
+required CI      = SUCCESS (run 36518367883 on the code head)
 exit criteria    = C0-C8 all PASS
 ```
+
+> CI status belongs to a commit. Writing a SHA into a file creates a commit, so
+> any SHA recorded here is one commit behind the file stating it. **The current
+> status is what GitHub reports on PR #28**, and nothing here is `PASS` on the
+> strength of a self-referential SHA.
 
 AI-03's implementation and verification are complete and its exit criteria are satisfied. The
 remaining action is a **human merge decision** on PR #28 — the last step of AI-03-C, and

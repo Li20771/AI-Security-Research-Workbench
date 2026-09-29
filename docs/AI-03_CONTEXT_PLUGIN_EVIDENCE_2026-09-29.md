@@ -6,8 +6,24 @@
 > Date: 2026-09-29
 > Base SHA: `8c5df3e085e15e39f901e83f53f0e04f693cfb84`
 > Branch: `feature/ai-03-context-plugin`
-> Validated head: `7a29197f2b7eb09d0cd51c4dcd1332b6aaa2a011`
+> Validated implementation head: `7a29197f2b7eb09d0cd51c4dcd1332b6aaa2a011`
 > Required CI: **SUCCESS** — run `36518367883`
+
+> **CI status is a property of a commit, not of a document — including this one.**
+>
+> The head named above is the last commit containing production and test code;
+> run `36518367883` is what validated it. Commits after it are documentation
+> only. Writing a commit's SHA into a file *creates a new commit*, so any SHA
+> written here is necessarily one commit behind the file that states it.
+>
+> The authoritative CI status for the current head is therefore **GitHub's check
+> suite on PR #28**, never this paragraph. Nothing in AI-03 is `PASS` on the
+> strength of a self-referential SHA, and a reader who needs the current state
+> should read the PR rather than this record.
+>
+> Concretely: `7a29197` (code) was validated by run `36518367883`, and the
+> documentation commit that carries this text is validated by its own run. Both
+> are required; neither substitutes for the other.
 
 This document records what AI-03 built, what was verified, and — with equal
 weight — what was **not**.
