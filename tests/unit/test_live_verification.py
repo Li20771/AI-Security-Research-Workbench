@@ -1331,6 +1331,76 @@ class TestCallerInputBoundary:
         )
         assert record.model_ref == DEEPSEEK_REF
 
+    def test_a_key_shaped_experiment_id_is_sanitized_in_the_request_metadata(
+        self, fake_transport_factory, all_profiles, model_profiles, credentials_env, completion_payload
+    ):
+        """The sanitized value must be what reaches InvocationRequest.
+
+        Evidence and the request are two destinations for the same caller
+        input, and §10 covers both. A value that is identifier-shaped *and*
+        secret-shaped has to be redacted before it goes anywhere.
+        """
+        verifier = LiveVerifier(
+            _context(
+                fake_transport_factory.success(completion_payload()),
+                all_profiles,
+                model_profiles,
+                credentials_env,
+            )
+        )
+        captured = []
+        original = verifier._invoke
+
+        def capture(request, authorisation=None):
+            captured.append(request)
+            return original(request, authorisation)
+
+        verifier._invoke = capture
+        record = verifier.verify(
+            provider_id="deepseek",
+            model_ref=DEEPSEEK_REF,
+            opt_in=LIVE_OPT_IN_VALUE,
+            capabilities=(),
+            experiment_id=self.SMUGGLED,
+        )
+
+        assert captured, "no invocation request was captured"
+        for request in captured:
+            assert request.metadata.experiment_id == "[REDACTED]"
+            assert self.SMUGGLED not in str(request.to_dict())
+            assert "sk-" not in str(request.to_dict())
+
+        assert record.experiment_id == "[REDACTED]"
+        assert self.SMUGGLED not in str(record.to_dict())
+
+    def test_a_valid_experiment_id_reaches_the_request_unchanged(
+        self, fake_transport_factory, all_profiles, model_profiles, credentials_env, completion_payload
+    ):
+        verifier = LiveVerifier(
+            _context(
+                fake_transport_factory.success(completion_payload()),
+                all_profiles,
+                model_profiles,
+                credentials_env,
+            )
+        )
+        captured = []
+        original = verifier._invoke
+
+        def capture(request, authorisation=None):
+            captured.append(request)
+            return original(request, authorisation)
+
+        verifier._invoke = capture
+        verifier.verify(
+            provider_id="deepseek",
+            model_ref=DEEPSEEK_REF,
+            opt_in=LIVE_OPT_IN_VALUE,
+            capabilities=(),
+            experiment_id="EXP-1",
+        )
+        assert captured[0].metadata.experiment_id == "EXP-1"
+
     def test_safe_caller_text_redacts_flattens_and_caps(self):
         from providers.live_verification import safe_caller_text
 
@@ -1416,6 +1486,112 @@ class TestNotRunPreservesTruthState:
     def test_the_candidate_helper_itself_preserves_the_prior(self):
         for prior in CapabilityStatus:
             assert candidate_status(ProbeOutcome.NOT_RUN, prior) is prior
+
+
+def _load_live_runner():
+    """Import the CLI runner by path; `scripts/` is not a package."""
+    import importlib.util
+
+    path = pathlib.Path(__file__).resolve().parents[2] / "scripts" / "live" / "run_live_verification.py"
+    spec = importlib.util.spec_from_file_location("live_runner", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class TestLiveRunnerReadsTheEnvironment:
+    """The CLI must read the real process environment.
+
+    Without `environ=os.environ` the gate sees no opt-in, returns NOT_RUN, and
+    never reaches the credential check. The live path is then inert while still
+    looking like it works — which is worse than failing, because a workflow
+    reporting NOT_RUN is indistinguishable from one that was never meant to
+    run.
+
+    These exercise `main()`, not `LiveVerifier`, so the wiring is covered
+    rather than assumed.
+    """
+
+    def test_opt_in_without_credential_blocks_at_the_credential_gate(
+        self, tmp_path, monkeypatch
+    ):
+        import yaml
+
+        monkeypatch.setenv("WORKBENCH_LIVE_TESTS", "1")
+        monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+        monkeypatch.delenv("MIMO_API_KEY", raising=False)
+
+        runner = _load_live_runner()
+        output = tmp_path / "evidence.yaml"
+
+        rc = runner.main(
+            [
+                "--provider",
+                "deepseek",
+                "--model-ref",
+                "deepseek/deepseek-flash",
+                "--output",
+                str(output),
+            ]
+        )
+
+        # The opt-in was read, and the credential check was reached. Before the
+        # fix this was EXIT_NOT_RUN with code `opt_in_absent`.
+        assert rc == runner.EXIT_BLOCKED
+        assert rc != runner.EXIT_NOT_RUN
+
+        record = yaml.safe_load(output.read_text(encoding="utf-8"))
+        assert record["status"] == "BLOCKED"
+        assert record["gate"]["code"] == "credential_missing"
+        # No probe ran, so no transport was ever exercised.
+        assert record["probes"] == []
+        assert record["observations"] == []
+
+    def test_without_opt_in_the_runner_is_not_run(self, tmp_path, monkeypatch):
+        import yaml
+
+        monkeypatch.delenv("WORKBENCH_LIVE_TESTS", raising=False)
+        monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+        monkeypatch.delenv("MIMO_API_KEY", raising=False)
+
+        runner = _load_live_runner()
+        output = tmp_path / "evidence.yaml"
+
+        rc = runner.main(
+            [
+                "--provider",
+                "deepseek",
+                "--model-ref",
+                "deepseek/deepseek-flash",
+                "--output",
+                str(output),
+            ]
+        )
+
+        assert rc == runner.EXIT_NOT_RUN
+        record = yaml.safe_load(output.read_text(encoding="utf-8"))
+        assert record["status"] == "NOT_RUN"
+        assert record["gate"]["code"] == "opt_in_absent"
+        assert record["probes"] == []
+
+    def test_the_runner_does_not_write_into_the_repository(self, tmp_path, monkeypatch):
+        """Evidence goes where the caller asks; the default is gitignored."""
+        monkeypatch.setenv("WORKBENCH_LIVE_TESTS", "1")
+        monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+
+        runner = _load_live_runner()
+        output = tmp_path / "elsewhere.yaml"
+        runner.main(
+            [
+                "--provider",
+                "deepseek",
+                "--model-ref",
+                "deepseek/deepseek-flash",
+                "--output",
+                str(output),
+            ]
+        )
+        assert output.is_file()
 
 
 class TestLiveOnlyTransport:

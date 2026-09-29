@@ -746,7 +746,7 @@ class LiveVerifier:
         probes: list[LiveProbeRecord] = []
         observations: list[CapabilityObservation] = []
 
-        baseline = self._probe_text(provider_id, model_ref, experiment_id)
+        baseline = self._probe_text(provider_id, model_ref, safe_experiment_id)
         probes.append(baseline)
 
         if baseline.status is not LiveRunStatus.PASS:
@@ -793,7 +793,7 @@ class LiveVerifier:
                 )
                 continue
             probe, observation = self._run_capability_probe(
-                capability, definition, provider_id, model_ref, experiment_id
+                capability, definition, provider_id, model_ref, safe_experiment_id
             )
             probes.append(probe)
             observations.append(observation)

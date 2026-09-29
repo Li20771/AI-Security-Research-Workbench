@@ -22,6 +22,7 @@ is never lost behind a bare exit status.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -106,6 +107,14 @@ def main(argv: list[str] | None = None) -> int:
         models=models,
         transport=HttpTransport(),
         transport_settings_for=lambda _pid: settings,
+        # The opt-in flag and the credential are read from the real process
+        # environment. Without this the gate sees no opt-in and returns
+        # NOT_RUN before ever reaching the credential check, which makes the
+        # whole live path inert while still looking like it works.
+        #
+        # The resolver is the same one the offline layers use; nothing about
+        # credential handling is reimplemented here.
+        environ=os.environ,
     )
     verifier = LiveVerifier(context)
     record = verifier.verify(
