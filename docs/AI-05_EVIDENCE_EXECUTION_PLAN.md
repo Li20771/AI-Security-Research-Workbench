@@ -364,8 +364,8 @@ FROZEN. Six fields, six **different** jobs. Conflating any two is a defect.
 
 ```text
 role                 field             property
-identity             evidence_id       unique per record; opaque; non-semantic
-correlation          experiment_id     groups records; NOT unique; caller-supplied
+identity             evidence_id       unique per record; opaque; AI-05-generated
+correlation          experiment_id     groups records; NOT unique; OPERATIONAL (§8.4)
 semantic equivalence content_digest    equal <=> same normalized claim
 record integrity     record_digest     detects alteration of the stored record
 artifact integrity   artifact_digest   detects alteration of the artifact bytes
@@ -375,11 +375,18 @@ artifact location    artifact_ref      opaque locator
 ### 8.1 evidence_id
 
 ```text
-generated, opaque, "ev-<hex>"
+AI-05-GENERATED at admission
+opaque, "ev-<hex>"
 NEVER content-derived
+NEVER caller-supplied
 NEVER in content_digest
 in record_digest
 ```
+
+Generation follows AI-04's `decision_id` precedent: a generated runtime identifier
+that is never part of a semantic digest. Because **AI-05 assigns it**, a
+caller-supplied value in this field is `REJECTED` (§30), and a collision is
+`REJECTED` defensively.
 
 Consequences, stated explicitly because they are counter-intuitive:
 
@@ -418,6 +425,43 @@ because a workspace is a stable thing. **An Evidence record is an event.** Copyi
 the deterministic pattern from the wrong precedent would make two identical
 observations indistinguishable.
 
+### 8.4 experiment_id is OPERATIONAL — FROZEN
+
+```text
+experiment_id is correlation metadata.
+It is NOT identity.
+It is NOT part of the semantic claim.
+It is EXCLUDED from content_digest.
+It IS included in record_digest.
+```
+
+The acid test from §15.1 — *would two records differing only in this field be
+evidence of different facts?* — answers **no**. Which human task a record was filed
+under does not change what the record claims about the world.
+
+Repository precedent, decisive: AI-02 §7.4 defines `experiment_id` inside
+`RequestMetadata` and describes that type as *"Workbench bookkeeping, not prompt
+content. It never carries secrets or prompt bodies."* AI-02 §9.4 repeats it: the
+metadata is never acted on and no field of it may drive behaviour. AI-00 §9 places
+`experiment_id` in the Experiment Record as a label — `EXP-YYYYMMDD-XXXX` — not as a
+semantic component.
+
+FROZEN consequences:
+
+```text
+same normalized claim, different experiment_id
+    ->  SAME content_digest
+    ->  DIFFERENT record_digest
+```
+
+Both records are `ACCEPTED`. They are one claim recorded twice under two task
+labels, and the store MUST be able to say so. Including `experiment_id` in
+`content_digest` would destroy exactly that statement.
+
+> **This CORRECTS the freeze revision.** §15.2 previously listed `experiment_id` as
+> included in `content_digest`, which contradicted §8's "correlation only". The
+> exclusion is now frozen and §15.2, §15.5, §16, T7 and T29 are aligned to it.
+
 ---
 
 ## 9. Provenance
@@ -433,6 +477,19 @@ workspace_id      the scope of the whole record          REQUIRED, non-empty
 experiment_id     correlation label                      optional
 observed_at       when the claimed act happened          per kind (§10)
 recorded_at       when the record was written            operational
+```
+
+**Semantic vs operational classification lives in exactly one place: the §15.2
+authoritative field table.** This section names the fields and their mandatory-ness;
+it does not restate their digest membership, so the two cannot drift apart.
+
+```text
+producer            SEMANTIC      (§15.2.2)
+producer_version    OPERATIONAL   (§15.2.2)
+producer_type       SEMANTIC
+experiment_id       OPERATIONAL   (§8.4)
+recorded_at         OPERATIONAL
+observed_at         per kind      (§10.2)
 ```
 
 ### 9.1 Mandatory fields
@@ -772,16 +829,23 @@ A guarantee nobody can test is worse than a smaller guarantee that holds.
 Every string field belongs to exactly one declared class:
 
 ```text
-Class 1  structural    digest / revision; hex, exact length       shape-validated
-Class 2  vocabulary    closed enum                                 validated against the enum
-Class 3  identifier    ^[A-Za-z0-9._-]{1,64}$ style                shape-validated
-                                                                   + redacted
+Class 1  structural    digest / revision                          shape-validated ONLY
+                       lowercase hex, exact length                never scanned,
+                       (see §14.5)                                never substituted
+Class 2  vocabulary    closed enum                                validated against the enum
+Class 3  identifier    ^[A-Za-z0-9._-]{1,64}$ style               shape-validated
+                       and MUST arrive PRE-SANITIZED              AI-05 never sanitizes it
+                       by the upstream identifier sanitizer
 Class 4  bounded       content from a declared source; length cap, flattened
          source        newlines, AND the published admission rule set
 Class 5  free text     FORBIDDEN — does not exist in the schema
 ```
 
 A caller holding an arbitrary string **has no field to put it in.**
+
+**AI-05 MUST NOT perform sanitization on any class.** An identifier arrives already
+sanitized; AI-05 checks its shape and admits or rejects it. AI-05 never rewrites an
+accepted value, in Class 3 or anywhere else.
 
 ### 14.3 The proven invariants
 
@@ -800,7 +864,6 @@ S5  AI-05 does not redact; it rejects                                      PROVA
 ```text
 raw secret           handled UPSTREAM. AI-05 does not see it.
 sanitization         UPSTREAM capture / sanitizer
-                     (providers/redaction.py is reused, not reimplemented)
 admission            AI-05 — structural, plus the published rule set
 modification         AI-05 NEVER alters a value. Evidence is not the layer that
                      rewrites a fact.
@@ -808,6 +871,26 @@ modification         AI-05 NEVER alters a value. Evidence is not the layer that
 
 AI-05 **may** reject content that violates the published admission rule set. It does
 **not** sanitize, redact, or substitute.
+
+### 14.4.1 Two operations over one rule set — FROZEN
+
+The repository's sanitizer performs two operations over the same patterns. AI-05
+performs **only the first**.
+
+```text
+operation                     owner          AI-05
+detection   "does this value    both           YES — at admission, over
+             match a rule?"                    Class 3 and Class 4
+substitution "what should this   UPSTREAM       NO — never, on any class
+             value become?"
+
+reuse of the rule set  !=  AI-05 owns the sanitization operation.
+```
+
+AI-05 reuses the published **rule definitions**. It does not call, wrap, or
+reimplement the substitution half of the sanitizer, and an admitted value is never
+rewritten. Where `providers/redaction.py` is reused in this contract, it is reused
+**by the upstream capture layer**, not by AI-05.
 
 ### 14.5 Structural fields are not scanned
 
@@ -830,37 +913,113 @@ the rule is not wrong.
 Resolution — FROZEN:
 
 ```text
-Class 1 (structural)   shape-validated (exact length, hex charset). NEVER scanned.
-                       A value failing the shape check is REJECTED, never replaced.
+Class 1 (structural)   shape-validated (exact length, LOWERCASE hex charset).
+                       NEVER scanned. A value failing the shape check is REJECTED,
+                       never replaced.
 Class 2 (vocabulary)   validated against the enum. A value outside it is REJECTED.
-Class 3 (identifier)   validated as an identifier, THEN redacted — because an id can
-                       be identifier-shaped and secret-shaped at once, which AI-02
-                       already states and already handles both ways.
+Class 3 (identifier)   validated as an identifier. The value arrives PRE-SANITIZED
+                       from upstream — because an id can be identifier-shaped and
+                       secret-shaped at once, which AI-02 already states and already
+                       handles both ways. AI-05 checks the shape; it does not
+                       sanitize (§14.4.1).
 Class 4 (bounded)      the full rule set, plus length cap and newline flattening.
 ```
 
-### 14.6 Secret-derived digests — FORBIDDEN
+### 14.5.1 Case policy for structural fields — FROZEN
+
+**Uppercase hexadecimal in a Class 1 field is `REJECTED` as non-canonical.**
+
+Option A (accept and normalize to lowercase) is **FORBIDDEN**, because normalizing
+means *substituting an accepted value* — which §14.4 forbids AI-05 from doing at all.
+The two rules cannot both hold, and the no-substitution rule is the more fundamental
+one: it is what keeps Evidence from being the layer that rewrites a fact.
 
 ```text
-sha256(secret)   FORBIDDEN anywhere, at any layer
+lowercase hex, exact length    ACCEPTED
+uppercase hex                  REJECTED  (non-canonical; AI-05 will not rewrite it)
+wrong length                   REJECTED
+non-hex character              REJECTED
 ```
 
-Four attacks, none requiring SHA-256 to be broken:
+This matches AI-04 §20.2, which already fixes the digest representation as
+**lowercase hexadecimal**, and matches what git and every digest function in this
+repository emit. A producer holding an uppercase digest normalizes it **upstream**;
+AI-05 does not.
+
+**Consequence, stated so it is not a surprise:** a legitimate 64-hex value appearing
+in a Class 4 bounded source field matches rule 6 and is therefore `REJECTED`. If a
+record kind needs to carry such a value, that field MUST be declared Class 1. This is
+deliberate over-rejection in the safe direction, not an oversight.
+
+### 14.6 Secret-derived digests — FORBIDDEN, stated enforceably
+
+The prohibition is real, but "sha256(secret) is forbidden anywhere" is not
+enforceable, because no component can tell a digest of a secret from a digest of
+anything else. It is therefore restated as three checkable rules plus the reason.
 
 ```text
-1. low entropy         a PIN or short token is recovered by enumeration
-2. dictionary recovery a password from a known corpus is recovered with a wordlist
-3. confirmation oracle a stored digest CONFIRMS a candidate the attacker already holds
-4. cross-record
-   correlation         an unsalted digest links the same secret across two records
+FORBIDDEN — enforceable:
+
+R1  AI-05 MUST NOT use a caller-supplied value as content_digest, record_digest or
+    ContextRef.value_digest. AI-05 generates those three itself (see §14.6.1).
+    A caller-supplied value in those fields is REJECTED.
+
+R2  AI-05 MUST NOT compute a digest over a value it did not admit. A value is
+    admitted only after its class rules pass (§30). AI-05 therefore never digests
+    rule-tripping content, because such content is rejected before hashing.
+
+R3  No field of an EvidenceRecord has a declared semantic role of "secret" or
+    "credential". There is no field a secret-derived digest belongs in.
 ```
+
+```text
+The reason, recorded so the rules are not mistaken for arbitrary:
+
+a digest of a low-entropy secret is recoverable by
+    1. low-entropy enumeration   a PIN or short token falls to brute force
+    2. dictionary recovery       a password from a known corpus falls to a wordlist
+    3. confirmation oracle       a stored digest CONFIRMS a candidate the attacker
+                                 already holds
+    4. cross-record correlation  an unsalted digest links the same secret across two
+                                 otherwise unrelated records
 
 Salt or HMAC would defeat 1–3 but destroys content-equivalence — the only reason to
 digest at all — and requires key management inside an evidence store, which is a
 responsibility AI-05 must not take on.
+```
 
-The digest is taken over the **accepted** value. A redacted value's digest is a
-constant, which is correct: it distinguishes *redacted* from *empty* from *absent*.
+The digest is taken over the **accepted** value. An upstream-sanitized value's digest
+is a constant, which is correct: it distinguishes *sanitized* from *empty* from
+*absent*.
+
+### 14.6.1 Which digests AI-05 generates, and which it accepts — FROZEN
+
+This is the distinction that resolves the contradiction. **Digest-shaped is not the
+same as trustworthy.**
+
+```text
+field                     origin              AI-05 role
+content_digest            AI-05-GENERATED     computes it from canonical admitted content
+record_digest             AI-05-GENERATED     computes it over the stored record
+ContextRef.value_digest   AI-05-GENERATED     computes it from an ADMITTED value
+artifact_digest           CALLER-SUPPLIED     validates shape; CANNOT verify against
+                                              bytes it never reads (§13.5)
+
+A caller-supplied value in an AI-05-generated digest field   REJECTED
+```
+
+`artifact_digest` is the single exception, and it is not an exception to R1 — it is a
+different field with a different declared role: **artifact-byte integrity**, not the
+representation of a record's own content. It is supplied by the producer that holds
+the bytes, and §14.7 governs it.
+
+Therefore:
+
+```text
+AI-05 cannot be made to ADOPT a caller's sha256(secret) as an Evidence digest,
+  because there is no field that accepts a caller-supplied digest for AI-05's own
+  content, and the three fields AI-05 generates are generated from admitted content.
+```
 
 ### 14.7 The artifact case, distinguished
 
@@ -874,14 +1033,27 @@ contents.
 
 A secret that is itself exactly 64 lowercase hexadecimal characters is
 indistinguishable **by shape** from a digest. The mitigation is provenance, not
-shape:
+shape — and the provenance differs between the two kinds of Class 1 field:
 
 ```text
-Class 1 fields are written only by AI-05's own digest function over canonical
-content. They are NEVER caller-supplied.
+content_digest, record_digest, ContextRef.value_digest
+    AI-05-GENERATED from admitted canonical content.
+    A caller cannot supply them (R1). The residual does not apply.
+
+artifact_digest
+    CALLER-SUPPLIED. AI-05 validates its shape and CANNOT verify it (§13.5).
+    If a producer supplies a digest of a low-entropy secret here, AI-05 accepts it
+    and cannot detect it.
 ```
 
-That constraint MUST be stated and tested (T20c, T22d).
+The second case is a **residual AI-05 does not close**, and this contract says so
+rather than implying otherwise. §14.7 governs why it is accepted: the field's
+declared role is artifact-byte integrity, AI-05 makes no claim about artifact
+contents, and the bytes are outside its boundary. Closing it would require AI-05 to
+read bytes it must not read — trading a stated, bounded limit for a boundary
+violation.
+
+That limit MUST be stated and tested (T20c, T22d, T22e).
 
 ---
 
@@ -911,35 +1083,56 @@ content_digest   SEMANTIC EQUIVALENCE     "do these two records make the same cl
 record_digest    STORED-RECORD INTEGRITY  "has this stored record been altered?"
 ```
 
-### 15.2 The per-field table — FROZEN
+### 15.2 The authoritative field table — FROZEN
+
+**This table is the single source of truth for digest behaviour.** Any other
+statement in this document that disagrees with it is a defect in this document.
+An implementation MUST NOT classify a field by any other means.
 
 ```text
-field                          content_digest   record_digest
-evidence_id                    excluded         included
-schema_version                 included         included
-kind                           included         included
-producer                       included         included
-producer_version               included         included
-producer_type                  included         included
-actor.id                       included         included
-actor.type                     included         included
-workspace_id                   included         included
-experiment_id                  included         included
-observed_at                    per kind (§10.2) included
-recorded_at                    EXCLUDED         included
-payload                        included         included
-references.context[]           included         included
-references.decisions[]         included         included
-references.supersedes[]        included         included
-artifacts[].artifact_digest    included         included
-artifacts[].role               included         included
-artifacts[].external           included         included
-artifacts[].owner_workspace_id included         included
-artifacts[].artifact_ref       EXCLUDED         included
-availability                   not a field      not a field
-content_digest                 —                included
-record_digest                  excluded         excluded (never its own input)
-storage tier                   excluded         EXCLUDED
+field                          semantic role        content  record  caller  AI-05   upstream
+                                                    digest   digest  suppl?  gen?    sanitized?
+evidence_id                    identity             no       yes     NO      YES     n/a
+schema_version                 semantic             yes      yes     yes     no      n/a
+kind                           semantic             yes      yes     yes     no      n/a
+producer                       semantic provenance  yes      yes     yes     no      n/a
+producer_version               OPERATIONAL          NO       yes     yes     no      n/a
+producer_type                  semantic provenance  yes      yes     yes     no      n/a
+actor.id                       semantic provenance  yes      yes     yes     no      n/a
+actor.type                     semantic provenance  yes      yes     yes     no      n/a
+workspace_id                   semantic scope       yes      yes     yes     no      n/a
+experiment_id                  OPERATIONAL          NO       yes     yes     no      n/a
+observed_at                    per kind (§10.2)     per kind yes     yes     no      n/a
+recorded_at                    OPERATIONAL          NO       yes     NO      YES     n/a
+
+payload fields                 semantic             yes      yes     yes     no      Class 3:
+                                                                                      YES
+                                                                                      Class 4:
+                                                                                      YES
+
+ContextRef.workspace_id        semantic identity    yes      yes     yes     no      n/a
+ContextRef.source_kind         semantic identity    yes      yes     yes     no      n/a
+ContextRef.source_identity     semantic identity    yes      yes     yes     no      n/a
+ContextRef.source_revision     semantic identity    yes      yes     yes     no      n/a
+ContextRef.subject             semantic identity    yes      yes     yes     no      n/a
+ContextRef.value_digest        semantic identity    yes      yes     NO      YES     n/a
+ContextRef.item_kind           semantic state       yes      yes     yes     no      n/a
+ContextRef.truth_state         semantic state       yes      yes     yes     no      n/a
+ContextRef.freshness           semantic state       yes      yes     yes     no      n/a
+
+artifacts[].artifact_digest    semantic integrity   yes      yes     YES     no      n/a
+artifacts[].role               semantic             yes      yes     yes     no      n/a
+artifacts[].external           semantic             yes      yes     yes     no      n/a
+artifacts[].owner_workspace_id semantic             yes      yes     yes     no      n/a
+artifacts[].artifact_ref       LOCATOR / OPERATIONAL NO      yes     yes     no      n/a
+
+references.supersedes[]        semantic             yes      yes     yes     no      n/a
+references.decisions[]         semantic             yes      yes     yes     no      n/a
+
+content_digest                 integrity            —        yes     NO      YES     n/a
+record_digest                  integrity            no       —       NO      YES     n/a
+storage tier                   NOT CONTENT          NO       NO      n/a     n/a     n/a
+artifact availability          RUNTIME              not a field            n/a     n/a
 ```
 
 ```text
@@ -947,6 +1140,42 @@ storage tier MUST NOT be in content_digest.
 storage tier MUST NOT be in record_digest either — it is a property of where the
   bytes are, not of the bytes.
 ```
+
+### 15.2.1 The two questions this table must answer
+
+```text
+same claim, different producer_version
+    ->  SAME content_digest          (producer_version is OPERATIONAL)
+        DIFFERENT record_digest
+    reason: a version is a property of the instrument, not of the claim. A producer
+            upgrade that changes normalization changes `payload`, which IS semantic,
+            so the difference surfaces where it belongs instead of being
+            double-counted. Including the version would make every upgrade break
+            content-equivalence with all history.
+
+same claim, different experiment_id
+    ->  SAME content_digest          (experiment_id is OPERATIONAL, §8.4)
+        DIFFERENT record_digest
+    reason: which task a record was filed under does not change what it claims.
+```
+
+### 15.2.2 Why `producer_version` is OPERATIONAL — FROZEN
+
+`producer` and `producer_version` are classified differently, by the same acid test
+used everywhere in this contract: *would two records differing only in this field be
+evidence of different facts?*
+
+```text
+producer          which component observed. A DIFFERENT observer makes DIFFERENT
+                  evidence — AI-02 §8.3: "Provider documentation is not Workbench
+                  evidence." Provenance is load-bearing.  SEMANTIC.
+producer_version  which build of that same observer. Same observer, same claim.
+                  OPERATIONAL.
+```
+
+`producer_type` is retained as SEMANTIC even though it is derivable from `producer`,
+so that the semantic projection is self-describing without a lookup table. That
+redundancy is deliberate and is the only one in the table.
 
 ### 15.3 Why artifact_ref is excluded from content_digest
 
@@ -983,22 +1212,28 @@ An undeclared collection is a contract violation, not an implementation choice. 
 paid for an undeclared collection twice — Amendment 9(b) and AI-04-B §E.1 — and both
 times the symptom was a digest that moved when nothing semantic did.
 
-### 15.5 The eight canonical cases — FROZEN
+### 15.5 The canonical cases — FROZEN
 
 ```text
-C1  same semantics, different YAML key order       SAME content_digest
-C2  same semantics, different set order            SAME content_digest
-C3  same semantics, different artifact locator     content_digest SAME (excluded)
+C1   same semantics, different YAML key order      SAME content_digest
+C2   same semantics, different set order           SAME content_digest
+C3   same semantics, different artifact locator    content_digest SAME (excluded)
                                                    record_digest  DIFFERENT
-C4  same semantics, different recorded_at          content_digest SAME
+C4   same semantics, different recorded_at         content_digest SAME
                                                    record_digest  DIFFERENT
-C5  same semantics, different evidence_id          content_digest SAME
+C5   same semantics, different evidence_id         content_digest SAME
                                                    record_digest  DIFFERENT
-C6  same event, different observed_at              OBSERVATION/EXECUTION: DIFFERENT
+C6   same event, different observed_at             OBSERVATION/EXECUTION: DIFFERENT
                                                    DECISION:              SAME
-C7  same artifact bytes, different artifact_ref    identical to C3
-C8  same Context identity, different value_digest  content_digest DIFFERENT
+C7   same artifact bytes, different artifact_ref   identical to C3
+C8   same Context identity, different value_digest content_digest DIFFERENT
                                                    (value participates in identity, §12.2)
+C9   same claim, different experiment_id           content_digest SAME  (§8.4)
+                                                   record_digest  DIFFERENT
+C10  same claim, different producer_version        content_digest SAME  (§15.2.2)
+                                                   record_digest  DIFFERENT
+C11  same claim, different producer                 content_digest DIFFERENT
+                                                    (provenance is semantic)
 ```
 
 ---
@@ -1009,13 +1244,16 @@ FROZEN.
 
 ```text
 purpose     semantic equivalence
-covers      kind, semantic provenance fields, payload, semantic ContextRef fields,
-            artifact_digest and semantic artifact metadata, supersedes
-excludes    evidence_id, recorded_at, artifact_ref, artifact availability,
-            storage tier
+covers      exactly the rows marked `yes` in the §15.2 table
+excludes    evidence_id, recorded_at, experiment_id, producer_version,
+            artifact_ref, artifact availability, storage tier
+generated   by AI-05 from admitted canonical content. NEVER caller-supplied (R1).
 property    INVARIANT across promotion and relocation
 job         deduplication; "do these two records make the same claim?"
 ```
+
+**§15.2 is authoritative.** The list above is a summary; if it ever disagrees with
+the table, the table is correct and this paragraph is the defect.
 
 ```text
 same content_digest  does NOT imply same evidence_id   (§8.1)
@@ -1029,8 +1267,11 @@ FROZEN.
 
 ```text
 purpose     integrity of the stored record
-covers      every persisted field, including evidence_id, recorded_at, artifact_ref
+covers      every persisted field — exactly the rows marked `yes` in §15.2, which
+            is every stored field including evidence_id, recorded_at,
+            experiment_id, producer_version and artifact_ref
 excludes    record_digest itself — a digest MUST NOT be its own input
+generated   by AI-05. NEVER caller-supplied (R1).
 property    any alteration changes it
 job         verify a stored record was not modified;
             verify a promotion copy is byte-identical
@@ -1639,18 +1880,27 @@ one field, or converted into one another.
 FROZEN. The single entry condition for storing a record.
 
 ```text
-1. shape          the record matches the declared envelope and its kind's payload
-                  -> a field the contract does not define is REJECTED, not ignored
-2. schema_version the version is supported
-3. required       every required field for that kind is present and non-null
-4. vocabulary     every enum value is a member of its closed set
-5. workspace      workspace_id is present, non-empty, and agrees everywhere (§18)
-6. classes        every string field is validated against its declared class (§14.2)
-7. rule set       Class 4 fields are checked against the published admission rules
-8. references     references are well-formed and their identity is complete (§12)
-9. artifacts      artifact entries satisfy §13.1/§13.2
-10. integrity     supplied digests match recomputation
-11. uniqueness    evidence_id is not already present
+ 1. shape          the record matches the declared envelope and its kind's payload
+                   -> a field the contract does not define is REJECTED, not ignored
+ 2. schema_version the version is supported
+ 3. required       every required field for that kind is present and non-null
+ 4. vocabulary     every enum value is a member of its closed set
+ 5. workspace      workspace_id is present, non-empty, and agrees everywhere (§18)
+ 6. classes        every string field is validated against its declared class (§14.2)
+ 7. rule set       Class 3 and Class 4 fields are checked against the published rules
+                   -> DETECTION ONLY. AI-05 never substitutes (§14.4.1)
+ 8. references     references are well-formed and their identity is complete (§12)
+ 9. artifacts      artifact entries satisfy §13.1/§13.2
+10. digest origin  content_digest, record_digest and every ContextRef.value_digest
+                   are ABSENT from the supplied record. AI-05 generates them (§14.6.1)
+                   -> a caller-supplied value in those fields is REJECTED (R1)
+11. digest shape   every supplied Class 1 field (artifact_digest) is
+                   lowercase hex of the exact declared length (§14.5.1)
+                   -> uppercase is REJECTED, never normalized
+12. integrity      AI-05 computes content_digest and record_digest over the accepted
+                   canonical content
+13. assignment     AI-05 generates evidence_id (§8.1)
+14. uniqueness     the generated evidence_id is not already present
 ```
 
 Any failure produces `REJECTED` with a named reason and **stores nothing**.
@@ -1659,6 +1909,19 @@ Any failure produces `REJECTED` with a named reason and **stores nothing**.
 unknown top-level field        REJECTED   — a field that is silently dropped cannot
                                             be audited (AI-04 §4.2 precedent)
 unsupported schema_version     REJECTED
+caller-supplied digest for an
+  AI-05-generated field        REJECTED   (R1, §14.6.1)
+uppercase hex in Class 1       REJECTED   (§14.5.1)
+unsanitized identifier in
+  Class 3                      REJECTED   (§14.2)
+```
+
+### 30.1 AI-05 never rewrites
+
+```text
+No step of admission modifies a supplied value. The only values AI-05 originates are
+the three digests it generates (§14.6.1) and evidence_id (§8.1). Everything else is
+either admitted as supplied or rejected.
 ```
 
 ---
@@ -1681,7 +1944,7 @@ Layer 0 gains a structural check for `plugins/evidence`, mirroring
 | T5 | `evidence_id` identity | identity ≠ semantics | two records, same content, different ids | both accepted; ids differ; ids absent from `content_digest` | two runs are two events |
 | T6 | `experiment_id` correlation | correlation ≠ identity | many records, one `experiment_id` | all accepted, none unique | grouping never becomes identity |
 | T7 | `content_digest` determinism | canonicalization | same semantic input, separate processes | identical digest | an unenforced digest is not a digest |
-| T8 | operational fields | time semantics | vary `recorded_at` | `content_digest` unchanged, `record_digest` changed | recording time is not the claim |
+| T8 | operational fields | digest classification | vary `recorded_at`, `experiment_id`, `producer_version`, `artifact_ref` in turn | `content_digest` unchanged, `record_digest` changed — for each | an operational field that reaches `content_digest` is an undeclared semantic input |
 | T9 | semantic `observed_at` | time semantics | vary `observed_at` on OBSERVATION/EXECUTION vs DECISION | different for the former, same for the latter | the validity window is enforceable; re-evaluation is not a new fact |
 | T10 | set permutation invariance | order semantics | permute `context[]`, `artifacts[]`, `supersedes[]` | same `content_digest` | an undeclared order dependence is a latent defect |
 | T11 | order-semantic sequence | order semantics | reorder tool calls; then rewrite the array with the same ordinals | different digest; then same digest | array position is not semantic; the ordinal is |
@@ -1695,21 +1958,22 @@ Layer 0 gains a structural check for `plugins/evidence`, mirroring
 | T19 | BLOCKED preservation | truth | `BLOCKED` | recorded as `BLOCKED`, never as `PASS` | blocked is not passed |
 | T20a | valid 40-char git SHA | structural class | a git SHA in a revision field | NOT redacted, `ACCEPTED` | rule 6 must not destroy revisions |
 | T20b | valid 64-char SHA-256 | structural class | a SHA-256 in a digest field | NOT redacted, `ACCEPTED` | rule 6 must not destroy digests |
-| T20c | structural provenance | residual case | a 64-hex value in a Class 4 field | the DECLARED policy, asserted | "64 hex is safe" is only true where provenance is constrained |
+| T20c | structural provenance | structural class | a legitimate 64-hex value in a Class 4 bounded field | `REJECTED` — rule 6 fires; asserted as the DECLARED consequence | 64 hex is only safe where provenance is constrained; over-rejection is the safe direction |
 | T21a | malformed digest length | structural class | wrong-length digest | `REJECTED` | shape failure is never a redaction candidate |
 | T21b | malformed digest charset | structural class | non-hex in a digest field | `REJECTED` | as T21a |
-| T21c | digest normalization | structural class | uppercase hex | the DECLARED policy, asserted | normalization is decided, not assumed |
+| T21c | digest case policy | structural class | uppercase hex in a Class 1 field | `REJECTED` as non-canonical; NOT normalized | AI-05 never substitutes a value, so it cannot normalize one |
 | T22a | known test secret | secret boundary | a known test secret in a Class 4 field | `REJECTED` | published rules are enforced at admission |
 | T22b | secret-shaped token | secret boundary | a secret-shaped token in a Class 4 field | `REJECTED` | as T22a |
-| T22c | identifier path | secret boundary | a secret-shaped token in a Class 3 field | redacted per the identifier rule, then accepted | an id can be identifier-shaped and secret-shaped at once |
-| T22d | secret-derived digest | secret boundary | `sha256(known secret)` in a digest field | `ACCEPTED` by shape, and asserted as a KNOWN, DOCUMENTED limit | a documented residual beats a passing test that pretends there is none |
+| T22c | identifier pre-sanitization | secret boundary | an UNSANITIZED secret-shaped token in a Class 3 field | `REJECTED`; the pre-sanitized form is `ACCEPTED` | AI-05 checks shape, it never sanitizes (§14.2, §14.4.1) |
+| T22d | caller-supplied digest | digest origin | a caller supplies a value for `content_digest`, `record_digest` or `ContextRef.value_digest` | `REJECTED` (R1) | digests of AI-05's own content are AI-05's to compute; `sha256(secret)` cannot be adopted as an Evidence digest |
+| T22e | AI-05-generated digest | digest origin | AI-05 computes a digest from accepted canonical content | `ACCEPTED` | positive control: digest-shaped is not the same as caller-controlled |
 | T23 | raw payload not normalized | payload boundary | an oversized raw payload | artifact-only; the record stays valid | normalized output is durable, raw payload is not |
 | T24 | artifact reference contract | artifact boundary | an artifact entry | digest required; `artifact_ref` opaque; availability absent | AI-05 references bytes it never reads |
 | T25 | immutable write | lifecycle | any later operation on an admitted record | bytes unchanged | an audit trail that can be edited is not one |
 | T26 | correction via `supersedes` | lifecycle | a correcting record | new record accepted; old record byte-identical | corrections are additions, never edits |
 | T27 | `superseded_by` derived | lifecycle | query the set | derivable; not a stored field on any record | a stored back-pointer is a mutation |
 | T28 | duplicate `evidence_id` | identity | the same id twice | `REJECTED` | collision or overwrite attempt |
-| T29 | duplicate content | identity | same `content_digest`, different ids | both `ACCEPTED` | repeated observation is not an error |
+| T29 | duplicate content | identity | same claim under two `experiment_id` values | same `content_digest`, different `record_digest`, both `ACCEPTED` | correlation is not identity; a claim recorded under two tasks is still one claim |
 | T30 | Guard Decision recording | AI-04 boundary | a `DecisionRecord` stored | stored; NO decision outcome changes | Evidence → Guard is forbidden |
 | T31 | capability promotion negative | AI-02 boundary | append a valid OBSERVATION about a real model_ref; observe AI-02 promotion state before and after | record `ACCEPTED`; `verified_at` still null; `evidence_ref` still null; `CapabilityStatus` unchanged | an absence of effect is proven only by observing before and after |
 | T32 | ContextRef structure | reference integrity | a context item mapped to a ContextRef | 9 fields; `value_digest` present; raw `value` absent | a display string is not a durable identity |
@@ -1727,12 +1991,20 @@ T9 and T11 are the two tests that catch the mistakes this contract's decisions e
   to prevent. If the matrix is trimmed, keep these.
 T13 MUST construct a genuinely two-workspace input. AI-04's history shows that
   asserting the prohibition without constructing the input does not catch it.
-T22d documents a limit rather than passing silently. It MUST NOT be weakened into a
-  passing test.
+T22a-e are five distinct boundaries, not five spellings of one. T22a and T22b are
+  detection at admission; T22c is the pre-sanitization requirement; T22d is digest
+  ORIGIN; T22e is the positive control that proves T22d rejects for the right
+  reason. T22e MUST exist — without it, T22d is satisfied by a system that rejects
+  every digest.
+T20c and T21c assert DELIBERATE REJECTIONS that a reader may expect to be
+  acceptances. They MUST NOT be "fixed" by widening the rule. Widening them changes
+  a frozen boundary (§34.1).
 T31 MUST observe state before and after. Asserting an absence rhetorically proves
   nothing.
 T33a-d are four separate routes to the same forbidden outcome. One test would cover
   one route and imply the other three.
+T8 covers four fields, not one, and each MUST be asserted separately: an operational
+  field that leaks into content_digest is an undeclared semantic input.
 ```
 
 ---
@@ -1799,11 +2071,19 @@ C5 — Truth / status preservation
              a compound declaration decomposed into a satisfying part
 
 C6 — Secret-safe admission
-  Proved     the §14.3 invariants hold and the limit is stated
-  Evidence   T20a–c, T21a–c, T22a–d; the published rule set; the Class 1 prohibition
-  Forbidden  a secret in a Class 4 field; sha256(secret) anywhere; a blanket
-             application of rule 6 to structural fields; stored error text;
-             an unlabelled redaction; a claim of detector completeness
+  Proved     the §14.3 invariants hold, and the limit §14.8 does not close is stated
+  Evidence   T20a–c, T21a–c, T22a–e; the published rule set; the §14.6.1 digest-origin
+             table
+  Forbidden  a secret in a Class 3 or Class 4 field; a caller-supplied value in an
+             AI-05-generated digest field (R1); AI-05 computing a digest over a value
+             it did not admit (R2); any field whose declared role is a secret or
+             credential (R3); a blanket application of rule 6 to structural fields;
+             stored error text; AI-05 performing sanitization or substitution; a
+             claim of detector completeness
+  Not forbidden, and stated as such
+             artifact_digest supplied by a producer whose artifact bytes may contain a
+             credential — accepted, bounded, and recorded as an unclosed residual in
+             §14.8 rather than implied away
 
 C7 — Artifact boundary
   Proved     references and digests only; no byte ingestion; availability not a field
@@ -1821,8 +2101,11 @@ C8 — Immutable / append-only
 
 C9 — Digest determinism + integrity
   Proved     equal semantics -> equal content_digest; altered bytes -> different
-             record_digest; storage round-trips
-  Evidence   T7–T11; the §15.5 canonical cases
+             record_digest; storage round-trips; EVERY field classified exactly as
+             the §15.2 table says
+  Evidence   T7–T11; T8 asserts each operational field separately; the §15.5 canonical
+             cases C1–C11, including C9 (experiment_id), C10 (producer_version) and
+             C11 (producer)
   Forbidden  a digest varying with mapping, file, or set order; a digest INVARIANT
              across a genuine semantic difference; a record_digest that drifts on
              an unmodified record after a storage round trip
