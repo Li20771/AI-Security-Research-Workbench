@@ -31,6 +31,7 @@ REQUIRED_FILES = (
     "docs/AI-00_REQUIREMENTS_AND_ARCHITECTURE.md",
     "docs/GIT_AND_SECURITY_BOUNDARY.md",
     "docs/AI-02_MODEL_LAYER_EXECUTION_PLAN.md",
+    "docs/AI-03_CONTEXT_PLUGIN_EXECUTION_PLAN.md",
     ".gitignore",
     ".env.example",
     "config/providers/providers.example.yaml",
@@ -488,6 +489,147 @@ def check_live_workflow_inputs_cannot_become_shell() -> list[str]:
     return problems
 
 
+#: The frozen read-only git command set, transcribed from AI-03 contract §7.4.
+#: The plugin declares its own copy; this check asserts the declaration, so a
+#: widening of the plugin's set is a CI failure rather than a quiet grant.
+CONTEXT_GIT_READ_ONLY = frozenset(
+    {"rev-parse", "symbolic-ref", "status", "log", "remote"}
+)
+
+#: Git invocations the reader must refuse. Bare subcommand names, plus the
+#: argument forms of a subcommand that is read-only in one shape and a write in
+#: another -- `git remote get-url` reads, `git remote add` rewrites
+#: `.git/config`, and a guard that checks only the subcommand permits the
+#: second.
+GIT_WRITE_INVOCATIONS: tuple[tuple[str, ...], ...] = (
+    ("add",),
+    ("am",),
+    ("apply",),
+    ("branch",),
+    ("checkout",),
+    ("cherry-pick",),
+    ("clean",),
+    ("clone",),
+    ("commit",),
+    ("commit-tree",),
+    ("config",),
+    ("fetch",),
+    ("filter-branch",),
+    ("gc",),
+    ("init",),
+    ("merge",),
+    ("mv",),
+    ("prune",),
+    ("pull",),
+    ("push",),
+    ("rebase",),
+    ("reflog",),
+    ("reset",),
+    ("restore",),
+    ("revert",),
+    ("rm",),
+    ("stash",),
+    ("submodule",),
+    ("switch",),
+    ("tag",),
+    ("update-index",),
+    ("update-ref",),
+    ("worktree",),
+    ("write-tree",),
+    ("remote", "add", "origin", "https://example.invalid/x.git"),
+    ("remote", "remove", "origin"),
+    ("remote", "set-url", "origin", "https://example.invalid/y.git"),
+    ("remote", "prune"),
+    ("remote", "update"),
+    ("remote",),
+)
+
+#: Git invocations the reader must accept. The other direction matters as much:
+#: a guard that refused everything would pass a refuse-only check while making
+#: the plugin useless.
+GIT_READ_INVOCATIONS: tuple[tuple[str, ...], ...] = (
+    ("rev-parse", "HEAD"),
+    ("rev-parse", "--show-toplevel"),
+    ("symbolic-ref", "--short", "-q", "HEAD"),
+    ("status", "--porcelain"),
+    ("log", "--max-count=1"),
+    ("remote", "get-url", "origin"),
+    ("remote", "show"),
+)
+
+
+def check_context_plugin_performs_no_git_write() -> list[str]:
+    """AI-03 contract §7.4: the Context plugin writes nothing to git.
+
+    Checked by **executing the guard**, not by grepping for suspicious text.
+    "We would never call `git commit`" is exactly the kind of guarantee that
+    survives review and not a refactor, so the question this answers is the
+    behavioural one: hand the reader every write verb and confirm each is
+    refused before a process could exist.
+
+    Two things are asserted: the plugin's declared read-only set is the frozen
+    one, and every write verb is refused by the real reader.
+    """
+    package = ROOT / "plugins" / "context"
+    if not package.is_dir():
+        return []  # AI-03 not present yet; the required-files check owns that
+
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+
+    try:
+        from plugins.context.errors import GitCommandRefused
+        from plugins.context.workspace import (
+            READ_ONLY_GIT_COMMANDS,
+            SubprocessGitReader,
+        )
+    except ImportError as exc:  # pragma: no cover - surfaced as a failure
+        return [f"plugins/context could not be imported: {exc}"]
+
+    problems: list[str] = []
+
+    if set(READ_ONLY_GIT_COMMANDS) != set(CONTEXT_GIT_READ_ONLY):
+        problems.append(
+            f"the plugin's read-only git set is {sorted(READ_ONLY_GIT_COMMANDS)}, "
+            f"but AI-03 §7.4 freezes {sorted(CONTEXT_GIT_READ_ONLY)}"
+        )
+
+    reader = SubprocessGitReader()
+
+    for invocation in GIT_WRITE_INVOCATIONS:
+        try:
+            # Refusal must come before any subprocess could be created. An
+            # invocation that reached the process boundary would either be
+            # refused by git itself or, worse, not refused at all.
+            reader.run(ROOT, invocation)
+        except GitCommandRefused:
+            continue
+        except Exception as exc:  # noqa: BLE001 - any other outcome is a finding
+            problems.append(
+                f"git {' '.join(invocation)!r} raised {type(exc).__name__} "
+                "instead of being refused"
+            )
+            continue
+        problems.append(
+            f"git {' '.join(invocation)!r} was not refused by the read-only "
+            "guard (§7.4)"
+        )
+
+    for invocation in GIT_READ_INVOCATIONS:
+        try:
+            reader.run(ROOT, invocation)
+        except GitCommandRefused as exc:
+            problems.append(
+                f"git {' '.join(invocation)!r} is read-only but was refused: {exc}"
+            )
+        except Exception:  # noqa: BLE001 - a read that fails for another reason is fine
+            # The command is permitted; whether it succeeds against this
+            # directory is not what this check is about.
+            pass
+
+    return problems
+
+
 def check_layer_markers() -> list[str]:
     """Every test module belongs to exactly one layer.
 
@@ -556,6 +698,10 @@ def main() -> int:
     )
     report.check("pytest excludes layer 4", check_pytest_excludes_layer4())
     report.check("every test module declares one layer", check_layer_markers())
+    report.check(
+        "context plugin performs no git write",
+        check_context_plugin_performs_no_git_write(),
+    )
 
     if report.failures:
         print("\nLayer 0 = FAIL", file=sys.stderr)

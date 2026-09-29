@@ -206,6 +206,18 @@ Disposable AI cache
 - 区分当前事实、历史事实、设计计划
 - AI cache 可删除并可重建
 
+状态：**PARTIAL** — 契约、实现与离线验证已完成（[执行计划](AI-03_CONTEXT_PLUGIN_EXECUTION_PLAN.md)、
+[证据](AI-03_CONTEXT_PLUGIN_EVIDENCE_2026-09-29.md)）。出口条件 C8（required CI/tests PASS）
+为 `NOT_RUN`：尚未 push，也没有 PR。**不是 COMPLETE。**
+
+约束：
+
+- Context 只呈现来源声明的状态，不判断"实际上应该是什么"
+- `PLAN` 不得升级为 `FACT`；`PLAN → COMPLETE` / `PLAN → PASS` 在本阶段不可表示
+- cache 不是事实源；revision 不匹配的 cache 条目不产生任何 item
+- Context 严格 workspace-scoped，不实现跨 workspace 聚合，不读取 SecurityLab
+- 不使用模型推理判定 Fact / History / Plan / PASS / COMPLETE
+
 ---
 
 ## AI-04 — Security Guard Plugin
@@ -587,7 +599,7 @@ SecurityLab
 | AI-00 | **COMPLETE** |
 | AI-01 | **COMPLETE** |
 | AI-02 | **COMPLETE** — closed 2026-09-29, see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
-| AI-03 | NOT STARTED — next stage, see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
+| AI-03 | **PARTIAL** — implemented and verified, C8 `NOT_RUN`; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-04 | NOT STARTED |
 | AI-05 | NOT STARTED |
 | AI-06 | NOT STARTED |
