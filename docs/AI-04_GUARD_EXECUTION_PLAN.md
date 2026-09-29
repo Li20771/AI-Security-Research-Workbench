@@ -735,51 +735,106 @@ decision**: the evaluator finished, and nothing authorized the request.
 Default `DENY` applies only when **all** of the following hold:
 
 ```text
-every candidate rule completed deterministic predicate evaluation, and
-no candidate produced BLOCKED, and
-no candidate produced UNKNOWN
+every candidate rule was reached by the §14.1 walk and evaluated, and
+no reached candidate was UNAVAILABLE, and
+no reached candidate was INDETERMINATE
 ```
 
-If any candidate rule is indeterminate — `BLOCKED` or `UNKNOWN` — the decision is that
+"Evaluated" covers both halves of a candidate: its `match` (§14.0) and its `conditions` (§14.2). A
+rule whose `match` could not be evaluated is an indeterminate candidate and counts here — it is
+not a rule that "did not apply".
+
+If any reached candidate is indeterminate — `BLOCKED` or `UNKNOWN` — the decision is that
 indeterminate outcome, not `DENY`.
 
-**A high-priority indeterminate rule must never fall through to a lower-priority generic `ALLOW`.**
-The specific rule exists because someone decided a specific condition should govern; that the
-condition cannot be evaluated is a reason to stop, not a reason to consult a rule that never
-anticipated the case. This is the hazard §14 names, stated as a rule.
+**A high-precedence indeterminate rule must never fall through to a lower-precedence generic
+`ALLOW`.** §12 places a specific rule ahead of a generic one at equal priority and effect, so the
+specific rule is reached first; that the rule cannot be evaluated is a reason to stop, not a
+reason to consult a rule that never anticipated the case. This is the hazard §14 names, stated as
+a rule.
 
 ---
 
-## 14. Indeterminate matching
+## 14. Indeterminate matching (Amendment 7)
 
-A rule with matching request and target scope but unresolved required conditions must **not** be
-silently ignored if doing so could expose a lower-risk-looking `ALLOW` path.
+A rule that cannot be evaluated must **not** be silently ignored if doing so could expose a
+lower-risk-looking `ALLOW` path.
+
+Indeterminacy arises in two places — a rule's `match` and its `conditions` — and both are covered
+here. Neither may be discarded.
+
+### 14.0 `match` outcome and candidate status
+
+A `match` evaluates to a `CheckResult` exactly as a condition does (§18.2). Its four outcomes map
+to three candidate states:
 
 ```text
-required condition = UNAVAILABLE     -> BLOCKED
-required condition = INDETERMINATE   -> UNKNOWN
+match SATISFIED      -> the rule is a candidate
+match REJECTED       -> the rule is not a candidate
+match UNAVAILABLE    -> the rule is an indeterminate candidate
+match INDETERMINATE  -> the rule is an indeterminate candidate
 ```
 
-The evaluator must not convert an unresolved specific allow condition into a generic allow by
-falling through. An explicit higher-precedence `DENY` remains authoritative.
+> **A rule whose `match` predicates evaluate to `UNAVAILABLE` or `INDETERMINATE` is retained as an
+> indeterminate candidate and participates in §14.1 resolution; it must never be silently
+> discarded as a non-candidate.**
+
+An indeterminate candidate is ordered by §12 like any other candidate, and it stops the evaluation
+walk in §14.1 like any other indeterminate outcome. What it cannot do is decide: its `match` did
+not hold, so it can produce neither `ALLOW` nor `DENY`. What it *can* do is prevent a silent
+fall-through — which is the whole reason it is retained.
+
+`match = REJECTED` is the only outcome that removes a rule from consideration, and it is a
+**positive finding** that the rule's scope does not cover this request. A rule is never dropped
+for being hard to evaluate.
+
+> The gap this closes: before Amendment 7, §14.1 step 2 selected candidates "by match" with no
+> defined outcome for an unevaluable `match`, so a specific rule whose scope depended on absent or
+> unknown context could be discarded as a non-candidate and the request could fall through to a
+> generic `ALLOW`. The rule that exists precisely because someone wanted that case governed would
+> be the one silently skipped.
 
 ### 14.1 Evaluation order
 
 ```text
 1. evaluate safety invariants (§15.1)
    any violation -> DENY, stop
-2. select candidate rules by match (§11)
-3. order candidates by §12
-4. evaluate candidates in that order, recording each condition's CheckResult
-5. the first candidate whose conditions are all SATISFIED decides (ALLOW or DENY)
-6. if no candidate is fully SATISFIED:
-     any candidate UNAVAILABLE   -> BLOCKED
-     else any candidate INDETERMINATE -> UNKNOWN
-     else                        -> DENY  (§13)
-7. apply approval gating (§15.2) and target classification (§16) before returning ALLOW
+2. select candidates by match (§14.0): SATISFIED and indeterminate rules are candidates,
+   REJECTED rules are not
+3. order candidates by §12, indeterminate candidates included
+4. walk candidates in that order, recording each one's CheckResult:
+     first candidate UNAVAILABLE     -> BLOCKED, stop
+     first candidate INDETERMINATE   -> UNKNOWN, stop
+     first candidate fully SATISFIED -> its effect decides, stop
+     REJECTED                        -> continue
+5. the walk ended with no decision   -> DENY (§13)
+6. apply approval gating (§15.2) and target classification (§16) before returning ALLOW
 ```
 
-Step 7 is a gate, not an override: it can turn an `ALLOW` into `BLOCKED`, never the reverse.
+The walk is total: every candidate is either indeterminate, satisfied, or rejected, and step 5
+covers the case where all are rejected.
+
+**Ordering is what makes this safe rather than merely cautious.** §12 places a specific rule ahead
+of a generic one at equal priority and effect, so an indeterminate specific rule is reached first
+and stops the walk before any generic `ALLOW` can be consulted. A `DENY` that §12 places ahead of
+an indeterminate candidate still decides, because the walk stops when it reaches the `DENY` — an
+explicit higher-precedence `DENY` remains authoritative, as §14 has always required.
+
+Step 6 is a gate, not an override: it can turn an `ALLOW` into `BLOCKED`, never the reverse.
+
+### 14.2 Condition outcome
+
+For a candidate whose `match` held:
+
+```text
+any condition UNAVAILABLE     -> the candidate is UNAVAILABLE   -> BLOCKED
+any condition INDETERMINATE   -> the candidate is INDETERMINATE -> UNKNOWN
+any condition REJECTED        -> the candidate is REJECTED      -> continue the walk
+every condition SATISFIED     -> the candidate decides
+```
+
+The evaluator must not convert an unresolved specific allow condition into a generic allow by
+falling through.
 
 ---
 
@@ -1183,6 +1238,8 @@ approval UNKNOWN                        -> BLOCKED
 ambiguous rule ordering                 -> BLOCKED
 unsupported predicate or field          -> BLOCKED
 unlisted value in a closed vocabulary   -> BLOCKED
+candidate rule, match UNAVAILABLE       -> BLOCKED
+candidate rule, match INDETERMINATE     -> UNKNOWN
 malformed request                       -> DENY
 no matching rule                        -> DENY
 explicit DENY                           -> DENY
@@ -1235,10 +1292,15 @@ default policy                  workspace scope
 context authorization rules     mandatory safety boundary
 fail-closed semantics           provenance requirements
 predicate grammar               canonicalization and digest rules
-closed vocabularies
+closed vocabularies             match indeterminacy (§14.0)
+test matrix T1-T15              exit gates C0-C10
 ```
 
 requires a contract amendment **before** implementation proceeds.
+
+A test may not be deleted, weakened, or re-scoped to make an implementation pass. If T-n or C-n is
+wrong, it is amended here first, with the reason recorded in §24 — the same rule §23 applies to
+every other frozen area.
 
 Implementation must never silently diverge from this contract.
 
@@ -1326,6 +1388,29 @@ value. Open strings survive only for business identifiers, which carry no author
 
 *Corrected in: §4, §4.2 (new), §11.3 (new), §18, §21.*
 
+**Amendment 7 — `match` indeterminacy (§14.0, §13.1, §14.1, §14.2, §21).** Amendment 3 closed the
+fall-through hazard for a rule's *conditions*, but not for its *`match`*. §14.1 step 2 selected
+candidates "by match" while §11 gave `match` the same grammar as `conditions` — a grammar whose
+predicates can resolve to `UNAVAILABLE` or `INDETERMINATE`. With no defined outcome for those, the
+only available reading was that such a rule is not a candidate, and it would be discarded.
+
+That reopens the exact hazard §14 exists to close, one step earlier. A specific rule whose scope
+depends on absent or unknown context — the rule someone wrote *because* they wanted that case
+governed — would be dropped before evaluation, and the request could fall through to a generic
+`ALLOW` that never anticipated the case.
+
+§14.0 now freezes the mapping: `SATISFIED` is a candidate, `REJECTED` is not, and `UNAVAILABLE` or
+`INDETERMINATE` is an **indeterminate candidate**, retained and ordered by §12 like any other and
+able to stop the §14.1 walk. `REJECTED` is the only outcome that removes a rule, and it is a
+positive finding that the rule's scope does not cover this request.
+
+§13.1 and §21 were brought into line: default `DENY` now requires that every candidate reached by
+the walk was evaluated in *both* halves — `match` and `conditions` — and §21 gained the two
+indeterminate-match rows. No new decision value was introduced; the outcome is `BLOCKED` or
+`UNKNOWN`, as §14 already required.
+
+*Corrected in: §14 (rewritten, §14.0 and §14.2 new), §13.1, §14.1 (step 2 and the walk), §21.*
+
 ---
 
 ## 25. Decisions and open questions
@@ -1373,6 +1458,17 @@ opaque action id loses a frozen concept and makes rules that key on privilege un
 source in scope, every approval-gated action is permanently `BLOCKED`. Recorded so it is read as a
 designed boundary, not discovered as a bug.
 
+**D-13 — An unevaluable `match` retains the rule rather than discarding it** (§14.0). `REJECTED`
+is the only match outcome that removes a rule, because it is the only one that is a *finding*:
+the rule's scope positively does not cover this request. `UNAVAILABLE` and `INDETERMINATE` are
+absences of a finding, and a rule dropped for absence of a finding is a rule skipped for being
+hard to evaluate — which is the fall-through §14 exists to prevent, moved one step earlier.
+
+**D-14 — No new decision value was added for indeterminate matching** (§14.0, §21). The outcome of
+an indeterminate candidate is `BLOCKED` or `UNKNOWN`, reusing §2's vocabulary. Adding a fifth
+value such as `INDETERMINATE_MATCH` would have made the decision vocabulary depend on *where* the
+indeterminacy occurred, which is an implementation detail a caller should not have to know.
+
 ### 25.2 Open questions
 
 Carried into AI-04-B. None changes a frozen boundary.
@@ -1387,7 +1483,635 @@ Carried into AI-04-B. None changes a frozen boundary.
 
 ---
 
-## 26. AI-04-A freeze record
+## 26. Test matrix — T1 to T15
+
+The tests AI-04-B must implement. Each item names its purpose, its setup, the decision it expects,
+the check result that matters, and the evidence a run must produce.
+
+**Negative decisions are not test failures.** Several tests below expect `DENY` or `BLOCKED`. The
+test passes when Guard produces the expected *decision*:
+
+```text
+test status    = PASS
+guard decision = DENY
+```
+
+means the test successfully verified that Guard denied the request. §3 governs.
+
+| ID | Test | Decision |
+| --- | --- | --- |
+| T1 | Workspace isolation | `DENY` / `BLOCKED` |
+| T2 | Missing policy | `BLOCKED` |
+| T3 | Unknown context | `UNKNOWN` |
+| T4 | Stale context | `BLOCKED` |
+| T5 | Explicit `DENY` | `DENY` |
+| T6 | Explicit `ALLOW` | `ALLOW` |
+| T7 | Conflicting rules | deterministic |
+| T8 | Default no-rule `DENY` | `DENY` |
+| T9 | Malformed request | `DENY` |
+| T10 | Policy revision / digest | `BLOCKED` on mismatch |
+| T11 | Provenance | any |
+| T12 | Truth / status preservation | non-authorizing |
+| T13 | Fail-closed matrix | never `ALLOW` |
+| T14 | Determinism | identical |
+| T15 | Regression | unchanged |
+
+### T1 — Workspace isolation
+
+**Purpose.** Guard evaluates exactly one workspace and never merges, filters, or repairs a
+mismatch (§5).
+
+**Setup.** Four cases: (a) request, policy and context all name the same workspace; (b) request
+and policy agree but a context item carries a foreign `workspace_id`; (c) request and context
+agree but the policy names another workspace; (d) a request whose `workspace_id` cannot be
+resolved.
+
+**Expected decision.** (a) evaluated normally; (b) and (c) `DENY`; (d) `BLOCKED`.
+
+**Expected CheckResult.** The workspace-agreement check is `REJECTED` for (b) and (c) — a
+determined negative — and `UNAVAILABLE` for (d).
+
+**Evidence required.** Both workspace ids in the decision record; the mismatching item's
+`context_refs` entry; confirmation that no item from the foreign workspace influenced the result.
+
+### T2 — Missing policy
+
+**Purpose.** No policy means no authorization, and it is not the same as no matching rule (§21).
+
+**Setup.** A well-formed request, a valid context, and no policy supplied for the workspace.
+
+**Expected decision.** `BLOCKED`.
+
+**Expected CheckResult.** The policy precondition is `UNAVAILABLE`.
+
+**Evidence required.** `policy.policy_id`, `policy.revision` and `policy.digest` all null;
+`reason_code` naming the missing policy; `rule_id` null.
+
+### T3 — Unknown context
+
+**Purpose.** An upstream truth model reporting `UNKNOWN` yields `UNKNOWN`, not `BLOCKED` (§2.3).
+
+**Setup.** A rule requiring `context.<subject>.truth_state`; the context contains the subject with
+`truth_state = UNKNOWN`.
+
+**Expected decision.** `UNKNOWN`.
+
+**Expected CheckResult.** That condition is `INDETERMINATE`.
+
+**Evidence required.** The context reference; the condition's `CheckResult`; a `reason_code`
+distinguishing this from T4.
+
+### T4 — Stale context
+
+**Purpose.** `STALE` is not `CURRENT` and never authorizes (§6.3).
+
+**Setup.** A rule requiring an authorizing `FACT`; the context holds it with
+`freshness = STALE`.
+
+**Expected decision.** `BLOCKED`.
+
+**Expected CheckResult.** The freshness condition is `UNAVAILABLE`.
+
+**Evidence required.** The item's `freshness` in the reference; a `reason_code` that names
+staleness rather than absence, so the caller knows to re-read rather than to produce a new fact.
+
+### T5 — Explicit `DENY`
+
+**Purpose.** A matching `DENY` rule decides, and the test passes *because* the decision is `DENY`.
+
+**Setup.** A policy with a single rule: `match` satisfied, conditions satisfied, `effect: DENY`.
+
+**Expected decision.** `DENY`.
+
+**Expected CheckResult.** Every condition `SATISFIED`.
+
+**Evidence required.** `rule_id` naming that rule; `reason_code`; confirmation the `DENY` was a
+completed policy decision and not a default (§13).
+
+### T6 — Explicit `ALLOW`
+
+**Purpose.** The one path to `ALLOW`, and the preconditions it requires.
+
+**Setup.** A policy with a rule whose `match` and conditions are all satisfied, `effect: ALLOW`,
+no approval-gated level or target, all prerequisites `VERIFIED` where required.
+
+**Expected decision.** `ALLOW`.
+
+**Expected CheckResult.** Every check `SATISFIED`, recorded individually.
+
+**Evidence required.** Full provenance (§19); `evaluation_digest`; explicit confirmation that no
+gate in §14.1 step 6 turned the `ALLOW` into `BLOCKED`.
+
+### T7 — Conflicting rules
+
+**Purpose.** §12 is a total order, and the outcome does not depend on policy file order.
+
+**Setup.** Six sub-cases:
+
+```text
+7a  same priority, DENY vs ALLOW          -> DENY wins (§12 step 3)
+7b  different priority, ALLOW is lower    -> lower numeric priority wins (§12 step 2)
+7c  same priority and effect, specific vs generic, both satisfied
+                                          -> specific wins (§12 step 4)
+7d  same priority and effect, incomparable specificity
+                                          -> falls through to rule_id ascending (§12 step 5)
+7e  complete tie                          -> rule_id ascending, both orders
+7f  every sub-case above re-run with the rules emitted in reverse order
+                                          -> identical decision, rule and trace
+```
+
+**Expected decision.** As listed; 7f must equal its unreversed counterpart in every field.
+
+**Expected CheckResult.** Per-candidate, in the §12 order, with the ordered trace preserved.
+
+**Evidence required.** The ordered rule trace for each sub-case, and an explicit assertion that
+7f's `evaluation_digest` equals the unreversed `evaluation_digest`.
+
+> 7f is the load-bearing one: a policy is a set of rules, and §12 says file order is never
+> semantically meaningful. Reversing the file must not change the answer.
+
+### T8 — Default no-rule `DENY`
+
+**Purpose.** Default `DENY` is a completed decision, distinct from `BLOCKED` and `UNKNOWN` (§13).
+
+**Setup.** A valid policy whose rules are all `REJECTED` at `match` — none applies — with no
+unsupported predicate, no indeterminate match, and no unavailable prerequisite anywhere.
+
+**Expected decision.** `DENY`.
+
+**Expected CheckResult.** Every candidate `REJECTED`; **no** `UNAVAILABLE` and **no**
+`INDETERMINATE` anywhere in the trace.
+
+**Evidence required.** `rule_id` null; a `reason_code` distinguishing default `DENY` from an
+explicit `DENY`; the full ordered trace showing every candidate was evaluated and rejected.
+
+### T9 — Malformed request
+
+**Purpose.** A malformed or unscoped request is an absolute `DENY` (§15.1), evaluated before
+policy.
+
+**Setup.** Cases: unknown `schema_version`; missing `action.permission_level`; a
+`permission_level` outside the closed set; a target field outside its closed set; a missing
+`actor`.
+
+**Expected decision.** `DENY` for each.
+
+**Expected CheckResult.** The safety invariant is `REJECTED`; no policy rule is evaluated.
+
+**Evidence required.** The failing invariant; confirmation the policy was never consulted, so no
+rule can be blamed for the outcome.
+
+### T10 — Policy revision and digest
+
+**Purpose.** A policy is an immutable reviewed snapshot; a digest that does not match its content
+is not that policy (§9, §20.2).
+
+**Setup.** Valid policy; then a policy whose declared `digest` does not match its canonical form;
+then a policy whose `revision` differs from the one the request was evaluated against.
+
+**Expected decision.** `ALLOW`/`DENY` normally; `BLOCKED` on digest mismatch.
+
+**Expected CheckResult.** The policy precondition is `UNAVAILABLE` on mismatch.
+
+**Evidence required.** Declared digest, computed digest, and confirmation that the mismatch was
+detected rather than tolerated.
+
+### T11 — Provenance
+
+**Purpose.** §19's list is answerable from the record alone.
+
+**Setup.** Any evaluated request; assert every §19 question has an answer in the record.
+
+**Expected decision.** Any.
+
+**Expected CheckResult.** Any; the trace is present regardless of outcome.
+
+**Evidence required.** A record where each §19 field is populated or explicitly null, and where
+`context_refs` identify consulted items without carrying raw payload (§18.3).
+
+### T12 — Truth / status preservation
+
+**Purpose.** `UNKNOWN`, `NOT_RUN`, `BLOCKED`, `STALE`, `PLAN` and `HISTORY` are never converted
+into authorization (§6.2, §21).
+
+**Setup.** For each value: a policy rule that would authorize if the value were satisfied; the
+context carries that value.
+
+**Expected decision.** `BLOCKED` or `UNKNOWN`; never `ALLOW`.
+
+**Expected CheckResult.** Non-`SATISFIED`, and specifically not silently `REJECTED`.
+
+**Evidence required.** The declared value preserved verbatim in the reference; a `reason_code`
+that reports the value rather than a generic failure.
+
+> A test that passed by treating `PLAN` as "not a fact, so the rule does not apply, so default
+> `DENY`" would be a **failure** of this test. The required outcome is `BLOCKED`, because the
+> caller must learn that the evidence cannot authorize (§6.3).
+
+### T13 — Fail-closed matrix
+
+**Purpose.** §21 in full: no listed condition may produce `ALLOW`.
+
+**Setup.** One case per row, including every row below:
+
+```text
+missing policy              invalid policy              unknown workspace
+workspace mismatch          missing context             context UNKNOWN
+context STALE               required FACT absent, PLAN present
+required FACT absent, HISTORY present                   FACT absent entirely
+missing capability          capability UNKNOWN          capability DECLARED
+capability NOT_VERIFIED     capability UNAVAILABLE      missing approval
+approval INVALID            approval UNKNOWN            unsupported predicate
+unsupported field           closed-vocabulary unknown value
+ambiguous rule ordering     candidate rule, match UNAVAILABLE
+candidate rule, match INDETERMINATE
+malformed request           no matching rule
+```
+
+The last five rows are the ones Amendment 7 added or that §21 carries beyond the obvious: an
+`UNSUPPORTED` predicate is `BLOCKED` rather than `REJECTED` (§11.6), an ambiguous ordering is
+`BLOCKED`, and an unevaluable `match` is retained as an indeterminate candidate rather than
+discarded (§14.0). **This list is §21's, one case per row** — the two must not drift apart, and
+the test asserts the mapping rather than restating it.
+
+**Expected decision.** Exactly the §21 value for each row.
+
+**Expected CheckResult.** As §21 implies — `UNAVAILABLE` for `BLOCKED` rows, `INDETERMINATE` for
+`UNKNOWN` rows, `REJECTED` for `DENY` rows.
+
+**Evidence required.** A table of case → decision → `reason_code`. **The assertion that matters is
+negative and must be stated explicitly:**
+
+> None of these cases may produce `ALLOW`.
+
+### T14 — Determinism
+
+**Purpose.** §20's guarantee, verified by re-evaluation.
+
+**Setup.** Two parts.
+
+Part one — identical semantic input, run twice:
+
+```text
+same decision
+same selected rule
+same ordered trace
+same context refs
+same evaluation_digest
+```
+
+Part two — vary only runtime fields, one at a time:
+
+```text
+retrieved_at changes     -> semantic digest unchanged
+evaluated_at changes     -> semantic digest unchanged
+decision_id changes      -> semantic digest unchanged
+cache_hit changes        -> semantic digest unchanged
+```
+
+**Expected decision.** Identical across every run in both parts.
+
+**Expected CheckResult.** Identical `CheckResult` sequences in part one.
+
+**Evidence required.** Both digests printed for each run, with an explicit assertion that part two
+changes the record while leaving `request_digest` and `evaluation_digest` byte-identical.
+
+> Part two is what makes §20.4 real. If a digest moved because a read happened at a different
+> time, the contract's determinism claim would be unsatisfiable in practice.
+
+### T15 — Regression
+
+**Purpose.** AI-04 does not disturb what already exists.
+
+**Setup.** The full repository suite plus a Guard-specific check that:
+
+```text
+plugins/context is unchanged by AI-04-B
+providers/ is unchanged by AI-04-B
+Guard imports AI-02 and AI-03 types rather than redefining them
+plugins/guard contains no network client, no subprocess, and no eval
+no secret value is logged by any Guard code path
+```
+
+**Expected decision.** Not applicable.
+
+**Expected CheckResult.** Not applicable.
+
+**Evidence required.** Layer 0 result, the pre-existing suite's pass count, and an explicit
+statement that no previously-passing test regressed.
+
+---
+
+## 27. Exit gates — C0 to C10
+
+AI-04 is complete only when every gate below passes. Each gate names its condition, the evidence
+it requires, its pass criterion, and the state that forbids it.
+
+| ID | Gate | Blocking |
+| --- | --- | --- |
+| C0 | Contract frozen and internally consistent | yes |
+| C1 | Workspace isolation | yes |
+| C2 | Deterministic evaluation | yes |
+| C3 | Fail-closed behaviour | yes |
+| C4 | `DENY` / `ALLOW` semantics | yes |
+| C5 | `UNKNOWN` / `NOT_RUN` / `BLOCKED` preservation | yes |
+| C6 | Context freshness | yes |
+| C7 | Provenance completeness | yes |
+| C8 | Regression safety | yes |
+| C9 | Evidence completeness | yes |
+| C10 | Required CI checks | yes |
+
+### C0 — Contract frozen and internally consistent
+
+**Condition.** Every one of the following is frozen in this document, and no two of them
+contradict each other:
+
+```text
+decision vocabulary            request shape              workspace scope
+context semantics              capability semantics       approval semantics
+policy schema                  rule schema                predicate grammar
+rule precedence                default DENY               fail-closed semantics
+safety boundaries              result and provenance      canonicalization
+digest rules                   closed vocabularies        match indeterminacy (§14.0)
+```
+
+**Required evidence.** This document at its frozen revision; the §24 amendment log; a cross-check
+that every §21 row is consistent with §13.1, §14 and §18.2.
+
+**Pass criterion.** Every listed area has a frozen definition, and the §21 matrix, §13.1, §14 and
+§18.2 agree with each other.
+
+**Forbidden state.** Any listed area undefined; any two sections disagreeing on the same word or
+outcome; an ordering asserted to be total without a guaranteed final tie-break.
+
+### C1 — Workspace isolation
+
+**Condition.** Exactly one workspace per evaluation; no merge, filter, or repair of a mismatch.
+
+**Required evidence.** T1's four cases.
+
+**Pass criterion.** Mismatch yields `DENY`; unresolvable yields `BLOCKED`; no foreign item
+influences any decision.
+
+**Forbidden state.** Any cross-workspace evaluation; any mismatch silently dropped; any policy
+able to authorize across workspaces.
+
+### C2 — Deterministic evaluation
+
+**Condition.** §12 is a total order, applied end to end:
+
+```text
+safety invariant
+  -> lower numeric priority
+  -> DENY before ALLOW
+  -> structural specificity
+  -> rule_id ascending
+```
+
+**Required evidence.** T7 sub-cases 7a–7f, including the reversal case; T14 both parts.
+
+**Pass criterion.** Identical semantic inputs produce an identical decision, selected rule,
+ordered trace, context refs and evaluation digest — including when the policy's rules are emitted
+in a different order.
+
+**Forbidden state.** Any tie broken by file order, by specificity when rules are incomparable
+without falling through, or by anything not in the §12 chain.
+
+### C3 — Fail-closed behaviour
+
+**Condition.** No missing, unknown, unsupported, or indeterminate prerequisite becomes `ALLOW`.
+
+**Required evidence.** T13's full case list, including each `UNSUPPORTED` case and the §14.0
+indeterminate-match cases.
+
+**Pass criterion.** Every case produces its §21 outcome.
+
+**Forbidden state.**
+
+```text
+no missing prerequisite      -> ALLOW
+no unknown prerequisite      -> ALLOW
+no unsupported predicate     -> ALLOW
+no unsupported field         -> ALLOW
+no indeterminate match       -> ALLOW
+no indeterminate condition   -> ALLOW
+```
+
+### C4 — `DENY` / `ALLOW` semantics
+
+**Condition.** `DENY` and `ALLOW` mean what §2.2 says, and default `DENY` is distinguishable from
+explicit `DENY`.
+
+**Required evidence.** T5, T6, T8.
+
+**Pass criterion.** `ALLOW` only where every required precondition was `SATISFIED`; `DENY` for
+explicit denial, malformed request, no matching rule, and workspace mismatch; the three `DENY`
+kinds carry distinct `reason_code`s.
+
+**Forbidden state.** `ALLOW` from any path other than T6's; `BLOCKED` or `UNKNOWN` reported as
+`DENY`, or `DENY` reported as either.
+
+### C5 — `UNKNOWN` / `NOT_RUN` / `BLOCKED` preservation
+
+**Condition.** None of the following is converted into an authorizing `ALLOW`:
+
+```text
+UNKNOWN        NOT_RUN        BLOCKED        STALE        PLAN        HISTORY
+```
+
+**Required evidence.** T12, one case per value, plus the T3/T4 distinction.
+
+**Pass criterion.** Each value is reported as itself; each yields `BLOCKED` or `UNKNOWN`; a value
+is never silently normalised into a neighbouring one.
+
+**Forbidden state.** `UNKNOWN -> ALLOW`; `NOT_RUN -> ALLOW`; `BLOCKED -> ALLOW`;
+`PLAN -> ALLOW` because its text says `COMPLETE`, `PASS` or `APPROVED`; a compound or unrecognised
+declared value decomposed into a satisfying one.
+
+### C6 — Context freshness
+
+**Condition.** Freshness is honoured as §6.1 requires, and the three values are distinct.
+
+**Required evidence.** T4 plus explicit assertions that:
+
+```text
+CURRENT != STALE
+STALE   != UNKNOWN
+unknown freshness never becomes CURRENT
+```
+
+**Pass criterion.** Only `CURRENT` participates in authorization; `STALE` is `BLOCKED`;
+unestablished freshness is never treated as current.
+
+**Forbidden state.** A `STALE` or freshness-`UNKNOWN` item satisfying an authorization condition;
+`STALE` reported as `WRONG` rather than as "no evidence it is still current".
+
+### C7 — Provenance completeness
+
+**Condition.** Every decision answers every §19 question.
+
+**Required evidence.** T11.
+
+**Pass criterion.** `actor`, `action`, `workspace_id`, `target`, `capability`, `policy` identity
+and revision and digest, `rule_id`, `context_refs`, `approval_reference`, `decision`,
+`reason_code` and `checks[]` are each populated or explicitly null, and the record carries no raw
+payload.
+
+**Forbidden state.** An `ALLOW` whose selected rule is unidentifiable; a decision whose
+`evaluation_digest` cannot be recomputed from the record; any secret, prompt or raw context
+payload in the record.
+
+### C8 — Regression safety
+
+**Condition.** AI-04 adds Guard without disturbing anything already frozen.
+
+**Required evidence.** T15: Layer 0, the pre-existing suite, and the Guard-specific checks.
+
+**Pass criterion.** The pre-existing suite's pass count does not decrease; Layer 0 passes; AI-02
+and AI-03 implementations are unmodified; `plugins/guard/` contains no network client, no
+subprocess, and no `eval`.
+
+**Forbidden state.** Any previously-passing test failing; AI-02 or AI-03 behaviour changed; Guard
+reimplementing capability, context, or routing types instead of importing them.
+
+### C9 — Evidence completeness
+
+**Condition.** AI-04's own evidence record is complete, and **only** that.
+
+**Required evidence.** An AI-04 evidence document recording the freeze revision, base SHA,
+implementation head, the T1–T15 results with the commands that produced them, the C0–C10 verdicts,
+and every `NOT_RUN` / `BLOCKED` / `UNKNOWN` item explicitly.
+
+**Pass criterion.** Every gate above is traceable to executed evidence, and every unexecuted item
+is labelled as unexecuted.
+
+**Forbidden state.** A gate marked `PASS` on the strength of implementation existing; a `NOT_RUN`
+recorded as `PASS`; a test count carried forward from another phase.
+
+> **This gate does not require an Evidence Engine.** AI-05 is not implemented and is not a
+> prerequisite. C9 requires that Guard's decision evidence and provenance are *defined and
+> produced* — §18, §19, §20 — not that a durable evidence store exists. `evidence_ref` stays
+> `null` until AI-05 exists, and a null `evidence_ref` is not a C9 failure.
+
+### C10 — Required CI checks
+
+**Condition.** The repository's required checks pass on the head that carries the work.
+
+**Required evidence.** A CI run on the pull request, with its run id and conclusion.
+
+**Pass criterion.**
+
+```text
+required CI checks = PASS
+```
+
+**Forbidden state.**
+
+```text
+NOT_RUN     cannot be counted as complete
+BLOCKED     cannot be counted as complete
+UNKNOWN     cannot be counted as complete
+```
+
+Local execution is not CI execution. A green local run does not satisfy C10, and a criterion may
+not be marked complete because CI "would" pass.
+
+---
+
+## 28. AI-04-B — Guard Implementation Execution Brief
+
+The next sub-phase. This section constrains that work; it contains no implementation.
+
+### 28.1 Scope
+
+AI-04-B implements **`plugins/guard/`** and its directly associated unit tests. Nothing else.
+
+```text
+in scope      plugins/guard/*.py
+              tests/guard/
+              config/guard/ policy files, only if Q-1 is resolved
+out of scope  everything else in the repository
+```
+
+### 28.2 Must consume, not duplicate
+
+Guard **imports** these; it does not restate them.
+
+| Source | What is consumed |
+| --- | --- |
+| AI-02 | `CapabilityStatus` |
+| AI-03 | `ContextResponse`, `ContextItem`, `ItemRef`, `ItemKind`, `StatusValue`, `Freshness` |
+| AI-03 | `WorkspaceIdentity` and its `WorkingTreeState` |
+| AI-00 | the permission model's six levels |
+
+**Redefining any of these is a defect**, not a convenience. Two definitions of `CapabilityStatus`
+in one repository means two places to update and one of them will be forgotten.
+
+Forbidden:
+
+```text
+Context collection             Capability probing          Evidence persistence
+Model routing                  Tool execution              Approval issuance
+SecurityLab integration        Provider calls
+```
+
+### 28.3 Implementation constraints
+
+```text
+typed enums, not string literals
+typed request and result structures
+the closed predicate grammar of §11, and no other
+deterministic evaluation per §12 and §14
+canonical digest per §20
+fail-closed per §21
+workspace scoped per §5
+no eval, no exec, no arbitrary code execution
+no LLM authorization
+no network calls
+no secret logging
+```
+
+`CheckResult` and `GuardDecision` are distinct types (§18.2), not one enum and not one string.
+
+### 28.4 Test-first expectation
+
+AI-04-B implements **T1–T15 before the final evaluation logic** is considered done. Every T item
+maps to at least one automated test, and the mapping is recorded rather than implied.
+
+```text
+T1-T15  ->  tests/guard/, one module group per test
+```
+
+A T item with no corresponding automated test is an incomplete sub-phase, not a deferred one.
+
+### 28.5 No policy database, no approval service
+
+AI-04-B does not implement:
+
+```text
+policy database                distributed policy service
+approval issuance              human approval workflow
+policy generation
+```
+
+Per **D-12**, `system-change` and `remote-change` continue to be `BLOCKED` for as long as no
+verified approval source exists. AI-04-B must not invent one, must not accept a caller-supplied
+boolean as a substitute (§8), and must not weaken the gate to make its own tests pass.
+
+> A test that needs an approval-gated action to be `ALLOW` is testing something AI-04 v1 cannot
+> do. Such a test is wrong, and the correct outcome is `BLOCKED`.
+
+### 28.6 AI-04-B entry criteria
+
+- [ ] AI-04-A merged
+- [ ] The §2, §11, §12, §18 and §20 vocabularies are implemented as typed values, not strings
+- [ ] Canonicalization produces byte-identical output for a fixed vector set
+- [ ] §14.0's indeterminate-candidate rule is implemented, with a test proving an unevaluable
+      `match` is retained rather than discarded
+
+---
+
+## 29. AI-04-A freeze record
 
 ```text
 Phase              = AI-04 Security Guard Plugin
@@ -1397,7 +2121,7 @@ Base branch        = main
 Base SHA           = 548bc041b31cc0fc9d01af55c527378ba2c42c48
 Working tree       = clean at start
 Work branch        = feature/ai-04-guard-contract
-Amendments         = 6 applied before freeze
+Amendments         = 7 applied before freeze
 Production code    = 0 lines changed
 Guard code         = not written
 Policy files       = none
@@ -1407,15 +2131,16 @@ SecurityLab        = untouched
 Live API calls     = none
 Secrets added      = none
 
+Test matrix        = T1-T15 defined (section 26)
+Exit gates         = C0-C10 defined (section 27)
+Next sub-phase     = AI-04-B, constrained by section 28
+
 Deferred, and NOT PASS:
   Guard implementation            AI-04-B
   approval issuance/verification  outside AI-04 (D-12)
   policy storage and selection    Q-1
   canonicalization test vectors   AI-04-B
+  AI-05 evidence store            not implemented; evidence_ref stays null (C9)
 ```
 
-### 26.1 AI-04-B entry criteria
-
-- [ ] AI-04-A merged
-- [ ] The §2, §11, §12, §18 and §20 vocabularies are implemented as typed values, not strings
-- [ ] Canonicalization produces byte-identical output for a fixed vector set
+---
