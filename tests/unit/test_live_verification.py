@@ -476,9 +476,45 @@ class TestProbeCatalogue:
         assert "json_schema" in definition.description
 
 
+class _Sequenced:
+    """Returns a different canned payload per request.
+
+    A live run sends a baseline probe before any capability probe. With one
+    canned response the baseline is judged on the probe's payload too -- and a
+    tool-call payload would make the baseline itself inconclusive, so the
+    capability probe would never run.
+    """
+
+    def __init__(self, payloads):
+        self._payloads = list(payloads)
+        self.requests = []
+
+    def send(self, request):
+        from providers.protocol import TransportResult
+
+        self.requests.append(request)
+        index = min(len(self.requests) - 1, len(self._payloads) - 1)
+        return TransportResult.success(200, self._payloads[index])
+
+
+def _tool_payload(completion_payload, name="workbench_probe", finish="tool_calls"):
+    payload = completion_payload()
+    payload["choices"][0]["message"] = {
+        "role": "assistant",
+        "content": None,
+        "tool_calls": [{"id": "c1", "function": {"name": name, "arguments": "{}"}}],
+    }
+    payload["choices"][0]["finish_reason"] = finish
+    return payload
+
+
 class TestToolCallProbeJudgement:
-    def _run(self, transport, all_profiles, model_profiles, credentials_env):
-        verifier = LiveVerifier(_context(transport, all_profiles, model_profiles, credentials_env))
+    def _run(
+        self, baseline, probe, all_profiles, model_profiles, credentials_env
+    ):
+        verifier = LiveVerifier(
+            _context(_Sequenced([baseline, probe]), all_profiles, model_profiles, credentials_env)
+        )
         return verifier.verify(
             provider_id="deepseek",
             model_ref=DEEPSEEK_REF,
@@ -489,24 +525,12 @@ class TestToolCallProbeJudgement:
     def test_a_matching_tool_call_passes(
         self, fake_transport_factory, all_profiles, model_profiles, credentials_env, completion_payload
     ):
-        payload = completion_payload()
-        payload["choices"][0]["message"] = {
-            "role": "assistant",
-            "content": None,
-            "tool_calls": [
-                {
-                    "id": "c1",
-                    "function": {
-                        "name": "workbench_probe",
-                        "arguments": '{"value": "ok"}',
-                    },
-                }
-            ],
-        }
-        payload["choices"][0]["finish_reason"] = "tool_calls"
-        transport = fake_transport_factory.success(payload)
         record = self._run(
-            transport, all_profiles, model_profiles, credentials_env
+            completion_payload(),
+            _tool_payload(completion_payload),
+            all_profiles,
+            model_profiles,
+            credentials_env,
         )
         observation = record.observations[0]
         assert observation.outcome is ProbeOutcome.PASS
@@ -517,9 +541,12 @@ class TestToolCallProbeJudgement:
     ):
         """A prompt that did not elicit a tool call is not evidence the
         capability is absent."""
-        transport = fake_transport_factory.success(completion_payload())
         record = self._run(
-            transport, all_profiles, model_profiles, credentials_env
+            completion_payload(),
+            completion_payload(),
+            all_profiles,
+            model_profiles,
+            credentials_env,
         )
         observation = record.observations[0]
         assert observation.outcome is ProbeOutcome.INCONCLUSIVE
@@ -536,15 +563,12 @@ class TestToolCallProbeJudgement:
         turn an AI-02 capability into an AI-11 benchmark, and would report a
         working mechanism as absent.
         """
-        payload = completion_payload()
-        payload["choices"][0]["message"] = {
-            "role": "assistant",
-            "content": None,
-            "tool_calls": [{"id": "c1", "function": {"name": "other", "arguments": "{}"}}],
-        }
-        transport = fake_transport_factory.success(payload)
         record = self._run(
-            transport, all_profiles, model_profiles, credentials_env
+            completion_payload(),
+            _tool_payload(completion_payload, name="other"),
+            all_profiles,
+            model_profiles,
+            credentials_env,
         )
         observation = record.observations[0]
         assert observation.outcome is ProbeOutcome.PASS
@@ -555,15 +579,12 @@ class TestToolCallProbeJudgement:
     def test_a_name_mismatch_is_never_unavailable(
         self, fake_transport_factory, all_profiles, model_profiles, credentials_env, completion_payload
     ):
-        payload = completion_payload()
-        payload["choices"][0]["message"] = {
-            "role": "assistant",
-            "content": None,
-            "tool_calls": [{"id": "c1", "function": {"name": "other", "arguments": "{}"}}],
-        }
-        transport = fake_transport_factory.success(payload)
         record = self._run(
-            transport, all_profiles, model_profiles, credentials_env
+            completion_payload(),
+            _tool_payload(completion_payload, name="other"),
+            all_profiles,
+            model_profiles,
+            credentials_env,
         )
         assert record.observations[0].candidate_status is not CapabilityStatus.UNAVAILABLE
 
@@ -678,8 +699,10 @@ class TestProviderErrorsAreInconclusive:
 
 
 class TestStructuredOutputProbeJudgement:
-    def _run(self, transport, all_profiles, model_profiles, credentials_env):
-        verifier = LiveVerifier(_context(transport, all_profiles, model_profiles, credentials_env))
+    def _run(self, baseline, probe, all_profiles, model_profiles, credentials_env):
+        verifier = LiveVerifier(
+            _context(_Sequenced([baseline, probe]), all_profiles, model_profiles, credentials_env)
+        )
         return verifier.verify(
             provider_id="deepseek",
             model_ref=DEEPSEEK_REF,
@@ -692,8 +715,9 @@ class TestStructuredOutputProbeJudgement:
     ):
         payload = completion_payload()
         payload["choices"][0]["message"]["content"] = '{"status": "ok"}'
-        transport = fake_transport_factory.success(payload)
-        record = self._run(transport, all_profiles, model_profiles, credentials_env)
+        record = self._run(
+            completion_payload(), payload, all_profiles, model_profiles, credentials_env
+        )
         assert record.observations[0].outcome is ProbeOutcome.PASS
 
     def test_non_json_fails(
@@ -701,8 +725,9 @@ class TestStructuredOutputProbeJudgement:
     ):
         payload = completion_payload()
         payload["choices"][0]["message"]["content"] = "not json at all"
-        transport = fake_transport_factory.success(payload)
-        record = self._run(transport, all_profiles, model_profiles, credentials_env)
+        record = self._run(
+            completion_payload(), payload, all_profiles, model_profiles, credentials_env
+        )
         assert record.observations[0].outcome is ProbeOutcome.FAIL
 
     def test_json_that_is_not_an_object_fails(
@@ -710,8 +735,9 @@ class TestStructuredOutputProbeJudgement:
     ):
         payload = completion_payload()
         payload["choices"][0]["message"]["content"] = "[1, 2, 3]"
-        transport = fake_transport_factory.success(payload)
-        record = self._run(transport, all_profiles, model_profiles, credentials_env)
+        record = self._run(
+            completion_payload(), payload, all_profiles, model_profiles, credentials_env
+        )
         assert record.observations[0].outcome is ProbeOutcome.FAIL
 
 
@@ -995,7 +1021,10 @@ class TestMalformedModelRef:
         record = verifier.verify(
             provider_id="deepseek", model_ref="garbage", opt_in=LIVE_OPT_IN_VALUE
         )
-        assert record.model_ref == "garbage"
+        # The raw caller text is not echoed: it is arbitrary input, and the
+        # refusal is attributable without repeating it.
+        assert record.model_ref == "<invalid>"
+        assert "garbage" not in str(record.to_dict())
         assert record.provider_id == "deepseek"
         assert record.run_id
 
@@ -1006,6 +1035,387 @@ class TestMalformedModelRef:
             provider_id, model_id = split_model_ref(value)
             assert isinstance(provider_id, str)
             assert isinstance(model_id, str)
+
+
+def _single(payload):
+    """A transport that always returns one payload — for baseline-only runs."""
+    from providers.protocol import TransportResult
+
+    class _Single:
+        def __init__(self):
+            self.requests = []
+
+        def send(self, request):
+            self.requests.append(request)
+            return TransportResult.success(200, payload)
+
+    return _Single()
+
+
+def _profile_with(model_profiles, capability, entry):
+    """A synthetic profile whose named capability has the given truth state."""
+    import dataclasses as _dc
+
+    base = model_profiles[DEEPSEEK_REF]
+    capabilities = _dc.replace(base.capabilities, **{capability.value: entry})
+    provenance = base.provenance
+    if entry.status is CapabilityStatus.VERIFIED:
+        provenance = Provenance(verified_at="2026-09-28", evidence_ref="SYNTHETIC")
+    profile = _dc.replace(base, capabilities=capabilities, provenance=provenance)
+    return {**model_profiles, DEEPSEEK_REF: profile}
+
+
+class TestFinishStateGating:
+    """§7.3: LENGTH is a truncation warning and UNKNOWN is not STOP.
+
+    Neither can support a positive observation, however the text reads.
+    """
+
+    @pytest.mark.parametrize(
+        "finish,expected",
+        [
+            ("stop", LiveRunStatus.PASS),
+            ("length", LiveRunStatus.UNKNOWN),
+            ("something_new", LiveRunStatus.UNKNOWN),
+        ],
+    )
+    def test_the_baseline_requires_a_clean_stop(
+        self,
+        finish,
+        expected,
+        all_profiles,
+        model_profiles,
+        credentials_env,
+        completion_payload,
+    ):
+        payload = completion_payload()
+        payload["choices"][0]["finish_reason"] = finish
+        verifier = LiveVerifier(
+            _context(_single(payload), all_profiles, model_profiles, credentials_env)
+        )
+        record = verifier.verify(
+            provider_id="deepseek",
+            model_ref=DEEPSEEK_REF,
+            opt_in=LIVE_OPT_IN_VALUE,
+            capabilities=(),
+        )
+        assert record.status is expected, finish
+        if finish != "stop":
+            # Never a pass, and never blamed on the provider either: a
+            # truncation says nothing about connectivity.
+            assert record.status is not LiveRunStatus.PASS
+            assert record.status is not LiveRunStatus.FAIL
+
+    def test_a_missing_finish_state_is_not_a_pass(
+        self, all_profiles, model_profiles, credentials_env, completion_payload
+    ):
+        payload = completion_payload()
+        del payload["choices"][0]["finish_reason"]
+        verifier = LiveVerifier(
+            _context(_single(payload), all_profiles, model_profiles, credentials_env)
+        )
+        record = verifier.verify(
+            provider_id="deepseek",
+            model_ref=DEEPSEEK_REF,
+            opt_in=LIVE_OPT_IN_VALUE,
+            capabilities=(),
+        )
+        assert record.status is LiveRunStatus.UNKNOWN
+
+    def _structured(self, finish, content, all_profiles, model_profiles, credentials_env, completion_payload):
+        probe = completion_payload()
+        probe["choices"][0]["finish_reason"] = finish
+        probe["choices"][0]["message"]["content"] = content
+        verifier = LiveVerifier(
+            _context(
+                _Sequenced([completion_payload(), probe]),
+                all_profiles,
+                model_profiles,
+                credentials_env,
+            )
+        )
+        record = verifier.verify(
+            provider_id="deepseek",
+            model_ref=DEEPSEEK_REF,
+            opt_in=LIVE_OPT_IN_VALUE,
+            capabilities=(CapabilityName.STRUCTURED_OUTPUT,),
+        )
+        return record.observations[0]
+
+    def test_a_truncated_but_valid_json_answer_is_not_verified(
+        self, all_profiles, model_profiles, credentials_env, completion_payload
+    ):
+        """LENGTH with parseable JSON would otherwise look like a pass."""
+        observation = self._structured(
+            "length", '{"status": "ok"}', all_profiles, model_profiles, credentials_env, completion_payload
+        )
+        assert observation.outcome is ProbeOutcome.INCONCLUSIVE
+        assert observation.candidate_status is CapabilityStatus.NOT_VERIFIED
+        assert observation.candidate_status is not CapabilityStatus.VERIFIED
+
+    def test_an_unknown_finish_state_with_valid_json_is_not_verified(
+        self, all_profiles, model_profiles, credentials_env, completion_payload
+    ):
+        observation = self._structured(
+            "something_new", '{"status": "ok"}', all_profiles, model_profiles, credentials_env, completion_payload
+        )
+        assert observation.outcome is ProbeOutcome.INCONCLUSIVE
+        assert observation.candidate_status is not CapabilityStatus.VERIFIED
+
+    def test_a_clean_stop_with_valid_json_is_verified(
+        self, all_profiles, model_profiles, credentials_env, completion_payload
+    ):
+        observation = self._structured(
+            "stop", '{"status": "ok"}', all_profiles, model_profiles, credentials_env, completion_payload
+        )
+        assert observation.candidate_status is CapabilityStatus.VERIFIED
+
+    @pytest.mark.parametrize("finish", ["stop", "length", "something_new"])
+    def test_returned_tool_calls_under_a_non_tool_call_finish_are_inconclusive(
+        self, finish, all_profiles, model_profiles, credentials_env, completion_payload
+    ):
+        """Calls came back, but the provider did not signal a tool-call turn.
+
+        The observation must agree with TOOL_CALLS semantics, so this is not a
+        completed observation of the mechanism.
+        """
+        probe = _tool_payload(completion_payload, finish=finish)
+        verifier = LiveVerifier(
+            _context(
+                _Sequenced([completion_payload(), probe]),
+                all_profiles,
+                model_profiles,
+                credentials_env,
+            )
+        )
+        record = verifier.verify(
+            provider_id="deepseek",
+            model_ref=DEEPSEEK_REF,
+            opt_in=LIVE_OPT_IN_VALUE,
+            capabilities=(CapabilityName.TOOL_CALLING,),
+        )
+        observation = record.observations[0]
+        assert observation.outcome is ProbeOutcome.INCONCLUSIVE, finish
+        assert observation.candidate_status is not CapabilityStatus.VERIFIED
+
+    def test_a_signalled_tool_call_turn_verifies(
+        self, all_profiles, model_profiles, credentials_env, completion_payload
+    ):
+        probe = _tool_payload(completion_payload, finish="tool_calls")
+        verifier = LiveVerifier(
+            _context(
+                _Sequenced([completion_payload(), probe]),
+                all_profiles,
+                model_profiles,
+                credentials_env,
+            )
+        )
+        record = verifier.verify(
+            provider_id="deepseek",
+            model_ref=DEEPSEEK_REF,
+            opt_in=LIVE_OPT_IN_VALUE,
+            capabilities=(CapabilityName.TOOL_CALLING,),
+        )
+        assert record.observations[0].candidate_status is CapabilityStatus.VERIFIED
+
+
+class TestCallerInputBoundary:
+    """§10: caller-supplied text does not reach a record or a log verbatim."""
+
+    SMUGGLED = "sk-live-not-a-real-key-abcdef"
+
+    def test_a_malformed_ref_carrying_key_shaped_text_is_not_echoed(
+        self, fake_transport_factory, all_profiles, model_profiles, credentials_env
+    ):
+        verifier = LiveVerifier(
+            _context(fake_transport_factory.success(), all_profiles, model_profiles, credentials_env)
+        )
+        record = verifier.verify(
+            provider_id="deepseek", model_ref=self.SMUGGLED, opt_in=LIVE_OPT_IN_VALUE
+        )
+        assert record.status is LiveRunStatus.BLOCKED
+        rendered = str(record.to_dict())
+        assert self.SMUGGLED not in rendered
+        assert "sk-" not in rendered
+
+    def test_a_key_shaped_experiment_id_is_sanitized_not_recorded(
+        self, fake_transport_factory, all_profiles, model_profiles, credentials_env, completion_payload
+    ):
+        """An id can be identifier-shaped and secret-shaped at once.
+
+        Hyphens are legal in both, so `sk-...` passes shape validation and
+        redaction is what keeps it out of the record. Shape and secrecy are
+        different questions and need different checks.
+        """
+        verifier = LiveVerifier(
+            _context(
+                fake_transport_factory.success(completion_payload()),
+                all_profiles,
+                model_profiles,
+                credentials_env,
+            )
+        )
+        record = verifier.verify(
+            provider_id="deepseek",
+            model_ref=DEEPSEEK_REF,
+            opt_in=LIVE_OPT_IN_VALUE,
+            capabilities=(),
+            experiment_id=self.SMUGGLED,
+        )
+        rendered = str(record.to_dict())
+        assert self.SMUGGLED not in rendered
+        assert "sk-" not in rendered
+        assert record.experiment_id == "[REDACTED]"
+
+    @pytest.mark.parametrize(
+        "bad",
+        [
+            "x" * 200,
+            "has space",
+            "has\nnewline",
+            "semi;colon",
+            "back`tick`",
+            "$(subshell)",
+            "a/b",
+            "quote'injection",
+            "",
+        ],
+    )
+    def test_an_invalid_experiment_id_is_refused_without_echoing_it(
+        self, bad, fake_transport_factory, all_profiles, model_profiles, credentials_env
+    ):
+        transport = fake_transport_factory.success()
+        verifier = LiveVerifier(
+            _context(transport, all_profiles, model_profiles, credentials_env)
+        )
+        record = verifier.verify(
+            provider_id="deepseek",
+            model_ref=DEEPSEEK_REF,
+            opt_in=LIVE_OPT_IN_VALUE,
+            experiment_id=bad,
+        )
+        assert record.status is LiveRunStatus.BLOCKED
+        assert record.gate.code is LiveBlockCode.INVALID_EXPERIMENT_ID
+        if bad:
+            assert bad not in str(record.to_dict())
+        assert transport.requests == []
+
+    @pytest.mark.parametrize("good", ["EXP-1", "live.2026-09-29", "a_b-c.d", "EXP-2026-09-29-abcdef"])
+    def test_a_valid_experiment_id_is_accepted(
+        self, good, fake_transport_factory, all_profiles, model_profiles, credentials_env, completion_payload
+    ):
+        verifier = LiveVerifier(
+            _context(fake_transport_factory.success(completion_payload()), all_profiles, model_profiles, credentials_env)
+        )
+        record = verifier.verify(
+            provider_id="deepseek",
+            model_ref=DEEPSEEK_REF,
+            opt_in=LIVE_OPT_IN_VALUE,
+            capabilities=(),
+            experiment_id=good,
+        )
+        assert record.status is LiveRunStatus.PASS
+        assert record.experiment_id == good
+
+    def test_a_valid_model_ref_is_unchanged(
+        self, fake_transport_factory, all_profiles, model_profiles, credentials_env, completion_payload
+    ):
+        verifier = LiveVerifier(
+            _context(fake_transport_factory.success(completion_payload()), all_profiles, model_profiles, credentials_env)
+        )
+        record = verifier.verify(
+            provider_id="deepseek",
+            model_ref=DEEPSEEK_REF,
+            opt_in=LIVE_OPT_IN_VALUE,
+            capabilities=(),
+        )
+        assert record.model_ref == DEEPSEEK_REF
+
+    def test_safe_caller_text_redacts_flattens_and_caps(self):
+        from providers.live_verification import safe_caller_text
+
+        assert "sk-live-not-a-real-key" not in safe_caller_text(self.SMUGGLED)
+        assert "\n" not in safe_caller_text("a\nb")
+        assert len(safe_caller_text("x" * 500)) <= 130
+
+
+class TestNotRunPreservesTruthState:
+    """A probe that did not run observed nothing, so it changes nothing."""
+
+    def test_a_failed_baseline_preserves_a_declared_capability(
+        self, fake_transport_factory, all_profiles, model_profiles, credentials_env
+    ):
+        declared = CapabilityEntry(
+            status=CapabilityStatus.DECLARED,
+            declared=True,
+            source="synthetic declaration for this test",
+        )
+        models = _profile_with(model_profiles, CapabilityName.TOOL_CALLING, declared)
+        transport = fake_transport_factory.http_error(500)
+        verifier = LiveVerifier(_context(transport, all_profiles, models, credentials_env))
+        record = verifier.verify(
+            provider_id="deepseek",
+            model_ref=DEEPSEEK_REF,
+            opt_in=LIVE_OPT_IN_VALUE,
+            capabilities=(CapabilityName.TOOL_CALLING,),
+        )
+        observation = record.observations[0]
+        assert observation.outcome is ProbeOutcome.NOT_RUN
+        assert observation.candidate_status is CapabilityStatus.DECLARED
+        assert observation.candidate_status is not CapabilityStatus.UNKNOWN
+
+    def test_a_declined_probe_preserves_a_declared_capability(
+        self, fake_transport_factory, all_profiles, model_profiles, credentials_env, completion_payload
+    ):
+        declared = CapabilityEntry(
+            status=CapabilityStatus.DECLARED,
+            declared=True,
+            source="synthetic declaration for this test",
+        )
+        models = _profile_with(model_profiles, CapabilityName.STREAMING, declared)
+        verifier = LiveVerifier(
+            _context(fake_transport_factory.success(completion_payload()), all_profiles, models, credentials_env)
+        )
+        record = verifier.verify(
+            provider_id="deepseek",
+            model_ref=DEEPSEEK_REF,
+            opt_in=LIVE_OPT_IN_VALUE,
+            capabilities=(CapabilityName.STREAMING,),
+        )
+        observation = record.observations[0]
+        assert observation.outcome is ProbeOutcome.NOT_RUN
+        assert observation.candidate_status is CapabilityStatus.DECLARED
+
+    @pytest.mark.parametrize(
+        "prior",
+        [CapabilityStatus.UNKNOWN, CapabilityStatus.NOT_VERIFIED, CapabilityStatus.UNAVAILABLE],
+    )
+    def test_every_prior_state_survives_a_not_run(
+        self, prior, fake_transport_factory, all_profiles, model_profiles, credentials_env, completion_payload
+    ):
+        if prior is CapabilityStatus.UNKNOWN:
+            entry = CapabilityEntry(status=prior)
+        elif prior is CapabilityStatus.NOT_VERIFIED:
+            entry = CapabilityEntry(status=prior, declared=True, source="attempted")
+        else:
+            entry = CapabilityEntry(status=prior, verified=False, source="observed absent")
+        models = _profile_with(model_profiles, CapabilityName.PROMPT_CACHING, entry)
+        verifier = LiveVerifier(
+            _context(fake_transport_factory.success(completion_payload()), all_profiles, models, credentials_env)
+        )
+        record = verifier.verify(
+            provider_id="deepseek",
+            model_ref=DEEPSEEK_REF,
+            opt_in=LIVE_OPT_IN_VALUE,
+            capabilities=(CapabilityName.PROMPT_CACHING,),
+        )
+        observation = record.observations[0]
+        assert observation.outcome is ProbeOutcome.NOT_RUN
+        assert observation.candidate_status is prior
+
+    def test_the_candidate_helper_itself_preserves_the_prior(self):
+        for prior in CapabilityStatus:
+            assert candidate_status(ProbeOutcome.NOT_RUN, prior) is prior
 
 
 class TestLiveOnlyTransport:

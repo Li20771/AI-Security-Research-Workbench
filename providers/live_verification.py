@@ -64,6 +64,7 @@ from providers.model_profile import (
     StructuredOutputMode,
 )
 from providers.profile import ModelRef, ProviderProfile
+from providers.redaction import redact
 from providers.protocol import FinishState, Transport
 from providers.transport import TransportSettings
 
@@ -135,6 +136,9 @@ class LiveBlockCode(StrEnum):
     CREDENTIAL_MISSING = "credential_missing"
     CREDENTIAL_UNSUPPORTED = "credential_unsupported"
     CREDENTIAL_CONFIG_DEFECT = "credential_config_defect"
+    #: The experiment id was not a valid identifier. Caller-supplied text
+    #: that is not an identifier must not reach an evidence record.
+    INVALID_EXPERIMENT_ID = "invalid_experiment_id"
 
 
 class ProbeOutcome(StrEnum):
@@ -303,7 +307,10 @@ def new_run_id(provider_id: str) -> str:
     can share a second. The provider prefix is kept for readability only; the
     uniqueness comes from the uuid.
     """
-    return f"LV-{provider_id}-{uuid.uuid4().hex[:12]}"
+    safe_provider = (
+        provider_id if provider_id in LIVE_PROVIDER_ALLOWLIST else "provider"
+    )
+    return f"LV-{safe_provider}-{uuid.uuid4().hex[:12]}"
 
 
 def split_model_ref(model_ref: str) -> tuple[str, str]:
@@ -315,6 +322,52 @@ def split_model_ref(model_ref: str) -> tuple[str, str]:
     """
     provider_id, _, model_id = (model_ref or "").partition("/")
     return provider_id, model_id
+
+
+#: Stands in for caller-supplied text that did not name a real model. A
+#: refusal does not need the input to be actionable, and echoing it back would
+#: carry whatever it happens to contain (§10).
+REDACTED_MODEL_REF = "<invalid>"
+
+#: The shape an experiment id must have to be recorded. An id is an
+#: identifier, not free text: anything else is caller-supplied prose that
+#: would end up in an evidence file.
+EXPERIMENT_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+
+
+def safe_caller_text(value: str | None, *, limit: int = 120) -> str:
+    """Sanitize caller-supplied text before it reaches a record or a log.
+
+    Two boundaries at once, using machinery that already exists rather than a
+    bespoke filter: credential-shaped material is removed by the same
+    `redact()` the provider error path uses, line breaks are flattened so a
+    value cannot forge extra log lines, and the result is length-capped so an
+    oversized input cannot flood an evidence file.
+    """
+    sanitized = redact(value) or ""
+    sanitized = sanitized.replace("\r", " ").replace("\n", " ")
+    if len(sanitized) > limit:
+        sanitized = sanitized[:limit] + "..."
+    return sanitized
+
+
+def safe_model_ref_input(model_ref: str | None) -> str:
+    """The model ref if it is well formed, otherwise a placeholder.
+
+    A malformed ref is arbitrary caller text. Naming it back would put that
+    text into the evidence record, and someone pasting the wrong thing into a
+    dispatch field is exactly how a credential would arrive.
+    """
+    try:
+        ModelRef.parse(model_ref)
+    except Exception:
+        return REDACTED_MODEL_REF
+    return safe_caller_text(model_ref, limit=200)
+
+
+def is_valid_experiment_id(value: str) -> bool:
+    """An experiment id must be an identifier, not arbitrary text."""
+    return bool(EXPERIMENT_ID_RE.match(value or ""))
 
 
 @dataclass(frozen=True, slots=True)
@@ -351,6 +404,7 @@ def evaluate_preconditions(
     models: Mapping[str, ModelProfile],
     environ: Mapping[str, str] | None,
     opt_in: str | None,
+    experiment_id: str | None = None,
 ) -> LiveGate:
     """Decide whether a live run may proceed (§11.3).
 
@@ -370,6 +424,20 @@ def evaluate_preconditions(
                 f"{LIVE_OPT_IN_ENV} is not {LIVE_OPT_IN_VALUE!r}; live "
                 "verification is opt-in and performs no network activity "
                 "otherwise"
+            ),
+        )
+
+    # Caller-supplied text that is not an identifier must not reach an
+    # evidence record, so it is refused before anything else is consulted.
+    if experiment_id is not None and not is_valid_experiment_id(experiment_id):
+        return LiveGate(
+            allowed=False,
+            status=LiveRunStatus.BLOCKED,
+            code=LiveBlockCode.INVALID_EXPERIMENT_ID,
+            detail=(
+                "experiment_id must match "
+                f"{EXPERIMENT_ID_RE.pattern}; the supplied value was refused "
+                "and is not echoed"
             ),
         )
 
@@ -397,7 +465,12 @@ def evaluate_preconditions(
             allowed=False,
             status=LiveRunStatus.BLOCKED,
             code=LiveBlockCode.UNKNOWN_MODEL,
-            detail=f"model_ref {model_ref!r} is malformed: {exc}",
+            # The input is not echoed: it is caller text, and the refusal
+            # is actionable without it.
+            detail=(
+                f"model_ref {safe_model_ref_input(model_ref)!r} is not a "
+                "valid provider/model reference"
+            ),
         )
 
     provider = providers.get(provider_id)
@@ -415,7 +488,8 @@ def evaluate_preconditions(
             status=LiveRunStatus.BLOCKED,
             code=LiveBlockCode.UNKNOWN_MODEL,
             detail=(
-                f"model {model_ref!r} is not registered; a live run verifies a "
+                f"model {safe_model_ref_input(model_ref)!r} is not registered; "
+                "a live run verifies a "
                 "registered model, never an arbitrary model id"
             ),
         )
@@ -426,7 +500,8 @@ def evaluate_preconditions(
             status=LiveRunStatus.BLOCKED,
             code=LiveBlockCode.UNKNOWN_MODEL,
             detail=(
-                f"model_ref {model_ref!r} does not belong to provider "
+                f"model_ref {safe_model_ref_input(model_ref)!r} does not "
+                f"belong to provider {safe_caller_text(provider_id)!r}"
                 f"{provider_id!r}"
             ),
         )
@@ -616,6 +691,21 @@ class LiveVerifier:
         experiment_id: str | None = None,
     ) -> LiveVerificationRecord:
         """Evaluate preconditions, then probe. Never raises for a refusal."""
+        # Shape is validated below on the raw value, but everything recorded
+        # or forwarded uses this one. The two checks are different questions:
+        # an id can be identifier-shaped *and* secret-shaped, because hyphens
+        # are legal in both. Validation rejects text that is not an id;
+        # redaction removes credential-shaped material from text that is.
+        valid_experiment_id = (
+            experiment_id
+            if experiment_id is not None and is_valid_experiment_id(experiment_id)
+            else None
+        )
+        safe_experiment_id = (
+            None
+            if valid_experiment_id is None
+            else safe_caller_text(valid_experiment_id)
+        )
         environ = self._context.environ
         gate = evaluate_preconditions(
             provider_id=provider_id,
@@ -624,6 +714,7 @@ class LiveVerifier:
             models=self._context.models,
             environ=environ,
             opt_in=environ.get(LIVE_OPT_IN_ENV) if opt_in is None and environ else opt_in,
+            experiment_id=experiment_id,
         )
         # Never raises: the gate has already refused a malformed ref, and a
         # refusal record must still be attributable.
@@ -637,13 +728,13 @@ class LiveVerifier:
             return LiveVerificationRecord(
                 run_id=new_run_id(provider_id),
                 timestamp=_now(),
-                provider_id=provider_id,
-                model_id=ref_model_id,
-                model_ref=model_ref,
+                provider_id=safe_caller_text(provider_id),
+                model_id=safe_caller_text(ref_model_id),
+                model_ref=safe_model_ref_input(model_ref),
                 endpoint_host=host,
                 status=gate.status,
                 gate=gate,
-                experiment_id=experiment_id,
+                experiment_id=safe_experiment_id,
             )
 
         # `is not None`, not truthiness: an empty tuple means "probe no
@@ -669,7 +760,7 @@ class LiveVerifier:
                         probe_id=definition.probe_id,
                         outcome=ProbeOutcome.NOT_RUN,
                         observed="baseline probe did not succeed",
-                        candidate_status=CapabilityStatus.UNKNOWN,
+                        candidate_status=self._prior_status(model_ref, capability),
                         reason="not probed: the text baseline did not succeed",
                     )
                 )
@@ -680,11 +771,11 @@ class LiveVerifier:
                 model_id=ref_model_id,
                 model_ref=model_ref,
                 endpoint_host=host,
-                status=LiveRunStatus.FAIL,
+                status=baseline.status,
                 gate=gate,
                 probes=tuple(probes),
                 observations=tuple(observations),
-                experiment_id=experiment_id,
+                experiment_id=safe_experiment_id,
             )
 
         for capability in selected:
@@ -696,7 +787,7 @@ class LiveVerifier:
                         probe_id=definition.probe_id,
                         outcome=ProbeOutcome.NOT_RUN,
                         observed="no probe executed",
-                        candidate_status=CapabilityStatus.UNKNOWN,
+                        candidate_status=self._prior_status(model_ref, capability),
                         reason=definition.unavailable_reason,
                     )
                 )
@@ -718,12 +809,27 @@ class LiveVerifier:
             gate=gate,
             probes=tuple(probes),
             observations=tuple(observations),
-            experiment_id=experiment_id,
+            experiment_id=safe_experiment_id,
         )
 
     def selected_capabilities(self) -> tuple[CapabilityName, ...]:
         """Every capability in the catalogue, probed or explicitly declined."""
         return tuple(PROBE_CATALOG)
+
+    def _prior_status(
+        self, model_ref: str, capability: CapabilityName
+    ) -> CapabilityStatus:
+        """The capability's current truth state, for a NOT_RUN candidate.
+
+        A probe that did not run observed nothing, so it must leave the record
+        where it was. Defaulting to UNKNOWN would erase a DECLARED entry a
+        later phase is entitled to rely on, and would turn "we did not look"
+        into "we looked and found nothing".
+        """
+        model = self._context.models.get(model_ref)
+        if model is None:
+            return CapabilityStatus.UNKNOWN
+        return model.capability(capability).status
 
     # -- probes ----------------------------------------------------------
 
@@ -783,11 +889,19 @@ class LiveVerifier:
         provider = self._context.providers.get(provider_id)
         host = endpoint_host(provider.endpoint.effective_url) if provider else None
 
-        status = {
-            InvocationStatus.SUCCESS: LiveRunStatus.PASS,
-            InvocationStatus.BLOCKED: LiveRunStatus.BLOCKED,
-            InvocationStatus.ERROR: LiveRunStatus.FAIL,
-        }[result.status]
+        if result.status is InvocationStatus.BLOCKED:
+            status = LiveRunStatus.BLOCKED
+        elif result.status is InvocationStatus.ERROR:
+            status = LiveRunStatus.FAIL
+        elif result.finish_state is FinishState.STOP:
+            status = LiveRunStatus.PASS
+        else:
+            # §7.3: LENGTH is a truncation warning and UNKNOWN must not be read
+            # as STOP. A baseline whose answer is incomplete has not shown a
+            # clean round trip, so it is inconclusive rather than a pass --
+            # and reporting it as FAIL would blame the provider for a
+            # truncation that says nothing about connectivity.
+            status = LiveRunStatus.UNKNOWN
 
         return LiveProbeRecord(
             probe_id="text_completion",
@@ -907,6 +1021,17 @@ class LiveVerifier:
             )
 
         if capability is CapabilityName.TOOL_CALLING:
+            if result.finish_state is not FinishState.TOOL_CALLS:
+                # The mechanism shows up as the provider signalling a
+                # tool-call turn. A response that did not signal it is not a
+                # completed observation of the mechanism, however it reads.
+                return (
+                    ProbeOutcome.INCONCLUSIVE,
+                    f"no tool-call turn was signalled "
+                    f"(finish_state={result.finish_state})",
+                    "the observation must agree with TOOL_CALLS semantics; "
+                    "this response is not a completed tool-call turn",
+                )
             if result.tool_calls:
                 # §6.7: tool_calling records that the *mechanism* works --
                 # tools are accepted, calls are returned, and calls map into
@@ -935,6 +1060,18 @@ class LiveVerifier:
 
         if capability is CapabilityName.STRUCTURED_OUTPUT:
             import json
+
+            if result.finish_state is not FinishState.STOP:
+                # Checked before the text is read. A truncated answer can still
+                # contain parseable JSON, and accepting it would report a
+                # partial response as a demonstrated capability.
+                return (
+                    ProbeOutcome.INCONCLUSIVE,
+                    f"the answer was not completed "
+                    f"(finish_state={result.finish_state})",
+                    f"finish_state {result.finish_state} is not a completed "
+                    "answer, so its content cannot demonstrate the capability",
+                )
 
             if result.text is None:
                 return (
@@ -1007,7 +1144,12 @@ __all__ = [
     "ProbeOutcome",
     "candidate_status",
     "endpoint_host",
+    "EXPERIMENT_ID_RE",
+    "REDACTED_MODEL_REF",
+    "is_valid_experiment_id",
     "new_run_id",
+    "safe_caller_text",
+    "safe_model_ref_input",
     "split_model_ref",
     "evaluate_preconditions",
 ]
