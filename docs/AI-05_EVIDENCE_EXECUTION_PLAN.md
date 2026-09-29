@@ -213,7 +213,7 @@ EvidenceRecord:
   provenance:
     producer:        string        # the component that WROTE this record
     producer_version: string
-    producer_type:   human | agent | service | unknown
+    producer_type:   agent | service | unknown   # NOT human (§7.1)
     actor:                         # the entity whose act is described
       id:            string
       type:          human | agent | service | unknown
@@ -349,9 +349,51 @@ A probe observes.
   producer = AI-02
 ```
 
-`producer_type` and `actor.type` use the closed vocabulary
+### 7.1 Vocabulary and role constraint — FROZEN
+
+`producer_type` and `actor.type` draw on the **same** closed vocabulary,
 `human | agent | service | unknown`, inherited from AI-04's `ActorType` — imported,
-not restated.
+not restated, and **not redefined**. AI-05 does not add, remove or rename a member.
+
+AI-05 applies a **narrower role constraint** on top of that vocabulary:
+
+```text
+producer_type  MUST be in   { agent, service, unknown }
+                           NOT human
+
+actor.type     MUST be in   { human, agent, service, unknown }
+                           unchanged from the inherited vocabulary
+```
+
+```text
+AI-04's ActorType vocabulary remains imported unchanged.
+AI-05 applies a narrower ROLE CONSTRAINT to producer_type.
+```
+
+**Why a constraint rather than a new enum.** `human` remains a member of the
+inherited vocabulary because AI-05 must not redefine a frozen type (§3). But it is
+not reachable in the producer role: the producer is the component that **wrote** the
+record, so a human producer would mean a human authoring an EvidenceRecord directly,
+which §7 forbids. Removing `human` from the vocabulary would be a redefinition;
+constraining its use is a role rule.
+
+Without this, `producer = human, producer_type = human` would be schema-legal while
+contradicting §7 — a state the schema accepts and the prose forbids. That is the
+same class of defect as a field that is operational and digested.
+
+FORBIDDEN:
+
+```text
+producer_type = human     REJECTED (§30)
+```
+
+PERMITTED, and the reason the constraint is narrow rather than a blanket ban on the
+member:
+
+```text
+actor.type = human        ACCEPTED — a recorded human approval is a DECISION whose
+                          actor is the human (§6.3)
+```
 
 **A record with no producer is not a record.** Provenance is never fabricated: a
 record claiming an observation that no producer made would be a false record.
@@ -471,7 +513,7 @@ FROZEN. Provenance answers "who, where, when" for every record.
 ```text
 producer          which component wrote the record
 producer_version  its version
-producer_type     human | agent | service | unknown
+producer_type     agent | service | unknown        (§7.1 — human is not a valid role here)
 actor             the entity whose act is described
 workspace_id      the scope of the whole record          REQUIRED, non-empty
 experiment_id     correlation label                      optional
@@ -805,6 +847,67 @@ external = true
     AI-05 records locator + digest only
     it is a DECLARED EXTERNAL DEPENDENCY, not a second workspace scope (§18)
 ```
+
+### 13.7 The one-directional relationship — FROZEN
+
+```text
+RAW BYTES
+    |
+    |  the PRODUCER owns storage
+    v
+artifact storage                 (outside AI-05)
+    |
+    |  the PRODUCER supplies ref + digest
+    v
+AI-05 EvidenceRecord
+    |
+    +--> artifact_ref
+    +--> artifact_digest
+    +--> role / external / owner_workspace_id
+```
+
+**NOT:**
+
+```text
+RAW BYTES
+    |
+    v
+AI-05
+    |
+    +--> sanitize        FORBIDDEN
+    +--> store           FORBIDDEN
+    +--> digest          FORBIDDEN
+```
+
+```text
+AI-05 does not own the raw artifact lifecycle.
+```
+
+### 13.8 AI-05 never converts content into an artifact — FROZEN
+
+```text
+raw content supplied to AI-05
+    -> AI-05 turns it into an artifact          FORBIDDEN
+```
+
+Such a conversion would be an implicit transformation: AI-05 would decide that
+supplied content is an artifact, choose to retain it, and compute its digest. That
+violates three already-frozen rules at once — AI-05 never sanitizes (§14.4.1), never
+substitutes a value (§30.1), and never changes the recorded fact (§19).
+
+The correct sequence is a **producer** action, not an admission behaviour:
+
+```text
+1. the caller holds the raw bytes
+2. the CALLER stores them outside AI-05 and computes their digest
+3. the caller submits a record carrying artifact_digest and artifact_ref
+4. AI-05 admits the REFERENCE (§13.1, §13.2). It never sees the bytes.
+```
+
+A record that arrives carrying raw content in a field the contract does not define is
+`REJECTED` (§30) — it is not quietly reshaped into an artifact reference. Rejecting
+is loud; reshaping is silent, and a caller that believed it had submitted an artifact
+would never learn otherwise.
 
 ---
 
@@ -1574,11 +1677,22 @@ condition                     outcome       note
 malformed record              REJECTED      shape violation
 missing required field        REJECTED      required is per-kind (§11)
 unsupported enum              REJECTED      never silently ordinary (§30)
+producer_type = human         REJECTED      role constraint, not a vocabulary
+                                            member (§7.1)
+undeclared raw-content field  REJECTED      a raw payload, raw log, raw provider
+                                            body or raw tool output is not reshaped
+                                            into an artifact; the producer stores
+                                            the bytes and submits a reference
+                                            (§13.8)
 workspace mismatch            REJECTED      §18
 workspace missing             REJECTED      required field
 workspace unresolvable        REJECTED      §18.2
-secret detected in a Class 4
-  field by the published rules REJECTED     never stored, never redacted in place
+secret detected in a Class 3
+  or Class 4 field by the
+  published rules             REJECTED      never stored; never redacted in place
+                                            by AI-05 — an unsanitized identifier is
+                                            the upstream sanitizer's miss, not
+                                            something AI-05 repairs (§14.2)
 structural field malformed    REJECTED      never redaction, never substitution
 digest mismatch               REJECTED      integrity failure
 duplicate evidence_id         REJECTED      collision or overwrite attempt
@@ -1885,6 +1999,9 @@ FROZEN. The single entry condition for storing a record.
  2. schema_version the version is supported
  3. required       every required field for that kind is present and non-null
  4. vocabulary     every enum value is a member of its closed set
+ 4b. role          producer_type is NOT human (§7.1). Membership in the inherited
+                   ActorType vocabulary is necessary but not sufficient — the role
+                   constraint is applied on top of it
  5. workspace      workspace_id is present, non-empty, and agrees everywhere (§18)
  6. classes        every string field is validated against its declared class (§14.2)
  7. rule set       Class 3 and Class 4 fields are checked against the published rules
@@ -1914,6 +2031,14 @@ caller-supplied digest for an
 uppercase hex in Class 1       REJECTED   (§14.5.1)
 unsanitized identifier in
   Class 3                      REJECTED   (§14.2)
+producer_type = human          REJECTED   (§7.1) — the producer is the component
+                                           that WROTE the record, and a human does
+                                           not author an EvidenceRecord directly
+an undeclared raw-content
+  field of any kind            REJECTED   — including a raw payload, raw log, raw
+                                           provider body or raw tool output. AI-05
+                                           never converts supplied content into an
+                                           artifact (§13.4, §13.7)
 ```
 
 ### 30.1 AI-05 never rewrites
@@ -1941,6 +2066,8 @@ Layer 0 gains a structural check for `plugins/evidence`, mirroring
 | T2 | malformed record | shape enforcement | structurally invalid record | `REJECTED` | a shape violation is never absorbed |
 | T3 | missing required field | per-kind requirement | record missing one required field, per kind | `REJECTED` | optionality cannot be enforced; absence cannot be a default |
 | T4 | unsupported enum | closed vocabulary | an unlisted enum value | `REJECTED` | an unlisted value is never treated as ordinary |
+| T4b | producer role constraint | role, not vocabulary | `producer_type = human` | `REJECTED` | `human` is in the inherited vocabulary but is not a valid producer role (§7.1); membership is necessary, not sufficient |
+| T4c | actor role control | role, not vocabulary | `actor.type = human` on a DECISION about a human approval | `ACCEPTED` | positive control for T4b — without it, T4b is satisfied by rejecting `human` everywhere |
 | T5 | `evidence_id` identity | identity ≠ semantics | two records, same content, different ids | both accepted; ids differ; ids absent from `content_digest` | two runs are two events |
 | T6 | `experiment_id` correlation | correlation ≠ identity | many records, one `experiment_id` | all accepted, none unique | grouping never becomes identity |
 | T7 | `content_digest` determinism | canonicalization | same semantic input, separate processes | identical digest | an unenforced digest is not a digest |
@@ -1967,8 +2094,8 @@ Layer 0 gains a structural check for `plugins/evidence`, mirroring
 | T22c | identifier pre-sanitization | secret boundary | an UNSANITIZED secret-shaped token in a Class 3 field | `REJECTED`; the pre-sanitized form is `ACCEPTED` | AI-05 checks shape, it never sanitizes (§14.2, §14.4.1) |
 | T22d | caller-supplied digest | digest origin | a caller supplies a value for `content_digest`, `record_digest` or `ContextRef.value_digest` | `REJECTED` (R1) | digests of AI-05's own content are AI-05's to compute; `sha256(secret)` cannot be adopted as an Evidence digest |
 | T22e | AI-05-generated digest | digest origin | AI-05 computes a digest from accepted canonical content | `ACCEPTED` | positive control: digest-shaped is not the same as caller-controlled |
-| T23 | raw payload not normalized | payload boundary | an oversized raw payload | artifact-only; the record stays valid | normalized output is durable, raw payload is not |
-| T24 | artifact reference contract | artifact boundary | an artifact entry | digest required; `artifact_ref` opaque; availability absent | AI-05 references bytes it never reads |
+| T23 | raw payload rejection | payload boundary | an undeclared raw-content field — raw payload, raw log, raw provider body, raw tool output | `REJECTED`; nothing stored | raw payload cannot cross the normalized Evidence boundary, and AI-05 never converts supplied content into an artifact (§13.8) |
+| T24 | artifact reference contract | artifact boundary | the VALID alternative path: a producer stores the bytes outside AI-05 and submits `artifact_digest` + `artifact_ref` + `role` + `external` + `owner_workspace_id` | `ACCEPTED`; digest required; `artifact_ref` opaque; availability absent | T23 and T24 are two halves of one boundary: the reference crosses, the bytes never do (§13.7) |
 | T25 | immutable write | lifecycle | any later operation on an admitted record | bytes unchanged | an audit trail that can be edited is not one |
 | T26 | correction via `supersedes` | lifecycle | a correcting record | new record accepted; old record byte-identical | corrections are additions, never edits |
 | T27 | `superseded_by` derived | lifecycle | query the set | derivable; not a stored field on any record | a stored back-pointer is a mutation |
@@ -1999,6 +2126,12 @@ T22a-e are five distinct boundaries, not five spellings of one. T22a and T22b ar
 T20c and T21c assert DELIBERATE REJECTIONS that a reader may expect to be
   acceptances. They MUST NOT be "fixed" by widening the rule. Widening them changes
   a frozen boundary (§34.1).
+T4b and T4c are a pair. T4b alone is satisfied by a system that rejects `human` in
+  every role, which would break the recorded human approval of §6.3. T4c is the
+  control that proves the constraint is a ROLE constraint and not a vocabulary edit.
+T23 and T24 are a pair. T23 alone is satisfied by a system that rejects every
+  artifact reference. T24 is the control that proves the legitimate path — bytes
+  stored by the producer, reference submitted to AI-05 — still works.
 T31 MUST observe state before and after. Asserting an absence rhetorically proves
   nothing.
 T33a-d are four separate routes to the same forbidden outcome. One test would cover
@@ -2051,11 +2184,13 @@ C2 — Identity
              with content-equivalence
 
 C3 — Provenance
-  Proved     every record names who wrote it, whose act it describes, and when
-  Evidence   T1, T3; the §9.1 required-field list
-  Forbidden  a record with no producer or no actor; an absent observed_at where the
-             kind's claim is time-bound; a fabricated provenance field; a host path
-             or artifact availability in a record
+  Proved     every record names who wrote it, whose act it describes, and when, and
+             that the two roles are distinct
+  Evidence   T1, T3, T4b, T4c; the §9.1 required-field list; the §7.1 role constraint
+  Forbidden  a record with no producer or no actor; producer_type = human;
+             actor and producer conflated; an absent observed_at where the kind's
+             claim is time-bound; a fabricated provenance field; a host path or
+             artifact availability in a record
 
 C4 — Workspace isolation
   Proved     one workspace per record; no merge, filter, or repair
@@ -2086,11 +2221,15 @@ C6 — Secret-safe admission
              §14.8 rather than implied away
 
 C7 — Artifact boundary
-  Proved     references and digests only; no byte ingestion; availability not a field
-  Evidence   T23, T24
-  Forbidden  claiming AI-05 verifies artifact bytes; artifact availability stored as
-             a record field; a missing artifact treated as record corruption;
-             an unmarked external artifact
+  Proved     references and digests only; no byte ingestion; availability not a field;
+             raw content is rejected rather than reshaped into an artifact
+  Evidence   T23 (raw content REJECTED) and T24 (the legitimate reference path);
+             §13.7's one-directional diagram
+  Forbidden  claiming AI-05 verifies artifact bytes; AI-05 converting supplied raw
+             content into an artifact reference; AI-05 sanitizing, storing or
+             digesting artifact bytes; artifact availability stored as a record
+             field; a missing artifact treated as record corruption; an unmarked
+             external artifact
 
 C8 — Immutable / append-only
   Proved     an admitted record's bytes never change; corrections are new records
