@@ -1,15 +1,22 @@
 # AI-03 — Context Plugin Evidence
 
-> Status: **IMPLEMENTATION AND VERIFICATION COMPLETE — NOT CLOSED**
+> Status: **COMPLETE — C0–C8 all PASS; PR open, not merged**
 > Phase: AI-03 — Context Plugin
-> Sub-phases: AI-03-A (contract), AI-03-B1–B5 (implementation), AI-03-C (pending)
+> Sub-phases: AI-03-A (contract), AI-03-B1–B5 (implementation), AI-03-C (PR / CI)
 > Date: 2026-09-29
 > Base SHA: `8c5df3e085e15e39f901e83f53f0e04f693cfb84`
 > Branch: `feature/ai-03-context-plugin`
+> Validated head: `7a29197f2b7eb09d0cd51c4dcd1332b6aaa2a011`
+> Required CI: **SUCCESS** — run `36518367883`
 
 This document records what AI-03 built, what was verified, and — with equal
-weight — what was **not**. It is an implementation and verification record, not
-a closeout: AI-03-C requires a reviewed and merged PR, and no PR exists yet.
+weight — what was **not**.
+
+**Two states, deliberately kept distinct.** The *validated* state below is
+implementation head `7a29197` with CI run `36518367883` = SUCCESS. The
+*repository* state is that PR #28 is **open and not merged**, so `main` does not
+contain AI-03. CI having passed is not the same as a merge, and this document
+does not conflate them.
 
 ```text
 AI-03-A  = COMPLETE      contract / execution plan / freeze
@@ -18,8 +25,11 @@ AI-03-B2 = COMPLETE      source adapters
 AI-03-B3 = COMPLETE      semantic classification
 AI-03-B4 = COMPLETE      cache boundary
 AI-03-B5 = COMPLETE      integration and offline tests
-AI-03-C  = NOT_RUN       closeout / PR / merge
-AI-03    = PARTIAL       exit criterion C8 is NOT_RUN
+AI-03-C  = COMPLETE      PR #28 opened, required CI SUCCESS
+AI-03    = COMPLETE      C0-C8 all PASS
+
+PR #28   = OPEN, MERGEABLE, NOT MERGED
+main     = 8c5df3e; does NOT contain AI-03
 ```
 
 ---
@@ -94,25 +104,28 @@ that claimed to be final would be recording something this file cannot know.
 
 | Path | Lines | Role |
 | --- | --- | --- |
-| `docs/AI-03_CONTEXT_PLUGIN_EXECUTION_PLAN.md` | 996 | the frozen contract |
+| `docs/AI-03_CONTEXT_PLUGIN_EXECUTION_PLAN.md` | 1 087 | the frozen contract (3 amendments) |
 | `plugins/context/vocabulary.py` | 263 | frozen enums and tables (§5) |
 | `plugins/context/workspace.py` | 364 | A1 — identity, read-only git access (§6, §7.4) |
 | `plugins/context/sources.py` | 451 | A2 — adapters, read outcomes, manifest (§7) |
 | `plugins/context/declarations.py` | 172 | the extraction grammar (§7.3) |
-| `plugins/context/classification.py` | 200 | A3 — kinds, subjects, provenance (§8) |
+| `plugins/context/classification.py` | 218 | A3 — kinds, subjects, provenance (§8) |
 | `plugins/context/cache.py` | 183 | A4 — four-part key and outcomes (§9) |
 | `plugins/context/resolution.py` | 167 | conflict resolution (§11) |
 | `plugins/context/context.py` | 373 | A5 — `ContextResponse` assembly (§10) |
 | `plugins/context/validate.py` | 247 | offline self-check |
 | `plugins/context/errors.py` | 72 | typed failure taxonomy |
-| `tests/context/` (10 modules) | 3 092 | AI-03 unit and contract tests |
-| `tests/integration/test_context_git_state.py` + `conftest.py` | 303 | tests against **real** git repositories |
+| `tests/context/` (9 modules + conftest) | 3 329 | AI-03 unit and contract tests |
+| `tests/integration/` (conftest + git-state tests) | 306 | tests against **real** git repositories |
 
 Modified: `scripts/ci/layer0_policy.py` (+146), `.github/workflows/preflight.yml`,
 `pytest.ini`, `tests/unit/test_repository_layout.sh`, `plugins/context/README.md`.
 
+Counts are read from git at the validated head `7a29197` (`git show 7a29197:<path> | wc -l`),
+not from a working tree that this document's own edits keep changing.
+
 ```text
-33 files changed
+33 files changed, +8346 / -15   (git diff --shortstat 8c5df3e..7a29197)
 No file outside plugins/context/, tests/context/, tests/integration/, docs/, and
 the four repository-policy files listed above.
 ```
@@ -126,10 +139,13 @@ carried forward from another phase or inferred.
 
 ### D.1 Verification sequence (AI-03 brief §20)
 
+At the validated head `7a29197`, run locally, offline, with both API-key
+variables unset:
+
 ```text
 1. targeted unit tests
    python -m pytest tests/context
-   -> 335 passed
+   -> 338 passed
 
 2. AI-03 integration tests
    python -m pytest tests/integration
@@ -137,9 +153,9 @@ carried forward from another phase or inferred.
 
 3. existing regression tests (full suite)
    python -m pytest
-   -> 1314 passed, 5 deselected
+   -> 1317 passed, 5 deselected
       baseline was 956 passed, 5 deselected
-      delta: +358 tests, 0 regressions, 0 previously-passing tests removed
+      delta: +361 tests, 0 regressions, 0 previously-passing tests removed
 
 4. repository-required checks
    python scripts/ci/layer0_policy.py       -> Layer 0 = PASS (13 checks; was 12)
@@ -151,11 +167,11 @@ carried forward from another phase or inferred.
 ### D.2 Layer partition
 
 ```text
-layer1 =  488 passed, 831 deselected
-layer2 =  764 passed, 555 deselected
-layer3 =   62 passed, 1257 deselected
+layer1 =  488 passed, 834 deselected
+layer2 =  764 passed, 558 deselected
+layer3 =   65 passed, 1257 deselected
          ----
-         1314          (= the full suite; the layers partition it)
+         1317          (= the full suite; the layers partition it)
 ```
 
 The 5 deselected tests are the AI-02 `layer4` live entry point, still excluded
@@ -184,26 +200,79 @@ T2 is the only category executed against **real** git repositories rather than a
 canned reader. Every other category runs against fixtures, which is stated here
 so the distinction is not lost.
 
+### D.4 Required CI — what C8 rests on
+
+```text
+run 36518367883   head 7a29197f2b7eb09d0cd51c4dcd1332b6aaa2a011
+event             pull_request
+conclusion        SUCCESS
+
+Layer 0 — repository policy ................. success (13 checks)
+Layers 1-3 — offline model and context layers success
+  Check Python syntax ....................... success
+  Layer 1 — contract and schema ............. success   488 passed
+  Layer 2 — fake-transport unit tests ....... success   764 passed
+  Layer 3 — offline contract fixtures ....... success    64 passed, 1 skipped
+  Layer 4 — live connectivity verification .. success (NOT_RUN, by design)
+  Confirm the suite ran without credentials . success
+```
+
+`provider/config/model validation: PASS` and `context validation: PASS` both ran
+inside Layer 1. No credential was present, and no network I/O occurred.
+
+**This is the only evidence that satisfies C8.** The local runs in §D.1 are not
+CI runs and were never counted as C8.
+
+### D.5 One assertion is skipped in CI, not passed
+
+```text
+tests/context/test_repository_context.py
+  TestTheRepositoryReadsAsItself::test_a_branch_item_matches_git_when_present
+  -> SKIPPED under a detached HEAD
+```
+
+CI reports `64 passed, 1 skipped` for layer 3, and the skip is this test. It
+compares the reported branch against `git symbolic-ref`, which has no answer
+when HEAD is detached — and `actions/checkout` detaches HEAD on every
+`pull_request` run.
+
+Recorded as `NOT_RUN` rather than counted as a pass. It leaves no gap: the
+attached-branch case is covered deterministically by
+`tests/integration/test_context_git_state.py::TestT2CurrentGitState::test_the_branch_is_the_real_branch`,
+which builds its own repository on branch `main` and does run in CI.
+
 ---
 
 ## E. Workspace identity, as observed
 
-Captured by running the real pipeline over this repository during verification.
-The working tree is dirty because it *is* this phase's work, and `changed_files`
-counts this phase's own files.
+Captured by running the real pipeline over this repository, at the point this
+document was finalised.
 
 ```text
 workspace_id   = ws-8755bade6039ea66
 workspace_root = D:/AI-Security-Research-Workbench
 repository     = Li20771/AI-Security-Research-Workbench
 branch         = feature/ai-03-context-plugin
-commit         = 8c5df3e085e15e39f901e83f53f0e04f693cfb84   (the base SHA)
-working_tree   = DIRTY (33 changed paths, being this phase's own work)
+commit         = 7a29197f2b7eb09d0cd51c4dcd1332b6aaa2a011   (the validated head)
+detached       = False
+working_tree   = DIRTY (this document's own amendments)
 status         = FULL
-freshness      = current 55, stale 0, unknown 0 — overall CURRENT
-items          = 6 fact, 24 history, 25 plan
+freshness      = current 53, stale 0, unknown 0 — overall CURRENT
+items          = 6 fact, 24 history, 23 plan
 conflicts      = 2
 ```
+
+**These numbers move, and that is the plugin working.** The dirty tree is the
+doc-sync amendment this document is part of; the item and freshness counts shift
+with it. `workspace_id` is stable — it derives from the canonical root and the
+repository, not from HEAD or the tree — which is why it still reads
+`ws-8755bade6039ea66` while `commit` has moved from the base SHA to the validated
+head. `working_tree` reports what it observes rather than what is convenient: a
+documentation update makes it `DIRTY` exactly as a code change would.
+
+A capture of this table is a record of a moment, not a constant. Re-running
+`python -m plugins.context.validate` after any edit will produce different counts
+and should not be read as a discrepancy.
 
 ---
 
@@ -214,12 +283,12 @@ source's `source_revision`.
 
 | Priority | Source kind | Identity | Read status | Items | Revision |
 | --- | --- | --- | --- | --- | --- |
-| P0 | `git_current_state` | `git` | READ | 6 | `8c5df3e085e15e39f901e83f53f0e04f693cfb84` |
-| P1 | `master_roadmap` | `docs/MASTER_ROADMAP.md` | READ | 0 | `c5c06dcb72b31904…` |
-| P2 | `capability_inventory` | `docs/PROJECT_STATUS.md` | READ | 25 | `514cd178e5118bde…` |
+| P0 | `git_current_state` | `git` | READ | 6 | `7a29197f2b7eb09d0cd51c4dcd1332b6aaa2a011` |
+| P1 | `master_roadmap` | `docs/MASTER_ROADMAP.md` | READ | 0 | `b14e1320cdfe1820…` |
+| P2 | `capability_inventory` | `docs/PROJECT_STATUS.md` | READ | 23 | `c0063f34e7d6fe08…` |
 | P3 | `design_freeze` | `docs/AI-00_REQUIREMENTS_AND_ARCHITECTURE.md` | READ | 0 | `dd597793e620bd21…` |
 | P4 | `exit_report` | `docs/AI-02_CLOSEOUT_2026-09-29.md` | READ | 4 | `c72d6fa5133c69bd…` |
-| P5 | `git_history` | `git:history` | READ | 20 | `8c5df3e085e15e39f901e83f53f0e04f693cfb84` |
+| P5 | `git_history` | `git:history` | READ | 20 | `7a29197f2b7eb09d0cd51c4dcd1332b6aaa2a011` |
 
 Document `source_revision` values are SHA-256 content digests (D-3); git
 `source_revision` values are commit SHAs. Every source was `READ`; none was
@@ -230,13 +299,18 @@ produced by `python -m plugins.context.validate` and by
 `ContextResponse.to_dict()`.
 
 **On reproducing this table.** The two kinds of revision behave differently. A
-document digest is a function of the bytes committed, so it still matches after
-later commits. A git-derived revision is the commit that was HEAD *at capture
-time*, so re-running the build after this document is committed reports the new
-HEAD instead of the base SHA. The difference is expected, and it is why the
-cache treats the two kinds with the same key shape but not the same probe: the
-digest is stable evidence about a document, while a commit SHA is evidence about
-a moment.
+document digest is a function of the document's bytes, so it changes whenever
+that document is edited — including by this very amendment, which is why the P1
+and P2 digests above differ from the ones an earlier revision of this record
+carried. A git-derived revision is the commit that was HEAD *at capture time*.
+Both are therefore records of a moment, and neither is expected to match a
+capture taken after further edits.
+
+The difference matters to the cache: the same four-part key shape is used for
+both, but the probe is sound for different reasons. A content digest genuinely
+identifies what was read. A commit SHA identifies the moment — which is why the
+live git-state source is **not cached at all** (§I), since no commit SHA can
+capture a working tree.
 
 **Observation, recorded rather than hidden.** The P1 `master_roadmap` and P3
 `design_freeze` sources produced **no items**: neither document contains a
@@ -258,21 +332,27 @@ the record of its own phase, which is the intended use.
 
 | Declared (verbatim) | Truth state | Count |
 | --- | --- | --- |
-| `PASS` | `PASS` | 14 |
-| `NOT_RUN` | `NOT_RUN` | 5 |
-| `COMPLETE` | `UNKNOWN` | 3 |
+| `PASS` | `PASS` | 15 |
+| `COMPLETE` | `UNKNOWN` | 4 |
+| `NOT_RUN` | `NOT_RUN` | 3 |
 | `BLOCKED / DEFERRED` | `UNKNOWN` | 1 |
 | `DEFERRED / UNIMPLEMENTED` | `UNKNOWN` | 1 |
 | `RESERVED / UNIMPLEMENTED` | `UNKNOWN` | 1 |
+| `UNCHANGED` | `UNKNOWN` | 1 |
 | `UNIMPLEMENTED / UNCHANGED` | `UNKNOWN` | 1 |
-| `UNCHANGED` | `UNKNOWN` | 2 |
-| `PARTIAL` | `UNKNOWN` | 1 |
 
 The rule the table demonstrates: **`PASS` is produced only where the source
-literally wrote `PASS`.** `COMPLETE` and `PARTIAL` are lifecycle words and
-became `UNKNOWN`, not `PASS`. The four compound values were preserved whole and
-were **not** decomposed into their parts — picking `BLOCKED` out of
-`BLOCKED / DEFERRED` would be inference (D-6).
+literally wrote `PASS`.** Every `COMPLETE` became `UNKNOWN`, never `PASS` — which
+is the whole point, because this phase's own status now declares AI-03
+`COMPLETE`, and that declaration must not be readable as evidence of anything.
+The four compound values were preserved whole and were **not** decomposed into
+their parts: picking `BLOCKED` out of `BLOCKED / DEFERRED` would be inference
+(D-6).
+
+> **A `COMPLETE` that stays `UNKNOWN` is the guarantee working.** AI-03's own
+> completion claim is a `PLAN`-class declaration from the capability inventory.
+> The plugin reports it faithfully and refuses to promote it — including when the
+> claim is about the plugin itself.
 
 > **These are declarations, not adjudications.** The plugin reports what the
 > documents say. A `PASS` in this column means the document wrote `PASS`, and
@@ -296,7 +376,7 @@ P4  docs/AI-02_CLOSEOUT_2026-09-29.md HISTORY   declared NOT_RUN
 
 authoritative = exit_report:docs/AI-02_CLOSEOUT_2026-09-29.md@c72d6fa5… = NOT_RUN
 evidenced     = the same
-superseded    = capability_inventory:docs/PROJECT_STATUS.md@514cd178… = NOT_RUN
+superseded    = capability_inventory:docs/PROJECT_STATUS.md@c0063f34… = NOT_RUN
 
 subject = declared.provider_config_model_validation
 
@@ -305,7 +385,7 @@ P4  docs/AI-02_CLOSEOUT_2026-09-29.md HISTORY   declared PASS
 
 authoritative = exit_report:docs/AI-02_CLOSEOUT_2026-09-29.md@c72d6fa5… = PASS
 evidenced     = the same
-superseded    = capability_inventory:docs/PROJECT_STATUS.md@514cd178… = PASS
+superseded    = capability_inventory:docs/PROJECT_STATUS.md@c0063f34… = PASS
 ```
 
 A reference renders as `<kind>:<identity>@<revision> = <value>`. The value is part of it because
@@ -516,25 +596,62 @@ left alone.
 | C5 | `UNKNOWN` / `NOT_RUN` / `BLOCKED` preservation verified | **PASS** |
 | C6 | Cache boundary and invalidation verified | **PASS** |
 | C7 | Evidence artifact complete | **PASS** — this document |
-| C8 | Required CI/tests PASS | **NOT_RUN** |
-
-**C8 is `NOT_RUN`, so AI-03 is not COMPLETE.** The required checks were executed
-locally and passed (§D.1). The GitHub Actions workflow has never run for this
-branch, because no branch has been pushed and no PR exists. Local execution is
-not CI execution, and the brief's §23 makes the difference decisive.
+| C8 | Required CI/tests PASS | **PASS** — run `36518367883` @ `7a29197`, SUCCESS |
 
 ```text
-C8 = NOT_RUN
-AI-03 = PARTIAL
+C8 = PASS
+AI-03 = COMPLETE
 ```
 
-No criterion is recorded as `PASS` on the strength of implementation existing.
-`COMPLETE` is a lifecycle word; per this phase's own contract §5.4, it is not a
-truth state, and this document does not use it as one.
+C8 is satisfied by the required checks on the validated head, and by nothing
+else:
+
+```text
+PR #28                      = OPEN, MERGEABLE, NOT MERGED
+run 36518367883 @ 7a29197   = SUCCESS
+  Layer 0 — repository policy ......... success (13 checks)
+  Layers 1-3 — model and context ...... success
+```
+
+**The history of C8, retained rather than flattened.** C8 was `NOT_RUN` before
+the branch was pushed, because no CI had run. It was then `BLOCKED`/`FAIL` for
+head `0bffb60`, when CI run `36517922651` failed on a genuine defect in an AI-03
+test (§D.4). It is `PASS` only for head `7a29197`, and only because that run
+succeeded. **A later commit would reset C8 to `NOT_RUN` until its own CI ran** —
+C8 is a property of a commit, not of a phase.
+
+**What C8 does not mean.** It does not mean `main` contains AI-03. PR #28 is
+open and unmerged, and this document was written before any merge.
+
+No criterion is recorded as `PASS` on the strength of implementation existing,
+and the one assertion CI skipped is recorded as skipped, not upgraded (§D.5).
 
 ---
 
-## N. What remains for AI-03-C
+## M.1 What remains
+
+```text
+1. push feature/ai-03-context-plugin        DONE (authorised, over SSH)
+2. open the PR                              DONE - PR #28
+3. CI run on the PR                         DONE - SUCCESS (36518367883)
+4. human review and merge                   PENDING - a human decision, not an agent action
+5. update PROJECT_STATUS.md / MASTER_ROADMAP.md   DONE
+6. re-verify C8 against the actual CI result      DONE
+```
+
+The only open item is step 4. **The merge is deliberately not performed by this
+work.** It is a human decision at the repository checkpoint, and whatever CI
+reports, the agent that implemented the phase does not merge it.
+
+---
+
+## N. Pre-push state (historical — superseded)
+
+**This section describes what was true when this document was first written, and
+is retained as a record rather than deleted. It is not the current state.** The
+current state is §M and §M.1.
+
+At the time of first writing, no branch had been pushed and no PR existed:
 
 ```text
 1. push feature/ai-03-context-plugin        REQUIRES EXPLICIT HUMAN AUTHORISATION
@@ -545,15 +662,16 @@ truth state, and this document does not use it as one.
 6. re-verify C8 against the actual CI result
 ```
 
-Steps 1 and 2 were not performed at the time this document was written. Pushing
-is a `remote-change` action, which `docs/GIT_AND_SECURITY_BOUNDARY.md` requires
-explicit approval for, and the AI-03 brief §22 requires the PR to wait until
-implementation, tests, evidence, and final review are all complete.
+Steps 1 and 2 were not performed then, because pushing is a `remote-change`
+action that `docs/GIT_AND_SECURITY_BOUNDARY.md` requires explicit approval for,
+and the AI-03 brief §22 requires the PR to wait until implementation, tests,
+evidence, and final review are all complete. Both were subsequently authorised
+and performed: the branch was pushed, PR #28 was opened, and CI passed.
 
-> **The merge is never performed by this work.** Step 4 is a human decision at a
-> GitHub checkpoint, and it is deliberately outside what any command in this
-> phase does. Whatever CI reports, AI-03 is not merged by the agent that
-> implemented it.
+**One item in that list remains open, and it is meant to:** step 4, the human
+merge decision. It is a human action at a GitHub checkpoint and is deliberately
+outside what any command in this phase does. Whatever CI reports, AI-03 is not
+merged by the agent that implemented it.
 
 ---
 
@@ -563,6 +681,7 @@ implementation, tests, evidence, and final review are all complete.
 Phase:            AI-03 — Context Plugin
 Base SHA:         8c5df3e085e15e39f901e83f53f0e04f693cfb84
 Branch:           feature/ai-03-context-plugin
+Validated head:   7a29197f2b7eb09d0cd51c4dcd1332b6aaa2a011
 Workspace id:     ws-8755bade6039ea66
 
 Contract:         3 amendments (see the plan's §17.1)
@@ -574,15 +693,39 @@ Local verification (offline, both API key variables unset):
   Layer 0 = PASS (13 checks)
   provider/config/model validation = PASS
   context validation = PASS
-  1314 passed, 5 deselected
+  1317 passed, 5 deselected
     layer 1 = 488
     layer 2 = 764
-    layer 3 =  62
+    layer 3 =  65
 
-CI execution:     NOT_RUN
-PR:               NOT_RUN
-Merge:            NOT_RUN
+Required CI on the validated head:
+  run 36518367883 @ 7a29197 = SUCCESS
+    Layer 0 — repository policy ......... success
+    Layers 1-3 — model and context ...... success
+      layer 1 = 488, layer 2 = 764, layer 3 = 64 passed + 1 skipped
+
+Exit criteria:    C0-C8 all PASS
+PR:               #28 OPEN, MERGEABLE, NOT MERGED
+Merge:            not performed - a human decision, and not this work's to take
 Secrets added:    none
 SecurityLab:      untouched
-main:             untouched
+AI-07 Router:     untouched
+main:             untouched (8c5df3e) - does NOT contain AI-03
 ```
+
+### O.1 CI history
+
+Retained because a single "CI = SUCCESS" line would hide the run that failed and
+the defect it exposed.
+
+```text
+run 36517922651 @ 0bffb60   FAILURE   Layer 3: test assumed an attached HEAD
+                                      (actions/checkout is detached on PR runs)
+                            -> C8 = BLOCKED/FAIL for that head
+run 36518367883 @ 7a29197   SUCCESS   after the test was corrected
+                            -> C8 = PASS for that head
+```
+
+The failure was real and the test was wrong, not the implementation. The fix was
+verified against a genuinely detached checkout (`git worktree add --detach`)
+rather than by re-running locally, where the condition does not occur.

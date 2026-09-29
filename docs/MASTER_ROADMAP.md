@@ -206,9 +206,10 @@ Disposable AI cache
 - 区分当前事实、历史事实、设计计划
 - AI cache 可删除并可重建
 
-状态：**PARTIAL** — 契约、实现与离线验证已完成（[执行计划](AI-03_CONTEXT_PLUGIN_EXECUTION_PLAN.md)、
-[证据](AI-03_CONTEXT_PLUGIN_EVIDENCE_2026-09-29.md)）。出口条件 C8（required CI/tests PASS）
-为 `NOT_RUN`：尚未 push，也没有 PR。**不是 COMPLETE。**
+状态：**COMPLETE** — 契约、实现、验证与证据均已完成（[执行计划](AI-03_CONTEXT_PLUGIN_EXECUTION_PLAN.md)、
+[证据](AI-03_CONTEXT_PLUGIN_EVIDENCE_2026-09-29.md)）。出口条件 C0–C8 全部 `PASS`，
+其中 C8（required CI/tests PASS）由 validated head `7a29197` 上的 required CI run
+`36518367883` = SUCCESS 满足。PR **#28 仍为 OPEN、未 merge**：`main` 尚未包含 AI-03。
 
 约束：
 
@@ -599,7 +600,7 @@ SecurityLab
 | AI-00 | **COMPLETE** |
 | AI-01 | **COMPLETE** |
 | AI-02 | **COMPLETE** — closed 2026-09-29, see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
-| AI-03 | **PARTIAL** — implemented and verified, C8 `NOT_RUN`; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
+| AI-03 | **COMPLETE** — C0–C8 PASS; PR #28 open, not merged; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-04 | NOT STARTED |
 | AI-05 | NOT STARTED |
 | AI-06 | NOT STARTED |

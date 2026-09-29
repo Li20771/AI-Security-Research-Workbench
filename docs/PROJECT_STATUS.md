@@ -9,11 +9,12 @@ AI-00 architecture and repository baseline is complete. **AI-01 DSH Baseline is 
 [AI-02 final gate status](#ai-02-final-gate-status) and
 [AI-02_CLOSEOUT_2026-09-29.md](AI-02_CLOSEOUT_2026-09-29.md).
 
-AI-03 is **IMPLEMENTED AND VERIFIED, NOT CLOSED**. Its contract, implementation, and offline
-verification are complete on the task branch, and its evidence is recorded in
+AI-03 is **COMPLETE** — all exit criteria C0–C8 satisfied, C8 by required CI on its own head.
+Its contract, implementation, verification, and evidence are on branch
+`feature/ai-03-context-plugin`, and its evidence is recorded in
 [AI-03_CONTEXT_PLUGIN_EVIDENCE_2026-09-29.md](AI-03_CONTEXT_PLUGIN_EVIDENCE_2026-09-29.md).
-Exit criterion **C8 (required CI/tests PASS) is `NOT_RUN`**, because no branch has been pushed and
-no PR exists, so **AI-03 is not COMPLETE**. See [AI-03 status](#ai-03-status).
+PR **#28 is OPEN and NOT MERGED**: `main` does not yet contain AI-03. See
+[AI-03 status](#ai-03-status).
 
 The GitHub `main` branch protection requirement is **BLOCKED** by the current GitHub
 Free/private-repository plan and is retained as a documented platform limitation; it is not
@@ -25,14 +26,23 @@ This file is the single entry point for deciding what to do next.
 
 ### Current work item
 
-**AI-03 — Context Plugin — awaiting PR and CI**
+**AI-03 — Context Plugin — merged? No. Awaiting human merge decision.**
 
-AI-03 implementation is complete on branch `feature/ai-03-context-plugin`, based on the AI-02
-merge commit `8c5df3e085e15e39f901e83f53f0e04f693cfb84`. The remaining work is AI-03-C: push,
-PR, CI, review, merge, then update this file.
+```text
+branch           = feature/ai-03-context-plugin
+validated head   = 7a29197f2b7eb09d0cd51c4dcd1332b6aaa2a011
+PR               = #28 (OPEN, MERGEABLE, not merged)
+required CI      = SUCCESS (run 36518367883)
+exit criteria    = C0-C8 all PASS
+```
 
-Pushing is a `remote-change` action requiring explicit human authorisation, and it has not been
-performed.
+AI-03's implementation and verification are complete and its exit criteria are satisfied. The
+remaining action is a **human merge decision** on PR #28 — the last step of AI-03-C, and
+deliberately not taken by the agent that implemented the phase. After merge, this file records
+the merge SHA and moves the current stage to AI-04.
+
+Pushing was authorised and performed for this branch. No merge, no force push, and no history
+rewrite was performed at any point.
 
 The closed AI-01 execution plan remains at
 [docs/AI-01_DSH_BASELINE_EXECUTION_PLAN.md](AI-01_DSH_BASELINE_EXECUTION_PLAN.md)
@@ -93,8 +103,9 @@ PROJECT_STATUS.md
 - Exact supported DSH/Codex versions
 - Provider connectivity tests — live verification is **NOT_RUN** (AI-02-B6 built
   the opt-in path; no provider call has been made)
-- AI-03 Context Plugin — implemented and verified, but **not closed**: exit criterion
-  C8 is `NOT_RUN` pending PR and CI (see [AI-03 status](#ai-03-status))
+- AI-03 Context Plugin — **implemented, verified, and COMPLETE** on branch
+  `feature/ai-03-context-plugin`; PR #28 is open and **not merged**, so `main` does not
+  yet contain it (see [AI-03 status](#ai-03-status))
 - Executable Guard plugin
 - Executable Evidence/Audit plugin
 - Research tool adapters
@@ -211,7 +222,8 @@ Outstanding, deferred — **not** AI-02 failures:
 
 ## AI-03 status
 
-**AI-03 — Context Plugin: IMPLEMENTED AND VERIFIED, NOT CLOSED.** Full evidence in
+**AI-03 — Context Plugin: COMPLETE.** All exit criteria satisfied; C8 by required CI on the
+validated head. Full evidence in
 [AI-03_CONTEXT_PLUGIN_EVIDENCE_2026-09-29.md](AI-03_CONTEXT_PLUGIN_EVIDENCE_2026-09-29.md).
 
 ```text
@@ -221,8 +233,8 @@ AI-03-B2 = COMPLETE      source adapters
 AI-03-B3 = COMPLETE      semantic classification
 AI-03-B4 = COMPLETE      cache boundary
 AI-03-B5 = COMPLETE      integration and offline tests
-AI-03-C  = NOT_RUN       closeout / PR / merge
-AI-03    = PARTIAL
+AI-03-C  = COMPLETE      PR opened; merge is the remaining human decision
+AI-03    = COMPLETE
 
 C0 contract implemented              = PASS
 C1 workspace isolation verified      = PASS
@@ -232,10 +244,12 @@ C4 source priority conflict tests    = PASS
 C5 UNKNOWN/NOT_RUN/BLOCKED preserved = PASS
 C6 cache boundary and invalidation   = PASS
 C7 evidence artifact complete        = PASS
-C8 required CI/tests PASS            = NOT_RUN
+C8 required CI/tests PASS            = PASS
 ```
 
-Base SHA `8c5df3e085e15e39f901e83f53f0e04f693cfb84`; branch `feature/ai-03-context-plugin`.
+Base SHA `8c5df3e085e15e39f901e83f53f0e04f693cfb84`; branch
+`feature/ai-03-context-plugin`; validated head
+`7a29197f2b7eb09d0cd51c4dcd1332b6aaa2a011`.
 
 Local verification (offline, no credential, no network):
 
@@ -243,22 +257,43 @@ Local verification (offline, no credential, no network):
 Layer 0 = PASS (13 checks; was 12)
 provider/config/model validation = PASS
 context validation = PASS
-1314 passed, 5 deselected
-  layer 1 = 488, layer 2 = 764, layer 3 = 62
-  baseline was 956 passed, 5 deselected — +358 tests, 0 regressions
+1317 passed, 5 deselected
+  layer 1 = 488, layer 2 = 764, layer 3 = 65
+  baseline was 956 passed, 5 deselected — +361 tests, 0 regressions
+```
+
+Required CI, on the validated head — this is what satisfies C8:
+
+```text
+PR #28            = OPEN, MERGEABLE, NOT MERGED
+CI run 36518367883 @ 7a29197 = SUCCESS
+  Layer 0 — repository policy ......... success (13 checks)
+  Layers 1-3 — offline model+context .. success
+    layer 1 = 488 passed
+    layer 2 = 764 passed
+    layer 3 =  64 passed, 1 skipped
 ```
 
 ```text
-CI execution = NOT_RUN     no branch pushed, no PR
-PR / merge   = NOT_RUN
-SecurityLab  = UNCHANGED
-main         = UNCHANGED
+SecurityLab    = UNCHANGED
+main           = UNCHANGED (8c5df3e); AI-03 is NOT on main until PR #28 is merged
 Router (AI-07) = DEFERRED / UNIMPLEMENTED
 ```
 
-**C8 is `NOT_RUN`, so AI-03 is not COMPLETE.** The required checks were executed locally
-and passed; the GitHub Actions workflow has never run for this branch. Local execution is not
-CI execution.
+**Historical note, retained deliberately.** Before the branch was pushed, C8 was recorded as
+`NOT_RUN`, because no CI had ever run for it. That was the correct state then and is no longer
+the current one. The first CI run (36517922651, head `0bffb60`) then **failed** on a genuine
+defect in an AI-03 test — it assumed an attached HEAD, which `actions/checkout` does not provide
+on a `pull_request` run. C8 was `BLOCKED`/`FAIL` for that head. The test was corrected, and C8 is
+`PASS` only for `7a29197`, the head this status refers to.
+
+**One assertion is `NOT_RUN` in CI, not `PASS`:** `test_a_branch_item_matches_git_when_present`
+skips under a detached HEAD. The attached-branch behaviour is covered deterministically by
+`tests/integration/test_context_git_state.py` against throwaway repositories, which does run in
+CI, so this leaves no gap — but it is recorded as skipped, not upgraded.
+
+**`main` does not contain AI-03.** PR #28 is open and unmerged; until a human merges it, this
+status describes a branch.
 
 Recorded, not hidden:
 
