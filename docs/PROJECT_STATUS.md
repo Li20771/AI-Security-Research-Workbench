@@ -26,31 +26,29 @@ This file is the single entry point for deciding what to do next.
 
 ### Current work item
 
-**AI-04 — Security Guard Plugin — NOT STARTED.**
+**AI-05 — Evidence / Audit Plugin — NOT STARTED.**
 
 ```text
-AI-03 merge      = 548bc041b31cc0fc9d01af55c527378ba2c42c48  (PR #28, merged)
-AI-03 exit       = C0-C8 all PASS; CI run 36518367883 validated the code head
-AI-04 contract   = authored, NOT YET FROZEN IN THIS REPOSITORY
-AI-04 branch     = none
-AI-04 status     = NOT STARTED
+AI-04 merge      = 254823f74aa742a3f98d04f7d184b39c33369d98  (PR #32, merged)
+AI-04 exit       = C0-C10 all PASS; CI green on the closeout head
+AI-05 contract   = not authored
+AI-05 branch     = none
+AI-05 status     = NOT STARTED
 ```
 
-AI-03 is closed. The next stage is **AI-04 Guard**, and it has no execution plan in the
-repository yet: no `docs/AI-04_*` file exists, so under the phase start rule (MASTER_ROADMAP
-§2.1) AI-04-A — freeze the contract — is the entry point. Implementation does not begin before
-the contract is frozen here, per its own §23.
+AI-04 is closed. The next stage is **AI-05 Evidence / Audit**, and it has no execution plan in
+the repository yet: no `docs/AI-05_*` file exists, so under the phase start rule (MASTER_ROADMAP
+§2.1) AI-05-A — freeze the contract — is the entry point. Implementation does not begin before
+the contract is frozen here.
 
-> **Open review findings.** A draft AI-04 contract has been reviewed and four blocking findings
-> were recorded: an internal contradiction between its §2 and §21 over `approval.status =
-> UNKNOWN`; a rule ordering that claims to be total but is not (`"more specific before generic"`
-> is undefined); an unspecified condition language; and undefined digest canonicalization. Those
-> are contract amendments, and §23 requires them before implementation proceeds.
+> **AI-05 has not been started.** No branch, no contract, no code. Recorded explicitly so its
+> absence is auditable rather than inferred.
 
-The AI-03 branch `feature/ai-03-context-plugin` is fully merged and may be deleted.
+The merged AI-03 and AI-04 branches (`feature/ai-03-context-plugin`,
+`feature/ai-04-guard-implementation`) may be deleted.
 
-No force push and no history rewrite was performed at any point in AI-03. The merge itself was a
-human decision taken at the GitHub checkpoint, not by the agent that implemented the phase.
+No force push and no history rewrite was performed at any point in AI-03 or AI-04. Each merge was
+a human decision taken at the GitHub checkpoint, not by the agent that implemented the phase.
 
 The closed AI-01 execution plan remains at
 [docs/AI-01_DSH_BASELINE_EXECUTION_PLAN.md](AI-01_DSH_BASELINE_EXECUTION_PLAN.md)
@@ -111,7 +109,6 @@ PROJECT_STATUS.md
 - Exact supported DSH/Codex versions
 - Provider connectivity tests — live verification is **NOT_RUN** (AI-02-B6 built
   the opt-in path; no provider call has been made)
-- Executable Guard plugin
 - Executable Evidence/Audit plugin
 - Research tool adapters
 - Model Router implementation
@@ -312,6 +309,86 @@ Recorded, not hidden:
   retention rule, and a cleanup rule; shipping one without those would ship a second,
   undeclared source of truth.
 - AI-03 **adds no layer 4** — the Context plugin has no network surface.
+
+## AI-04 status
+
+**AI-04 — Security Guard Plugin: COMPLETE.** Full evidence in
+[AI-04-B_EVIDENCE_2026-09-29.md](AI-04-B_EVIDENCE_2026-09-29.md).
+
+```text
+AI-04-A = COMPLETE / MERGED   contract frozen, 9 amendments
+AI-04-B = COMPLETE / MERGED   implementation, tests, evidence
+AI-04-C = COMPLETE            closeout
+AI-04   = COMPLETE
+
+merge SHA = 254823f74aa742a3f98d04f7d184b39c33369d98   (PR #32)
+base      = 8b1af38754681955615f7b1a228fb90c1215615c
+```
+
+`AI-04-C10 required CI = PASS` on the merged head and on this closeout commit.
+
+### What was built
+
+```text
+plugins/guard/    9 modules, 3244 lines
+tests/guard/      9 modules, 295 tests
+```
+
+`Guard.evaluate(request, policy)` returns a `DecisionRecord` carrying
+`ALLOW | DENY | BLOCKED | UNKNOWN`, a reason code, per-check results, provenance
+and two semantic digests. Guard decides; it does not execute, collect, persist,
+route, approve or scan.
+
+Covered by the phase's T1–T15 test matrix and C0–C10 exit gates.
+
+### Verified
+
+```text
+Guard tests      = 295 passed
+whole repository = 1612 passed, 5 deselected   (baseline 1317; +295, 0 regressions)
+Layer 0          = PASS (13 checks)
+security checks  = clean — no eval, exec, compile, subprocess, network,
+                   routing or tools import in plugins/guard
+contract conformance = all 15 vocabularies match the frozen contract;
+                   AI-02 and AI-03 frozen types imported by identity, not restated
+```
+
+### Amendments and review fixes
+
+The contract was amended **9 times before implementation**, closing four blocking
+findings: an `UNKNOWN`-semantics contradiction, a rule ordering that claimed to be
+total but was not, an absent condition grammar, and undefined digest
+canonicalization.
+
+Two post-implementation review fixes, both CI-verified on their own heads:
+
+```text
+Fix #1  §15.1 absolute deny ran after policy; secret-material requests with a
+        missing or invalid policy reported BLOCKED instead of DENY
+Fix #2  §15.1 cross-workspace authorization was not a boundary; foreign context
+        was filtered and evaluation continued, so an unconditional ALLOW
+        succeeded on a request spanning two workspaces
+```
+
+Both were the same mistake in different places: a boundary check placed after
+the thing it was supposed to precede.
+
+### Recorded, not hidden
+
+- **No approval source exists**, so `system-change`, `remote-change` and real
+  CAN/ECU/vehicle are permanently `BLOCKED` (§8.2, D-12). Intended fail-closed
+  behaviour, verified by test — not a defect.
+- **Guard performs no policy discovery.** Where a policy comes from remains Q-1;
+  `evaluate` takes it as a parameter.
+- **`evidence_ref` is always `null`** until AI-05 exists. AI-05 is not a
+  prerequisite for AI-04.
+
+```text
+SecurityLab    = UNCHANGED
+AI-02 / AI-03  = UNCHANGED
+Router (AI-07) = DEFERRED / UNIMPLEMENTED
+main           = contains AI-04
+```
 
 ## Status semantics
 `PASS` `FAIL` `BLOCKED` `NOT_RUN` `UNKNOWN`

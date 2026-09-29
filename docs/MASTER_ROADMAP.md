@@ -253,6 +253,28 @@ UNKNOWN   = insufficient evidence
 
 禁止把 SKIPPED / BLOCKED 自动折算为 PASS。
 
+状态：**COMPLETE** — 合同冻结（[执行计划](AI-04_GUARD_EXECUTION_PLAN.md)，9 次 amendment）、
+实现合并（[证据](AI-04-B_EVIDENCE_2026-09-29.md)）、review 完成、CI green，阶段已关闭。
+
+```text
+merge SHA = 254823f74aa742a3f98d04f7d184b39c33369d98   (PR #32)
+AI-04-A   = COMPLETE / MERGED    contract frozen, 9 amendments
+AI-04-B   = COMPLETE / MERGED    plugins/guard, 295 tests
+AI-04-C   = COMPLETE             closeout
+C0-C10    = all PASS
+```
+
+实现要点：
+
+- `Guard.evaluate(request, policy)` 返回 `DecisionRecord`；policy 是调用参数，Guard 不做
+  discovery / storage / selection
+- 决策词表固定为 `ALLOW | DENY | BLOCKED | UNKNOWN`；`CheckResult` 是独立类型
+- §12.2.2 的 specificity 排序是 deterministic topological linearization，不是 comparator
+- 绝对安全边界在 policy 之前执行：secret-material 与 cross-workspace 都是 `DENY`，
+  先于 policy 缺失 / 解析 / 校验
+- 无 approval source，因此 `system-change` / `remote-change` / 真实 CAN/ECU/vehicle
+  恒为 `BLOCKED`（D-12）
+
 ---
 
 ## AI-05 — Evidence / Audit Plugin
@@ -602,8 +624,8 @@ SecurityLab
 | AI-01 | **COMPLETE** |
 | AI-02 | **COMPLETE** — closed 2026-09-29, see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-03 | **COMPLETE** — C0–C8 PASS; merged as `548bc041` (PR #28); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
-| AI-04 | NOT STARTED |
-| AI-05 | NOT STARTED |
+| AI-04 | **COMPLETE** — merged as `254823f7` (PR #32); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
+| AI-05 | NOT STARTED — next stage |
 | AI-06 | NOT STARTED |
 | AI-07 | NOT STARTED |
 | AI-08 | NOT STARTED |
