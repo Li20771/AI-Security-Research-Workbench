@@ -9,12 +9,12 @@ AI-00 architecture and repository baseline is complete. **AI-01 DSH Baseline is 
 [AI-02 final gate status](#ai-02-final-gate-status) and
 [AI-02_CLOSEOUT_2026-09-29.md](AI-02_CLOSEOUT_2026-09-29.md).
 
-AI-03 is **COMPLETE** — all exit criteria C0–C8 satisfied, C8 by required CI on its own head.
-Its contract, implementation, verification, and evidence are on branch
-`feature/ai-03-context-plugin`, and its evidence is recorded in
+AI-03 is **COMPLETE and MERGED** — all exit criteria C0–C8 satisfied, C8 by required CI on its
+own head, and merged to `main` as `548bc041b31cc0fc9d01af55c527378ba2c42c48` (PR #28). Its
+contract, implementation, verification, and evidence are recorded in
+[AI-03_CONTEXT_PLUGIN_EXECUTION_PLAN.md](AI-03_CONTEXT_PLUGIN_EXECUTION_PLAN.md) and
 [AI-03_CONTEXT_PLUGIN_EVIDENCE_2026-09-29.md](AI-03_CONTEXT_PLUGIN_EVIDENCE_2026-09-29.md).
-PR **#28 is OPEN and NOT MERGED**: `main` does not yet contain AI-03. See
-[AI-03 status](#ai-03-status).
+See [AI-03 status](#ai-03-status).
 
 The GitHub `main` branch protection requirement is **BLOCKED** by the current GitHub
 Free/private-repository plan and is retained as a documented platform limitation; it is not
@@ -26,28 +26,31 @@ This file is the single entry point for deciding what to do next.
 
 ### Current work item
 
-**AI-03 — Context Plugin — merged? No. Awaiting human merge decision.**
+**AI-04 — Security Guard Plugin — NOT STARTED.**
 
 ```text
-branch           = feature/ai-03-context-plugin
-validated head   = 7a29197f2b7eb09d0cd51c4dcd1332b6aaa2a011  (last code commit)
-PR               = #28 (OPEN, MERGEABLE, not merged)
-required CI      = SUCCESS (run 36518367883 on the code head)
-exit criteria    = C0-C8 all PASS
+AI-03 merge      = 548bc041b31cc0fc9d01af55c527378ba2c42c48  (PR #28, merged)
+AI-03 exit       = C0-C8 all PASS; CI run 36518367883 validated the code head
+AI-04 contract   = authored, NOT YET FROZEN IN THIS REPOSITORY
+AI-04 branch     = none
+AI-04 status     = NOT STARTED
 ```
 
-> CI status belongs to a commit. Writing a SHA into a file creates a commit, so
-> any SHA recorded here is one commit behind the file stating it. **The current
-> status is what GitHub reports on PR #28**, and nothing here is `PASS` on the
-> strength of a self-referential SHA.
+AI-03 is closed. The next stage is **AI-04 Guard**, and it has no execution plan in the
+repository yet: no `docs/AI-04_*` file exists, so under the phase start rule (MASTER_ROADMAP
+§2.1) AI-04-A — freeze the contract — is the entry point. Implementation does not begin before
+the contract is frozen here, per its own §23.
 
-AI-03's implementation and verification are complete and its exit criteria are satisfied. The
-remaining action is a **human merge decision** on PR #28 — the last step of AI-03-C, and
-deliberately not taken by the agent that implemented the phase. After merge, this file records
-the merge SHA and moves the current stage to AI-04.
+> **Open review findings.** A draft AI-04 contract has been reviewed and four blocking findings
+> were recorded: an internal contradiction between its §2 and §21 over `approval.status =
+> UNKNOWN`; a rule ordering that claims to be total but is not (`"more specific before generic"`
+> is undefined); an unspecified condition language; and undefined digest canonicalization. Those
+> are contract amendments, and §23 requires them before implementation proceeds.
 
-Pushing was authorised and performed for this branch. No merge, no force push, and no history
-rewrite was performed at any point.
+The AI-03 branch `feature/ai-03-context-plugin` is fully merged and may be deleted.
+
+No force push and no history rewrite was performed at any point in AI-03. The merge itself was a
+human decision taken at the GitHub checkpoint, not by the agent that implemented the phase.
 
 The closed AI-01 execution plan remains at
 [docs/AI-01_DSH_BASELINE_EXECUTION_PLAN.md](AI-01_DSH_BASELINE_EXECUTION_PLAN.md)
@@ -108,9 +111,6 @@ PROJECT_STATUS.md
 - Exact supported DSH/Codex versions
 - Provider connectivity tests — live verification is **NOT_RUN** (AI-02-B6 built
   the opt-in path; no provider call has been made)
-- AI-03 Context Plugin — **implemented, verified, and COMPLETE** on branch
-  `feature/ai-03-context-plugin`; PR #28 is open and **not merged**, so `main` does not
-  yet contain it (see [AI-03 status](#ai-03-status))
 - Executable Guard plugin
 - Executable Evidence/Audit plugin
 - Research tool adapters
@@ -238,7 +238,7 @@ AI-03-B2 = COMPLETE      source adapters
 AI-03-B3 = COMPLETE      semantic classification
 AI-03-B4 = COMPLETE      cache boundary
 AI-03-B5 = COMPLETE      integration and offline tests
-AI-03-C  = COMPLETE      PR opened; merge is the remaining human decision
+AI-03-C  = COMPLETE      PR #28 opened, CI green, merged by a human
 AI-03    = COMPLETE
 
 C0 contract implemented              = PASS
@@ -270,8 +270,10 @@ context validation = PASS
 Required CI, on the validated head — this is what satisfies C8:
 
 ```text
-PR #28            = OPEN, MERGEABLE, NOT MERGED
-CI run 36518367883 @ 7a29197 = SUCCESS
+PR #28                        = MERGED by a human, 2026-09-29T03:58:20Z
+merge commit                  = 548bc041b31cc0fc9d01af55c527378ba2c42c48
+CI run 36518367883 @ 7a29197  = SUCCESS   (validated the code head)
+CI run 36519252935 @ a5376e2  = SUCCESS   (validated the final doc head)
   Layer 0 — repository policy ......... success (13 checks)
   Layers 1-3 — offline model+context .. success
     layer 1 = 488 passed
@@ -281,7 +283,7 @@ CI run 36518367883 @ 7a29197 = SUCCESS
 
 ```text
 SecurityLab    = UNCHANGED
-main           = UNCHANGED (8c5df3e); AI-03 is NOT on main until PR #28 is merged
+main           = 548bc041; AI-03 IS on main
 Router (AI-07) = DEFERRED / UNIMPLEMENTED
 ```
 
@@ -297,8 +299,8 @@ skips under a detached HEAD. The attached-branch behaviour is covered determinis
 `tests/integration/test_context_git_state.py` against throwaway repositories, which does run in
 CI, so this leaves no gap — but it is recorded as skipped, not upgraded.
 
-**`main` does not contain AI-03.** PR #28 is open and unmerged; until a human merges it, this
-status describes a branch.
+**`main` now contains AI-03.** PR #28 was merged by a human as `548bc041`. Everything above
+describes the merged content, not a branch.
 
 Recorded, not hidden:
 
