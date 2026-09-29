@@ -8,6 +8,8 @@ required_files=(
   README.md
   docs/MASTER_ROADMAP.md
   docs/AI-00_REQUIREMENTS_AND_ARCHITECTURE.md
+  docs/AI-02_MODEL_LAYER_EXECUTION_PLAN.md
+  docs/AI-03_CONTEXT_PLUGIN_EXECUTION_PLAN.md
   docs/GIT_AND_SECURITY_BOUNDARY.md
   docs/PROJECT_STATUS.md
   docs/BOOTSTRAP.md
@@ -18,6 +20,16 @@ required_files=(
   config/providers/providers.example.yaml
   config/routing/rules.example.yaml
   evidence/schema/experiment.schema.yaml
+  plugins/context/__init__.py
+  plugins/context/context.py
+  plugins/context/workspace.py
+  plugins/context/sources.py
+  plugins/context/classification.py
+  plugins/context/cache.py
+  plugins/context/resolution.py
+  plugins/context/declarations.py
+  plugins/context/vocabulary.py
+  plugins/context/validate.py
   workspaces/workspaces.example.yaml
 )
 
@@ -47,6 +59,7 @@ required_dirs=(
   scripts/repro
   tests/unit
   tests/integration
+  tests/context
   tests/guard
   tests/benchmarks
   tools/git
