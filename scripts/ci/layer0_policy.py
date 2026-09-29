@@ -74,11 +74,11 @@ DEFAULT_WORKFLOWS = frozenset({"preflight.yml"})
 #: classified here is a finding, not an allowance.
 LIVE_WORKFLOWS = frozenset({"live-model-verification.yml"})
 
-#: Trigger keys a live workflow must not declare. Live verification is manual.
-FORBIDDEN_LIVE_TRIGGERS = re.compile(
-    r"^\s+(push|pull_request|pull_request_target|schedule|workflow_run)\s*:",
-    re.MULTILINE,
-)
+#: The only trigger a live workflow may declare. Stated positively: the
+#: question is not "does this list a forbidden trigger" but "is
+#: workflow_dispatch the only one", so a trigger nobody thought to deny
+#: (workflow_call, repository_dispatch, merge_group, ...) is still a finding.
+LIVE_ALLOWED_TRIGGERS = frozenset({"workflow_dispatch"})
 
 #: Input names that would let a caller aim a probe at an arbitrary target or
 #: supply a credential. The endpoint comes from the provider profile and the
@@ -293,6 +293,35 @@ def check_workflow_cannot_reach_a_provider() -> list[str]:
     return problems
 
 
+def _trigger_keys(text: str) -> list[str]:
+    """The direct children of the `on:` block, or [] when there is none.
+
+    A scalar or flow-style trigger (`on: push`, `on: [push]`) has no block, so
+    it yields nothing -- which the caller reads as "not dispatch-only" rather
+    than as "no triggers".
+    """
+    lines = text.splitlines()
+    start = next(
+        (i for i, line in enumerate(lines) if line.rstrip() == "on:"), None
+    )
+    if start is None:
+        return []
+    base: int | None = None
+    keys: list[str] = []
+    for line in lines[start + 1:]:
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        indent = len(line) - len(line.lstrip())
+        if indent == 0:
+            break
+        if base is None:
+            base = indent
+        if indent != base:
+            continue
+        keys.append(line.strip().split(":", 1)[0].strip())
+    return keys
+
+
 def check_workflow_opt_in_flags() -> list[str]:
     """The opt-in flag exists in exactly the live workflows.
 
@@ -335,17 +364,18 @@ def check_live_workflow_is_manual_and_bounded() -> list[str]:
         name = _display(path)
         text = _strip_full_line_comments(path.read_text(encoding="utf-8"))
 
-        if "workflow_dispatch:" not in text:
+        triggers = _trigger_keys(text)
+        if "workflow_dispatch" not in triggers:
             problems.append(
-                f"{name} is classified live but declares no workflow_dispatch "
-                "trigger; live verification is started by a human"
+                f"{name} does not declare workflow_dispatch; live verification "
+                "is started by a human"
             )
-
-        for match in FORBIDDEN_LIVE_TRIGGERS.finditer(text):
+        extra = sorted(set(triggers) - LIVE_ALLOWED_TRIGGERS)
+        if extra:
             problems.append(
-                f"{name} declares a {match.group(1)!r} trigger; a live check "
-                "must not run on a push, a pull request, a schedule, or "
-                "another workflow's completion"
+                f"{name} declares trigger(s) {', '.join(extra)}; a live "
+                "workflow is workflow_dispatch ONLY, because any other trigger "
+                "lets it contact a provider without a human starting it"
             )
 
         for host in LIVE_ENDPOINT_HOSTS:
