@@ -263,6 +263,151 @@ execution.
 
 ---
 
+## K. Post-review verification — §15.1 execution-order fix
+
+**This section is separate from §A–§J, which record the initial implementation
+as it was. Nothing above has been rewritten.** In particular `C10` in §H is
+still `NOT_RUN`: no PR existed when that section was written, and it was
+correct then. The gate's current status is in §K.3.
+
+### K.1 The defect
+
+§15.1 of the frozen contract:
+
+> Checked **before policy**, never overridden by any rule, priority, or approval
+
+and §14.1:
+
+> 1. evaluate safety invariants (§15.1) — any violation -> `DENY`, stop
+
+`evaluator.evaluate()` ran the absolute-deny gate at step 5, **after** policy
+presence, parsing and validation. Measured before the fix:
+
+```text
+secret_material + policy = None       -> BLOCKED / POLICY_MISSING
+secret_material + invalid policy      -> BLOCKED / POLICY_INVALID
+normal          + policy = None       -> BLOCKED / POLICY_MISSING
+```
+
+The first two rows are wrong. Both are non-`ALLOW`, which is why every existing
+test passed and the defect survived a full test suite — the *decision* was
+safe, and only the *reason* was wrong.
+
+This is the more subtle half of a fail-closed boundary: `BLOCKED` says "supply a
+policy and try again", which is precisely the instruction one should not give
+someone reaching for a credential. The refusal has to be the answer, not a
+precondition on the way to it.
+
+### K.2 The fix
+
+Minimal, and confined to `plugins/guard/evaluator.py`:
+
+```text
+before                              after
+1. normalize                        1. normalize
+2. policy presence / parsing        2. absolute safety invariants (§15.1)
+3. workspace agreement              3. policy presence / parsing
+4. policy validation                4. workspace agreement
+5. absolute safety invariants       5. policy validation
+6. ordering                         6. ordering
+7. walk                             7. walk
+8. approval / target gates          8. approval / target gates
+9. assembly                         9. assembly
+```
+
+`check_absolute_deny()` itself is **unchanged**. Normalization still runs first
+and still produces `DENY` for a malformed or unscoped request, because a request
+must be readable enough to evaluate a boundary at all. A one-line helper,
+`_policy_if_readable`, lets the gate name the policy in its provenance when one
+happens to be readable without ever requiring one to parse — a malformed policy
+must not be able to stop a security refusal, which is the entire point of moving
+the gate.
+
+Measured after:
+
+```text
+secret_material + policy = None       -> DENY    / SECRET_MATERIAL_ACCESS
+secret_material + invalid policy      -> DENY    / SECRET_MATERIAL_ACCESS
+normal          + policy = None       -> BLOCKED / POLICY_MISSING
+```
+
+### K.3 Regression tests
+
+Added to `tests/guard/test_gates.py` as two classes, named for what they
+actually test — precedence and execution order, not a single condition:
+
+```text
+TestAbsoluteDenyPrecedence                    8 tests
+    case 1  secret material vs a missing policy
+    case 2  secret material vs an invalid policy
+    case 2b secret material vs a duplicate rule_id   (a second invalid path)
+    case 3  secret material vs a workspace mismatch
+    case 3b secret material vs a permissive ALLOW
+    plus: no rule is blamed; a readable policy is still named;
+          an unreadable policy cannot stop the deny
+
+TestAbsoluteDenyPrecedenceDoesNotOverreach    5 tests
+    the narrower regression: BLOCKED/POLICY_MISSING and BLOCKED/POLICY_INVALID
+    still hold for ordinary requests, workspace mismatch is still DENY, and an
+    ordinary ALLOW is unaffected
+```
+
+The second class exists because a precedence fix can overreach. Removing the
+gate entirely would fail the first class; so would leaving it at the wrong point
+in the sequence, which is the failure mode actually observed. The second class
+pins the other direction.
+
+No existing test was deleted, renamed or weakened to accommodate the fix.
+
+### K.4 Post-review verification
+
+```text
+tests/guard      = 282 passed   (was 267; +15 precedence tests)
+whole repository = 1599 passed, 5 deselected   (was 1584; no regressions)
+Layer 0          = PASS (13 checks)
+git diff --check = clean
+security checks  = clean (AST-based; see §F)
+```
+
+Two `grep` hits were investigated and are false positives, recorded so a later
+reader does not re-investigate them: `re.compile(` in `policy.py` is a regex
+pattern constant, not the builtin `compile()`; and the `subprocess` hit is the
+word in `__init__.py`'s docstring stating that Guard uses none. The `ast`-based
+tests in `TestT15Regression` assert the real property and pass.
+
+### K.5 Status at post-review
+
+```text
+C0-C9 = PASS
+C10   = PASS   <- CI run 36576531723 @ 976a77f, before this fix
+C10   = NOT_RUN at the new head until its own CI run completes
+```
+
+C10 is a property of a commit. The run above validated the pre-fix head; this
+fix produces a new head whose checks had not run when this section was written.
+The earlier `NOT_RUN` in §H is retained rather than edited, because it was
+accurate for the moment it described.
+
+### K.6 Scope of the fix
+
+```text
+contract changed      = NO
+decision semantics    = unchanged (ALLOW / DENY / BLOCKED / UNKNOWN all mean
+                        what they meant; one outcome moved to the right reason)
+policy semantics      = unchanged
+ordering              = unchanged
+digest design         = unchanged
+Guard API             = unchanged
+files changed         = plugins/guard/evaluator.py, tests/guard/test_gates.py,
+                        and this document
+```
+
+No contract amendment was required: the contract already said what the correct
+order was, and the implementation did not follow it. That is a defect, not an
+ambiguity.
+
+---
+
 ## J. Provenance
 
 ```text

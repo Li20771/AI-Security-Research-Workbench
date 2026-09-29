@@ -14,14 +14,25 @@ evaluation-time rigour would detect it.
 Order of work, and why each step is where it is:
 
     1. normalize and scope          malformed -> DENY, unscoped -> DENY (§15.1)
-    2. workspace agreement          mismatch -> DENY (§5)
-    3. policy validation            invalid  -> BLOCKED (§9.2)
-    4. ordering                     §12, by linearization (§12.2.2)
-    5. the walk                     §14.1
-    6. approval and target gates    before any ALLOW, never after (§14.1 step 6)
-    7. assembly                     §18, §19, §20
+    2. absolute safety invariants   §15.1, **before policy**
+    3. policy presence and parsing  missing / invalid -> BLOCKED (§9.1, §9.2)
+    4. workspace agreement          mismatch -> DENY (§5)
+    5. policy validation            invalid  -> BLOCKED (§9.2)
+    6. ordering                     §12, by linearization (§12.2.2)
+    7. the walk                     §14.1
+    8. approval and target gates    before any ALLOW, never after (§14.1 step 6)
+    9. assembly                     §18, §19, §20
 
-Step 6 is a **gate, not an override**: it can turn an `ALLOW` into `BLOCKED`,
+**Step 2 runs before step 3 deliberately.** §15.1 says the absolute denies are
+"checked before policy, never overridden by any rule, priority, or approval",
+and §14.1 makes evaluating safety invariants step 1 of the walk. Running them
+after the policy steps let a missing or invalid policy mask a security refusal —
+a request to touch secret material with no policy supplied returned
+`BLOCKED / POLICY_MISSING` rather than `DENY / SECRET_MATERIAL_ACCESS`. Both are
+non-`ALLOW`, but `BLOCKED` tells the caller to supply a policy and try again,
+which is the wrong thing to say to someone reaching for a credential.
+
+Step 8 is a **gate, not an override**: it can turn an `ALLOW` into `BLOCKED`,
 never the reverse.
 """
 
@@ -532,7 +543,32 @@ def evaluate(
     except GuardError as exc:  # defensive: unforeseen normalization failure
         return _malformed_record(request, exc)
 
-    # --- step 2: policy presence and shape ---------------------------------
+    # --- step 2: absolute safety invariants (§15.1) -------------------------
+    #
+    # **Before policy, not after it.** §15.1 says the absolute denies are
+    # "checked before policy, never overridden by any rule, priority, or
+    # approval", and §14.1 makes evaluating safety invariants step 1 of the
+    # walk. Running them after policy presence, parsing and validation let a
+    # missing or invalid policy mask a security refusal: a request to touch
+    # secret material with no policy supplied returned `BLOCKED /
+    # POLICY_MISSING` instead of `DENY / SECRET_MATERIAL_ACCESS`.
+    #
+    # The order matters even though both are non-`ALLOW`: `BLOCKED` says "supply
+    # a policy and try again", which is exactly the wrong thing to tell someone
+    # reaching for a credential. The refusal has to be the answer, not a
+    # precondition on the way to it.
+    absolute = check_absolute_deny(normalized_request)
+    if absolute.blocks:
+        return _record(
+            normalized_request,
+            _policy_if_readable(policy),
+            decision=absolute.decision,  # type: ignore[arg-type]
+            reason_code=absolute.reason_code,
+            reasons=absolute.reasons,
+            context_refs=_context_refs(normalized_request),
+        )
+
+    # --- step 3: policy presence and shape ---------------------------------
     if policy is None:
         return _blocked_without_policy(
             normalized_request, PolicyMissing("no policy was supplied (§9.1)")
@@ -544,7 +580,7 @@ def evaluate(
     except PolicyInvalid as exc:
         return _blocked_without_policy(normalized_request, exc)
 
-    # --- step 3: workspace, then policy validity ---------------------------
+    # --- step 4: workspace, then policy validity ---------------------------
     workspace_gate = check_workspace_agreement(normalized_request, normalized_policy)
     if workspace_gate.blocks:
         return _record(
@@ -564,18 +600,6 @@ def evaluate(
             decision=policy_gate.decision,  # type: ignore[arg-type]
             reason_code=policy_gate.reason_code,
             reasons=policy_gate.reasons,
-            context_refs=_context_refs(normalized_request),
-        )
-
-    # --- step 4: absolute safety invariants, before any rule ---------------
-    absolute = check_absolute_deny(normalized_request)
-    if absolute.blocks:
-        return _record(
-            normalized_request,
-            normalized_policy,
-            decision=absolute.decision,  # type: ignore[arg-type]
-            reason_code=absolute.reason_code,
-            reasons=absolute.reasons,
             context_refs=_context_refs(normalized_request),
         )
 
@@ -712,6 +736,25 @@ def _unscoped_record(raw: Any, exc: GuardError) -> DecisionRecord:
             "an unscoped authorization request is an absolute deny (§15.1)",
         ),
     )
+
+
+def _policy_if_readable(policy: Policy | Mapping[str, Any] | None) -> Policy | None:
+    """The policy, if it can be read *without being required to parse*.
+
+    The absolute safety gate runs before policy parsing, so at that point the
+    policy may be absent, raw, or malformed. None of those may stop a security
+    refusal — which is the whole reason the gate moved. This exists only so an
+    absolute deny can still name the policy in its provenance when one happens
+    to be readable; it never raises and never blocks.
+    """
+    if policy is None:
+        return None
+    if isinstance(policy, Policy):
+        return policy
+    try:
+        return Policy.from_mapping(policy)
+    except Exception:  # noqa: BLE001 - a malformed policy must not stop a deny
+        return None
 
 
 def _blocked_without_policy(request: GuardRequest, exc: GuardError) -> DecisionRecord:
