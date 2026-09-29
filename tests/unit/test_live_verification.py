@@ -14,6 +14,7 @@ import pathlib
 
 import pytest
 
+from providers.errors import ErrorClass, ErrorStage
 from providers.invocation import InvocationContext, ProbeAuthorisation
 from providers.live_verification import (
     LIVE_MAX_OUTPUT,
@@ -35,6 +36,7 @@ from providers.live_verification import (
 )
 from providers.model_profile import CapabilityEntry, CapabilityName, CapabilityStatus, Provenance
 from providers.profile import ModelRef
+from providers.protocol import TransportFailureKind
 from providers.transport import TransportSettings
 
 pytestmark = pytest.mark.layer2
@@ -524,7 +526,33 @@ class TestToolCallProbeJudgement:
         assert observation.candidate_status is CapabilityStatus.NOT_VERIFIED
         assert observation.candidate_status is not CapabilityStatus.UNAVAILABLE
 
-    def test_a_wrong_tool_name_fails(
+    def test_a_different_tool_name_still_verifies_the_mechanism(
+        self, fake_transport_factory, all_profiles, model_profiles, credentials_env, completion_payload
+    ):
+        """§6.7: this capability records the mechanism, not tool selection.
+
+        A tool call came back and was normalized. Which tool the model chose is
+        selection correctness, which AI-11 measures — asserting it here would
+        turn an AI-02 capability into an AI-11 benchmark, and would report a
+        working mechanism as absent.
+        """
+        payload = completion_payload()
+        payload["choices"][0]["message"] = {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [{"id": "c1", "function": {"name": "other", "arguments": "{}"}}],
+        }
+        transport = fake_transport_factory.success(payload)
+        record = self._run(
+            transport, all_profiles, model_profiles, credentials_env
+        )
+        observation = record.observations[0]
+        assert observation.outcome is ProbeOutcome.PASS
+        assert observation.candidate_status is CapabilityStatus.VERIFIED
+        # The mismatch is still recorded, for a reviewer to see.
+        assert "tool-selection correctness" in observation.observed
+
+    def test_a_name_mismatch_is_never_unavailable(
         self, fake_transport_factory, all_profiles, model_profiles, credentials_env, completion_payload
     ):
         payload = completion_payload()
@@ -537,7 +565,116 @@ class TestToolCallProbeJudgement:
         record = self._run(
             transport, all_profiles, model_profiles, credentials_env
         )
-        assert record.observations[0].outcome is ProbeOutcome.FAIL
+        assert record.observations[0].candidate_status is not CapabilityStatus.UNAVAILABLE
+
+
+class TestProviderErrorsAreInconclusive:
+    """A failed attempt is not an observation that a capability is absent.
+
+    A TIMEOUT, a 429, or a 500 says the attempt failed. Recording any of them
+    as UNAVAILABLE would assert a negative observation that was never made.
+    """
+
+    def _observe(self, capability, transport, all_profiles, model_profiles, credentials_env):
+        verifier = LiveVerifier(
+            _context(transport, all_profiles, model_profiles, credentials_env)
+        )
+        record = verifier.verify(
+            provider_id="deepseek",
+            model_ref=DEEPSEEK_REF,
+            opt_in=LIVE_OPT_IN_VALUE,
+            capabilities=(capability,),
+        )
+        return record.observations[0]
+
+    @pytest.mark.parametrize(
+        "error_class,status_code",
+        [
+            (ErrorClass.TIMEOUT, None),
+            (ErrorClass.RATE_LIMIT, 429),
+            (ErrorClass.QUOTA_EXHAUSTED, 402),
+            (ErrorClass.SERVER, 500),
+            (ErrorClass.AUTHENTICATION, 401),
+            (ErrorClass.TRANSPORT, None),
+            (ErrorClass.PROTOCOL, None),
+        ],
+    )
+    @pytest.mark.parametrize(
+        "capability",
+        [CapabilityName.TOOL_CALLING, CapabilityName.STRUCTURED_OUTPUT],
+    )
+    def test_a_provider_error_is_inconclusive_not_unavailable(
+        self,
+        capability,
+        error_class,
+        status_code,
+        fake_transport_factory,
+        all_profiles,
+        model_profiles,
+        credentials_env,
+        completion_payload,
+    ):
+        # The baseline must succeed so the capability probe actually runs.
+        class Sequenced:
+            def __init__(self, factory):
+                self._factory = factory
+                self.requests = []
+                self._calls = 0
+
+            def send(self, request):
+                from providers.protocol import TransportResult
+
+                self.requests.append(request)
+                self._calls += 1
+                if self._calls == 1:
+                    return TransportResult.success(200, completion_payload())
+                if error_class is ErrorClass.TIMEOUT:
+                    return TransportResult(
+                        failure=TransportFailureKind.TIMEOUT,
+                        stage=ErrorStage.RECEIVE,
+                        message="probe timeout",
+                    )
+                if error_class is ErrorClass.TRANSPORT:
+                    return TransportResult(
+                        failure=TransportFailureKind.TRANSPORT,
+                        stage=ErrorStage.CONNECT,
+                        message="probe transport failure",
+                    )
+                if error_class is ErrorClass.PROTOCOL:
+                    return TransportResult.success(200, "not-an-object")
+                return TransportResult.success(
+                    status_code, {"error": {"message": "provider refused"}}
+                )
+
+        observation = self._observe(
+            capability,
+            Sequenced(fake_transport_factory),
+            all_profiles,
+            model_profiles,
+            credentials_env,
+        )
+
+        assert observation.outcome is ProbeOutcome.INCONCLUSIVE, error_class
+        assert observation.candidate_status is CapabilityStatus.NOT_VERIFIED, error_class
+        assert observation.candidate_status is not CapabilityStatus.UNAVAILABLE
+        assert observation.reason and "not an observation" in observation.reason
+
+    def test_a_structured_output_negative_on_a_successful_response_is_unavailable(
+        self, fake_transport_factory, all_profiles, model_profiles, credentials_env, completion_payload
+    ):
+        """The one clean negative: a 200 that contradicts the capability."""
+        payload = completion_payload()
+        payload["choices"][0]["message"]["content"] = "definitely not json"
+        transport = fake_transport_factory.success(payload)
+        observation = self._observe(
+            CapabilityName.STRUCTURED_OUTPUT,
+            transport,
+            all_profiles,
+            model_profiles,
+            credentials_env,
+        )
+        assert observation.outcome is ProbeOutcome.FAIL
+        assert observation.candidate_status is CapabilityStatus.UNAVAILABLE
 
 
 class TestStructuredOutputProbeJudgement:
@@ -754,6 +891,121 @@ class TestProbeAuthorisation:
         )
         assert result.blocked is not None
         assert transport.requests == []
+
+
+class TestRunIdentity:
+    """P2-1: a run id must identify one run, not one provider."""
+
+    def test_two_runs_of_the_same_model_have_different_ids(
+        self, fake_transport_factory, all_profiles, model_profiles, credentials_env, completion_payload
+    ):
+        """Same provider, same model, same day — still two runs."""
+        records = []
+        for _ in range(2):
+            transport = fake_transport_factory.success(completion_payload())
+            verifier = LiveVerifier(
+                _context(transport, all_profiles, model_profiles, credentials_env)
+            )
+            records.append(
+                verifier.verify(
+                    provider_id="deepseek",
+                    model_ref=DEEPSEEK_REF,
+                    opt_in=LIVE_OPT_IN_VALUE,
+                    capabilities=(),
+                )
+            )
+        assert records[0].run_id != records[1].run_id
+
+    def test_refusals_also_get_unique_ids(
+        self, fake_transport_factory, all_profiles, model_profiles
+    ):
+        ids = set()
+        for _ in range(3):
+            verifier = LiveVerifier(
+                _context(fake_transport_factory.success(), all_profiles, model_profiles, {})
+            )
+            record = verifier.verify(
+                provider_id="deepseek", model_ref=DEEPSEEK_REF, opt_in=None
+            )
+            assert record.status is LiveRunStatus.NOT_RUN
+            ids.add(record.run_id)
+        assert len(ids) == 3
+
+    def test_the_id_names_the_provider_and_carries_entropy(self):
+        from providers.live_verification import new_run_id
+
+        run_id = new_run_id("deepseek")
+        assert run_id.startswith("LV-deepseek-")
+        assert len(run_id) > len("LV-deepseek-") + 8
+
+    def test_ids_are_not_derived_from_the_timestamp(self):
+        """Two runs can share a second; a timestamp is not an identifier."""
+        from providers.live_verification import new_run_id
+
+        assert len({new_run_id("mimo") for _ in range(200)}) == 200
+
+
+class TestMalformedModelRef:
+    """P2-2: a malformed ref must produce a refusal, not an exception.
+
+    A refusal that raises is not a refusal — it surfaces as a runner crash
+    rather than the machine-readable code the workflow distinguishes on.
+    """
+
+    @pytest.mark.parametrize(
+        "model_ref", ["", "garbage", "no-slash", "deepseek/", "/model", "a/b/c", "  "]
+    )
+    def test_a_malformed_ref_is_blocked_not_raised(
+        self, model_ref, fake_transport_factory, all_profiles, model_profiles, credentials_env
+    ):
+        transport = fake_transport_factory.success()
+        verifier = LiveVerifier(
+            _context(transport, all_profiles, model_profiles, credentials_env)
+        )
+        record = verifier.verify(
+            provider_id="deepseek",
+            model_ref=model_ref,
+            opt_in=LIVE_OPT_IN_VALUE,
+        )
+        assert record.status is LiveRunStatus.BLOCKED, model_ref
+        assert record.gate.code is LiveBlockCode.UNKNOWN_MODEL, model_ref
+        assert transport.requests == []
+
+    @pytest.mark.parametrize("model_ref", ["", "garbage", "no-slash", "deepseek/"])
+    def test_the_gate_itself_never_raises(
+        self, model_ref, all_profiles, model_profiles, credentials_env
+    ):
+        gate = evaluate_preconditions(
+            provider_id="deepseek",
+            model_ref=model_ref,
+            providers=all_profiles,
+            models=model_profiles,
+            environ=credentials_env,
+            opt_in=LIVE_OPT_IN_VALUE,
+        )
+        assert not gate.allowed
+        assert gate.code is LiveBlockCode.UNKNOWN_MODEL
+
+    def test_a_malformed_ref_still_produces_an_attributable_record(
+        self, fake_transport_factory, all_profiles, model_profiles
+    ):
+        verifier = LiveVerifier(
+            _context(fake_transport_factory.success(), all_profiles, model_profiles, {})
+        )
+        record = verifier.verify(
+            provider_id="deepseek", model_ref="garbage", opt_in=LIVE_OPT_IN_VALUE
+        )
+        assert record.model_ref == "garbage"
+        assert record.provider_id == "deepseek"
+        assert record.run_id
+
+    def test_the_safe_splitter_never_raises(self):
+        from providers.live_verification import split_model_ref
+
+        for value in ("", "garbage", "/", "a/b/c", None):
+            provider_id, model_id = split_model_ref(value)
+            assert isinstance(provider_id, str)
+            assert isinstance(model_id, str)
 
 
 class TestLiveOnlyTransport:

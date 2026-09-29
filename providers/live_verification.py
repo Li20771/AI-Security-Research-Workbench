@@ -30,6 +30,7 @@ recorded rather than being guessed at (§13).
 from __future__ import annotations
 
 import re
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import StrEnum
@@ -196,11 +197,14 @@ PROBE_CATALOG: Mapping[CapabilityName, ProbeDefinition] = {
             "whose name matches the schema"
         ),
         success_condition=(
-            "a tool call is returned and maps into tool_calls with a matching name"
+            "a tool call is returned and maps into tool_calls. Which tool the "
+            "model chose is selection correctness (AI-11), not the mechanism "
+            "this capability records"
         ),
         failure_condition=(
-            "a tool call is returned but cannot be normalized, or the provider "
-            "rejects the request"
+            "none observable: a provider error is inconclusive, and a call "
+            "that cannot be normalized is refused as PROTOCOL rather than "
+            "recorded as a negative observation"
         ),
         prompt=LIVE_TOOL_PROMPT,
     ),
@@ -290,6 +294,29 @@ def endpoint_host(url: str) -> str | None:
     return host.rsplit("@", 1)[-1].split(":", 1)[0].lower()
 
 
+def new_run_id(provider_id: str) -> str:
+    """A unique id for one live run.
+
+    Keying a run only on its provider collides: same provider, same model,
+    same day, run twice, and the evidence file for the second silently
+    overwrites the first. A timestamp is not an identifier either -- two runs
+    can share a second. The provider prefix is kept for readability only; the
+    uniqueness comes from the uuid.
+    """
+    return f"LV-{provider_id}-{uuid.uuid4().hex[:12]}"
+
+
+def split_model_ref(model_ref: str) -> tuple[str, str]:
+    """Best-effort attribution split for a refusal record. Never raises.
+
+    The gate refuses a malformed ref before anything reaches here, but the
+    refusal still has to be attributable to something, and a record that
+    raised on the way out would report a crash instead of a BLOCKED code.
+    """
+    provider_id, _, model_id = (model_ref or "").partition("/")
+    return provider_id, model_id
+
+
 @dataclass(frozen=True, slots=True)
 class LiveGate:
     """The precondition decision (§11.3)."""
@@ -360,6 +387,19 @@ def evaluate_preconditions(
             ),
         )
 
+    # Parsed before any registry lookup, and inside a guard: a malformed ref
+    # must produce a refusal, not an exception. A refusal that raises is not a
+    # refusal, and it would surface as a runner crash rather than a code.
+    try:
+        parsed_ref = ModelRef.parse(model_ref)
+    except Exception as exc:
+        return LiveGate(
+            allowed=False,
+            status=LiveRunStatus.BLOCKED,
+            code=LiveBlockCode.UNKNOWN_MODEL,
+            detail=f"model_ref {model_ref!r} is malformed: {exc}",
+        )
+
     provider = providers.get(provider_id)
     if provider is None:
         return LiveGate(
@@ -378,16 +418,6 @@ def evaluate_preconditions(
                 f"model {model_ref!r} is not registered; a live run verifies a "
                 "registered model, never an arbitrary model id"
             ),
-        )
-
-    try:
-        parsed_ref = ModelRef.parse(model_ref)
-    except Exception as exc:  # pragma: no cover - registry keys are well formed
-        return LiveGate(
-            allowed=False,
-            status=LiveRunStatus.BLOCKED,
-            code=LiveBlockCode.UNKNOWN_MODEL,
-            detail=f"model_ref {model_ref!r} is malformed: {exc}",
         )
 
     if parsed_ref.provider_id != provider_id:
@@ -595,7 +625,9 @@ class LiveVerifier:
             environ=environ,
             opt_in=environ.get(LIVE_OPT_IN_ENV) if opt_in is None and environ else opt_in,
         )
-        parsed = ModelRef.parse(model_ref)
+        # Never raises: the gate has already refused a malformed ref, and a
+        # refusal record must still be attributable.
+        _, ref_model_id = split_model_ref(model_ref)
         provider = self._context.providers.get(provider_id)
         host = (
             endpoint_host(provider.endpoint.effective_url) if provider else None
@@ -603,10 +635,10 @@ class LiveVerifier:
 
         if not gate.allowed:
             return LiveVerificationRecord(
-                run_id=f"LV-{provider_id}",
+                run_id=new_run_id(provider_id),
                 timestamp=_now(),
                 provider_id=provider_id,
-                model_id=parsed.model_id,
+                model_id=ref_model_id,
                 model_ref=model_ref,
                 endpoint_host=host,
                 status=gate.status,
@@ -642,10 +674,10 @@ class LiveVerifier:
                     )
                 )
             return LiveVerificationRecord(
-                run_id=f"LV-{provider_id}",
+                run_id=new_run_id(provider_id),
                 timestamp=_now(),
                 provider_id=provider_id,
-                model_id=parsed.model_id,
+                model_id=ref_model_id,
                 model_ref=model_ref,
                 endpoint_host=host,
                 status=LiveRunStatus.FAIL,
@@ -676,10 +708,10 @@ class LiveVerifier:
             observations.append(observation)
 
         return LiveVerificationRecord(
-            run_id=f"LV-{provider_id}",
+            run_id=new_run_id(provider_id),
             timestamp=_now(),
             provider_id=provider_id,
-            model_id=parsed.model_id,
+            model_id=ref_model_id,
             model_ref=model_ref,
             endpoint_host=host,
             status=LiveRunStatus.PASS,
@@ -857,27 +889,41 @@ class LiveVerifier:
                 result.blocked.detail if result.blocked else "blocked",
             )
         if result.status is InvocationStatus.ERROR:
+            # A provider, transport, or runtime failure proves nothing about
+            # whether the capability exists. A TIMEOUT, a 429, a 500, an auth
+            # failure, or a cancelled call are all failures of *this attempt*;
+            # recording any of them as UNAVAILABLE would assert a negative
+            # observation that was never made.
+            #
+            # A clean negative requires a successful response that contradicts
+            # the capability -- the structured_output judgement below is the
+            # one path that can produce one.
+            error_class = result.error.error_class if result.error else "UNKNOWN"
             return (
-                ProbeOutcome.FAIL,
-                f"provider error {result.error.error_class if result.error else '?'}",
-                str(result.error) if result.error else None,
+                ProbeOutcome.INCONCLUSIVE,
+                f"the probe could not complete: {error_class}",
+                f"{error_class} is a failure of this attempt, not an "
+                "observation that the capability is absent",
             )
 
         if capability is CapabilityName.TOOL_CALLING:
             if result.tool_calls:
+                # §6.7: tool_calling records that the *mechanism* works --
+                # tools are accepted, calls are returned, and calls map into
+                # the normalized result. Which tool the model chose is
+                # selection correctness, which AI-11 measures; asserting it
+                # here would turn an AI-02 capability into an AI-11 benchmark.
                 names = sorted({call.name for call in result.tool_calls})
-                if "workbench_probe" in names:
-                    return (
-                        ProbeOutcome.PASS,
-                        f"finish_state={result.finish_state}, "
-                        f"tool_calls={names}",
-                        None,
-                    )
-                return (
-                    ProbeOutcome.FAIL,
-                    f"a tool call was returned with an unexpected name: {names}",
-                    "the returned call did not match the schema that was sent",
+                observed = (
+                    f"finish_state={result.finish_state}, tool_calls={names}"
                 )
+                if "workbench_probe" not in names:
+                    observed += (
+                        "; the returned name differs from the schema sent, "
+                        "which is tool-selection correctness (AI-11), not the "
+                        "mechanism this capability records"
+                    )
+                return ProbeOutcome.PASS, observed, None
             # Answered in prose. Not evidence the mechanism is broken.
             return (
                 ProbeOutcome.INCONCLUSIVE,
@@ -961,5 +1007,7 @@ __all__ = [
     "ProbeOutcome",
     "candidate_status",
     "endpoint_host",
+    "new_run_id",
+    "split_model_ref",
     "evaluate_preconditions",
 ]
