@@ -354,3 +354,147 @@ class TestAbsoluteDenyPrecedenceDoesNotOverreach:
     def test_an_explicit_deny_rule_is_unaffected(self):
         policy = make_policy(make_rule("deny", effect="DENY"))
         assert evaluate(make_request(), policy).decision is GuardDecision.DENY
+
+
+def foreign_context(workspace_id: str = "ws-foreign", *, item_workspace: str | None = None):
+    """A ContextResponse whose response and/or item workspace differs."""
+    from tests.guard.conftest import make_context, make_context_item
+
+    item = make_context_item(
+        truth_state="PASS",
+        workspace_id=item_workspace if item_workspace is not None else workspace_id,
+    )
+    return {"response": make_context(item, workspace_id=workspace_id)}
+
+
+class TestCrossWorkspaceAbsoluteDeny:
+    """§15.1 cross-workspace authorization, before policy validation.
+
+    §5 requires four things to agree — request, policy, context response, and
+    every authorization-relevant `ContextItem` — and says a mismatch "is never
+    merged, filtered, or repaired". §15.1 lists cross-workspace authorization
+    among the absolute denies, which are "checked before policy".
+
+    Two halves were wrong:
+
+    * a policy for another workspace that was *also* malformed reported
+      `POLICY_INVALID`, because parsing ran before the mismatch was noticed;
+    * foreign context was **filtered out** and evaluation continued, so an
+      unconditional `ALLOW` succeeded on a request carrying foreign context —
+      a cross-workspace authorization reaching `ALLOW`, which §5 forbids
+      outright.
+
+    These are precedence and boundary tests, named for the boundary rather than
+    for a single condition. The `allow-all` rule is intentional: it means any
+    `ALLOW` here is the boundary failing, not a rule succeeding.
+    """
+
+    PERMISSIVE = make_policy(make_rule("allow-all", priority=0))
+
+    def test_a_policy_mismatch_outranks_an_invalid_policy(self):
+        policy = {"version": 99, "workspace_id": "ws-2"}
+        record = evaluate(make_request(), policy)
+        assert record.decision is GuardDecision.DENY
+        assert record.reason_code == "WORKSPACE_MISMATCH"
+
+    def test_a_policy_mismatch_outranks_a_duplicate_rule_id(self):
+        policy = make_policy(make_rule("same"), make_rule("same", priority=1),
+                             workspace_id="ws-2")
+        record = evaluate(make_request(), policy)
+        assert record.decision is GuardDecision.DENY
+        assert record.reason_code == "WORKSPACE_MISMATCH"
+
+    def test_a_policy_mismatch_outranks_a_permissive_allow(self):
+        policy = make_policy(make_rule("allow-all", priority=0), workspace_id="ws-2")
+        record = evaluate(make_request(), policy)
+        assert record.decision is GuardDecision.DENY
+        assert record.reason_code == "WORKSPACE_MISMATCH"
+
+    def test_a_foreign_context_response_cannot_reach_allow(self):
+        request = make_request(context=foreign_context("ws-2"))
+        record = evaluate(request, self.PERMISSIVE)
+        assert record.decision is GuardDecision.DENY
+        assert record.reason_code == "WORKSPACE_MISMATCH"
+
+    def test_a_foreign_context_item_cannot_reach_allow(self):
+        """The item-level half of §5, with the response agreeing.
+
+        A rule that never reads context must still be refused: the request spans
+        two workspaces, and that is the finding — the foreign item is not a
+        predicate that failed to resolve.
+        """
+        request = make_request(
+            context=foreign_context("ws-1", item_workspace="ws-2")
+        )
+        record = evaluate(request, self.PERMISSIVE)
+        assert record.decision is GuardDecision.DENY
+        assert record.reason_code == "WORKSPACE_MISMATCH"
+
+    def test_a_foreign_item_is_refused_from_every_item_list(self):
+        """facts, history and plans are all authorization-relevant (§5)."""
+        from plugins.context.vocabulary import ItemKind
+        from tests.guard.conftest import make_context, make_context_item
+
+        for kind in (ItemKind.FACT, ItemKind.HISTORY, ItemKind.PLAN):
+            item = make_context_item(truth_state="PASS", workspace_id="ws-2")
+            import dataclasses
+
+            item = dataclasses.replace(item, item_kind=kind)
+            request = make_request(
+                context={"response": make_context(item, workspace_id="ws-1")}
+            )
+            record = evaluate(request, self.PERMISSIVE)
+            assert record.decision is GuardDecision.DENY, kind
+            assert record.reason_code == "WORKSPACE_MISMATCH", kind
+
+    def test_the_request_absolute_deny_still_outranks_the_mismatch(self):
+        """§14.1 step 1 before §5 — the previous fix must not be undone."""
+        raw = make_request(
+            target={"kind": "secret_material", "identifier": ".env",
+                    "environment": "isolated", "interface": None,
+                    "is_real": False, "sensitivity": "secret_material"}
+        )
+        policy = make_policy(make_rule("allow"), workspace_id="ws-2")
+        record = evaluate(raw, policy)
+        assert record.reason_code == "SECRET_MATERIAL_ACCESS"
+
+    def test_the_mismatch_records_no_selected_rule(self):
+        policy = make_policy(make_rule("allow-all", priority=0), workspace_id="ws-2")
+        assert evaluate(make_request(), policy).provenance.rule_id is None
+
+
+class TestCrossWorkspaceDenyDoesNotOverreach:
+    """The boundary must fire only on a mismatch. Everything else is unchanged."""
+
+    def test_a_normal_request_with_no_policy_is_still_blocked(self):
+        record = evaluate(make_request(), None)
+        assert record.decision is GuardDecision.BLOCKED
+        assert record.reason_code == "POLICY_MISSING"
+
+    def test_a_unreadable_policy_workspace_is_not_treated_as_a_mismatch(self):
+        """An unknown workspace must not be assumed to match *or* to differ.
+
+        §9.2's validation refuses such a policy; the boundary must not
+        pre-empt it with a mismatch it cannot actually see.
+        """
+        policy = {"version": 1, "policy_id": "p", "revision": "r", "rules": []}
+        record = evaluate(make_request(), policy)
+        assert record.reason_code != "WORKSPACE_MISMATCH"
+
+    def test_a_matching_policy_and_context_still_evaluate_normally(self):
+        from tests.guard.conftest import make_context, make_context_item
+
+        request = make_request(
+            context={"response": make_context(make_context_item(truth_state="PASS"))}
+        )
+        policy = make_policy(make_rule("allow-all", priority=0))
+        assert evaluate(request, policy).decision is GuardDecision.ALLOW
+
+    def test_no_context_is_still_fine(self):
+        policy = make_policy(make_rule("allow-all", priority=0))
+        assert evaluate(make_request(context=None), policy).decision is GuardDecision.ALLOW
+
+    def test_a_malformed_policy_still_blocks_when_the_workspace_matches(self):
+        record = evaluate(make_request(), {"version": 99, "workspace_id": "ws-1"})
+        assert record.decision is GuardDecision.BLOCKED
+        assert record.reason_code == "POLICY_INVALID"

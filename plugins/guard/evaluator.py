@@ -226,8 +226,105 @@ def check_approval_gate(request: GuardRequest) -> GateOutcome:
 # --------------------------------------------------------------------------
 
 
+def _declared_policy_workspace(policy: Policy | Mapping[str, Any] | None) -> str | None:
+    """A policy's declared workspace, read **without parsing the policy**.
+
+    The workspace boundary has to be checkable before policy validation, so this
+    reads exactly one key and nothing else. It deliberately does not call
+    `Policy.from_mapping`, because doing so would run the whole §9.2 validation
+    at the boundary — which is the ordering defect being fixed.
+
+    Returns `None` when no workspace can be read. `None` means *unknown*, and an
+    unknown workspace must never be treated as a match; §9.2's validation, which
+    runs later, is what refuses such a policy.
+    """
+    if policy is None:
+        return None
+    if isinstance(policy, Policy):
+        return policy.workspace_id
+    if isinstance(policy, Mapping):
+        declared = policy.get("workspace_id")
+        return declared if isinstance(declared, str) and declared else None
+    return None
+
+
+def check_workspace_preflight(
+    request: GuardRequest, policy: Policy | Mapping[str, Any] | None
+) -> GateOutcome:
+    """§15.1 cross-workspace authorization, checked **before policy validation**.
+
+    §15.1 lists cross-workspace authorization among the absolute denies, and
+    those are "checked before policy, never overridden by any rule, priority, or
+    approval". §5 requires four things to agree and says a mismatch "is never
+    merged, filtered, or repaired".
+
+    Both halves were violating that:
+
+    * a policy for another workspace that was *also* malformed reported
+      `BLOCKED / POLICY_INVALID`, because parsing ran first and the mismatch was
+      only noticed afterwards on the parsed value;
+    * a `ContextResponse` — or a single `ContextItem` — from another workspace
+      was **filtered out** and evaluation continued, so an unconditional `ALLOW`
+      rule succeeded on a request carrying foreign context. That is a
+      cross-workspace authorization reaching `ALLOW`, which §5 forbids outright.
+
+    Filtering is the wrong shape for a mismatch. A foreign item is not a value
+    that failed to resolve; it is evidence that the request spans two
+    workspaces, and the only correct response is to refuse the request rather
+    than to continue without the item.
+    """
+    expected = request.workspace.workspace_id
+
+    declared = _declared_policy_workspace(policy)
+    if declared is not None and declared != expected:
+        return GateOutcome(
+            decision=GuardDecision.DENY,
+            reason_code="WORKSPACE_MISMATCH",
+            reasons=(
+                f"policy names workspace {declared!r} but the request names "
+                f"{expected!r}",
+                "cross-workspace authorization is an absolute deny (§15.1), "
+                "checked before policy validation",
+            ),
+        )
+
+    response = request.context
+    if response is not None:
+        if response.workspace.workspace_id != expected:
+            return GateOutcome(
+                decision=GuardDecision.DENY,
+                reason_code="WORKSPACE_MISMATCH",
+                reasons=(
+                    f"context belongs to workspace "
+                    f"{response.workspace.workspace_id!r} but the request names "
+                    f"{expected!r}",
+                    "a mismatch is never merged or filtered (§5); the request "
+                    "spans two workspaces and is refused",
+                ),
+            )
+        for item in (*response.facts, *response.history, *response.plans):
+            if item.workspace_id != expected:
+                return GateOutcome(
+                    decision=GuardDecision.DENY,
+                    reason_code="WORKSPACE_MISMATCH",
+                    reasons=(
+                        f"context item {item.subject!r} carries workspace "
+                        f"{item.workspace_id!r} but the request names {expected!r}",
+                        "every authorization-relevant ContextItem must agree "
+                        "(§5); it is not dropped and evaluation does not continue",
+                    ),
+                )
+
+    return _clean_gate()
+
+
 def check_workspace_agreement(request: GuardRequest, policy: Policy) -> GateOutcome:
-    """§5. A mismatch is never merged, filtered, or repaired."""
+    """§5, re-checked on the **parsed** policy before rule evaluation.
+
+    The preflight above already refuses a readable mismatch; this re-checks the
+    normalized value, so a policy constructed programmatically — rather than
+    parsed from data the preflight could read — cannot slip past the boundary.
+    """
     if policy.workspace_id != request.workspace.workspace_id:
         return GateOutcome(
             decision=GuardDecision.DENY,
@@ -566,6 +663,24 @@ def evaluate(
             reason_code=absolute.reason_code,
             reasons=absolute.reasons,
             context_refs=_context_refs(normalized_request),
+        )
+
+    # --- step 2b: cross-workspace preflight (§15.1, §5) ---------------------
+    #
+    # Also before policy parsing and validation, and for the same reason: a
+    # workspace mismatch is an absolute deny, not a condition discovered while
+    # validating something else. A malformed policy for another workspace must
+    # not report `POLICY_INVALID` — the request spans two workspaces, and that
+    # is the finding.
+    preflight = check_workspace_preflight(normalized_request, policy)
+    if preflight.blocks:
+        return _record(
+            normalized_request,
+            _policy_if_readable(policy),
+            decision=preflight.decision,  # type: ignore[arg-type]
+            reason_code=preflight.reason_code,
+            reasons=preflight.reasons,
+            context_refs=(),
         )
 
     # --- step 3: policy presence and shape ---------------------------------

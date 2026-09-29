@@ -408,6 +408,154 @@ ambiguity.
 
 ---
 
+## L. Post-review verification — cross-workspace absolute deny
+
+**Separate from §A–§K, which describe earlier moments. Nothing above has been
+rewritten.** §K covers the first review fix (secret-material precedence); this
+section covers the second, found by re-reading §5 and §15.1 against the
+implementation.
+
+### L.1 The defect
+
+§15.1 lists **cross-workspace authorization** among the absolute denies, which
+are "checked before policy, never overridden by any rule, priority, or
+approval". §5 requires four things to agree and says a mismatch "is never
+merged, filtered, or repaired".
+
+Two halves did not hold it. Measured before the fix:
+
+```text
+policy mismatch + invalid policy        -> BLOCKED / POLICY_INVALID
+foreign ContextResponse + allow-all     -> ALLOW   / OK
+foreign ContextItem     + allow-all     -> ALLOW   / OK
+```
+
+The second and third are the serious ones: **a cross-workspace authorization
+reached `ALLOW`.** Foreign context was *filtered out* and evaluation continued,
+so a rule that never read context succeeded on a request spanning two
+workspaces.
+
+Filtering is the wrong shape for a mismatch. A foreign item is not a predicate
+that failed to resolve — it is evidence that the request spans two workspaces,
+and the only correct response is to refuse the request rather than to continue
+without the item. `resolve_context_item` returning `UNAVAILABLE` and
+`_context_refs` skipping the item were both defensible *as resolution*
+behaviour, and both were wrong as a *boundary*.
+
+### L.2 The fix
+
+Minimal, and confined to `plugins/guard/evaluator.py`:
+
+```text
+1. normalize request
+2. absolute security / workspace boundary preflight
+   2a request absolute deny              (§15.1)   -- added previously
+   2b policy workspace, read without parsing
+   2c context response workspace
+   2d every authorization-relevant ContextItem workspace
+                                         -> DENY / WORKSPACE_MISMATCH, stop
+3. policy presence / parsing
+4. workspace agreement re-check on the normalized Policy
+5. policy validation
+6. ordering
+7. walk
+8. approval / target classification before ALLOW
+9. record
+```
+
+Two additions, neither of which re-implements anything:
+
+- **`_declared_policy_workspace`** reads exactly one key — `policy["workspace_id"]`
+  — and never calls `Policy.from_mapping`. Calling it would run the whole §9.2
+  validation at the boundary, which is the ordering defect being fixed. It
+  returns `None` for an absent or unreadable workspace, and `None` is treated as
+  *unknown*, never as a match: §9.2's validation refuses such a policy later.
+- **`check_workspace_preflight`** checks 2b–2d. Step 4's
+  `check_workspace_agreement` is retained unchanged, re-checking the **parsed**
+  policy, so a policy constructed programmatically — rather than parsed from
+  data the preflight could read — cannot slip past the boundary.
+
+Measured after:
+
+```text
+policy mismatch + invalid policy        -> DENY / WORKSPACE_MISMATCH
+policy mismatch + duplicate rule_id     -> DENY / WORKSPACE_MISMATCH
+policy mismatch + allow-all             -> DENY / WORKSPACE_MISMATCH
+foreign ContextResponse + allow-all     -> DENY / WORKSPACE_MISMATCH
+foreign ContextItem     + allow-all     -> DENY / WORKSPACE_MISMATCH
+secret material + mismatch policy       -> DENY / SECRET_MATERIAL_ACCESS  (2a before 2b)
+normal + policy = None                  -> BLOCKED / POLICY_MISSING       (unchanged)
+```
+
+### L.3 Regression tests
+
+`tests/guard/test_gates.py`, two classes:
+
+```text
+TestCrossWorkspaceAbsoluteDeny              8 tests
+    policy mismatch vs invalid policy, duplicate rule_id, permissive ALLOW
+    foreign ContextResponse vs an unconditional ALLOW
+    foreign ContextItem vs an unconditional ALLOW
+    a foreign item refused from facts, history AND plans
+    the request absolute deny still outranks the mismatch
+    no rule is recorded as having decided
+
+TestCrossWorkspaceDenyDoesNotOverreach      5 tests
+    no policy still BLOCKED/POLICY_MISSING; an unreadable policy workspace is
+    not assumed to match or to differ; matching policy and context still allow
+    normally; a malformed policy with a matching workspace still BLOCKS
+```
+
+The `allow-all` rule in those tests is deliberate: any `ALLOW` there is the
+boundary failing, not a rule succeeding.
+
+The item-level test enumerates `facts`, `history` and `plans` separately,
+because §5 says *all authorization-relevant `ContextItem.workspace_id`* and
+checking only the response workspace would miss an item-level mismatch.
+
+No existing test was deleted, renamed or weakened.
+
+### L.4 Post-review verification
+
+```text
+tests/guard      = 295 passed   (was 282; +13 cross-workspace tests)
+whole repository = 1612 passed, 5 deselected   (was 1599; no regressions)
+Layer 0          = PASS (13 checks)
+git diff --check = clean
+security checks  = clean (AST-based; see §F)
+```
+
+### L.5 Status at this post-review
+
+```text
+C0-C9 = PASS
+C10   = NOT_RUN at this head until its own CI run completes
+```
+
+`C10` is a property of a commit. The runs recorded in §H and §K validated
+earlier heads and are **not** cited as evidence for this one; the new head
+carries its own run.
+
+### L.6 Scope
+
+```text
+contract          unchanged
+policy semantics  unchanged
+ordering, digests unchanged
+predicate grammar unchanged
+Guard API         unchanged
+files             plugins/guard/evaluator.py, tests/guard/test_gates.py,
+                  and this document
+```
+
+No contract amendment was required. §5 and §15.1 already said what the correct
+behaviour was, and the implementation did not follow it — a defect, not an
+ambiguity. The two review fixes together are instances of the same mistake in
+different places: a boundary check placed after the thing it was supposed to
+precede.
+
+---
+
 ## J. Provenance
 
 ```text
