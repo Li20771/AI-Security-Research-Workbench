@@ -477,6 +477,59 @@ AI-03 source manifests are.
 
 `digest` is computed over the canonical form defined in §20.2.
 
+### 9.1 Policy input boundary (Amendment 8)
+
+Guard's evaluation input is frozen:
+
+```text
+Guard evaluation input = GuardRequest + exactly one externally supplied Policy snapshot
+```
+
+written as:
+
+```text
+Guard.evaluate(request, policy)
+```
+
+The policy is a **parameter**, not something Guard obtains. This is deliberate and it is not a gap
+to be filled later:
+
+```text
+policy discovery   NOT Guard's responsibility
+policy storage     NOT Guard's responsibility
+policy selection   NOT Guard's responsibility
+policy loading     NOT Guard's responsibility
+```
+
+Guard **verifies and evaluates** an externally supplied policy. It does not decide *which* policy
+applies, because a component that both selects its own rules and applies them can authorize
+anything by selecting a permissive rule set — and no amount of evaluation-time rigour would detect
+it.
+
+**There is no policy field on `GuardRequest`** (§4). A policy is not caller-supplied *data*; it is
+a distinct, reviewed input to the call. Putting it in the request would make the policy
+indistinguishable from the request's other fields, so a caller could vary it per request — which is
+exactly the selection Guard must not perform.
+
+Outcomes, matching §21:
+
+```text
+no policy supplied                -> BLOCKED
+policy.workspace_id mismatch      -> DENY      (per §5; a determined negative)
+invalid policy                    -> BLOCKED
+policy digest mismatch            -> BLOCKED
+```
+
+A policy that fails to parse, carries an unlisted value in a closed vocabulary, or whose declared
+`digest` does not match its canonical form is **invalid**, and invalid is `BLOCKED`. A digest
+mismatch is not a warning and not a re-computation: it means the snapshot being evaluated is not
+the one that was reviewed, so it is refused.
+
+> **Where a policy comes from is Q-1, and it stays a question.** Resolving it — a path convention,
+> a reviewed file under `config/guard/`, an operator-supplied argument — does not change this
+> boundary. Whoever supplies the policy is outside Guard, and Guard's contract is identical in
+> every case: verify, then evaluate.
+
 ---
 
 ## 10. Rule
@@ -765,8 +818,8 @@ here. Neither may be discarded.
 
 ### 14.0 `match` outcome and candidate status
 
-A `match` evaluates to a `CheckResult` exactly as a condition does (§18.2). Its four outcomes map
-to three candidate states:
+A `match` evaluates to a `CheckResult` exactly as `conditions[]` does: its predicates are
+aggregated by §14.2. Its four outcomes map to three candidate states:
 
 ```text
 match SATISFIED      -> the rule is a candidate
@@ -822,16 +875,70 @@ explicit higher-precedence `DENY` remains authoritative, as §14 has always requ
 
 Step 6 is a gate, not an override: it can turn an `ALLOW` into `BLOCKED`, never the reverse.
 
-### 14.2 Condition outcome
+### 14.2 Predicate aggregation (Amendment 8)
 
-For a candidate whose `match` held:
+A `match` or a `conditions[]` is a **set of predicates**, and evaluating one predicate yields one
+`CheckResult`. Combining several into the single `CheckResult` a candidate carries uses one frozen
+precedence:
 
 ```text
-any condition UNAVAILABLE     -> the candidate is UNAVAILABLE   -> BLOCKED
-any condition INDETERMINATE   -> the candidate is INDETERMINATE -> UNKNOWN
-any condition REJECTED        -> the candidate is REJECTED      -> continue the walk
-every condition SATISFIED     -> the candidate decides
+UNAVAILABLE  >  INDETERMINATE  >  REJECTED  >  SATISFIED
 ```
+
+The aggregate is the highest-precedence result present:
+
+```text
+if any predicate = UNAVAILABLE:      aggregate = UNAVAILABLE
+elif any predicate = INDETERMINATE:  aggregate = INDETERMINATE
+elif any predicate = REJECTED:       aggregate = REJECTED
+else:                                aggregate = SATISFIED
+```
+
+A candidate's aggregate `CheckResult` then maps to the walk in §14.1 exactly as before:
+
+```text
+aggregate UNAVAILABLE     -> BLOCKED, stop
+aggregate INDETERMINATE   -> UNKNOWN, stop
+aggregate REJECTED        -> continue the walk
+aggregate SATISFIED       -> the candidate decides
+```
+
+**The same rule governs both `match` and `conditions[]`.** They are two uses of one grammar (§11)
+and one aggregation, differing only in role (whether the rule is a candidate at all, versus
+whether a candidate is satisfied).
+
+Four properties follow, and each is required:
+
+**1. `conditions[]` is still a logical AND.** Aggregation is how an AND over a four-valued logic
+resolves, not a replacement for it. `SATISFIED` is the only aggregate that means "all held"; every
+other aggregate means at least one did not.
+
+**2. `match` still uses the §11 grammar.** Aggregation introduces no predicate and no operator; it
+combines the results of `eq`, `in` and `exists` and nothing else.
+
+**3. Aggregation does not depend on serialization order.** The precedence is total, so it is
+commutative and associative: any permutation of the same predicate results yields the same
+aggregate. This is what makes the *set-semantic* serialization of `conditions[]` and `match`
+entries in §20.3 safe — the collection is written sorted for a stable digest, and the result it
+produces does not depend on that order or any other.
+
+**4. The aggregate is uniquely determined.** A candidate's `CheckResult` is a function of its
+predicate results alone. Two implementations that evaluate the same predicates to the same results
+produce the same aggregate, and therefore the same walk, the same decision and the same
+`evaluation_digest` (§20.7).
+
+**Why `UNAVAILABLE` outranks `INDETERMINATE`.** Both stop the walk; the decision differs
+(`BLOCKED` versus `UNKNOWN`), and the ordering picks the one that is actionable. `BLOCKED` says
+something is missing or unsupported and can be supplied or fixed; `UNKNOWN` says an upstream truth
+model reports the fact unknown and the caller must go and establish it. When a predicate set
+exhibits both, the unsupported or missing case is the one worth reporting, because fixing it may
+dissolve the unknown entirely.
+
+> **Order-independence is the load-bearing property.** Without a frozen precedence, `[REJECTED,
+> INDETERMINATE]` and `[INDETERMINATE, REJECTED]` could aggregate differently, and a policy would
+> mean different things depending on the order its conditions happened to be written in — which is
+> precisely the ambiguity §12.2's rule_id tie-break and §20.3's set-semantic serialization exist
+> to eliminate elsewhere.
 
 The evaluator must not convert an unresolved specific allow condition into a generic allow by
 falling through.
@@ -1024,14 +1131,20 @@ UNAVAILABLE    the precondition could not be obtained or is unsupported
 INDETERMINATE  the precondition's truth is UNKNOWN
 ```
 
-and to the decision:
+and to the decision. For a **set** of checks belonging to one candidate, the mapping is the
+aggregation of §14.2 — the same precedence, stated once there and not restated here:
 
 ```text
-any check UNAVAILABLE      -> BLOCKED
-any check INDETERMINATE    -> UNKNOWN
-every check SATISFIED      -> the rule is satisfied
-a REJECTED check           -> this rule does not apply
+aggregate UNAVAILABLE      -> BLOCKED
+aggregate INDETERMINATE    -> UNKNOWN
+aggregate SATISFIED        -> the rule is satisfied
+aggregate REJECTED         -> this rule does not apply
 ```
+
+§14.2's precedence (UNAVAILABLE > INDETERMINATE > REJECTED > SATISFIED) is the only rule that
+combines check results. A `checks[]` entry records one predicate's `CheckResult`; the aggregate a
+candidate carries is derived from those entries by §14.2, so the record and the walk cannot
+disagree.
 
 ### 18.3 What must not appear
 
@@ -1133,7 +1246,11 @@ set-semantic (sorted canonically before hashing)
 ```
 
 Sorting a `match` or `conditions` collection is safe precisely because §11.1 fixes its meaning to
-a logical AND: the collection is a set of constraints, so its serialization order cannot matter.
+a logical AND **and** §14.2 fixes the aggregation of its results: the collection is a set of
+constraints, its serialization order cannot matter, and the aggregate `CheckResult` it produces is
+uniquely determined regardless of that order. A set-semantic collection with an order-dependent
+result would be a latent determinism failure, which is why §14.2's precedence is frozen and total
+rather than left to whichever predicate is evaluated first.
 
 ### 20.4 Runtime-only fields excluded from every digest
 
@@ -1216,6 +1333,8 @@ same semantic inputs -> same decision
 ```text
 missing policy                          -> BLOCKED
 invalid policy                          -> BLOCKED
+policy digest mismatch                  -> BLOCKED
+policy workspace mismatch               -> DENY
 unknown workspace                       -> BLOCKED
 workspace mismatch                      -> DENY
 missing context                         -> BLOCKED
@@ -1263,6 +1382,25 @@ DENY      the evaluator completed and the answer is no
 `unknown workspace -> BLOCKED` and `workspace mismatch -> DENY` differ for this reason: an
 *unresolvable* workspace leaves the evaluator unable to proceed, while a *mismatched* workspace is
 a determined, definite negative finding.
+
+### 21.2 When several rows apply at once
+
+The matrix states one condition per row. A candidate rule can exhibit more than one at a time —
+an unsupported predicate and an unknown context value, say, or two unsatisfiable preconditions of
+different kinds. The rows are then resolved by the aggregation precedence of §14.2, not by which
+row appears first:
+
+```text
+UNAVAILABLE > INDETERMINATE > REJECTED > SATISFIED
+```
+
+So a candidate whose predicates include both an unsupported field (`UNAVAILABLE`) and an unknown
+context value (`INDETERMINATE`) is `BLOCKED`, not `UNKNOWN`. The matrix is a list of *how a
+condition resolves*; §14.2 is *how resolutions combine*. Neither overrides the other, and the
+combination is order-independent.
+
+The rows divide by severity for the same reason `BLOCKED` and `UNKNOWN` do (§21.1): `BLOCKED` is
+the actionable report, and reporting it when it is present is what lets a caller fix something.
 
 ---
 
@@ -1411,6 +1549,38 @@ indeterminate-match rows. No new decision value was introduced; the outcome is `
 
 *Corrected in: §14 (rewritten, §14.0 and §14.2 new), §13.1, §14.1 (step 2 and the walk), §21.*
 
+**Amendment 8 — predicate aggregation and the policy input boundary (§14.2, §9.1).** Two
+independent gaps found while completing the freeze. Both are cases where the contract described
+parts and left the composition undefined.
+
+(a) **Aggregation.** §14.2 listed four outcomes for "any condition" and "every condition" but never
+said what happens when a `match` or `conditions[]` holds predicates with *differing* results. With
+no frozen precedence the aggregate depended on evaluation order — and §20.3 declares those
+collections set-semantic precisely because order cannot matter, so an order-dependent aggregate
+would have been a latent determinism failure sitting underneath a determinism guarantee.
+
+§14.2 now freezes one total precedence, `UNAVAILABLE > INDETERMINATE > REJECTED > SATISFIED`,
+governing both `match` and `conditions[]` because they are two uses of one grammar. Total, hence
+commutative and associative, hence permutation-invariant. §14.0, §13.1, §18.2 and §20.3 were
+brought into line so the precedence is stated once and referenced everywhere else. No new decision
+value: the aggregate maps to the walk through the existing four `CheckResult` values (D-15).
+
+(b) **Policy input boundary.** §9 defined the policy *schema* while §4 defined the request, and
+nothing said how the two meet — leaving Q-1 to imply that Guard might find its own policy. §9.1
+now freezes the input as `Guard.evaluate(request, policy)`: exactly one externally supplied,
+workspace-scoped, immutable, reviewed snapshot, with **no** discovery, storage, selection or
+loading by Guard. Deliberately **no policy field is added to `GuardRequest`**: a policy in the
+request would be caller-supplied data indistinguishable from `action` or `target`, so a caller
+could vary it per call and Guard would be selecting policy in effect if not in name (D-16).
+
+T10 was rewritten to match. It previously asserted a policy whose `revision` differs from "the one
+the request was evaluated against" — a comparison against a field this contract does not define
+and never did. The test now covers the boundary that exists: valid, digest mismatch, invalid, no
+policy supplied, and workspace mismatch.
+
+*Corrected in: §9.1 (new), §14.0, §14.2 (rewritten), §13.1, §18.2, §20.3, §21, §25 (D-15, D-16),
+§26 (T10 rewritten), §27 (C0, C2, C3).*
+
 ---
 
 ## 25. Decisions and open questions
@@ -1468,6 +1638,36 @@ hard to evaluate — which is the fall-through §14 exists to prevent, moved one
 an indeterminate candidate is `BLOCKED` or `UNKNOWN`, reusing §2's vocabulary. Adding a fifth
 value such as `INDETERMINATE_MATCH` would have made the decision vocabulary depend on *where* the
 indeterminacy occurred, which is an implementation detail a caller should not have to know.
+
+**D-15 — Predicate aggregation precedence is fixed, and it is order-independent** (§14.2).
+Combining predicate results uses one total precedence:
+
+```text
+UNAVAILABLE > INDETERMINATE > REJECTED > SATISFIED
+```
+
+It governs both `match` and `conditions[]`, because they are two uses of one grammar (§11) and
+differ only in role. Before it was frozen, a `match` or `conditions[]` holding predicates with
+differing results had no defined aggregate, so the outcome depended on evaluation order — and
+since §20.3 declares those collections set-semantic precisely because order cannot matter, an
+order-dependent aggregate would have been a latent determinism failure sitting under a
+determinism guarantee.
+
+The precedence is total, therefore commutative and associative, therefore permutation-invariant.
+`UNAVAILABLE` outranks `INDETERMINATE` because both stop the walk and the tie must be broken
+toward the actionable report: an unsupported or missing input can be supplied or fixed, whereas an
+unknown fact can only be established, and fixing the first frequently dissolves the second.
+
+**D-16 — The policy is a call parameter, not a request field** (§9.1). Input is frozen as
+`Guard.evaluate(request, policy)` with exactly one externally supplied, workspace-scoped,
+immutable, reviewed snapshot. Guard performs no discovery, storage, selection, or loading.
+
+Keeping the policy out of `GuardRequest` is the substance, not a style preference. A policy in the
+request would be caller-supplied data indistinguishable from `action` or `target`, so a caller
+could vary it per call — and Guard would then be selecting policy in effect, if not in name. A
+component that both chooses its rules and applies them can authorize anything by choosing a
+permissive rule set, and no amount of evaluation-time rigour would detect it. Where the policy
+comes from remains Q-1; that it arrives from outside Guard does not.
 
 ### 25.2 Open questions
 
@@ -1661,20 +1861,56 @@ policy.
 **Evidence required.** The failing invariant; confirmation the policy was never consulted, so no
 rule can be blamed for the outcome.
 
-### T10 — Policy revision and digest
+### T10 — Policy input boundary, revision and digest
 
-**Purpose.** A policy is an immutable reviewed snapshot; a digest that does not match its content
-is not that policy (§9, §20.2).
+**Purpose.** Guard verifies and evaluates exactly one externally supplied policy snapshot, and
+performs no discovery, storage, or selection (§9.1).
 
-**Setup.** Valid policy; then a policy whose declared `digest` does not match its canonical form;
-then a policy whose `revision` differs from the one the request was evaluated against.
+**Setup.** Five cases, all supplied as `Guard.evaluate(request, policy)` — never as a request
+field:
 
-**Expected decision.** `ALLOW`/`DENY` normally; `BLOCKED` on digest mismatch.
+```text
+10a  a valid policy whose declared digest matches its canonical form
+10b  a policy whose declared digest does NOT match its canonical form
+10c  an invalid policy: unparseable, or an unlisted value in a closed vocabulary
+10d  no policy supplied at all
+10e  a policy naming a different workspace from the request
+```
 
-**Expected CheckResult.** The policy precondition is `UNAVAILABLE` on mismatch.
+**Expected decision.**
 
-**Evidence required.** Declared digest, computed digest, and confirmation that the mismatch was
-detected rather than tolerated.
+```text
+10a  evaluated normally -> ALLOW or DENY on its rules
+10b  BLOCKED
+10c  BLOCKED
+10d  BLOCKED
+10e  DENY
+```
+
+**Expected CheckResult.** The policy precondition is `UNAVAILABLE` for 10b, 10c and 10d — each an
+unsupported or missing input, per §11.6 and §18.2. For 10e it is `REJECTED`: the policy was read
+and evaluated, and it is positively the wrong one (§5).
+
+**Evidence required.**
+
+```text
+for 10a: declared digest, computed digest, and that they agree
+for 10b: declared digest and computed digest, both recorded, and that the mismatch
+         was refused rather than tolerated or silently recomputed
+for 10c: the specific defect that made the policy invalid
+for 10d: policy_id, policy.revision and policy.digest all null in the record
+for 10e: both workspace ids
+
+in every case: policy_id, policy.revision and policy.digest appear in the decision
+               record (§19) and participate in evaluation_digest (§20.6), except
+               where null because no policy was supplied
+```
+
+**Not tested here.** Whether a policy's `revision` matches some prior revision. AI-04 has no
+concept of a previously-seen revision, and the request carries no expected-revision field; a test
+asserting one would be testing a field this contract does not define. Revision is recorded for
+provenance (§19) and hashed into `evaluation_digest` (§20.6); comparing it against history is a
+caller's concern, not Guard's.
 
 ### T11 — Provenance
 
@@ -1833,6 +2069,7 @@ policy schema                  rule schema                predicate grammar
 rule precedence                default DENY               fail-closed semantics
 safety boundaries              result and provenance      canonicalization
 digest rules                   closed vocabularies        match indeterminacy (§14.0)
+predicate aggregation (§14.2)  policy input boundary (§9.1)
 ```
 
 **Required evidence.** This document at its frozen revision; the §24 amendment log; a cross-check
@@ -1858,7 +2095,9 @@ able to authorize across workspaces.
 
 ### C2 — Deterministic evaluation
 
-**Condition.** §12 is a total order, applied end to end:
+**Condition.** Determinism holds at two levels, and both must be total.
+
+Rule selection — §12, applied end to end:
 
 ```text
 safety invariant
@@ -1868,14 +2107,28 @@ safety invariant
   -> rule_id ascending
 ```
 
-**Required evidence.** T7 sub-cases 7a–7f, including the reversal case; T14 both parts.
+Predicate aggregation — §14.2, a total precedence over a set of predicate results:
+
+```text
+UNAVAILABLE > INDETERMINATE > REJECTED > SATISFIED
+```
+
+Total, therefore commutative and associative, therefore permutation-invariant: the aggregate
+`CheckResult` of a `match` or `conditions[]` does not depend on the order its predicates are
+evaluated or serialized in. This is what allows §20.3 to declare those collections set-semantic
+without introducing an order-dependent result underneath a determinism guarantee.
+
+**Required evidence.** T7 sub-cases 7a–7f, including the reversal case; T14 both parts; and a case
+that permutes the predicates within one `match` and within one `conditions[]`, asserting the
+aggregate and the `evaluation_digest` are unchanged.
 
 **Pass criterion.** Identical semantic inputs produce an identical decision, selected rule,
 ordered trace, context refs and evaluation digest — including when the policy's rules are emitted
-in a different order.
+in a different order, and when the predicates within a rule are.
 
 **Forbidden state.** Any tie broken by file order, by specificity when rules are incomparable
-without falling through, or by anything not in the §12 chain.
+without falling through, or by anything not in the §12 chain; any aggregate that varies with
+predicate order.
 
 ### C3 — Fail-closed behaviour
 
@@ -1895,6 +2148,8 @@ no unsupported predicate     -> ALLOW
 no unsupported field         -> ALLOW
 no indeterminate match       -> ALLOW
 no indeterminate condition   -> ALLOW
+no order-dependent aggregation
+    discarding an UNAVAILABLE or INDETERMINATE result -> ALLOW
 ```
 
 ### C4 — `DENY` / `ALLOW` semantics
@@ -2121,7 +2376,7 @@ Base branch        = main
 Base SHA           = 548bc041b31cc0fc9d01af55c527378ba2c42c48
 Working tree       = clean at start
 Work branch        = feature/ai-04-guard-contract
-Amendments         = 7 applied before freeze
+Amendments         = 8 applied before freeze
 Production code    = 0 lines changed
 Guard code         = not written
 Policy files       = none
@@ -2134,11 +2389,14 @@ Secrets added      = none
 Test matrix        = T1-T15 defined (section 26)
 Exit gates         = C0-C10 defined (section 27)
 Next sub-phase     = AI-04-B, constrained by section 28
+Input boundary     = Guard.evaluate(request, policy) - frozen (section 9.1, D-16)
+Aggregation        = UNAVAILABLE > INDETERMINATE > REJECTED > SATISFIED - frozen (section 14.2)
 
 Deferred, and NOT PASS:
   Guard implementation            AI-04-B
   approval issuance/verification  outside AI-04 (D-12)
-  policy storage and selection    Q-1
+  policy origin (discovery/storage/selection)  Q-1 - the *boundary* is frozen,
+                                  the *origin* is not; Guard never performs it
   canonicalization test vectors   AI-04-B
   AI-05 evidence store            not implemented; evidence_ref stays null (C9)
 ```
