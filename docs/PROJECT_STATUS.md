@@ -44,7 +44,7 @@ The frozen AI-02 contract remains at
 
 The AI-03 contract is at
 [docs/AI-03_CONTEXT_PLUGIN_EXECUTION_PLAN.md](AI-03_CONTEXT_PLUGIN_EXECUTION_PLAN.md)
-(frozen at AI-03-A; amended once, see its §17.1 amendment log).
+(frozen at AI-03-A; amended three times, see its §17.1 amendment log).
 
 ### Session start sequence
 
@@ -243,9 +243,9 @@ Local verification (offline, no credential, no network):
 Layer 0 = PASS (13 checks; was 12)
 provider/config/model validation = PASS
 context validation = PASS
-1311 passed, 5 deselected
-  layer 1 = 488, layer 2 = 761, layer 3 = 62
-  baseline was 956 passed, 5 deselected — +355 tests, 0 regressions
+1314 passed, 5 deselected
+  layer 1 = 488, layer 2 = 764, layer 3 = 62
+  baseline was 956 passed, 5 deselected — +358 tests, 0 regressions
 ```
 
 ```text

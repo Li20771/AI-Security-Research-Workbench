@@ -274,13 +274,67 @@ class TestOrderingIsTotal:
         assert ordering_key(early) < ordering_key(late)
 
     def test_value_breaks_a_self_contradiction(self):
-        """One document declaring two values must still resolve the same way twice."""
+        """One document declaring two values must still resolve the same way twice.
+
+        Amendment 2: steps 1-4 are **not** total. Two items from one read of one
+        file share subject, class, priority, identity and revision, so only
+        `value` separates them.
+        """
         first = item(subject="s", value="AAA", source_kind=SourceKind.EXIT_REPORT)
         second = item(subject="s", value="BBB", source_kind=SourceKind.EXIT_REPORT)
+
+        # Same everything except the value -- the case §11.2 originally denied.
+        assert first.source_identity == second.source_identity
+        assert first.source_revision == second.source_revision
         assert ordering_key(first) != ordering_key(second)
+
         once = resolve_subject((first, second))
         twice = resolve_subject((second, first))
         assert once.authoritative == twice.authoritative
+
+    def test_a_real_self_contradicting_document_resolves_deterministically(
+        self, tmp_path: Path, fake_git
+    ):
+        """The same case through the real extraction path (§7.3 keeps both)."""
+        root = tmp_path / "ws"
+        root.mkdir()
+        write_document(
+            root,
+            "docs/report.md",
+            declaration_document(("Gate", "PASS"), ("Gate", "FAIL")),
+        )
+        manifest = (DocumentSource(SourceKind.EXIT_REPORT, "docs/report.md"),)
+
+        first = build_context(root, manifest=manifest, reader=fake_git)
+        second = build_context(root, manifest=manifest, reader=fake_git)
+
+        # Both declarations survive: a contradiction is not a duplicate.
+        assert len(first.history) == 2
+        assert {i.value for i in first.history} == {"PASS", "FAIL"}
+
+        assert [c.to_dict() for c in first.conflicts] == [
+            c.to_dict() for c in second.conflicts
+        ]
+
+    def test_the_losing_half_of_a_contradiction_is_retained(
+        self, tmp_path: Path, fake_git
+    ):
+        """The contradiction stays visible; resolution does not hide it."""
+        root = tmp_path / "ws"
+        root.mkdir()
+        write_document(
+            root,
+            "docs/report.md",
+            declaration_document(("Gate", "PASS"), ("Gate", "FAIL")),
+        )
+        response = build_context(
+            root,
+            manifest=(DocumentSource(SourceKind.EXIT_REPORT, "docs/report.md"),),
+            reader=fake_git,
+        )
+        superseded = [i for i in response.history if i.superseded_by is not None]
+        assert len(superseded) == 1
+        assert superseded[0].value in {"PASS", "FAIL"}
 
     def test_ordering_does_not_depend_on_input_order(self):
         items = (
@@ -382,8 +436,24 @@ class TestApplyResolution:
         assert apply_resolution((single,))[0].superseded_by is None
 
     def test_a_reference_renders_readably(self):
-        reference = ItemRef(SourceKind.EXIT_REPORT, "docs/report.md", "abc")
-        assert reference.render() == "exit_report:docs/report.md@abc"
+        reference = ItemRef(SourceKind.EXIT_REPORT, "docs/report.md", "abc", "NOT_RUN")
+        assert reference.render() == "exit_report:docs/report.md@abc = NOT_RUN"
+
+    def test_a_reference_distinguishes_two_items_from_one_read(self):
+        """Amendment 3: a ref names an item, not a read.
+
+        Both halves of a self-contradicting document come from one read, so a
+        ref without `value` made them equal — and conflict resolution, which
+        compares refs, then marked neither as superseded.
+        """
+        pass_item = item(subject="s", value="PASS", source_kind=SourceKind.EXIT_REPORT)
+        fail_item = item(subject="s", value="FAIL", source_kind=SourceKind.EXIT_REPORT)
+        # One read: same kind, same identity, same revision.
+        assert pass_item.source_kind == fail_item.source_kind
+        assert pass_item.source_identity == fail_item.source_identity
+        assert pass_item.source_revision == fail_item.source_revision
+        # Two items, so two refs.
+        assert pass_item.ref != fail_item.ref
 
 
 class TestUnknownIsNotResolvedAway:

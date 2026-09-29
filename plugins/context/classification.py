@@ -71,18 +71,30 @@ class RawItem:
 
 @dataclass(frozen=True, slots=True, order=True)
 class ItemRef:
-    """A reference to the source read that produced an item.
+    """A reference that identifies **one item**, not merely one read.
 
-    Ordering is by the field order, which gives conflict resolution its final
-    deterministic tiebreaks (§11.2 steps 3 and 4).
+    The `value` field is load-bearing and was added by Amendment 3. Without it
+    this was `(kind, identity, revision)`, which does not distinguish the two
+    halves of a self-contradicting document: §7.3 keeps both `Gate = PASS` and
+    `Gate = FAIL` from a single read, so both items carried the *same* ref.
+    Conflict resolution compares refs to decide who lost, so it concluded that
+    each item was the winner and marked neither — the loser kept
+    `superseded_by: None` and the contradiction became invisible in exactly the
+    case the field exists to expose.
+
+    A ref that cannot tell two items apart is not a reference to an item.
     """
 
     source_kind: SourceKind
     source_identity: str
     source_revision: str
+    value: str
 
     def render(self) -> str:
-        return f"{self.source_kind}:{self.source_identity}@{self.source_revision}"
+        return (
+            f"{self.source_kind}:{self.source_identity}"
+            f"@{self.source_revision} = {self.value}"
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,10 +141,16 @@ class ContextItem:
 
     @property
     def ref(self) -> ItemRef:
+        """A reference that identifies this item among all others.
+
+        Includes `value`, so the two halves of a self-contradicting document
+        are distinct items rather than two names for one (Amendment 3).
+        """
         return ItemRef(
             source_kind=self.source_kind,
             source_identity=self.source_identity,
             source_revision=self.source_revision or "",
+            value=self.value,
         )
 
     def to_dict(self) -> dict[str, object]:

@@ -616,8 +616,15 @@ does not report itself as wholly current.
 ### 11.1 What a conflict is
 
 Two items conflict when they share a `subject` (§8.3) and come from different sources. Resolution
-picks one authoritative item and **retains every loser**, marked with the winner's subject in
+picks one authoritative item and **retains every loser**, marked with the winner's **reference** in
 `superseded_by`.
+
+That reference identifies the winning *item*, not merely the winning read, and therefore carries
+the item's `value` as well as its source, identity and revision (Amendment 3, §17.1). Without the
+value, the two halves of a self-contradicting document — one read, two values — would be
+indistinguishable, and a comparison that could not tell them apart would mark neither as
+superseded. A field whose purpose is to record that something lost cannot be blind to the case
+where two things differ only in what they claim.
 
 No item is ever deleted by conflict resolution. Deleting the loser would destroy exactly the
 disagreement that makes the context auditable.
@@ -631,6 +638,7 @@ Frozen, total, and deterministic:
 2. source priority   P0 < P1 < P2 < P3 < P4 < P5    (§5.3, frozen)
 3. source_identity   ascending                      (determinism)
 4. source_revision   ascending                      (determinism)
+5. value             ascending                      (determinism; see Amendment 2)
 ```
 
 **This resolves a real tension between two requirements of the AI-03 brief**, and the resolution is
@@ -645,9 +653,17 @@ subject. They are therefore applied on two axes, in the order above: the frozen 
 sources **within** an epistemic class, and the epistemic class decides **across** classes. A plan
 is not evidence, so it cannot win against evidence no matter which source it came from.
 
-Nothing is broken by ties, because steps 3 and 4 are total: two items with the same subject, the
-same class, and the same source priority cannot also share a source identity and a revision unless
-they are the same read.
+**Step 5 is not decoration.** Steps 1–4 are *not* total, contrary to what AI-03-A claimed
+(Amendment 2, §17.1). One document can declare two different values for one subject — §7.3
+deliberately keeps a self-contradiction rather than discarding half of it — and both items then
+carry the same subject, class, priority, source identity **and** revision. Without step 5 the
+winner would be decided by whichever line the document happened to list first, and by whatever
+order the manifest supplied the reads. With it, the winner is a function of the items alone.
+
+Step 5 does not make the choice *meaningful*: with `Gate = PASS` and `Gate = FAIL` in one
+document, neither value is privileged and the resolution is arbitrary in substance. It is
+deterministic in form, which is what a resolver can honestly offer when the source contradicts
+itself — and the loser is retained, so the contradiction stays visible.
 
 ### 11.3 The four frozen cases
 
@@ -994,3 +1010,78 @@ No boundary, scope, or deliverable changed. No other frozen semantics changed �
 priority table, the truth model, the item kinds, the classification rule, the cache key,
 the freshness rule, or the conflict ordering. Documentation only: zero production code
 existed at the time of the amendment.
+
+**Amendment 2 — 2026-09-29 — the conflict ordering has a fifth key, and §11.2 was wrong to say
+otherwise.**
+
+A factual error was found in §11.2 during the pre-push audit. It stated:
+
+> Nothing is broken by ties, because steps 3 and 4 are total: two items with the same subject,
+> the same class, and the same source priority cannot also share a source identity and a revision
+> unless they are the same read.
+
+That claim is false, and §7.3 is what makes it false. The extraction grammar deliberately keeps
+a self-contradiction instead of discarding half of it:
+
+```text
+```text
+Gate = PASS
+Gate = FAIL
+```
+```
+
+One read of one file yields two items for one subject, with the same class, the same priority,
+the same `source_identity` and the same `source_revision`. They differ only in `value`. Only
+`value` therefore separates them, and without it as a key the winner falls out of Python's stable
+sort — that is, out of document line order and manifest read order. The behaviour happened to be
+deterministic; the *contract* was not, because it did not say what decided the case.
+
+The implementation already carried the fifth key (`resolution.ordering_key`). §11.2 was the
+inconsistent side and is corrected: the ordering is five keys, with `value` ascending as step 5.
+
+This amendment adds no behaviour — it records behaviour that already existed and that the
+contract had denied. It is pinned by
+`tests/context/test_resolution.py::TestOrderingIsTotal::test_value_breaks_a_self_contradiction`,
+which asserts that a self-contradicting subject resolves identically under input permutation.
+
+Corrected in: §11.2 (ordering block, rationale, and the removed "steps 3 and 4 are total" claim).
+No boundary, scope, or deliverable changed. No other frozen semantics changed — not the priority
+table, the truth model, the item kinds, the classification rule, the cache key, the freshness
+rule, or the first four ordering keys. Documentation only: zero production code changed.
+
+**Amendment 3 — 2026-09-29 — an item reference must identify an item, not a read.**
+
+A defect was found while writing the test that pins Amendment 2, and it is the more serious of
+the two.
+
+§11.1 says a losing item is "marked with the winner's reference in `superseded_by`".
+`ItemRef` was `(source_kind, source_identity, source_revision)`, and `apply_resolution` decided
+who had lost by comparing that reference. For a self-contradicting document both halves carry the
+same kind, identity **and** revision — the same read produced them — so their references were
+equal. The comparison therefore concluded that each item was the winner, and **marked neither**.
+
+```text
+Gate = PASS          ->  superseded_by: None      (the winner)
+Gate = FAIL          ->  superseded_by: None      (should be superseded)
+```
+
+The contradiction was recorded in the items and then silently unrecorded by the resolution: the
+loser was retained, but nothing said it had lost. This is the specific failure §11.1 exists to
+prevent, and it was invisible to every test that did not construct a self-contradiction — because
+for two *different* sources the references do differ, and the comparison works.
+
+§11.1 governs: the reference must identify the item. `ItemRef` gains `value`, and renders as
+
+```text
+<source_kind>:<source_identity>@<source_revision> = <value>
+```
+
+This is a change to production code, unlike Amendments 1 and 2. It changes `ItemRef`, the render
+format recorded in the Evidence document, and nothing else: no boundary, scope, deliverable,
+priority, kind, truth state, cache key, freshness rule, or ordering key changed.
+
+Corrected in: §11.1 (`superseded_by` is defined as identifying the winning item, not the winning
+read), §11.4 (the resolution record names items). Pinned by
+`tests/context/test_resolution.py::TestOrderingIsTotal::test_a_real_self_contradicting_document_resolves_deterministically`,
+`::test_the_losing_half_of_a_contradiction_is_retained`, and
+`::TestApplyResolution::test_a_reference_distinguishes_two_items_from_one_read`.

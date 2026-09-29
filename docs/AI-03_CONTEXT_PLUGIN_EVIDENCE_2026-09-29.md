@@ -67,6 +67,27 @@ remote push        = none as of this record
 All changes are confined to the work branch. `main` was never checked out for
 modification, never reset, and never rebased.
 
+### B.1 Branch HEAD — final HEAD SHA
+
+The commit history on the branch, as read from `git log`:
+
+```text
+f604eb6   feat(ai-03): implement the context plugin
+672f1d2   chore(ai-03): wire the context plugin into CI and record evidence
+ee87433   docs(ai-03): note how to re-read the captured revision table
+```
+
+`ee87433d1871eb4eacbe2933b2df6dabeee63a6d` was HEAD when the pre-push audit in
+§D was run.
+
+**A note on reading this.** This document cannot record the final branch HEAD,
+because committing it *creates* a new HEAD. The SHA above is the audit-time
+value, and the document that records it is one commit later. The authoritative
+final HEAD is whatever `git rev-parse HEAD` reports on the branch after the last
+commit, and it is reported in the PR body — which is written after the last
+commit and can therefore cite it without the circularity. Recording a SHA here
+that claimed to be final would be recording something this file cannot know.
+
 ---
 
 ## C. What was built
@@ -108,7 +129,7 @@ carried forward from another phase or inferred.
 ```text
 1. targeted unit tests
    python -m pytest tests/context
-   -> 332 passed
+   -> 335 passed
 
 2. AI-03 integration tests
    python -m pytest tests/integration
@@ -116,9 +137,9 @@ carried forward from another phase or inferred.
 
 3. existing regression tests (full suite)
    python -m pytest
-   -> 1311 passed, 5 deselected
+   -> 1314 passed, 5 deselected
       baseline was 956 passed, 5 deselected
-      delta: +355 tests, 0 regressions, 0 previously-passing tests removed
+      delta: +358 tests, 0 regressions, 0 previously-passing tests removed
 
 4. repository-required checks
    python scripts/ci/layer0_policy.py       -> Layer 0 = PASS (13 checks; was 12)
@@ -130,11 +151,11 @@ carried forward from another phase or inferred.
 ### D.2 Layer partition
 
 ```text
-layer1 =  488 passed, 828 deselected
-layer2 =  761 passed, 555 deselected
-layer3 =   62 passed, 1254 deselected
+layer1 =  488 passed, 831 deselected
+layer2 =  764 passed, 555 deselected
+layer3 =   62 passed, 1257 deselected
          ----
-         1311          (= the full suite; the layers partition it)
+         1314          (= the full suite; the layers partition it)
 ```
 
 The 5 deselected tests are the AI-02 `layer4` live entry point, still excluded
@@ -186,9 +207,10 @@ conflicts      = 2
 
 ---
 
-## F. Sources read, and their revisions
+## F. Source list, and source revisions
 
-Read from this repository through the real pipeline.
+The source list read from this repository through the real pipeline, with each
+source's `source_revision`.
 
 | Priority | Source kind | Identity | Read status | Items | Revision |
 | --- | --- | --- | --- | --- | --- |
@@ -199,8 +221,13 @@ Read from this repository through the real pipeline.
 | P4 | `exit_report` | `docs/AI-02_CLOSEOUT_2026-09-29.md` | READ | 4 | `c72d6fa5133c69bd…` |
 | P5 | `git_history` | `git:history` | READ | 20 | `8c5df3e085e15e39f901e83f53f0e04f693cfb84` |
 
-Document revisions are SHA-256 content digests (D-3); git revisions are commit
-SHAs. Every source was `READ`; none was `MISSING`, `REFUSED`, or `BLOCKED`.
+Document `source_revision` values are SHA-256 content digests (D-3); git
+`source_revision` values are commit SHAs. Every source was `READ`; none was
+`MISSING`, `REFUSED`, or `BLOCKED`. Each source's read outcome and item count are
+recorded in the table above, and the full `sources` array — including
+`retrieved_at`, `read_status`, `freshness`, `item_count` and `cache_hit` — is
+produced by `python -m plugins.context.validate` and by
+`ContextResponse.to_dict()`.
 
 **On reproducing this table.** The two kinds of revision behave differently. A
 document digest is a function of the bytes committed, so it still matches after
@@ -267,18 +294,23 @@ subject = declared.live_provider_execution
 P2  docs/PROJECT_STATUS.md            PLAN      declared NOT_RUN
 P4  docs/AI-02_CLOSEOUT_2026-09-29.md HISTORY   declared NOT_RUN
 
-authoritative = exit_report:docs/AI-02_CLOSEOUT_2026-09-29.md@c72d6fa5…
+authoritative = exit_report:docs/AI-02_CLOSEOUT_2026-09-29.md@c72d6fa5… = NOT_RUN
 evidenced     = the same
-superseded    = capability_inventory:docs/PROJECT_STATUS.md@514cd178…
+superseded    = capability_inventory:docs/PROJECT_STATUS.md@514cd178… = NOT_RUN
 
 subject = declared.provider_config_model_validation
 
 P2  docs/PROJECT_STATUS.md            PLAN      declared PASS
 P4  docs/AI-02_CLOSEOUT_2026-09-29.md HISTORY   declared PASS
 
-authoritative = exit_report:docs/AI-02_CLOSEOUT_2026-09-29.md@c72d6fa5…
-superseded    = capability_inventory:docs/PROJECT_STATUS.md@514cd178…
+authoritative = exit_report:docs/AI-02_CLOSEOUT_2026-09-29.md@c72d6fa5… = PASS
+evidenced     = the same
+superseded    = capability_inventory:docs/PROJECT_STATUS.md@514cd178… = PASS
 ```
+
+A reference renders as `<kind>:<identity>@<revision> = <value>`. The value is part of it because
+a reference has to identify an *item*: two halves of a self-contradicting document share one
+read, and a reference without the value could not tell them apart (Amendment 3, §J.3).
 
 In both cases the exit report won even though the frozen priority table (§5.3)
 ranks the capability inventory **above** it (P2 < P4). That is D-8 working: the
@@ -318,6 +350,33 @@ would serve a `CLEAN` tree after the tree became `DIRTY`. Asserted at three
 levels — the probe returns `None`, three consecutive builds never report a hit,
 and the validator flags a `git_current_state` record carrying `cache_hit: true`.
 
+### I.1 SecurityLab isolation (T12)
+
+`SecurityLab` is a **separate repository**, independently versioned (`F-02`,
+`F-17`). It was not read, not written, and does not appear in any changed path.
+The context layer additionally guarantees that it *could not* be mixed in
+(contract §3.6):
+
+```text
+source path resolving outside the workspace root   -> REFUSED, never opened
+absolute path, `..` escape, directory symlink/junction -> REFUSED (all three tested)
+workspace registry (workspaces/workspaces.example.yaml,
+  which names a `securitylab` entry)               -> not in the manifest, never read
+sibling workspace scan                             -> none
+items or records carrying a foreign workspace_id   -> raises, never merges
+```
+
+The tests build two adjacent workspaces — one containing a marker string that
+exists nowhere else — and assert that the marker never reaches the other's
+context, that every source path is inside its own root, and that the resolver
+issues no git call against any directory but the root it was given.
+
+> Isolation is about **sources**, not vocabulary. `docs/PROJECT_STATUS.md`
+> contains the line `SecurityLab = UNCHANGED`, and the pipeline reports it —
+> because it is *this* workspace's own statement, read from *this* workspace's
+> file. Suppressing it would be censoring the workspace's record, not protecting
+> it. The test asserts exactly that distinction rather than a blanket string ban.
+
 ---
 
 ## J. Security boundary
@@ -335,19 +394,59 @@ model inference anywhere in the pipeline    = none
 automatic commit / push / merge            = none
 ```
 
-**A defect found and fixed by the new Layer 0 check.** The check refuses to
-accept a check it cannot fail, and when first run it failed: `git remote add`
-is a write that rewrites `.git/config`, while `git remote get-url` is a read.
-The guard had been checking only the subcommand, so every `git remote ...`
-invocation — including the writes — was permitted. The guard now examines the
-first argument for subcommands whose read/write nature depends on it, and the
-Layer 0 check asserts **both** directions: 38 write invocations must be refused,
-7 read invocations must be accepted. A guard that refused everything would fail
-the second half.
+### J.1 Git guard permitted a write
 
-This is recorded because it is the one place where a green check would have been
-wrong, and because "the test cannot fail" is a failure mode that review does not
-reliably catch.
+**Found by the new Layer 0 check.** The check refuses to accept a check it cannot
+fail, and when first run it failed: `git remote add` is a write that rewrites
+`.git/config`, while `git remote get-url` is a read. The guard had been checking
+only the subcommand, so every `git remote ...` invocation — including the writes
+— was permitted. The guard now examines the first argument for subcommands whose
+read/write nature depends on it, and the Layer 0 check asserts **both**
+directions: 38 write invocations must be refused, 7 read invocations must be
+accepted. A guard that refused everything would fail the second half.
+
+Recorded because it is a place where a green check would have been wrong, and
+because "the test cannot fail" is a failure mode that review does not reliably
+catch.
+
+### J.2 A lifecycle word in a context enum
+
+**Found by a layer-1 test.** `ContextStatus` was first defined with `COMPLETE` as
+a member — a lifecycle word, sitting in an enum whose values are published in the
+context response. One refactor away from the `PLAN -> COMPLETE` promotion this
+phase forbids, and the same word already appears in `docs/PROJECT_STATUS.md` as a
+phase declaration, so the collision was live rather than hypothetical. Renamed to
+`FULL` and pinned by a test that fails if a lifecycle word returns to the enum.
+Contract Amendment 1.
+
+### J.3 A conflict loser was retained but not marked
+
+**Found while writing the test that pins Amendment 2, and the most serious of the
+three.** `ItemRef` was `(source_kind, source_identity, source_revision)`, and
+`apply_resolution` decided who had lost by comparing references. For a
+self-contradicting document both halves come from one read, so both carried the
+same reference. The comparison concluded that each item was the winner and
+**marked neither**:
+
+```text
+Gate = PASS          ->  superseded_by: None      (the winner)
+Gate = FAIL          ->  superseded_by: None      (should be superseded)
+```
+
+The contradiction was recorded in the items and then silently unrecorded by the
+resolution. This is exactly the failure §11.1 exists to prevent, and it was
+invisible to every test that did not build a self-contradiction, because for two
+*different* sources the references do differ and the comparison works.
+
+`ItemRef` now carries the item's `value`, so a reference identifies an item
+rather than a read. This is a production-code change (Amendment 3), unlike
+Amendments 1 and 2. Pinned by three tests, including one that drives a real
+contradicting document through the real extraction path.
+
+> Two of these three findings were in code that already had passing tests. Both
+> were found by asking what the guarantee *cannot* represent, rather than by
+> re-reading the implementation — which is the argument for checks that are
+> required to be able to fail.
 
 ---
 
@@ -446,11 +545,15 @@ truth state, and this document does not use it as one.
 6. re-verify C8 against the actual CI result
 ```
 
-Steps 1 and 2 were not performed. Pushing is a `remote-change` action, which
-`docs/GIT_AND_SECURITY_BOUNDARY.md` requires explicit approval for, and the AI-03
-brief §22 requires the PR to wait until implementation, tests, evidence, and
-final review are all complete. The work is committed to the task branch and
-stops there.
+Steps 1 and 2 were not performed at the time this document was written. Pushing
+is a `remote-change` action, which `docs/GIT_AND_SECURITY_BOUNDARY.md` requires
+explicit approval for, and the AI-03 brief §22 requires the PR to wait until
+implementation, tests, evidence, and final review are all complete.
+
+> **The merge is never performed by this work.** Step 4 is a human decision at a
+> GitHub checkpoint, and it is deliberately outside what any command in this
+> phase does. Whatever CI reports, AI-03 is not merged by the agent that
+> implemented it.
 
 ---
 
@@ -462,13 +565,18 @@ Base SHA:         8c5df3e085e15e39f901e83f53f0e04f693cfb84
 Branch:           feature/ai-03-context-plugin
 Workspace id:     ws-8755bade6039ea66
 
+Contract:         3 amendments (see the plan's §17.1)
+                    A1 ContextStatus.COMPLETE -> FULL       documentation
+                    A2 ordering gained a fifth key          documentation
+                    A3 ItemRef gained `value`               production code
+
 Local verification (offline, both API key variables unset):
   Layer 0 = PASS (13 checks)
   provider/config/model validation = PASS
   context validation = PASS
-  1311 passed, 5 deselected
+  1314 passed, 5 deselected
     layer 1 = 488
-    layer 2 = 761
+    layer 2 = 764
     layer 3 =  62
 
 CI execution:     NOT_RUN
