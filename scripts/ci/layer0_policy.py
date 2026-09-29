@@ -65,6 +65,40 @@ LIVE_SELECTION = re.compile(r"-m\s*['\"]?layer4")
 
 LIVE_HTTP_CLIENTS = ("curl ", "wget ", "Invoke-WebRequest", "requests.get", "httpx.")
 
+#: Workflows that must never touch a provider. Held to the strict deny rules.
+DEFAULT_WORKFLOWS = frozenset({"preflight.yml"})
+
+#: Workflows permitted to contact a provider, under strict structural rules.
+#: AI-02-B6 introduced the first one. Permission is granted by *satisfying
+#: conditions*, never by a file merely existing -- a workflow that is not
+#: classified here is a finding, not an allowance.
+LIVE_WORKFLOWS = frozenset({"live-model-verification.yml"})
+
+#: The only trigger a live workflow may declare. Stated positively: the
+#: question is not "does this list a forbidden trigger" but "is
+#: workflow_dispatch the only one", so a trigger nobody thought to deny
+#: (workflow_call, repository_dispatch, merge_group, ...) is still a finding.
+LIVE_ALLOWED_TRIGGERS = frozenset({"workflow_dispatch"})
+
+#: Input names that would let a caller aim a probe at an arbitrary target or
+#: supply a credential. The endpoint comes from the provider profile and the
+#: credential from repository secrets; neither is a caller's to choose (§7).
+FORBIDDEN_LIVE_INPUTS = (
+    "base_url",
+    "base-url",
+    "endpoint",
+    "api_url",
+    "api-url",
+    "host",
+    "url",
+    "api_key",
+    "api-key",
+    "apikey",
+    "secret",
+    "token",
+    "password",
+)
+
 
 def _strip_full_line_comments(text: str) -> str:
     """Drop whole-line comments.
@@ -81,7 +115,9 @@ def _strip_full_line_comments(text: str) -> str:
 WORKFLOW_DIR = ROOT / ".github" / "workflows"
 
 LAYER_MARKER = re.compile(r"^pytestmark = pytest\.mark\.(layer[0-9]+)\s*$", re.MULTILINE)
-MARKABLE_LAYERS = {"layer1", "layer2", "layer3"}
+#: Layers a test module may declare. layer4 is markable so that the live
+#: entry point can exist; pytest.ini deselects it from every default run.
+MARKABLE_LAYERS = {"layer1", "layer2", "layer3", "layer4"}
 
 
 def _display(path: Path) -> str:
@@ -198,7 +234,20 @@ def check_workflow_cannot_reach_a_provider() -> list[str]:
     if not workflows:
         return ["no workflow files found"]
 
+    # Every workflow is classified before it is checked. An unclassified file
+    # would otherwise be scanned under no rules at all, which is how a live
+    # invocation could slip into the default pipeline unnoticed.
     for path in workflows:
+        if path.name not in DEFAULT_WORKFLOWS | LIVE_WORKFLOWS:
+            problems.append(
+                f"{_display(path)} is not classified as a default or live "
+                "workflow; declare it in DEFAULT_WORKFLOWS or LIVE_WORKFLOWS "
+                "so it is checked under the right rules"
+            )
+
+    for path in workflows:
+        if path.name not in DEFAULT_WORKFLOWS:
+            continue
         text = _strip_full_line_comments(path.read_text(encoding="utf-8"))
         name = _display(path)
 
@@ -241,6 +290,201 @@ def check_workflow_cannot_reach_a_provider() -> list[str]:
                             f"{name} assigns a non-empty {var}; CI must require "
                             "no credential"
                         )
+    return problems
+
+
+def _trigger_keys(text: str) -> list[str]:
+    """The direct children of the `on:` block, or [] when there is none.
+
+    A scalar or flow-style trigger (`on: push`, `on: [push]`) has no block, so
+    it yields nothing -- which the caller reads as "not dispatch-only" rather
+    than as "no triggers".
+    """
+    lines = text.splitlines()
+    start = next(
+        (i for i, line in enumerate(lines) if line.rstrip() == "on:"), None
+    )
+    if start is None:
+        return []
+    base: int | None = None
+    keys: list[str] = []
+    for line in lines[start + 1:]:
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        indent = len(line) - len(line.lstrip())
+        if indent == 0:
+            break
+        if base is None:
+            base = indent
+        if indent != base:
+            continue
+        keys.append(line.strip().split(":", 1)[0].strip())
+    return keys
+
+
+def check_workflow_opt_in_flags() -> list[str]:
+    """The opt-in flag exists in exactly the live workflows.
+
+    Both directions matter: a default workflow that set it would turn the
+    default pipeline live, and a live workflow that did not set it would not be
+    opt-in at all.
+    """
+    problems = []
+    for path in sorted(WORKFLOW_DIR.glob("*.yml")) + sorted(WORKFLOW_DIR.glob("*.yaml")):
+        text = _strip_full_line_comments(path.read_text(encoding="utf-8"))
+        name = _display(path)
+        assigned = any(
+            match.group("value").strip() not in ("", '""', "''")
+            for match in LIVE_OPT_IN_ASSIGNMENT.finditer(text)
+        )
+        if path.name in DEFAULT_WORKFLOWS and assigned:
+            problems.append(
+                f"{name} sets WORKBENCH_LIVE_TESTS; a default workflow must "
+                "never enable live verification (§11.4)"
+            )
+        if path.name in LIVE_WORKFLOWS and not assigned:
+            problems.append(
+                f"{name} does not set WORKBENCH_LIVE_TESTS; the live workflow "
+                "is the opt-in boundary and must enable it explicitly"
+            )
+    return problems
+
+
+def check_live_workflow_is_manual_and_bounded() -> list[str]:
+    """A live workflow is permitted only under strict structural conditions.
+
+    Permission comes from satisfying these, not from the file existing. The
+    alternative -- "a workflow that mentions a live API is allowed" -- would
+    let any workflow reach a provider by naming one.
+    """
+    problems = []
+    for path in sorted(WORKFLOW_DIR.glob("*.yml")) + sorted(WORKFLOW_DIR.glob("*.yaml")):
+        if path.name not in LIVE_WORKFLOWS:
+            continue
+        name = _display(path)
+        text = _strip_full_line_comments(path.read_text(encoding="utf-8"))
+
+        triggers = _trigger_keys(text)
+        if "workflow_dispatch" not in triggers:
+            problems.append(
+                f"{name} does not declare workflow_dispatch; live verification "
+                "is started by a human"
+            )
+        extra = sorted(set(triggers) - LIVE_ALLOWED_TRIGGERS)
+        if extra:
+            problems.append(
+                f"{name} declares trigger(s) {', '.join(extra)}; a live "
+                "workflow is workflow_dispatch ONLY, because any other trigger "
+                "lets it contact a provider without a human starting it"
+            )
+
+        for host in LIVE_ENDPOINT_HOSTS:
+            if host in text:
+                problems.append(
+                    f"{name} names the provider endpoint {host!r}; the "
+                    "endpoint comes from the provider profile and is never "
+                    "written into a workflow (§7)"
+                )
+
+        for forbidden in FORBIDDEN_LIVE_INPUTS:
+            if re.search(
+                rf"^\s+{re.escape(forbidden)}\s*:", text, re.MULTILINE
+            ):
+                problems.append(
+                    f"{name} accepts an input named {forbidden!r}; a caller "
+                    "may not choose a probe's target or supply a credential (§7)"
+                )
+
+        if "contents: read" not in text:
+            problems.append(
+                f"{name} does not declare read-only permissions; a live run "
+                "must be unable to write to the repository"
+            )
+
+        for writer in ("git commit", "git push", "git add "):
+            if writer in text:
+                problems.append(
+                    f"{name} runs {writer!r}; a live run produces an artefact "
+                    "and promotion is a reviewed human action (§22)"
+                )
+    return problems
+
+
+def _run_block_lines(text: str) -> list[tuple[int, str]]:
+    """Lines inside `run:` blocks, with 1-based line numbers.
+
+    A `${{ ... }}` in an `env:` value is correct and safe: GitHub resolves it
+    to a string before the shell ever sees it. The same expression interpolated
+    into a `run:` block becomes shell syntax, which is the difference between
+    passing an argument and executing one.
+    """
+    lines = text.splitlines()
+    collected: list[tuple[int, str]] = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        # A step key is written either as  or as a list item ,
+        # and a check that only matches the first form silently inspects
+        # nothing while still reporting success.
+        stripped = line.strip()
+        if stripped.startswith("- "):
+            stripped = stripped[2:].lstrip()
+        if stripped.startswith("run:"):
+            indent = len(line) - len(line.lstrip())
+            index += 1
+            while index < len(lines):
+                nxt = lines[index]
+                if nxt.strip() and (len(nxt) - len(nxt.lstrip())) <= indent:
+                    break
+                collected.append((index + 1, nxt))
+                index += 1
+            continue
+        index += 1
+    return collected
+
+
+def check_live_workflow_inputs_cannot_become_shell() -> list[str]:
+    """A dispatch input reaches the shell as a quoted variable, never as text.
+
+    Also checks the two adjacent boundaries: a credential is scoped to the step
+    that needs it, and an unexpected runner failure is not absorbed.
+    """
+    problems = []
+    for path in sorted(WORKFLOW_DIR.glob("*.yml")) + sorted(WORKFLOW_DIR.glob("*.yaml")):
+        if path.name not in LIVE_WORKFLOWS:
+            continue
+        name = _display(path)
+        text = _strip_full_line_comments(path.read_text(encoding="utf-8"))
+
+        for number, line in _run_block_lines(text):
+            if "${{" in line:
+                problems.append(
+                    f"{name}:{number} interpolates a GitHub expression directly "
+                    "into a run command; dispatch inputs must reach the shell "
+                    "as quoted environment variables"
+                )
+
+        if "continue-on-error" in text:
+            problems.append(
+                f"{name} uses continue-on-error; an unexpected runner failure "
+                "must fail the job rather than be absorbed"
+            )
+
+        lines = text.splitlines()
+        steps_at = next(
+            (i for i, line in enumerate(lines) if line.strip().startswith("steps:")),
+            None,
+        )
+        if steps_at is None:
+            continue
+        for marker in ("_API_KEY", "API_TOKEN", "SECRET"):
+            for i, line in enumerate(lines):
+                if marker in line and i < steps_at:
+                    problems.append(
+                        f"{name}:{i + 1} references {marker!r} before any step; a "
+                        "credential must be scoped to the step that uses it, "
+                        "not the job"
+                    )
     return problems
 
 
@@ -298,8 +542,17 @@ def main() -> int:
         check_example_configs_have_no_credentials(),
     )
     report.check(
-        "default workflow cannot reach a provider",
+        "default workflows cannot reach a provider",
         check_workflow_cannot_reach_a_provider(),
+    )
+    report.check("workflow opt-in flags", check_workflow_opt_in_flags())
+    report.check(
+        "live workflow is manual and bounded",
+        check_live_workflow_is_manual_and_bounded(),
+    )
+    report.check(
+        "live inputs cannot become shell, secrets are step-scoped",
+        check_live_workflow_inputs_cannot_become_shell(),
     )
     report.check("pytest excludes layer 4", check_pytest_excludes_layer4())
     report.check("every test module declares one layer", check_layer_markers())

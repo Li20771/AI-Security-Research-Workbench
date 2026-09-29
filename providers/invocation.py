@@ -560,8 +560,37 @@ class InvocationContext:
     environ: Mapping[str, str] | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class ProbeAuthorisation:
+    """Authorises exercising one unverified capability, for observation only.
+
+    Contract §7.1 refuses a request needing an unverified capability "rather
+    than attempted optimistically. `status: NOT_VERIFIED` does not authorise a
+    live attempt **outside AI-02-B6**." This is that carve-out, and it is
+    deliberately narrow:
+
+    - one capability, named explicitly
+    - one model, named explicitly -- it does not travel to another model
+    - it grants nothing. A probe can produce evidence; it cannot change a
+      profile, and nothing consumes this to widen a gate later.
+
+    The alternative was worse: a live probe that cannot exercise the
+    capability it is meant to observe verifies nothing, and weakening the gate
+    for everyone would defeat its purpose.
+    """
+
+    capability: CapabilityName
+    model_ref: str
+    authorised_by: str
+
+    def covers(self, capability: CapabilityName, model_ref: str) -> bool:
+        return self.capability is capability and self.model_ref == model_ref
+
+
 def _check_capabilities(
-    request: InvocationRequest, model: ModelProfile
+    request: InvocationRequest,
+    model: ModelProfile,
+    authorisation: ProbeAuthorisation | None = None,
 ) -> BlockReason | None:
     """Refuse a request whose capability requirement is not VERIFIED (§6.7).
 
@@ -591,6 +620,14 @@ def _check_capabilities(
 
     for capability, detail in required:
         entry = model.capability(capability)
+        if entry.status is CapabilityStatus.VERIFIED:
+            continue
+        if authorisation is not None and authorisation.covers(
+            capability, model.model_ref
+        ):
+            # AI-02-B6 probe allowance (§7.1). The capability is still not
+            # VERIFIED; the call is authorised to observe, not to succeed.
+            continue
         if entry.status is not CapabilityStatus.VERIFIED:
             return BlockReason(
                 code=BlockCode.CAPABILITY_NOT_VERIFIED,
@@ -649,10 +686,16 @@ class Invoker:
     """
 
     def __init__(
-        self, context: InvocationContext, *, clock: Callable[[], float] = time.monotonic
+        self,
+        context: InvocationContext,
+        *,
+        clock: Callable[[], float] = time.monotonic,
+        probe_authorisation: ProbeAuthorisation | None = None,
     ) -> None:
         self._context = context
         self._clock = clock
+        #: Set only by AI-02-B6 live verification. Nothing else constructs one.
+        self._probe_authorisation = probe_authorisation
 
     @classmethod
     def from_registry(
@@ -698,7 +741,7 @@ class Invoker:
 
         # Capability gate: before the credential is touched and before any
         # transport activity, so a refused call cannot reach a provider.
-        block = _check_capabilities(request, model)
+        block = _check_capabilities(request, model, self._probe_authorisation)
         if block is not None:
             return InvocationResult(
                 request_id=request.request_id,
@@ -862,6 +905,7 @@ __all__ = [
     "Latency",
     "Message",
     "MessageRole",
+    "ProbeAuthorisation",
     "RequestMetadata",
     "StructuredOutputRequest",
     "ToolCall",
