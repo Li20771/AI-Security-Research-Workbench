@@ -395,6 +395,40 @@ row, and no other row may produce that combination. Without it, any service
 producer carrying an `ALLOW` decision could be read as an AI-04 Guard decision, and
 a human approval could be recorded in `GuardDecision`'s vocabulary.
 
+### 6.7 The ObservationFamily vocabulary — FROZEN (Amendment 1)
+
+`ObservationFamily` is a closed vocabulary owned by AI-05. **It is declared here,
+once.** §6.5, §11 and §15.2 use it and do not restate its members; a member set
+appearing anywhere else in this contract is a defect in this contract, and this
+section is the authority.
+
+```text
+ObservationFamily — closed, owned by AI-05, frozen by Amendment 1
+
+    SOURCE_READ
+    PROVIDER_PROBE
+    CAPABILITY_OBSERVATION
+```
+
+```text
+Exactly these three members in AI-05 v1.
+There is no fourth member and no implicit member.
+Any value outside these three is REJECTED, never treated as an ordinary value
+  (§11's unlisted-enum rule).
+A fourth member requires an amendment, on the same footing as a fourth
+  EvidenceKind (§6.4).
+```
+
+`family` is REQUIRED on every `OBSERVATION`, and absent from `DECISION` and
+`EXECUTION`.
+
+The `none` that appears in §6.5's `family` column on the DECISION and EXECUTION
+rows is a statement that the field is not applicable to that kind. **It is not a
+member of this vocabulary and is never a legal value.**
+
+The family selects the binding arm and the status field of an `OBSERVATION`, and
+the selection is never inferred from a producer name (§11).
+
 ---
 
 ## 7. Producer / Actor Model
