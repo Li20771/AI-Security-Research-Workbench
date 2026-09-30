@@ -2475,6 +2475,13 @@ T4b and T4c are a pair. T4b alone is satisfied by a system that rejects `human` 
 T23 and T24 are a pair. T23 alone is satisfied by a system that rejects every
   artifact reference. T24 is the control that proves the legitimate path — bytes
   stored by the producer, reference submitted to AI-05 — still works.
+T24 COMPATIBILITY EDIT, recorded by Amendment 1. T24's test identity, purpose,
+  acceptance assertion and security property remain unchanged. Its fixture field
+  list is updated only to remove the now-forbidden v1 `role` field, which
+  Amendment 1 makes MUST BE ABSENT in v1 (§13.1). Leaving `role` in the fixture
+  would have left this matrix asserting an input the contract now rejects. This is
+  a consistency edit and not a change of test meaning; the whole of T24's text is
+  NOT unchanged, and this note is what records the difference.
 T31 MUST observe state before and after. Asserting an absence rhetorically proves
   nothing.
 T33a-d are four separate routes to the same forbidden outcome. One test would cover
@@ -2482,6 +2489,78 @@ T33a-d are four separate routes to the same forbidden outcome. One test would co
 T8 covers four fields, not one, and each MUST be asserted separately: an operational
   field that leaks into content_digest is an undeclared semantic input.
 ```
+
+### 31.2 Tests added by Amendment 1
+
+Amendment 1 adds the assertions its declarations require. None of T1 to T35 is
+removed, merged, renumbered or weakened.
+
+```text
+T42b   kind is DECISION and actor.type is human                REJECTED
+T42c   kind is DECISION and actor.type is agent or unknown     REJECTED
+T42d   kind is DECISION and producer is not ai-04              REJECTED
+T42e   a legitimate AI-04 Guard decision                       ACCEPTED
+T42f   a routing decision is not representable in v1           REJECTED
+T43    every collection in §15.4 has leaves in §15.2, and no collection leaf
+       belongs to an undeclared collection
+T44    artifact_ref accepts a bounded single-line opaque value and rejects a
+       multi-line or over-long one; AI-05 never resolves or parses it
+T45    actor.id accepts a multi-character value and rejects a multi-line one
+T46    artifacts.items[].role present in v1                    REJECTED
+T47    payload.reasons[] is permutation invariant; a duplicate  REJECTED
+T48    a legal AI-02 model_ref containing a colon              ACCEPTED
+       a model_ref with no slash or two slashes                REJECTED
+T49    a 40-character revision with a document source_kind     REJECTED
+       a 64-character revision with a git source_kind          REJECTED
+T50    a source_kind outside AI-03 SourceKind                  REJECTED
+T51    a malformed timestamp                                   REJECTED
+       observed_at null on DECISION                            ACCEPTED
+       observed_at null on OBSERVATION or EXECUTION            REJECTED
+T52    a binding arm that does not match the family            REJECTED
+T53    every §15.2 leaf is reachable, and every digest projection reference is
+       represented by a field-table row, asserted per digest
+T56    an AI-03-valid subject greater than 64 characters and at most the
+       G-SUBJECT bound                                         ACCEPTED
+T57    both source_revision paths produce identical outcomes for identical
+       source_kind and revision input pairs
+```
+
+#### T54 — all six admitted events accepted with their registered producer
+
+Six cases, one per row of §6.5. Each supplies a payload its kind or family
+admits, and the case is satisfied only when the record is accepted with the
+token spelled exactly as §6.5 spells it.
+
+```text
+case                                                              expected
+ai-03 with OBSERVATION, family SOURCE_READ,
+    producer_type service, actor.type service                     ACCEPTED
+ai-02 with OBSERVATION, family PROVIDER_PROBE,
+    producer_type service, actor.type service                     ACCEPTED
+ai-02 with OBSERVATION, family CAPABILITY_OBSERVATION,
+    producer_type service, actor.type service                     ACCEPTED
+ai-04 with DECISION,
+    producer_type service, actor.type service                     ACCEPTED
+ai-06 with EXECUTION,
+    producer_type service, actor.type agent                       ACCEPTED
+ai-06 with EXECUTION,
+    producer_type service, actor.type service                     ACCEPTED
+```
+
+#### T55 — incompatible producer and event combinations rejected
+
+```text
+case                                                expected
+ai-02 used with DECISION                            REJECTED
+ai-04 used with OBSERVATION                         REJECTED
+ai-06 used with DECISION                            REJECTED
+ai-03 used with EXECUTION                           REJECTED
+ai-02 used with OBSERVATION and family SOURCE_READ  REJECTED
+a token absent from the registry                    REJECTED
+```
+
+T54 and T55 are a pair. T54 alone is satisfied by a registry that admits
+everything; T55 alone is satisfied by one that admits nothing.
 
 ---
 
@@ -2820,6 +2899,16 @@ docs-only branch with the B1 implementation head
     length caps including the 512 bound chosen to avoid a Class 5 free-text field,
     the `G-SUBJECT` cap of 256, the `G-TIMESTAMP` syntax rule, the `G-LOCATOR`
     character set, and the six producer tokens.
+
+(x) T24 COMPATIBILITY EDIT, recorded here because the whole of T24's text is NOT
+    unchanged. T24's test identity, purpose, acceptance assertion and security
+    property remain unchanged: it is still the artifact reference contract, it is
+    still the control that proves the legitimate reference path is accepted, and it
+    still asserts `ACCEPTED` with the digest required and `artifact_ref` opaque. Its
+    fixture field list is updated only to remove the now-forbidden v1 `role` field,
+    which this amendment makes MUST BE ABSENT in v1 (§13.1). The edit exists because
+    the matrix would otherwise assert an input the contract now rejects. It changes
+    no test meaning and no number. §31.1 carries the same note beside the matrix.
 
 No boundary, scope, deliverable, kind, digest classification, workspace rule or
 authority relation changed. C-1 remains DEFERRED.
