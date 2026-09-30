@@ -286,16 +286,21 @@ Tie-breaker, for an act the table below does not cover:
 
 ### 6.2 The assignment table
 
-| Event | kind | producer (writes) | actor (described) |
-| --- | --- | --- | --- |
-| AI-02 provider probe | `OBSERVATION` | AI-02 | service |
-| AI-02 capability observation | `OBSERVATION` | AI-02 | service |
-| AI-03 context read | `OBSERVATION` | AI-03 | service |
-| AI-04 Guard decision | `DECISION` | AI-04 | service |
-| AI-06 tool execution | `EXECUTION` | AI-06 | agent |
-| AI-06 test result | `EXECUTION` | AI-06 | service |
-| AI-07 routing decision | `DECISION` | AI-07 | service |
-| **human approval** | **`DECISION`** | the Workbench component recording it | **human** |
+**Amendment 1 added a payload-support column.** Before it, this table assigned a
+kind to eight events while §11 provided no payload for two of them, so the table
+asserted a recordability the contract could not deliver. The kind assignments are
+unchanged; the payload column now states what v1 can actually write.
+
+| Event | kind | producer (writes) | actor (described) | v1 payload support |
+| --- | --- | --- | --- | --- |
+| AI-02 provider probe | `OBSERVATION` | AI-02 | service | ADMITTED |
+| AI-02 capability observation | `OBSERVATION` | AI-02 | service | ADMITTED |
+| AI-03 context read | `OBSERVATION` | AI-03 | service | ADMITTED |
+| AI-04 Guard decision | `DECISION` | AI-04 | service | ADMITTED |
+| AI-06 tool execution | `EXECUTION` | AI-06 | agent | ADMITTED |
+| AI-06 test result | `EXECUTION` | AI-06 | service | ADMITTED |
+| AI-07 routing decision | `DECISION` | AI-07 | service | **DEFERRED — outcome vocabulary NOT FROZEN** |
+| **human approval** | **`DECISION`** | the Workbench component recording it | **human** | **DEFERRED — outcome vocabulary NOT FROZEN** |
 
 ### 6.3 Why a human approval is a DECISION
 
@@ -320,6 +325,75 @@ CONTEXT_READ             an OBSERVATION with a context payload
 ROUTING                  a DECISION; and AI-07 is DEFERRED
 APPROVAL                 a DECISION whose actor is human
 ```
+
+### 6.5 The v1 admitted-producer registry — FROZEN (Amendment 1)
+
+Exactly six admitted events. No seventh event exists in v1.
+
+| # | admitted event | kind | family | producer | producer_type | actor.type |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | AI-03 context read | `OBSERVATION` | `SOURCE_READ` | `ai-03` | `service` | `service` |
+| 2 | AI-02 provider probe | `OBSERVATION` | `PROVIDER_PROBE` | `ai-02` | `service` | `service` |
+| 3 | AI-02 capability observation | `OBSERVATION` | `CAPABILITY_OBSERVATION` | `ai-02` | `service` | `service` |
+| 4 | AI-04 Guard decision | `DECISION` | none | `ai-04` | `service` | `service` |
+| 5 | AI-06 tool execution | `EXECUTION` | none | `ai-06` | `service` | `agent` |
+| 6 | AI-06 test result | `EXECUTION` | none | `ai-06` | `service` | `service` |
+
+```text
+The event-to-component MAPPING is CONTRACT-REQUIRED: §6.2's producer and actor
+columns already state which component writes which event, and this table
+transcribes them.
+
+The producer token SPELLINGS are IMPLEMENTATION-CHOSEN and are FROZEN by
+Amendment 1. No frozen serialized producer token exists anywhere in the
+repository, so the amendment freezes a set rather than leaving every producer
+rule uncheckable.
+
+The registry is keyed by admitted event and family. A token registered for one
+event is not thereby valid for another.
+
+The registry constrains v1 ADMITTED RECORDS. It is not the permanent set of
+Workbench components. Adding an event, a producer or a token is an amendment.
+```
+
+**The two deferred events are not representable in v1.**
+
+| deferred event | kind | family | producer | payload | reserved field | discriminator | reserved interface |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| AI-07 routing decision | `DECISION` | none | NONE | DEFERRED | none | none | none |
+| human approval | `DECISION` | none | NONE | DEFERRED | none | none | none |
+
+Neither gains a placeholder token, a discriminator, a reserved field or an
+interface reservation. §6.2's kind assignment stands: when either becomes
+representable it is a `DECISION`, never an `OBSERVATION`. What is deferred is the
+**outcome vocabulary**, not the classification.
+
+### 6.6 Cross-field rejection rules — FROZEN (Amendment 1)
+
+| rule | outcome |
+| --- | --- |
+| `producer` is not the token registered for this kind and family | REJECTED |
+| `producer_type` is not a member of `ProducerType` (§7.1) | REJECTED |
+| kind is `DECISION` and `actor.type` is not `service` | REJECTED |
+| kind is `OBSERVATION` and `actor.type` is not `service` | REJECTED |
+| kind is `EXECUTION` and `actor.type` is neither `agent` nor `service` | REJECTED |
+| kind is `DECISION` and `decision` is not a `GuardDecision` member | REJECTED |
+| kind is `OBSERVATION` and the status field is not its family's | REJECTED |
+| kind is `OBSERVATION` and the binding arm is not its family's | REJECTED |
+| a `payload.tool_calls[]` ordinal is duplicated | REJECTED |
+| `payload.reasons[]` contains a duplicate element | REJECTED |
+| `artifacts.items[]` contains a duplicate `artifact_digest` | REJECTED |
+
+Rejected by construction from §6.5: `ai-02` used for a `DECISION`; `ai-04` used for
+an `OBSERVATION`; `ai-06` used for a `DECISION`; `ai-03` used for an `EXECUTION`;
+`ai-02` used for an `OBSERVATION` whose family is `SOURCE_READ`; and any token
+absent from the registry.
+
+The DECISION row is what closes the Guard producer alias: producer,
+`producer_type`, `actor.type` and `decision` together are the whole of §6.2's Guard
+row, and no other row may produce that combination. Without it, any service
+producer carrying an `ALLOW` decision could be read as an AI-04 Guard decision, and
+a human approval could be recorded in `GuardDecision`'s vocabulary.
 
 ---
 
@@ -351,35 +425,37 @@ A probe observes.
 
 ### 7.1 Vocabulary and role constraint — FROZEN
 
-`producer_type` and `actor.type` draw on the **same** closed vocabulary,
-`human | agent | service | unknown`, inherited from AI-04's `ActorType` — imported,
-not restated, and **not redefined**. AI-05 does not add, remove or rename a member.
-
-AI-05 applies a **narrower role constraint** on top of that vocabulary:
+**Amendment 1 gave `producer_type` its own vocabulary.** Before it, this section
+described `producer_type` as a narrower use of AI-04's `ActorType`, which made the
+producer role a constraint on another component's type rather than a type in its
+own right. The two vocabularies are now distinct, and **`producer_type` does not use
+`ActorType`**.
 
 ```text
-producer_type  MUST be in   { agent, service, unknown }
-                           NOT human
+ProducerType — closed, owned by AI-05, frozen by Amendment 1
+    agent
+    service
+    unknown
 
-actor.type     MUST be in   { human, agent, service, unknown }
-                           unchanged from the inherited vocabulary
+ActorType — AI-04's, imported unchanged and NOT redefined
+    human
+    agent
+    service
+    unknown
 ```
 
 ```text
-AI-04's ActorType vocabulary remains imported unchanged.
-AI-05 applies a narrower ROLE CONSTRAINT to producer_type.
+producer_type  MUST be a member of ProducerType
+actor.type     MUST be a member of ActorType
 ```
 
-**Why a constraint rather than a new enum.** `human` remains a member of the
-inherited vocabulary because AI-05 must not redefine a frozen type (§3). But it is
-not reachable in the producer role: the producer is the component that **wrote** the
-record, so a human producer would mean a human authoring an EvidenceRecord directly,
-which §7 forbids. Removing `human` from the vocabulary would be a redefinition;
-constraining its use is a role rule.
-
-Without this, `producer = human, producer_type = human` would be schema-legal while
-contradicting §7 — a state the schema accepts and the prose forbids. That is the
-same class of defect as a field that is operational and digested.
+**Why this is a separate type rather than a constraint.** `human` is not reachable
+in the producer role: the producer is the component that **wrote** the record, so a
+human producer would mean a human authoring an EvidenceRecord directly, which §7
+forbids. Expressing that as "`ActorType` minus `human`" makes the producer
+vocabulary a function of a type AI-05 does not own, and it left
+`producer = human, producer_type = human` schema-legal while the prose forbade it.
+A closed three-member type admits no such state.
 
 FORBIDDEN:
 
@@ -418,12 +494,19 @@ artifact location    artifact_ref      opaque locator
 
 ```text
 AI-05-GENERATED at admission
-opaque, "ev-<hex>"
+opaque, "ev-" followed by exactly 16 lowercase hex characters   (Amendment 1)
 NEVER content-derived
 NEVER caller-supplied
 NEVER in content_digest
 in record_digest
+grammar G-EVIDENCE-ID (§14.9)
 ```
+
+**Amendment 1 fixed the width.** Before it this section said `ev-<hex>` and gave no
+length, so `record_ref` validation had nothing to validate against. The width is
+**AI-05's own representation choice**, not an AI-04 contract requirement: AI-04's
+contract fixes no width, and its implementation uses `uuid4().hex[:16]` for
+`decision_id`, which is the only precedent and is an implementation one.
 
 Generation follows AI-04's `decision_id` precedent: a generated runtime identifier
 that is never part of a semantic digest. Because **AI-05 assigns it**, a
@@ -625,6 +708,28 @@ created_at      DOES NOT EXIST — redundant with recorded_at
 `created_at` is forbidden. Two names for one instant is how two consumers come to
 disagree about which is authoritative.
 
+**Syntax, which is a separate question from the classification above
+(Amendment 1).** The table decides *which* timestamps are semantic. It says nothing
+about their form, and the two must not be conflated:
+
+```text
+observed_at and recorded_at, when a value is present, MUST be ISO-8601 UTC with a
+trailing Z at second resolution.   grammar G-TIMESTAMP (§14.9)
+```
+
+The rule applies to those two fields and to no others. It is REPOSITORY-DERIVED:
+`plugins/context/context.py` `utc_now()` emits exactly this form, and AI-02's
+`live_verification` uses second resolution.
+
+Null, per kind, and not a matter of syntax:
+
+```text
+OBSERVATION   observed_at REQUIRED and non-null
+EXECUTION     observed_at REQUIRED and non-null
+DECISION      observed_at OPTIONAL; the projection emits null, never omits the key
+recorded_at   REQUIRED and non-null for every kind; AI-05 stamps it
+```
+
 When an AI-05 record's own claim **is** an upstream read — for example an
 `OBSERVATION` that the workspace was in a given state at a given time — the instant
 is copied into this record's `observed_at` and becomes semantic. The upstream field
@@ -646,18 +751,59 @@ same decision + different observed_at      ->  same content_digest
 FROZEN. The payload is **typed per kind and closed**. Every payload field MUST be
 declared in this contract as either SEMANTIC or OPERATIONAL.
 
+**Amendment 1 declared the fields.** Before it, this section named the fields in
+prose and satisfied none of its own three requirements: no field was declared, no
+class was assigned, and no field carried a semantic or operational mark. §15.2 now
+carries the complete leaf table, with every field's class, grammar, role, digest
+membership and origin.
+
 ```text
-OBSERVATION   subject, source binding, status or outcome, the observed facts
-DECISION      decision, reason_code, reasons, the input it decided on
-EXECUTION     what ran, its ordinal, status, result classification
+OBSERVATION
+    subject          string             REQUIRED   Class 3
+    family           ObservationFamily  REQUIRED   Class 2
+    binding          WorkspaceBinding or ProviderBinding
+                                        REQUIRED   arm selected by family
+    observed         string             REQUIRED   Class 4
+    plus, per family:
+        SOURCE_READ              read_status       SourceReadStatus   REQUIRED
+        PROVIDER_PROBE           run_status        LiveRunStatus      REQUIRED
+        CAPABILITY_OBSERVATION   outcome           ProbeOutcome       REQUIRED
+                                 candidate_status  CapabilityStatus  REQUIRED
+
+DECISION
+    decision         GuardDecision      REQUIRED   Class 2
+    reason_code      string             REQUIRED   Class 3
+    reasons          string[]           OPTIONAL   Class 4, SET
+    input_digest     string             REQUIRED   Class 1, 64 lowercase hex
+
+EXECUTION
+    tool_calls                       ToolCall[]  OPTIONAL   ORDER by ordinal
+        ordinal                      int         REQUIRED   Class n/a
+        what_ran                     string      REQUIRED   Class 4
+        status                       StatusValue REQUIRED   Class 2
+        result_classification        DEFERRED — MUST BE ABSENT IN V1
 ```
+
+A status field belonging to a family other than the record's own is REJECTED. The
+binding arm is selected by `family` and is never inferred from a producer name.
+
+```text
+WorkspaceBinding                       ProviderBinding
+    source_kind      SourceKind  REQ       model_ref      string  REQ
+    source_identity  string      REQ       endpoint_host  string? optional
+    source_revision  string      REQ       capability     CapabilityName? optional
+```
+
+**DECISION admits one arm in v1.** Routing decisions and human approvals are
+classified as `DECISION` by §6.2 and their payload outcome vocabularies are NOT
+FROZEN, so neither arm is representable in v1. See §6.5.
 
 Rules:
 
 ```text
 the payload has NO free-form map field
 every field is declared; an undeclared field is REJECTED (§30)
-every string field belongs to a declared class (§14.2)
+every string field belongs to a declared class (§14.2) and a declared grammar (§14.9)
 an unlisted enum value is REJECTED, never treated as an ordinary value (§30)
 ```
 
@@ -704,6 +850,41 @@ ContextRef:
   truth_state:      string   # state — PASS | FAIL | BLOCKED | NOT_RUN | UNKNOWN
   freshness:        string   # state — CURRENT | STALE | UNKNOWN
 ```
+
+**The conditional source revision rule — FROZEN (Amendment 1).**
+
+One rule, applied identically to both paths that carry a source revision:
+
+```text
+payload.binding.source_revision
+references.context[].source_revision
+```
+
+| `source_kind` | required revision |
+| --- | --- |
+| `GIT_CURRENT_STATE` | exactly 40 lowercase hexadecimal characters |
+| `GIT_HISTORY` | exactly 40 lowercase hexadecimal characters |
+| `MASTER_ROADMAP` | exactly 64 lowercase hexadecimal characters |
+| `CAPABILITY_INVENTORY` | exactly 64 lowercase hexadecimal characters |
+| `DESIGN_FREEZE` | exactly 64 lowercase hexadecimal characters |
+| `EXIT_REPORT` | exactly 64 lowercase hexadecimal characters |
+| any other value | REJECTED, because `SourceKind` is closed and those are its only six members |
+
+```text
+This is a CONTRACT-LEVEL CONDITIONAL GRAMMAR RULE, not a runtime inference and not
+something a producer may determine. grammar G-REVISION (§14.9).
+
+The same source_kind and revision pair MUST produce the same accept or reject
+result on both paths.
+
+REPOSITORY-DERIVED: AI-03 §7.1 states that a git source's revision is the commit SHA
+the read describes and a document source's revision is the SHA-256 digest of the
+file content read. plugins/context/sources.py implements both.
+```
+
+`source_kind` MUST use AI-03's `SourceKind`, `item_kind` MUST use AI-03's `ItemKind`,
+`truth_state` MUST use AI-03's `StatusValue`, and `freshness` MUST use AI-03's
+`Freshness`. No arbitrary string is accepted in any of the four.
 
 ### 12.2 Why value participates in identity
 
@@ -769,25 +950,40 @@ artifacts:
 
 ```text
 artifact_digest    SEMANTIC     included in content_digest AND record_digest
-role               SEMANTIC     included in both
+role               DEFERRED     MUST BE ABSENT IN V1   (Amendment 1)
 external           SEMANTIC     included in both
 owner_workspace_id SEMANTIC     included in both
 artifact_ref       OPERATIONAL  EXCLUDED from content_digest, included in record_digest
 availability       RUNTIME      NOT an Evidence field at all
 ```
 
+**`role` is deferred (Amendment 1).** It was declared here as a closed vocabulary
+with no members enumerated anywhere, so the requirement could not be satisfied and
+the field could not be validated. It is now a closed vocabulary whose members are
+**not yet frozen**, and `role` MUST BE ABSENT in v1: a record carrying it is
+REJECTED. Reintroducing it requires a further amendment that freezes its members.
+No closed vocabulary for `role` is created by Amendment 1.
+
 **`artifact_ref` is an opaque identifier, never a path.** The id-to-location mapping
 is a store-side concern. Because it is opaque, relocation cannot change it, and
-promotion alters no field (§20.3).
+promotion alters no field (§20.3). Its grammar is `G-LOCATOR` (§14.9): bounded,
+single-line, and otherwise uninterpreted. AI-05 never resolves it and never parses
+it, and this contract does not enforce "never a path" lexically — that sentence
+describes AI-05's behaviour.
 
 ### 13.2 Collection rules — FROZEN
 
 ```text
-ordering    SET-semantic, canonical order = (role, artifact_digest)
-uniqueness  (role, artifact_digest) unique within a record
-            a second entry with the same pair is a DUPLICATE -> REJECT
+ordering    SET-semantic, canonical order = artifact_digest      (Amendment 1)
+uniqueness  artifact_digest unique within a record
+            a second entry with the same digest is a DUPLICATE -> REJECT
 ordering MUST NOT use artifact_ref   — it is a locator, not an ordering input
 ```
+
+**Amendment 1 narrowed the key.** It was `(role, artifact_digest)`. `role` MUST BE
+ABSENT in v1, so the pair degenerates to `artifact_digest` alone. No key is added
+and none is removed; the degenerate case is stated so that it is not mistaken for a
+silent simplification.
 
 ### 13.3 Availability is not a field
 
@@ -863,7 +1059,8 @@ AI-05 EvidenceRecord
     |
     +--> artifact_ref
     +--> artifact_digest
-    +--> role / external / owner_workspace_id
+    +--> external / owner_workspace_id
+    (role is DEFERRED and MUST BE ABSENT in v1 — §13.1, Amendment 1)
 ```
 
 **NOT:**
@@ -929,26 +1126,106 @@ A guarantee nobody can test is worse than a smaller guarantee that holds.
 
 > **There is no free-text field class in an EvidenceRecord.**
 
-Every string field belongs to exactly one declared class:
+Every string field belongs to exactly one declared class. **Amendment 1 restated
+Class 3 and Class 4**; the other three are unchanged.
 
 ```text
-Class 1  structural    digest / revision                          shape-validated ONLY
-                       lowercase hex, exact length                never scanned,
-                       (see §14.5)                                never substituted
-Class 2  vocabulary    closed enum                                validated against the enum
-Class 3  identifier    ^[A-Za-z0-9._-]{1,64}$ style               shape-validated
-                       and MUST arrive PRE-SANITIZED              AI-05 never sanitizes it
-                       by the upstream identifier sanitizer
-Class 4  bounded       content from a declared source; length cap, flattened
-         source        newlines, AND the published admission rule set
-Class 5  free text     FORBIDDEN — does not exist in the schema
+Class 1  structural
+    A digest or a revision. Lowercase hexadecimal, exact length.
+
+Class 2  vocabulary
+    A member of a named closed enum.
+
+Class 3  structured machine token
+    A bounded string whose interpretation is defined by a field-specific grammar
+    (§14.9). AI-05 shape-validates it. AI-05 never normalizes it and never
+    substitutes it; a non-conforming value is REJECTED.
+    Class 3 does NOT imply that every field in it is semantically an identifier.
+
+Class 4  bounded producer-normalized text
+    A single line, length-capped, newline-flattened by the PRODUCER, and subject
+    to the published admission rule set. AI-05 validates and rejects a malformed
+    admission value. AI-05 performs no substitution and no sanitization.
+
+Class 5  free text
+    FORBIDDEN. Does not exist in the schema.
 ```
 
 A caller holding an arbitrary string **has no field to put it in.**
 
-**AI-05 MUST NOT perform sanitization on any class.** An identifier arrives already
-sanitized; AI-05 checks its shape and admits or rejects it. AI-05 never rewrites an
-accepted value, in Class 3 or anywhere else.
+**AI-05 MUST NOT perform sanitization on any class.** It checks a value's shape
+against the declared grammar and admits or rejects it. AI-05 never rewrites an
+accepted value, in Class 3, Class 4 or anywhere else.
+
+**Class 3 is not a claim about secret provenance.** AI-05 does not assert that any
+Class 3 field passed through `providers/redaction.py`, and does not depend on that
+being true. Where an upstream contract requires pre-sanitization, that contract owns
+the responsibility and this one does not restate it.
+
+**Class 4's division of responsibility.** The producer normalizes and flattens
+newlines before submission. AI-05 **rejects** a value containing CR or LF rather
+than flattening it, because flattening would be the silent substitution §14.4.1
+forbids. The published admission rule set is C-1 and remains DEFERRED, so every
+Class 4 field is structurally bounded and not rule-checked.
+
+### 14.9 The grammar table — FROZEN
+
+**Amendment 1 added this section.** Each name is defined exactly once and is used by
+the §15.2 leaf table. No alias exists.
+
+| grammar | definition | origin |
+| --- | --- | --- |
+| `G-EVIDENCE-ID` | the pattern `^ev-[0-9a-f]{16}$` | IMPLEMENTATION-CHOSEN |
+| `G-DIGEST` | exactly 64 lowercase hexadecimal characters | REPOSITORY-DERIVED |
+| `G-IDENT` | the pattern `^[A-Za-z0-9._-]{1,64}$` | IMPLEMENTATION-CHOSEN |
+| `G-SUBJECT` | non-empty, single-line, at most 256 characters, otherwise uninterpreted | IMPLEMENTATION-CHOSEN |
+| `G-OPAQUE-ID` | non-empty, single-line, at most 512 characters, no CR, no LF, otherwise uninterpreted | IMPLEMENTATION-CHOSEN |
+| `G-HOST` | non-empty, single-line, lowercase, containing none of the characters at-sign, colon, slash or whitespace, at most 253 characters | IMPLEMENTATION-CHOSEN |
+| `G-MODELREF` | `PROVIDER_ID_RE` followed by exactly one slash followed by `MODEL_ID_RE` | REPOSITORY-DERIVED |
+| `G-REVISION` | conditional on `source_kind` as stated in §12.1 | REPOSITORY-DERIVED |
+| `G-TIMESTAMP` | ISO-8601 UTC with a trailing `Z`, at second resolution | REPOSITORY-DERIVED |
+| `G-LOCATOR` | non-empty when present, single-line, at most 512 characters, no CR, no LF, otherwise uninterpreted by AI-05 | IMPLEMENTATION-CHOSEN |
+| `G-TEXT` | single-line bounded producer-normalized text, at most 512 characters, no CR, no LF. The producer performs normalization and newline flattening. AI-05 validates and rejects malformed input and performs no substitution and no sanitization | shape IMPLEMENTATION-CHOSEN, admission rule-set obligation CONTRACT-REQUIRED and DEFERRED with C-1 |
+| `G-REGISTERED` | the token admitted by §6.5 for the current kind and family | registry requirement CONTRACT-REQUIRED, token spelling IMPLEMENTATION-CHOSEN |
+| `G-ORDINAL` | an integer greater than or equal to 0, unique within `payload.tool_calls[]`, not required to be contiguous | IMPLEMENTATION-CHOSEN |
+
+Evidence for the REPOSITORY-DERIVED labels:
+
+```text
+G-DIGEST
+    §20.2 of the AI-04 contract fixes the digest representation as lowercase
+    hexadecimal. plugins/guard/digest.py sha256_hex emits exactly 64 characters.
+
+G-MODELREF
+    providers/profile.py line 27 defines PROVIDER_ID_RE
+    providers/model_profile.py line 41 defines MODEL_ID_RE
+    providers/profile.py ModelRef.parse requires exactly one slash
+    The composition is AI-02's. AI-05 does not redefine model identity. A
+    model_ref that AI-02 accepts, AI-05 MUST NOT reject.
+
+G-REVISION
+    AI-03 §7.1: a git source's revision is the commit SHA the read describes; a
+    document source's revision is the SHA-256 digest of the file content read.
+
+G-TIMESTAMP
+    plugins/context/context.py utc_now emits isoformat at second resolution with
+    the offset replaced by Z.
+```
+
+Two notes, recorded rather than left implicit:
+
+```text
+G-HOST
+    The exclusion of userinfo, port and uppercase follows from AI-02's own
+    endpoint_host behaviour. AI-02 states no lexical grammar, so the character
+    set and the length bound are AI-05's choice. AI-02's endpoint host semantics
+    are not redefined.
+
+G-OPAQUE-ID and G-LOCATOR
+    These two define identical shapes today. They are named separately because
+    their semantic roles differ, an identity versus a locator. They are not
+    claimed to differ today.
+```
 
 ### 14.3 The proven invariants
 
@@ -1192,51 +1469,83 @@ record_digest    STORED-RECORD INTEGRITY  "has this stored record been altered?"
 statement in this document that disagrees with it is a defect in this document.
 An implementation MUST NOT classify a field by any other means.
 
+**Amendment 1 replaces the container-level table with a leaf table.** The previous
+table classified `payload` and the collection containers as single rows, which could
+not express a nested exclusion: `artifact_ref`'s exclusion from `content_digest`
+lived in imperative code rather than in this table. Every leaf is now a row, and the
+containers carry collection order only (§15.4).
+
+Column meanings:
+
 ```text
-field                          semantic role        content  record  caller  AI-05   upstream
-                                                    digest   digest  suppl?  gen?    sanitized?
-evidence_id                    identity             no       yes     NO      YES     n/a
-schema_version                 semantic             yes      yes     yes     no      n/a
-kind                           semantic             yes      yes     yes     no      n/a
-producer                       semantic provenance  yes      yes     yes     no      n/a
-producer_version               OPERATIONAL          NO       yes     yes     no      n/a
-producer_type                  semantic provenance  yes      yes     yes     no      n/a
-actor.id                       semantic provenance  yes      yes     yes     no      n/a
-actor.type                     semantic provenance  yes      yes     yes     no      n/a
-workspace_id                   semantic scope       yes      yes     yes     no      n/a
-experiment_id                  OPERATIONAL          NO       yes     yes     no      n/a
-observed_at                    per kind (§10.2)     per kind yes     yes     no      n/a
-recorded_at                    OPERATIONAL          NO       yes     NO      YES     n/a
-
-payload fields                 semantic             yes      yes     yes     no      Class 3:
-                                                                                      YES
-                                                                                      Class 4:
-                                                                                      YES
-
-ContextRef.workspace_id        semantic identity    yes      yes     yes     no      n/a
-ContextRef.source_kind         semantic identity    yes      yes     yes     no      n/a
-ContextRef.source_identity     semantic identity    yes      yes     yes     no      n/a
-ContextRef.source_revision     semantic identity    yes      yes     yes     no      n/a
-ContextRef.subject             semantic identity    yes      yes     yes     no      n/a
-ContextRef.value_digest        semantic identity    yes      yes     NO      YES     n/a
-ContextRef.item_kind           semantic state       yes      yes     yes     no      n/a
-ContextRef.truth_state         semantic state       yes      yes     yes     no      n/a
-ContextRef.freshness           semantic state       yes      yes     yes     no      n/a
-
-artifacts[].artifact_digest    semantic integrity   yes      yes     YES     no      n/a
-artifacts[].role               semantic             yes      yes     yes     no      n/a
-artifacts[].external           semantic             yes      yes     yes     no      n/a
-artifacts[].owner_workspace_id semantic             yes      yes     yes     no      n/a
-artifacts[].artifact_ref       LOCATOR / OPERATIONAL NO      yes     yes     no      n/a
-
-references.supersedes[]        semantic             yes      yes     yes     no      n/a
-references.decisions[]         semantic             yes      yes     yes     no      n/a
-
-content_digest                 integrity            —        yes     NO      YES     n/a
-record_digest                  integrity            no       —       NO      YES     n/a
-storage tier                   NOT CONTENT          NO       NO      n/a     n/a     n/a
-artifact availability          RUNTIME              not a field            n/a     n/a
+path                    the complete dotted path of the leaf within the record
+type                    the declared type
+class                   the §14.2 field class, n/a for a field that is not a
+                        string field, or DEFERRED
+grammar                 the §14.9 grammar name, n/a, or MUST BE ABSENT IN V1
+semantic/operational    the field role
+content_digest          yes, no, per-kind, or is
+record_digest           yes, no, or is
+origin                  C for caller-supplied, A for AI-05-generated
 ```
+
+| path | type | class | grammar | semantic/operational | content_digest | record_digest | origin |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `evidence_id` | string | 3 | `G-EVIDENCE-ID` | identity | no | yes | A |
+| `schema_version` | int | n/a | n/a | semantic | yes | yes | C |
+| `kind` | enum `EvidenceKind` | 2 | n/a | semantic | yes | yes | C |
+| `producer` | string | 3 | `G-REGISTERED` | semantic | yes | yes | C |
+| `producer_version` | string | 3 | `G-IDENT` | operational | no | yes | C |
+| `producer_type` | enum `ProducerType` | 2 | n/a | semantic | yes | yes | C |
+| `actor.id` | string | 4 | `G-TEXT` | semantic | yes | yes | C |
+| `actor.type` | enum `ActorType` | 2 | n/a | semantic | yes | yes | C |
+| `workspace_id` | string | 3 | `G-IDENT` | semantic | yes | yes | C |
+| `experiment_id` | string or null | 3 | `G-IDENT` | operational | no | yes | C |
+| `observed_at` | string or null | 3 | `G-TIMESTAMP` | per-kind | per-kind | yes | C |
+| `recorded_at` | string | 3 | `G-TIMESTAMP` | operational | no | yes | A |
+| `payload.subject` | string | 3 | `G-SUBJECT` | semantic | yes | yes | C |
+| `payload.family` | enum `ObservationFamily` | 2 | n/a | semantic | yes | yes | C |
+| `payload.binding.source_kind` | enum `SourceKind` | 2 | n/a | semantic | yes | yes | C |
+| `payload.binding.source_identity` | string | 3 | `G-OPAQUE-ID` | semantic | yes | yes | C |
+| `payload.binding.source_revision` | string | 1 | `G-REVISION` | semantic | yes | yes | C |
+| `payload.binding.model_ref` | string | 3 | `G-MODELREF` | semantic | yes | yes | C |
+| `payload.binding.endpoint_host` | string or null | 3 | `G-HOST` | semantic | yes | yes | C |
+| `payload.binding.capability` | enum `CapabilityName` or null | 2 | n/a | semantic | yes | yes | C |
+| `payload.read_status` | enum `SourceReadStatus` | 2 | n/a | semantic | yes | yes | C |
+| `payload.run_status` | enum `LiveRunStatus` | 2 | n/a | semantic | yes | yes | C |
+| `payload.outcome` | enum `ProbeOutcome` | 2 | n/a | semantic | yes | yes | C |
+| `payload.candidate_status` | enum `CapabilityStatus` | 2 | n/a | semantic | yes | yes | C |
+| `payload.observed` | string | 4 | `G-TEXT` | semantic | yes | yes | C |
+| `payload.decision` | enum `GuardDecision` | 2 | n/a | semantic | yes | yes | C |
+| `payload.reason_code` | string | 3 | `G-IDENT` | semantic | yes | yes | C |
+| `payload.reasons[]` | string | 4 | `G-TEXT` | semantic | yes | yes | C |
+| `payload.input_digest` | string | 1 | `G-DIGEST` | semantic | yes | yes | C |
+| `payload.tool_calls[].ordinal` | int | n/a | `G-ORDINAL` | semantic | yes | yes | C |
+| `payload.tool_calls[].what_ran` | string | 4 | `G-TEXT` | semantic | yes | yes | C |
+| `payload.tool_calls[].status` | enum `StatusValue` | 2 | n/a | semantic | yes | yes | C |
+| `payload.tool_calls[].result_classification` | DEFERRED | DEFERRED | MUST BE ABSENT IN V1 | not present in v1 | not present in v1 | not present in v1 | not present in v1 |
+| `references.context[].workspace_id` | string | 3 | `G-IDENT` | semantic | yes | yes | C |
+| `references.context[].source_kind` | enum `SourceKind` | 2 | n/a | semantic | yes | yes | C |
+| `references.context[].source_identity` | string | 3 | `G-OPAQUE-ID` | semantic | yes | yes | C |
+| `references.context[].source_revision` | string | 1 | `G-REVISION` | semantic | yes | yes | C |
+| `references.context[].subject` | string | 3 | `G-SUBJECT` | semantic | yes | yes | C |
+| `references.context[].value_digest` | string | 1 | `G-DIGEST` | semantic | yes | yes | A |
+| `references.context[].item_kind` | enum `ItemKind` | 2 | n/a | semantic | yes | yes | C |
+| `references.context[].truth_state` | enum `StatusValue` | 2 | n/a | semantic | yes | yes | C |
+| `references.context[].freshness` | enum `Freshness` | 2 | n/a | semantic | yes | yes | C |
+| `references.decisions[].record_ref` | string | 3 | `G-EVIDENCE-ID` | semantic | yes | yes | C |
+| `references.supersedes[].record_ref` | string | 3 | `G-EVIDENCE-ID` | semantic | yes | yes | C |
+| `references.supersedes[].correction_reason` | string | 4 | `G-TEXT` | semantic | yes | yes | C |
+| `artifacts.items[].artifact_digest` | string | 1 | `G-DIGEST` | semantic | yes | yes | C |
+| `artifacts.items[].role` | DEFERRED | DEFERRED | MUST BE ABSENT IN V1 | not present in v1 | not present in v1 | not present in v1 | not present in v1 |
+| `artifacts.items[].external` | bool | n/a | n/a | semantic | yes | yes | C |
+| `artifacts.items[].owner_workspace_id` | string or null | 3 | `G-IDENT` | semantic | yes | yes | C |
+| `artifacts.items[].artifact_ref` | string or null | 3 | `G-LOCATOR` | locator | no | yes | C |
+| `content_digest` | string | 1 | `G-DIGEST` | integrity | is | yes | A |
+| `record_digest` | string | 1 | `G-DIGEST` | integrity | no | is | A |
+
+Two rows are deferred and MUST BE ABSENT IN V1:
+`payload.tool_calls[].result_classification` and `artifacts.items[].role`.
 
 ```text
 storage tier MUST NOT be in content_digest.
@@ -1296,19 +1605,29 @@ the hole the two-digest model closes.
 ### 15.4 The canonical collection table — FROZEN
 
 **Order semantics MUST NOT be inferred at implementation time.** Every collection is
-declared here.
+declared here. **Amendment 1 merged this table into §15.2**, so a collection's order
+and its leaves are declared in one document; this section restates the order column
+for reference and adds the duplicate rule.
+
+| collection | order | canonical key | duplicates |
+| --- | --- | --- | --- |
+| `references.context[]` | SET | `(workspace_id, source_kind, source_identity, source_revision, subject, value_digest)` | REJECTED |
+| `references.decisions[]` | SET | `record_ref` | REJECTED |
+| `references.supersedes[]` | SET | `record_ref` | REJECTED |
+| `artifacts.items[]` | SET | `artifact_digest` | REJECTED |
+| `payload.reasons[]` | SET | element value ascending | REJECTED |
+| `payload.tool_calls[]` | ORDER | explicit `ordinal`; array position is never semantic | REJECTED on a duplicate ordinal |
 
 ```text
-collection                    order            canonical key
-payload maps                  object canonical  sorted keys
-references.context[]          SET              (workspace_id, source_kind, source_identity,
-                                                source_revision, subject, value_digest)
-references.decisions[]        SET              record_ref
-references.supersedes[]       SET              record_ref
-artifacts.items[]             SET              (role, artifact_digest)
-payload tool_calls[]          ORDER            explicit ordinal, then serialized in
-                                                that order
-payload tests[]/results[]     SET              (test_id, status)
+Amendment 1 changes three rows and adds one.
+
+artifacts.items[]        key was (role, artifact_digest). `role` MUST BE ABSENT in
+                         v1 (§13.1), so the key is artifact_digest alone.
+payload.reasons[]        was not declared here at all, so its ordering was an
+                         implementation choice that moved content_digest.
+payload.tool_calls[]     formerly written `payload tool_calls[]`.
+payload tests[]/results[]  REMOVED. No leaf schema for it existed anywhere in this
+                         contract, and no §6.2 event produces it.
 ```
 
 An undeclared collection is a contract violation, not an implementation choice. AI-04
@@ -1789,6 +2108,14 @@ AI-05 record_ref
 **These are never the same authority concept.** AI-05 MUST NOT introduce an
 unqualified `evidence_ref`; it uses `record_ref`.
 
+**Amendment 1 made the reference unambiguous.** A `record_ref` ALWAYS denotes an
+AI-05 `evidence_id`, in both `references.decisions[]` and `references.supersedes[]`,
+and takes the grammar `G-EVIDENCE-ID` (§14.9). An AI-04 guard decision id is NEVER an
+AI-05 `record_ref`: an AI-04 decision is recorded as an AI-05 `DECISION` record and
+is referenced by **that** record's id. Accepting a raw decision id would make
+`record_ref` denote two namespaces at once, which is the homonym this section exists
+to close.
+
 ### 23.4 Existing fields — UNCHANGED
 
 ```text
@@ -1911,7 +2238,24 @@ claim and its producer. It adjudicates nothing.
 
 FROZEN.
 
-A routing decision **can** become a `DECISION` record.
+**Amendment 1 restated this boundary.** This section previously said a routing
+decision *can* become a `DECISION` record, while §11 provided no routing arm and no
+routing vocabulary exists in the repository. Two sections cannot both be true, so
+the statement is now made as a taxonomy fact plus a payload-support fact:
+
+```text
+kind classification    DECISION            (§6.2, unchanged)
+payload support        DEFERRED
+outcome vocabulary     NOT FROZEN
+producer token         NONE registered     (§6.5)
+reserved field         none
+reserved discriminator none
+interface reservation  forbidden (below)
+```
+
+The kind is decided; the outcome vocabulary is not. **No routing decision is
+representable in v1**, and this is a declared deferral rather than a silent
+impossibility.
 
 AI-05 MUST NOT:
 
@@ -1922,8 +2266,7 @@ reserve a Router-shaped interface field
 ```
 
 AI-07 is **DEFERRED**. AI-05 does not stub it, does not reserve an interface for it,
-and its record kinds cover routing decisions without naming the Router — the generic
-`producer` and `kind` fields are sufficient.
+and reserves no routing field, discriminator or arm.
 
 ---
 
@@ -2095,7 +2438,7 @@ Layer 0 gains a structural check for `plugins/evidence`, mirroring
 | T22d | caller-supplied digest | digest origin | a caller supplies a value for `content_digest`, `record_digest` or `ContextRef.value_digest` | `REJECTED` (R1) | digests of AI-05's own content are AI-05's to compute; `sha256(secret)` cannot be adopted as an Evidence digest |
 | T22e | AI-05-generated digest | digest origin | AI-05 computes a digest from accepted canonical content | `ACCEPTED` | positive control: digest-shaped is not the same as caller-controlled |
 | T23 | raw payload rejection | payload boundary | an undeclared raw-content field — raw payload, raw log, raw provider body, raw tool output | `REJECTED`; nothing stored | raw payload cannot cross the normalized Evidence boundary, and AI-05 never converts supplied content into an artifact (§13.8) |
-| T24 | artifact reference contract | artifact boundary | the VALID alternative path: a producer stores the bytes outside AI-05 and submits `artifact_digest` + `artifact_ref` + `role` + `external` + `owner_workspace_id` | `ACCEPTED`; digest required; `artifact_ref` opaque; availability absent | T23 and T24 are two halves of one boundary: the reference crosses, the bytes never do (§13.7) |
+| T24 | artifact reference contract | artifact boundary | the VALID alternative path: a producer stores the bytes outside AI-05 and submits `artifact_digest` + `artifact_ref` + `external` + `owner_workspace_id` | `ACCEPTED`; digest required; `artifact_ref` opaque; availability absent | T23 and T24 are two halves of one boundary: the reference crosses, the bytes never do (§13.7) |
 | T25 | immutable write | lifecycle | any later operation on an admitted record | bytes unchanged | an audit trail that can be edited is not one |
 | T26 | correction via `supersedes` | lifecycle | a correcting record | new record accepted; old record byte-identical | corrections are additions, never edits |
 | T27 | `superseded_by` derived | lifecycle | query the set | derivable; not a stored field on any record | a stored back-pointer is a mutation |
@@ -2342,8 +2685,144 @@ recorded amendment — never a quiet adjustment.
 
 ### 34.3 Amendment log
 
+#### Amendment 1 — AI-05-B1 implementation readiness (2026-09-30)
+
+Found while implementing AI-05-B1 against main
+`53c0cce1a375b7084e1ab63ef52691068e1285f1`, the head at which this contract's file
+had blob `b1f97b5437737c106aacd3a8635386686ae5e719`. The amendment was authored on a
+docs-only branch with the B1 implementation head
+`f1644de005d61d718b72382fe03a8104734e9716` left untouched.
+
 ```text
-(none — this is the freeze revision)
+(a) §11 declared no payload field, class or semantic/operational mark while
+    requiring all three. It named the fields in prose and satisfied none of its own
+    requirements. All three payloads are now declared leaf by leaf in §15.2.
+
+(b) OBSERVATION is a typed union. §6.2 enumerates exactly three OBSERVATION-producing
+    events, each carrying a different status vocabulary that is preserved verbatim:
+    SourceReadStatus from AI-03; LiveRunStatus, ProbeOutcome and CapabilityStatus
+    from AI-02. AI-02's own ProbeOutcome docstring records that collapsing
+    INCONCLUSIVE into FAIL would turn a weak probe into a false negative. The
+    `family` field, whose members are §6.2's rows, selects the arm and therefore the
+    status vocabulary. The arm is never inferred from a producer name.
+
+(c) AI-05 v1 declares an admitted-producer registry in §6.5, keyed by event and
+    family, holding exactly six entries. No frozen serialized producer token exists
+    anywhere in the repository, so this amendment freezes a set rather than leaving
+    every producer rule uncheckable. The event-to-component mapping is
+    contract-required and is transcribed from §6.2's producer and actor columns; the
+    token spellings are implementation-chosen and are frozen by this amendment. The
+    registry constrains v1 admitted records, not the permanent set of Workbench
+    components.
+
+(d) §6.6 adds cross-field rejection rules on producer, producer_type, actor.type and
+    decision. Without them any service producer carrying an ALLOW decision could be
+    read as an AI-04 Guard decision, and a human approval could be recorded in
+    GuardDecision's vocabulary, which belongs to a component that did not perform
+    the act.
+
+(e) §6.2, §11 and §27 are reconciled on AI-07. A routing decision is classified as
+    DECISION and its payload outcome vocabulary is not frozen, so the arm is
+    deferred, no token is registered, and no routing decision is representable in
+    v1. §27's prohibition on reserving a Router-shaped interface stands. The human
+    approval arm is deferred on the same footing. Neither gains a placeholder token,
+    a discriminator, a reserved field or an interface.
+
+(f) §15.4 declared a `payload tests[]/results[]` collection with no leaf schema
+    anywhere in this contract, so the statement that every collection is declared
+    was false of the contract itself. The row is removed; no §6.2 event produces such
+    a collection.
+
+(g) §15.4 did not declare `payload.reasons[]`, so its ordering changed
+    content_digest by implementation choice. Declared SET with duplicates rejected.
+    AI-04 records reasons as an ordered tuple but digests it nowhere, so AI-04 never
+    decides whether the order is semantic. This is an AI-05 contract semantic choice,
+    not a claim about AI-04's tuple.
+
+(h) The `role` deferral is synchronised across §13.1, §13.2 and §15.2. §13.1
+    declared `role` a closed vocabulary and enumerated no members, so the field could
+    not be validated. It is now a closed vocabulary whose members are not yet frozen,
+    and `role` MUST BE ABSENT in v1. The ordering and uniqueness key becomes
+    `artifact_digest` alone.
+
+(i) §11 named a `result classification` with no repository vocabulary behind it. It
+    is declared deferred: the concept remains in this contract, and the field MUST BE
+    ABSENT in v1.
+
+(j) The rename of §21.1's `correction_reason` to `correction_code` is withdrawn. No
+    evidence establishes that it is a code. `correction_reason` is retained as
+    Class 4 bounded text, single-line, semantic, in both digests, and does not
+    collide with `payload.reason_code`, because different leaf paths are different
+    fields.
+
+(k) §15.2 classified containers and could not express a nested exclusion. The
+    exclusion of `artifact_ref` from `content_digest` lived in imperative code rather
+    than in the table. §15.2 is now a leaf table and §15.4 is merged into it, so a
+    collection's order and its leaves are declared in one document.
+
+(l) §14.2 Class 3 read "identifier" while the fields assigned to it include a
+    timestamp, a hostname, a model reference, an opaque locator and a record
+    reference, none of which is an identifier. Class 3 is now defined as a structured
+    machine token: a bounded string whose interpretation is defined by a
+    field-specific grammar. Class 4 is producer-normalized bounded text, with the
+    division stated: the producer normalizes and flattens newlines, and AI-05
+    validates and rejects and never substitutes.
+
+(m) §14.9 adds the grammar table. `G-MODELREF` is the composition of `PROVIDER_ID_RE`
+    and `MODEL_ID_RE`, corrected against frozen AI-02; a narrower pattern would have
+    rejected a legal AI-02 model reference containing a colon.
+
+(n) `subject` no longer uses an identifier grammar. AI-03's `subject_for_declaration`
+    yields the prefix `declared.` plus a normalised key of up to 80 characters, so a
+    legal AI-03 subject can reach 89 characters; an identifier cap of 64 would have
+    rejected it. `G-SUBJECT` is bounded, single-line and otherwise uninterpreted, and
+    both subject paths use it.
+
+(o) `source_identity` no longer claims a path grammar. AI-03 §7.1 freezes only the
+    stable identity of the thing read within the workspace, and AI-03's own values
+    include the bare token `git`. `G-OPAQUE-ID` admits path-shaped values without
+    asserting that they are paths.
+
+(p) `endpoint_host` uses `G-HOST`. AI-02's endpoint host semantics are not redefined:
+    the exclusions follow from `endpoint_host()`'s own behaviour. The character set
+    and the length bound are implementation-chosen, because AI-02 states no lexical
+    grammar.
+
+(q) `artifact_ref`'s grammar is `G-LOCATOR`: bounded, single-line and otherwise
+    uninterpreted. The statement that it is an opaque identifier and never a path
+    describes AI-05's behaviour and is not lexically enforced. The amendment records
+    that.
+
+(r) `actor.id` is Class 4. AI-04 does not freeze a grammar and accepts any non-empty
+    string, so AI-05's bounded single-line representation is narrower, and is
+    recorded as an AI-05 contract choice rather than an AI-04-derived rule.
+
+(s) §12.1 states the conditional revision grammar formally as `G-REVISION`. It
+    applies identically to both `source_revision` paths, is a contract-level rule
+    rather than a runtime inference, and follows AI-03 §7.1: 40 lowercase hexadecimal
+    characters for the git kinds and 64 for the document kinds.
+
+(t) §7.1 gives `producer_type` its own closed vocabulary, `ProducerType`, with the
+    members agent, service and unknown. It does not use `ActorType`, and `ActorType`
+    is not redefined.
+
+(u) §8.1 fixes the `evidence_id` width at 16 lowercase hex characters, as AI-05's own
+    representation choice rather than an AI-04 contract requirement. §23.3 states
+    that a `record_ref` always denotes an AI-05 `evidence_id` and that an AI-04
+    decision id is never one.
+
+(v) §10.3 gains the `G-TIMESTAMP` syntax rule for `observed_at` and `recorded_at`,
+    stated as a separate question from the semantic classification and applying to
+    those two fields only.
+
+(w) Declared as implementation-chosen, not derived from any upstream contract: the
+    evidence_id width, the ordinal bound and uniqueness, the Class 3 and Class 4
+    length caps including the 512 bound chosen to avoid a Class 5 free-text field,
+    the `G-SUBJECT` cap of 256, the `G-TIMESTAMP` syntax rule, the `G-LOCATOR`
+    character set, and the six producer tokens.
+
+No boundary, scope, deliverable, kind, digest classification, workspace rule or
+authority relation changed. C-1 remains DEFERRED.
 ```
 
 ---
