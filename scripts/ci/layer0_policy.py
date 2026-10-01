@@ -67,6 +67,65 @@ LIVE_SELECTION = re.compile(r"-m\s*['\"]?layer4")
 
 LIVE_HTTP_CLIENTS = ("curl ", "wget ", "Invoke-WebRequest", "requests.get", "httpx.")
 
+#: AI-05 §1.2: what the Evidence package may never reach, wherever it is used.
+EVIDENCE_FORBIDDEN_IMPORTS = (
+    "socket",
+    "http",
+    "urllib",
+    "urllib3",
+    "requests",
+    "httpx",
+    "aiohttp",
+    "ftplib",
+    "smtplib",
+    "telnetlib",
+    "ssl",
+    "asyncio",
+    "subprocess",
+    "multiprocessing",
+    "routing",
+    "tools",
+)
+
+#: The only provider modules the Evidence package may reach — an **allowlist**,
+#: not a denylist. AI-05 legitimately imports AI-02's frozen identity and status
+#: types (§3: imported, not restated), and nothing else. Stating what is
+#: permitted rather than what is forbidden is both tighter and honest about the
+#: dependency: it cannot be defeated by a module nobody thought to list, and it
+#: keeps the live-only transport out of AI-05 without this file having to name
+#: the thing AI-02's own confinement guard reserves.
+EVIDENCE_ALLOWED_PROVIDER_IMPORTS = (
+    "providers.profile",
+    "providers.model_profile",
+    "providers.live_verification",
+)
+
+#: The modules that touch a filesystem. Everything else in `plugins/evidence`
+#: is pure, which is what let B1's evidence record claim "no file I/O anywhere
+#: in the package" and what keeps that claim true for eight of nine modules.
+EVIDENCE_IO_MODULES = ("store.py",)
+
+EVIDENCE_FILESYSTEM_IMPORTS = (
+    "json",
+    "os",
+    "io",
+    "pathlib",
+    "shutil",
+    "tempfile",
+    "sqlite3",
+    "pickle",
+    "shelve",
+    "dbm",
+    "yaml",
+)
+
+EVIDENCE_FORBIDDEN_BUILTINS = ("eval", "exec", "compile", "__import__")
+
+#: Strings the Store may not contain. AI-05 records what happened; it does not
+#: write to the repository's contracts, its status documents, or its other
+#: packages.
+EVIDENCE_STORE_FORBIDDEN_LITERALS = ("docs/", "docs\\", "plugins/context", "plugins/guard")
+
 #: Workflows that must never touch a provider. Held to the strict deny rules.
 DEFAULT_WORKFLOWS = frozenset({"preflight.yml"})
 
@@ -631,6 +690,167 @@ def check_context_plugin_performs_no_git_write() -> list[str]:
     return problems
 
 
+def check_evidence_plugin_boundary() -> list[str]:
+    """AI-05 §1.2, §13.4 and §31: the shape of the Evidence package, as a gate.
+
+    §31 requires a Layer 0 structural check for `plugins/evidence`, mirroring
+    `check_context_plugin_performs_no_git_write`. That one executes the guard;
+    this one parses the package, because what it has to establish is an absence
+    — and an absence that is only asserted in a document is the kind that
+    survives review and not a refactor.
+
+    Five things are checked, each of which was a real decision rather than a
+    preference:
+
+    ```text
+    1  no network, no subprocess, no routing or tool import, anywhere
+    2  filesystem imports only in store.py. Before B2-P3 the whole package was
+       pure; the Store is the one module allowed to break that, and this is
+       what keeps it to one.
+    3  store.py — the module that does have file I/O — cannot reach the
+       contract, the decision record or the rest of the repository by path.
+       AI-05 has no business writing to docs/.
+    4  the two durability tiers are laid out as D4 says: staged is ignored by
+       git, promoted is not.
+    5  no credential-shaped literal is shipped in the package.
+    ```
+
+    Parsed with `ast`, not matched as text. A grep would flag the documentation
+    in these modules — which names every one of these hazards while explaining
+    why it is absent — and a check that fires on its own rationale is a check
+    that gets disabled.
+    """
+    import ast
+
+    package = ROOT / "plugins" / "evidence"
+    if not package.is_dir():
+        return []  # AI-05 not present yet; the required-files check owns that
+
+    problems: list[str] = []
+
+    # (1) and (2), per module.
+    for path in sorted(package.glob("*.py")):
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        except SyntaxError as exc:  # pragma: no cover - surfaced as a failure
+            problems.append(f"{_display(path)} does not parse: {exc}")
+            continue
+
+        imported: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                if node.module:
+                    imported.add(node.module)
+
+        roots = {name.split(".")[0] for name in imported}
+        for banned in EVIDENCE_FORBIDDEN_IMPORTS:
+            if banned.split(".")[0] in roots and (
+                "." not in banned or any(i.startswith(banned) for i in imported)
+            ):
+                problems.append(
+                    f"{_display(path)} imports {banned!r}; AI-05 reaches no "
+                    "network, spawns no process and routes nothing (§1.2)"
+                )
+
+        if path.name not in EVIDENCE_IO_MODULES:
+            for io_root in EVIDENCE_FILESYSTEM_IMPORTS:
+                if io_root in roots:
+                    problems.append(
+                        f"{_display(path)} imports {io_root!r}; only "
+                        f"{', '.join(EVIDENCE_IO_MODULES)} may touch a "
+                        "filesystem, and this module is not one of them"
+                    )
+
+        for name in sorted(imported):
+            if name == "providers" or name.startswith("providers."):
+                if not any(
+                    name == allowed or name.startswith(f"{allowed}.")
+                    for allowed in EVIDENCE_ALLOWED_PROVIDER_IMPORTS
+                ):
+                    problems.append(
+                        f"{_display(path)} imports {name!r}; the Evidence package "
+                        "may reach only "
+                        f"{', '.join(EVIDENCE_ALLOWED_PROVIDER_IMPORTS)}, so a "
+                        "transport or a provider client cannot be reached from "
+                        "any default path (§1.2)"
+                    )
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+                if node.func.id in EVIDENCE_FORBIDDEN_BUILTINS:
+                    problems.append(
+                        f"{_display(path)}:{node.lineno} calls {node.func.id}()"
+                    )
+                if node.func.id == "open" and path.name not in EVIDENCE_IO_MODULES:
+                    problems.append(
+                        f"{_display(path)}:{node.lineno} calls open(); the Store "
+                        "owns the package's file I/O"
+                    )
+
+    # (3) the Store cannot name the repository's documents **in code**.
+    #
+    # Docstrings are excluded, and that exclusion is the point rather than a
+    # convenience: these modules document the hazards they avoid, so `store.py`
+    # names `docs/AI-05-B2_DECISIONS_2026-10-01.md` while explaining which
+    # decisions it implements. A check that fired on its own rationale is a
+    # check that gets turned off. Only a string a statement could *use* counts.
+    store_source = (package / "store.py").read_text(encoding="utf-8")
+    store_tree = ast.parse(store_source, filename="store.py")
+    docstrings = {
+        id(statement.value)
+        for node in ast.walk(store_tree)
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef,
+                             ast.AsyncFunctionDef))
+        for statement in getattr(node, "body", [])[:1]
+        if isinstance(statement, ast.Expr)
+        and isinstance(statement.value, ast.Constant)
+        and isinstance(statement.value.value, str)
+    }
+    for node in ast.walk(store_tree):
+        if (
+            isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and id(node) not in docstrings
+        ):
+            for forbidden in EVIDENCE_STORE_FORBIDDEN_LITERALS:
+                if forbidden in node.value:
+                    problems.append(
+                        f"plugins/evidence/store.py:{node.lineno} names "
+                        f"{forbidden!r}; the Store writes under its root and "
+                        "nowhere else, and never to the repository's documents"
+                    )
+
+    # (4) the D4 layout, as .gitignore actually declares it.
+    ignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+    lines = {line.strip() for line in ignore.splitlines() if line.strip()}
+    if "evidence/staged/*" not in lines:
+        problems.append(
+            "evidence/staged/* is not gitignored; D4 makes a staged record "
+            "local and discardable, so it must not be committed"
+        )
+    if "!evidence/staged/.gitkeep" not in lines:
+        problems.append(
+            "evidence/staged/.gitkeep is not kept, so the tier directory "
+            "cannot exist in a clone"
+        )
+    for pattern in ("evidence/promoted", "evidence/promoted/*"):
+        if pattern in lines:
+            problems.append(
+                f".gitignore ignores {pattern!r}; a promoted record is durable "
+                "via Git (D4, §20.4 D6) and must be tracked"
+            )
+
+    # (5) no credential-shaped literal.
+    for path in sorted(package.glob("*.py")):
+        match = CREDENTIAL_SHAPED.search(path.read_text(encoding="utf-8"))
+        if match:
+            problems.append(f"{_display(path)} contains a credential-shaped literal")
+
+    return problems
+
+
 def check_layer_markers() -> list[str]:
     """Every test module belongs to exactly one layer.
 
@@ -702,6 +922,10 @@ def main() -> int:
     report.check(
         "context plugin performs no git write",
         check_context_plugin_performs_no_git_write(),
+    )
+    report.check(
+        "evidence plugin boundary and durability tiers",
+        check_evidence_plugin_boundary(),
     )
 
     if report.failures:
