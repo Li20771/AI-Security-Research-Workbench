@@ -17,7 +17,7 @@ process.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Mapping
 
 from plugins.guard.vocabulary import GuardDecision
 
@@ -36,8 +36,8 @@ from plugins.security_tools.errors import (
 from plugins.security_tools.guards import (
     ask_guard,
     check_v1_target_boundary,
-    decision_summary,
     guard_workspace_for,
+    unattributed_summary,
 )
 from plugins.security_tools.paths import resolve_root
 from plugins.security_tools.redaction import project
@@ -102,7 +102,11 @@ def invoke(
     # request. There is no store of decisions and no parameter that could add one.
     workspace = guard_workspace_for(request)
     try:
-        decision = ask_guard(
+        # One call, one decision, one invocation. The attribution comes back
+        # with the decision rather than being reconstructed afterwards, because
+        # a result that cannot name the evaluation that allowed it is not
+        # attributable (§8.1, §8.3).
+        decision, guard_summary = ask_guard(
             request, workspace=workspace, evaluator=evaluator, policy=policy
         )
     except GuardUnavailable as exc:
@@ -110,7 +114,10 @@ def invoke(
 
     if decision is not GuardDecision.ALLOW:
         return _refusal(
-            request, _REFUSAL_OUTCOMES[decision], f"GUARD_{decision.value}", decision=decision
+            request,
+            _REFUSAL_OUTCOMES[decision],
+            f"GUARD_{decision.value}",
+            guard_summary=guard_summary,
         )
 
     adapter = registry.adapter_for(request.tool)
@@ -132,13 +139,13 @@ def invoke(
     try:
         outcome = adapter.execute(invocation)
     except PathEscapesWorkspace as exc:
-        return _refusal(request, ToolOutcome.BLOCKED, exc.reason_code, decision=decision)
+        return _refusal(request, ToolOutcome.BLOCKED, exc.reason_code, guard_summary=guard_summary)
     except (TargetRefused, ExecutionRefused) as exc:
-        return _refusal(request, ToolOutcome.BLOCKED, exc.reason_code, decision=decision)
+        return _refusal(request, ToolOutcome.BLOCKED, exc.reason_code, guard_summary=guard_summary)
     except ToolError as exc:
-        return _refusal(request, ToolOutcome.UNKNOWN, exc.reason_code, decision=decision)
+        return _refusal(request, ToolOutcome.UNKNOWN, exc.reason_code, guard_summary=guard_summary)
 
-    return _assembled(request, descriptor, outcome, decision)
+    return _assembled(request, descriptor, outcome, guard_summary)
 
 
 # --------------------------------------------------------------------------
@@ -150,13 +157,17 @@ def _refusal(
     request: ToolRequest,
     outcome: ToolOutcome,
     reason_code: str,
-    decision: GuardDecision | None = None,
+    guard_summary: Mapping[str, str] | None = None,
 ) -> ToolResult:
     """A refusal is a `ToolResult`, not an exception (§17, §9.2).
 
     The exception is the mechanism; the result is the contract. A caller that
     wants to know why an invocation did not run reads `reason_code`, and one
     that wants to know what authorized the attempt reads `guard`.
+
+    `guard_summary` is the attribution from the evaluation that refused, when
+    there was one. A refusal raised before Guard was asked has none, and the
+    fallback says so rather than inventing an identifier.
     """
     return ToolResult(
         tool_id=request.tool.tool_id,
@@ -165,11 +176,11 @@ def _refusal(
         outcome=outcome,
         reason_code=reason_code,
         workspace_id=request.workspace.workspace_id,
-        guard={
-            "decision": str(decision if decision is not None else GuardDecision.BLOCKED),
-            "reason_code": reason_code,
-            "decision_id": "",
-        },
+        guard=dict(
+            guard_summary
+            if guard_summary is not None
+            else unattributed_summary(GuardDecision.BLOCKED, reason_code)
+        ),
         target=request.target.to_dict(),
     )
 
@@ -178,7 +189,7 @@ def _assembled(
     request: ToolRequest,
     descriptor: ToolDescriptor,
     outcome: AdapterOutcome,
-    decision: GuardDecision,
+    guard_summary: Mapping[str, str],
 ) -> ToolResult:
     """Project the adapter's report into the result this contract promises."""
     stdout, stderr, structured, redacted = project(
@@ -194,11 +205,7 @@ def _assembled(
         outcome=outcome.outcome,
         reason_code=outcome.reason_code,
         workspace_id=request.workspace.workspace_id,
-        guard={
-            "decision": str(decision),
-            "reason_code": "",
-            "decision_id": "",
-        },
+        guard=dict(guard_summary),
         target=request.target.to_dict(),
         started_at=outcome.started_at,
         duration_ms=outcome.duration_ms,

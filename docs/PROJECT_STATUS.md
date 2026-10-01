@@ -632,12 +632,22 @@ Do not turn missing environment, skipped execution, or blocked actions into PASS
 ## AI-06 status
 
 **AI-06 — Security Research Tools Plugin: IMPLEMENTATION COMPLETE / PR OPEN, NOT MERGED.**
-Frozen contract `docs/AI-06_SECURITY_TOOLS_EXECUTION_PLAN.md`, blob
-`1cff20f7969c61c2870e8ed13c86cf7d784644ea`, amended once.
+Frozen contract `docs/AI-06_SECURITY_TOOLS_EXECUTION_PLAN.md`.
+
+```text
+AI-06-A merged contract      1cff20f7969c61c2870e8ed13c86cf7d784644ea
+effective contract, after
+  Amendment 1                4b05155c9bd7ed2d7e25f7e23a0471de82a880f8
+```
+
+The two are not interchangeable: `1cff20f7` is what AI-06-A merged, and
+`4b05155c` is what AI-06-B implements against.
 
 ```text
 AI-06-A     = COMPLETE / MERGED   contract frozen (PR #46)
 AI-06-B     = IMPLEMENTATION COMPLETE / PR OPEN, NOT MERGED
+              PR #47; one review fix applied in the same PR (Guard
+              attribution, see the evidence record section O)
 AI-06       = not closed until the PR merges and its CI is read
 
 merge SHA   = not yet merged; recorded at closeout
@@ -647,8 +657,8 @@ evidence    = docs/AI-06_EVIDENCE_2026-10-01.md
 Measured on the branch head:
 
 ```text
-tests/security_tools          153 passed, 1 skipped
-whole repository             2106 passed, 2 skipped, 5 deselected
+tests/security_tools          160 passed, 1 skipped
+whole repository             2113 passed, 2 skipped, 5 deselected
 Layer 0                      PASS (15 checks)
 ```
 

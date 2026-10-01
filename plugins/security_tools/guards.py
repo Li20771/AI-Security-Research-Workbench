@@ -41,7 +41,13 @@ from plugins.security_tools.vocabulary import (
     VehicleInterface,
 )
 
-__all__ = ["check_v1_target_boundary", "ask_guard", "guard_workspace_for"]
+__all__ = [
+    "ask_guard",
+    "check_v1_target_boundary",
+    "decision_summary",
+    "guard_workspace_for",
+    "unattributed_summary",
+]
 
 #: The target kinds §12 governs. A request naming one of these is held to the
 #: v1 boundary whatever the operation says.
@@ -162,12 +168,22 @@ def ask_guard(
     workspace: WorkspaceRef,
     evaluator: Any,
     policy: Any,
-) -> GuardDecision:
+) -> tuple[GuardDecision, Mapping[str, str]]:
     """Gate 2. Ask AI-04, and fail closed if it cannot answer (§9.1, §9.2).
 
     `evaluate` is AI-04's frozen entry point and is called as it stands. AI-06
     does not wrap, extend, shadow or reimplement it, and does not evaluate a
     policy itself.
+
+    Returns the decision **and** the attribution that came with it, from the
+    same call. §8.1 requires a result to carry "the `guard` block naming the
+    decision it ran under", and §8.3 requires a result to be attributable — so
+    the `reason_code` and `decision_id` are part of the answer, not decoration
+    that can be dropped on the way out.
+
+    Returning the enum alone was a defect found in review: the decision survived
+    and its attribution did not, so a `ToolResult` could say ALLOW while being
+    unable to name which evaluation allowed it.
 
     An evaluator that raises is an evaluator that did not allow. The exception
     becomes `GuardUnavailable`, and `dispatch` turns that into a refusal — never
@@ -188,7 +204,19 @@ def ask_guard(
             "the evaluator did not return a decision, so nothing is authorized. "
             "An evaluator that failed is not an evaluator that allowed (§9.2)"
         ) from exc
-    return GuardDecision(decision_record.decision)
+    decision = GuardDecision(decision_record.decision)
+    return decision, decision_summary(decision, decision_record)
+
+
+def unattributed_summary(decision: GuardDecision, reason_code: str) -> Mapping[str, str]:
+    """The `guard` block for a request that never reached AI-04.
+
+    A refusal raised before `ask_guard` — an unknown tool, a bad argument, a v1
+    target boundary — has no `DecisionRecord` to point at, and saying so is more
+    honest than inventing an identifier. `decision_id` stays empty precisely
+    because no evaluation produced one.
+    """
+    return {"decision": str(decision), "reason_code": reason_code, "decision_id": ""}
 
 
 def _action_for(request: ToolRequest) -> Any:

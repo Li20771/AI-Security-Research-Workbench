@@ -82,15 +82,37 @@ class FakeDecision:
 
 
 class Evaluator:
-    """A stand-in evaluator that records the request it was handed."""
+    """A stand-in evaluator that records the request it was handed.
 
-    def __init__(self, decision: GuardDecision = GuardDecision.ALLOW) -> None:
+    `reason_code` and `decision_id` are settable because §8.1 requires a result
+    to carry the attribution of the decision it ran under, and a stub that
+    returned the same placeholder for every decision could not tell a result
+    that carries attribution from one that dropped it.
+    """
+
+    def __init__(
+        self,
+        decision: GuardDecision = GuardDecision.ALLOW,
+        reason_code: str = "TEST",
+        decision_id: str = "dec-test",
+    ) -> None:
         self.decision = decision
+        self.reason_code = reason_code
+        self.decision_id = decision_id
         self.seen: list[Any] = []
 
     def __call__(self, request: Any, policy: Any) -> FakeDecision:
         self.seen.append(request)
-        return FakeDecision(decision=self.decision)
+        return FakeDecision(
+            decision=self.decision,
+            reason_code=self.reason_code,
+            decision_id=self.decision_id,
+        )
+
+    @property
+    def calls(self) -> int:
+        """How many times Guard was asked. One invocation, one call."""
+        return len(self.seen)
 
 
 class RaisingEvaluator:

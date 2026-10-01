@@ -102,6 +102,100 @@ class TestT8GuardAllowExecutes:
         assert str(result.guard_decision) == "ALLOW"
 
 
+class TestGuardAttributionIsCarriedThrough:
+    """§8.1, §8.3. A result names the decision it ran under.
+
+    Review found this missing: the implementation returned only the enum from
+    `ask_guard`, so a `ToolResult` could say ALLOW while being unable to name
+    which evaluation allowed it. The decision survived and its attribution did
+    not. These tests are the regression.
+    """
+
+    def test_an_allowed_result_carries_the_evaluations_attribution(
+        self, policy, tmp_path
+    ):
+        from tests.security_tools.conftest import Evaluator
+        from plugins.security_tools.vocabulary import GuardDecision
+
+        evaluator = Evaluator(
+            GuardDecision.ALLOW,
+            reason_code="TEST_REASON",
+            decision_id="dec-test-001",
+        )
+
+        result = invoke(
+            _git(tmp_path), registry=_registry(), evaluator=evaluator, policy=policy,
+            runner=FakeRunner(),
+        )
+
+        assert result.guard["decision"] == "ALLOW"
+        assert result.guard["reason_code"] == "TEST_REASON"
+        assert result.guard["decision_id"] == "dec-test-001"
+
+    @pytest.mark.parametrize("decision", ["DENY", "BLOCKED", "UNKNOWN"])
+    def test_a_refused_result_keeps_its_attribution(
+        self, decision, policy, runner, tmp_path
+    ):
+        from tests.security_tools.conftest import Evaluator
+        from plugins.security_tools.vocabulary import GuardDecision
+
+        evaluator = Evaluator(
+            GuardDecision(decision),
+            reason_code=f"{decision}_REASON",
+            decision_id=f"dec-{decision.lower()}-001",
+        )
+
+        result = invoke(
+            _git(tmp_path), registry=_registry(), evaluator=evaluator, policy=policy,
+            runner=runner,
+        )
+
+        assert result.guard["decision"] == decision
+        assert result.guard["reason_code"] == f"{decision}_REASON"
+        assert result.guard["decision_id"] == f"dec-{decision.lower()}-001"
+        assert runner.calls == [], "a refused invocation must not execute"
+
+    def test_the_attribution_comes_from_one_evaluation(
+        self, policy, tmp_path
+    ):
+        """One evaluator call, one decision, one invocation."""
+        from tests.security_tools.conftest import Evaluator
+        from plugins.security_tools.vocabulary import GuardDecision
+
+        evaluator = Evaluator(GuardDecision.ALLOW, decision_id="dec-once")
+
+        invoke(
+            _git(tmp_path), registry=_registry(), evaluator=evaluator, policy=policy,
+            runner=FakeRunner(),
+        )
+
+        assert evaluator.calls == 1
+
+    def test_a_request_that_never_reached_guard_says_so(self, allow, policy, runner, tmp_path):
+        """No evaluation means no decision_id, and the result does not invent one."""
+        request = ToolRequest.from_mapping(
+            request_mapping(root=str(tmp_path), tool_id="not-a-tool")
+        )
+
+        result = invoke(
+            request, registry=_registry(), evaluator=allow, policy=policy, runner=runner
+        )
+
+        assert result.guard["decision_id"] == ""
+        assert allow.calls == 0
+
+    def test_a_failed_evaluation_carries_no_invented_identifier(
+        self, exploding, policy, runner, tmp_path
+    ):
+        result = invoke(
+            _git(tmp_path), registry=_registry(), evaluator=exploding, policy=policy,
+            runner=runner,
+        )
+
+        assert result.guard["decision_id"] == ""
+        assert result.reason_code == "GUARD_UNAVAILABLE"
+
+
 class TestT9GuardDenyDoesNotExecute:
     def test_a_denied_invocation_does_not_run(self, deny, policy, runner, tmp_path):
         result = invoke(
