@@ -313,8 +313,30 @@ recorded act = the human decided        -> kind = DECISION, actor.type = human
 ```
 
 A record whose entire claim is "an artifact exists at location L" is a strictly
-weaker `OBSERVATION` of an artifact, with `actor.type = service`. Both records may
-exist. They are different records and the kind field distinguishes them.
+weaker `OBSERVATION` of an artifact, with `actor.type = service`. These are
+different records and the kind field distinguishes them.
+
+**This section states the conceptual classification, not a v1 representation.**
+Amendment 2 makes that separation explicit, because §6.5 defers the human-approval
+event and §6.6 rejects a non-service `DECISION` actor. The record described above
+is therefore classified here and is **not representable in v1**:
+
+```text
+conceptual classification   human approval = DECISION + actor.type = human
+v1 admitted event           NONE — the event is DEFERRED (§6.5, producer NONE)
+a v1 record carrying it     DECISION + actor.type = human  ->  REJECTED (§6.6)
+```
+
+The classification is not withdrawn, and §6.5 already says as much: what is
+deferred is the **outcome vocabulary** and the admitted representation, never the
+kind. When a future amendment makes the event representable it is a `DECISION`,
+never an `OBSERVATION`.
+
+The approval artifact — a signed record, a ticket, a message — may still exist
+outside AI-05, and an admitted record may reference it as an artifact. What v1
+cannot carry is a record whose claim **is** the human's decision. The artifact is
+evidence *of* the approval held elsewhere, not an AI-05 record *of* it, which is
+the distinction this section exists to draw.
 
 ### 6.4 Kinds that must not be added
 
@@ -501,9 +523,22 @@ PERMITTED, and the reason the constraint is narrow rather than a blanket ban on 
 member:
 
 ```text
-actor.type = human        ACCEPTED — a recorded human approval is a DECISION whose
-                          actor is the human (§6.3)
+ActorType.HUMAN           the member remains in the inherited vocabulary; AI-05
+                          imports the type and does not remove a member (§3)
+actor.type = human        REJECTED on a v1 record (§6.6) — the human-approval event
+                          is deferred, so no admitted event describes a human act
+                          (§6.5)
 ```
+
+Both halves are load-bearing. The producer constraint is narrow because it is a
+statement about the **producer role**, not about the word `human`: the member is
+untouched in the type AI-05 imported, and what refuses it in the actor role is the
+v1 admission boundary rather than a vocabulary edit. Removing `human` from
+`ActorType` would answer the same question by damaging a frozen type AI-05 does not
+own, which is the failure this section exists to avoid.
+
+Amendment 2 corrected this block. It previously read `actor.type = human -> ACCEPTED`,
+citing §6.3, which §6.5 and §6.6 do not permit.
 
 **A record with no producer is not a record.** Provenance is never fabricated: a
 record claiming an observation that no producer made would be a false record.
@@ -2444,7 +2479,7 @@ Layer 0 gains a structural check for `plugins/evidence`, mirroring
 | T3 | missing required field | per-kind requirement | record missing one required field, per kind | `REJECTED` | optionality cannot be enforced; absence cannot be a default |
 | T4 | unsupported enum | closed vocabulary | an unlisted enum value | `REJECTED` | an unlisted value is never treated as ordinary |
 | T4b | producer role constraint | role, not vocabulary | `producer_type = human` | `REJECTED` | `human` is in the inherited vocabulary but is not a valid producer role (§7.1); membership is necessary, not sufficient |
-| T4c | actor role control | role, not vocabulary | `actor.type = human` on a DECISION about a human approval | `ACCEPTED` | positive control for T4b — without it, T4b is satisfied by rejecting `human` everywhere |
+| T4c | actor admission boundary | role, not vocabulary | `actor.type = human` on a DECISION | `REJECTED` | `ActorType.HUMAN` remains a valid inherited vocabulary member, but the human-approval event is not an admitted v1 event, so §6.6 rejects a `DECISION` carrying `actor.type = human`. Amendment 2 corrected this row: it previously read `ACCEPTED` |
 | T5 | `evidence_id` identity | identity ≠ semantics | two records, same content, different ids | both accepted; ids differ; ids absent from `content_digest` | two runs are two events |
 | T6 | `experiment_id` correlation | correlation ≠ identity | many records, one `experiment_id` | all accepted, none unique | grouping never becomes identity |
 | T7 | `content_digest` determinism | canonicalization | same semantic input, separate processes | identical digest | an unenforced digest is not a digest |
@@ -2503,9 +2538,20 @@ T22a-e are five distinct boundaries, not five spellings of one. T22a and T22b ar
 T20c and T21c assert DELIBERATE REJECTIONS that a reader may expect to be
   acceptances. They MUST NOT be "fixed" by widening the rule. Widening them changes
   a frozen boundary (§34.1).
-T4b and T4c are a pair. T4b alone is satisfied by a system that rejects `human` in
-  every role, which would break the recorded human approval of §6.3. T4c is the
-  control that proves the constraint is a ROLE constraint and not a vocabulary edit.
+T4b and T4c are a pair, and Amendment 2 restates what the pair proves. The earlier
+  wording described T4c as an acceptance and justified it by the recorded human
+  approval of §6.3, which §6.5 and §6.6 do not permit in v1; it is replaced here.
+T4b proves that `producer_type = human` is rejected even though `human` IS a member
+  of the inherited ActorType vocabulary.
+T4c proves the complementary boundary from the other side: `ActorType.HUMAN` remains
+  a valid vocabulary member, while a DECISION record carrying `actor.type = human`
+  is nevertheless rejected in v1, because the human-approval event is deferred from
+  the §6.5 admitted registry.
+Therefore the restriction is not implemented by deleting `human` from the inherited
+  vocabulary; it is enforced at the v1 role/admission boundary. A system that
+  satisfied T4b by removing `human` from the vocabulary would still pass T4c's
+  vocabulary assertion but would fail T4c's record assertion for the wrong reason,
+  which is what keeps the two rows from collapsing into one another.
 T23 and T24 are a pair. T23 alone is satisfied by a system that rejects every
   artifact reference. T24 is the control that proves the legitimate path — bytes
   stored by the producer, reference submitted to AI-05 — still works.
@@ -2947,6 +2993,62 @@ docs-only branch with the B1 implementation head
 No boundary, scope, deliverable, kind, digest classification, workspace rule or
 authority relation changed. C-1 remains DEFERRED.
 ```
+
+#### Amendment 2 — human-approval v1 representability reconciled (2026-10-01)
+
+Found during contract review after AI-05-B1 merged to `main` as
+`0403fcd83b740f0603af7204e77f6e6905a84cf0`. The review set §6.3's conceptual
+classification beside §6.5's admitted registry and §6.6's rejection rules, and found
+§31's T4c row asserting the opposite of what those two sections require.
+
+The amendment is authored on a docs-only branch. It changes no implementation:
+B1's production code and tests already reject `DECISION + actor.type = human`, which
+is what §6.5 and §6.6 require. This amendment corrects the contract to match the
+boundary the contract itself already drew. **B1 is not reopened, not reimplemented
+and not retested.**
+
+```text
+(a) §6.3 stated the conceptual classification correctly and then concluded "Both
+    records may exist", which §6.5 and §6.6 do not permit. §6.3 now separates the
+    two claims explicitly: a human approval is conceptually
+    DECISION + actor.type=human, and is NOT representable in v1, because the event
+    is deferred from the admitted registry and §6.6 rejects a non-service DECISION
+    actor. The classification is NOT withdrawn — §6.5 already records that what is
+    deferred is the outcome vocabulary and not the kind.
+
+(b) §31's T4c row expected ACCEPTED for `actor.type = human` on a DECISION about a
+    human approval. That contradicted §6.6's "kind is DECISION and actor.type is not
+    service -> REJECTED", and no v1 record could satisfy it, because §6.5 registers
+    producer NONE for the human-approval event. T4c now expects REJECTED.
+    `ActorType.HUMAN` is NOT removed from the inherited vocabulary; the restriction
+    is enforced at the v1 role/admission boundary and not by deleting a vocabulary
+    member.
+
+(c) §31.1's note on the T4b/T4c pair justified T4c as an acceptance by "the recorded
+    human approval of §6.3", which is the same contradiction one level up. It now
+    states the pair as vocabulary-versus-admission controls: T4b proves the producer
+    role rejection, and T4c proves that `ActorType.HUMAN` remains a valid vocabulary
+    member while a DECISION record carrying it is nevertheless rejected in v1.
+
+(d) §7.1 carried the same contradiction in the block that justifies `ProducerType`
+    being a separate closed type: it listed `actor.type = human` as ACCEPTED with
+    §6.3 as its citation, so the same false claim appeared in two sections that cite
+    each other. That block was found while checking this amendment for consistency
+    rather than being among the sites the review named. It now states both halves —
+    the member remains in the inherited vocabulary, and an actor of `human` is
+    nonetheless rejected on a v1 record — which is what the section's own argument
+    needs, since its point is that the producer constraint is a rule about the
+    producer role and not a vocabulary edit.
+```
+
+Sites (a) through (d) are the whole of the inconsistency. The remaining statements
+about `human` in this contract were checked and are already consistent: §6.5's
+deferred-event table, §6.6's rejection rows, §11's "DECISION admits one arm in v1",
+the §30 admission check for `producer_type = human`, and T4b in the §31 matrix.
+
+No change to §6.5's admitted registry. No change to §6.6's rejection rules. No
+production code change, no test change, no B2 implementation. T4c's expected value is
+the only assertion in the matrix this amendment changes.
 
 ---
 
