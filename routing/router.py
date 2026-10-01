@@ -60,6 +60,13 @@ def evaluate(
     returns exactly that. `enabled_providers` is AI-02's `ProviderConfig`, and a
     provider that is not enabled is not a candidate (§6.4).
 
+    **Enablement fails closed.** An omitted `enabled_providers` means *no provider
+    is enabled*, not *do not check*: AI-02 ships every provider `enabled: false`,
+    and AI-07 reads that through `ProviderConfig` rather than deciding it. Reading
+    an absent config as permission would be the one fail-open path in this module,
+    and it was — an earlier revision treated `None` as "skip the check", so a
+    disabled provider could be selected by simply not passing a config.
+
     `clock` and `decision_id_factory` are injectable so that the semantic content
     of a decision can be compared across two evaluations. They affect only the two
     audit identifiers, never the outcome.
@@ -126,7 +133,10 @@ def evaluate(
             RoutingOutcome.MODEL_UNAVAILABLE, REASON_MODEL_UNAVAILABLE, rule=rule
         )
 
-    if enabled_providers is not None and profile.provider_id not in enabled_providers:
+    # Fail closed: absent enablement is no enablement. There is deliberately no
+    # `is not None` guard here, because that guard was the defect.
+    enabled = frozenset() if enabled_providers is None else frozenset(enabled_providers)
+    if profile.provider_id not in enabled:
         return decision(
             RoutingOutcome.MODEL_UNAVAILABLE, REASON_PROVIDER_DISABLED, rule=rule
         )
@@ -164,34 +174,61 @@ def evaluate(
 
 def evaluate_mapping(
     raw_request: object,
-    rule_set: RuleSet,
+    raw_rule_set: object,
     *,
     profiles: Mapping[str, ModelProfile],
     enabled_providers: frozenset[str] | None = None,
     clock: Callable[[], str] | None = None,
     decision_id_factory: Callable[[], str] | None = None,
 ) -> RouterDecision:
-    """`evaluate` over a supplied mapping, with `InvalidRequest` as an outcome.
+    """The raw boundary: both the request and the rule set may be supplied as mappings.
 
-    A malformed request is `INVALID_REQUEST` — an outcome, not an exception
-    escaping the API — for the same reason AI-06 §17 makes a refusal a result:
-    the exception is the mechanism, the outcome is the contract.
+    **This is where `INVALID_REQUEST` and `INVALID_RULES` become outcomes.** Both
+    are frozen `RoutingOutcome` members (§10.1, §12.4), and an exception escaping
+    the Router-facing API is not one of them — the exception is the mechanism, the
+    outcome is the contract, exactly as AI-06 §17 puts it for a refusal.
+
+    `RuleSet.from_mapping` and `RouterRequest.from_mapping` remain the validators
+    and still raise. They are not the Router boundary, and this is.
+
+    An invalid rule set produces `INVALID_RULES` with **no selection and no partial
+    application**: validation completes before any rule is evaluated, so there is
+    no state in which some rules were applied and others were not.
     """
+    now = (clock or _utc_now)()
+    new_id = (decision_id_factory or _new_decision_id)()
+
+    try:
+        rule_set = (
+            raw_rule_set
+            if isinstance(raw_rule_set, RuleSet)
+            else RuleSet.from_mapping(raw_rule_set)
+        )
+    except InvalidRules as exc:
+        return RouterDecision(
+            decision_id=new_id,
+            decided_at=now,
+            outcome=RoutingOutcome.INVALID_RULES,
+            reason_code=exc.reason_code,
+            rules_revision="",
+        )
+
     try:
         request = RouterRequest.from_mapping(raw_request)
     except InvalidRequest as exc:
         return RouterDecision(
-            decision_id=(decision_id_factory or _new_decision_id)(),
-            decided_at=(clock or _utc_now)(),
+            decision_id=new_id,
+            decided_at=now,
             outcome=RoutingOutcome.INVALID_REQUEST,
             reason_code=exc.reason_code,
             rules_revision=rule_set.revision,
         )
+
     return evaluate(
         request,
         rule_set,
         profiles=profiles,
         enabled_providers=enabled_providers,
-        clock=clock,
-        decision_id_factory=decision_id_factory,
+        clock=lambda: now,
+        decision_id_factory=lambda: new_id,
     )

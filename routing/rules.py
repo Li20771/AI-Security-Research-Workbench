@@ -16,6 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
+from providers.model_profile import CapabilityName
 from providers.profile import ModelRef, ProfileError
 
 from routing.errors import InvalidRules
@@ -108,6 +109,17 @@ class Rule:
         independence = match.get("require_independence")
         if independence is not None and not isinstance(independence, bool):
             raise InvalidRules(f"{where}.match.require_independence must be true or false")
+
+        matched_capability = match.get("requested_capability")
+        if matched_capability is not None:
+            try:
+                CapabilityName(matched_capability)
+            except ValueError:
+                raise InvalidRules(
+                    f"{where}.match.requested_capability is not one of AI-02's "
+                    "capability names; the rule set does not get its own capability "
+                    "vocabulary (contract §6.2)"
+                ) from None
 
         return cls(
             rule_id=rule_id,

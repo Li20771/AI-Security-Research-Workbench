@@ -84,11 +84,22 @@ ROUTING_FORBIDDEN_IMPORTS = (
     "multiprocessing",
     "subprocess",
     "shutil",
-    "plugins.guard",
-    "plugins.evidence",
-    "plugins.security_tools",
     "tools",
 )
+
+#: The ONE module under `plugins` that routing/ may import.
+#:
+#: `routing/request.py` imports `ActorType` and `PermissionLevel` from
+#: `plugins.guard.vocabulary`, because §5.1 makes `sensitivity` AI-04's own
+#: `PermissionLevel` and redefining it in `routing/` would be a second definition
+#: of one vocabulary. That is a **frozen-vocabulary import**, not a Guard
+#: implementation dependency: the Router never calls `evaluate`, never reads a
+#: `DecisionRecord`, and never consults a policy.
+#:
+#: Checking the full module path is what makes "vocabulary only" checkable. An
+#: earlier revision listed `plugins.guard` in a top-level-root list, where it
+#: could never match, so the boundary was stated and not enforced.
+ROUTING_ALLOWED_PLUGIN_IMPORTS = ("plugins.guard.vocabulary",)
 
 ROUTING_FORBIDDEN_BUILTINS = ("eval", "exec", "compile", "__import__", "open")
 
@@ -1166,6 +1177,25 @@ def check_ai07_router_contract() -> list[str]:
                     f"{_display(path)} imports {banned!r}; the Router selects and "
                     "does not execute (§14), and it authorizes nothing (§8)"
                 )
+
+        # The full module path, not the root: `plugins.guard.vocabulary` is
+        # allowed and every other `plugins.*` module is not. Checking the root
+        # alone would make the allowlist unenforceable, which is how the earlier
+        # revision came to state a boundary it did not check.
+        for name in sorted(imported):
+            if not name.startswith("plugins."):
+                continue
+            if any(
+                name == allowed or name.startswith(f"{allowed}.")
+                for allowed in ROUTING_ALLOWED_PLUGIN_IMPORTS
+            ):
+                continue
+            problems.append(
+                f"{_display(path)} imports {name!r}; routing/ may import "
+                f"{', '.join(ROUTING_ALLOWED_PLUGIN_IMPORTS)} and nothing else under "
+                "plugins/. A frozen vocabulary import is not a Guard implementation "
+                "dependency, and the Router never invokes Guard or Evidence (§8, §13)"
+            )
 
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):

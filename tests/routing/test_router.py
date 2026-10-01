@@ -47,6 +47,24 @@ REAL = load_all_model_profiles()
 FIRST_REF = sorted(REAL)[0]
 
 
+#: Every provider the shipped profiles belong to, enabled. Tests about
+#: *routing* pass this; tests about *enablement* call `evaluate` directly, so
+#: they see the fail-closed default.
+ALL_ENABLED = frozenset(profile.provider_id for profile in REAL.values())
+
+
+def _eval(request, rules, **overrides):
+    """`evaluate` with the shipped providers enabled.
+
+    Spelled out rather than defaulted inside `evaluate`, because the default
+    there is deliberately "nothing is enabled" (contract §6.4, and AI-02 ships
+    every provider `enabled: false`).
+    """
+    overrides.setdefault("profiles", REAL)
+    overrides.setdefault("enabled_providers", ALL_ENABLED)
+    return evaluate(request, rules, **overrides)
+
+
 def _request(**overrides):
     base = {
         "schema_version": 1,
@@ -206,8 +224,8 @@ class TestT4Determinism:
         request = _request()
         rules = _rules(_rule())
 
-        first = evaluate(request, rules, profiles=REAL)
-        second = evaluate(request, rules, profiles=REAL)
+        first = _eval(request, rules, profiles=REAL)
+        second = _eval(request, rules, profiles=REAL)
 
         assert first.semantic_content() == second.semantic_content()
 
@@ -215,8 +233,8 @@ class TestT4Determinism:
         request = _request()
         rules = _rules(_rule())
 
-        first = evaluate(request, rules, profiles=REAL)
-        second = evaluate(request, rules, profiles=REAL)
+        first = _eval(request, rules, profiles=REAL)
+        second = _eval(request, rules, profiles=REAL)
 
         assert first.decision_id != second.decision_id
 
@@ -228,8 +246,8 @@ class TestT5CandidateOrderDoesNotMatter:
         backward = _request(candidates=[{"model_ref": r} for r in reversed(refs)])
         rules = _rules(_rule(select={"model_ref": refs[0]}))
 
-        first = evaluate(forward, rules, profiles=REAL)
-        second = evaluate(backward, rules, profiles=REAL)
+        first = _eval(forward, rules, profiles=REAL)
+        second = _eval(backward, rules, profiles=REAL)
 
         assert first.semantic_content() == second.semantic_content()
 
@@ -272,7 +290,7 @@ class TestT7UnknownDoesNotSatisfy:
         request = _request(requested_capability="tool_calling")
         rules = _rules(_rule())
 
-        result = evaluate(request, rules, profiles=REAL)
+        result = _eval(request, rules, profiles=REAL)
 
         assert result.outcome is RoutingOutcome.NO_ELIGIBLE_MODEL
         assert result.reason_code == "CAPABILITY_NOT_VERIFIED"
@@ -282,7 +300,7 @@ class TestT7UnknownDoesNotSatisfy:
         rules = _rules(_rule())
 
         for name in CapabilityName:
-            result = evaluate(
+            result = _eval(
                 _request(requested_capability=str(name)), rules, profiles=REAL
             )
             assert result.outcome is RoutingOutcome.NO_ELIGIBLE_MODEL, name
@@ -327,7 +345,7 @@ class TestT9VerifiedSatisfies:
         request = _request(requested_capability="tool_calling")
         rules = _rules(_rule())
 
-        result = evaluate(request, rules, profiles=profiles)
+        result = _eval(request, rules, profiles=profiles)
 
         assert result.outcome is RoutingOutcome.SELECTED
         assert result.selected == FIRST_REF
@@ -346,7 +364,7 @@ class TestT10Modality:
         request = _request(modality="image")
         rules = _rules(_rule())
 
-        result = evaluate(request, rules, profiles=profiles)
+        result = _eval(request, rules, profiles=profiles)
 
         assert result.outcome is RoutingOutcome.SELECTED
 
@@ -354,7 +372,7 @@ class TestT10Modality:
         request = _request(modality="video")
         rules = _rules(_rule())
 
-        result = evaluate(request, rules, profiles=REAL)
+        result = _eval(request, rules, profiles=REAL)
 
         assert result.outcome is RoutingOutcome.NO_ELIGIBLE_MODEL
         assert result.reason_code == "MODALITY_UNSUPPORTED"
@@ -374,7 +392,7 @@ class TestT10Modality:
 
 class TestT11NoMatchingRule:
     def test_an_empty_rule_set_selects_nothing(self):
-        result = evaluate(_request(), RuleSet.empty(), profiles=REAL)
+        result = _eval(_request(), RuleSet.empty(), profiles=REAL)
 
         assert result.outcome is RoutingOutcome.NO_ELIGIBLE_MODEL
         assert result.reason_code == "NO_MATCHING_RULE"
@@ -382,7 +400,7 @@ class TestT11NoMatchingRule:
     def test_there_is_no_implicit_default(self):
         rules = _rules(_rule(match={"task_class": "other"}))
 
-        result = evaluate(_request(), rules, profiles=REAL)
+        result = _eval(_request(), rules, profiles=REAL)
 
         assert result.selected is None
 
@@ -393,7 +411,7 @@ class TestT12ModelUnavailable:
         request = _request(candidates=[{"model_ref": FIRST_REF}])
         rules = _rules(_rule(select={"model_ref": absent}))
 
-        result = evaluate(request, rules, profiles=REAL)
+        result = _eval(request, rules, profiles=REAL)
 
         assert result.outcome is RoutingOutcome.MODEL_UNAVAILABLE
         assert result.selected is None
@@ -404,7 +422,7 @@ class TestT12ModelUnavailable:
         )
         rules = _rules(_rule(select={"model_ref": "someone/not-registered"}))
 
-        result = evaluate(request, rules, profiles=REAL)
+        result = _eval(request, rules, profiles=REAL)
 
         assert result.outcome is RoutingOutcome.MODEL_UNAVAILABLE
 
@@ -417,7 +435,7 @@ class TestT12ModelUnavailable:
     def test_a_disabled_provider_is_not_eligible(self):
         rules = _rules(_rule())
 
-        result = evaluate(_request(), rules, profiles=REAL, enabled_providers=frozenset())
+        result = _eval(_request(), rules, profiles=REAL, enabled_providers=frozenset())
 
         assert result.outcome is RoutingOutcome.MODEL_UNAVAILABLE
         assert result.reason_code == "PROVIDER_DISABLED"
@@ -452,7 +470,7 @@ class TestT13T14InvalidRules:
         """§27: the two are different conditions, and the brief says so."""
         rules = _rules(_rule(select={"model_ref": "someone/not-registered"}))
 
-        result = evaluate(
+        result = _eval(
             _request(candidates=[{"model_ref": "someone/not-registered"}]),
             rules,
             profiles=REAL,
@@ -486,7 +504,7 @@ class TestT14bDeferredConstraints:
 
     def test_a_latency_class_constraint_is_refused(self):
         with pytest.raises(InvalidRequest) as excinfo:
-            evaluate(
+            _eval(
                 _request(constraints={"max_latency_class": "fast"}),
                 RuleSet.empty(),
                 profiles=REAL,
@@ -514,13 +532,13 @@ class TestT15NoAutomaticRetry:
         request = _request(candidates=[{"model_ref": FIRST_REF}])
         rules = _rules(_rule(select={"model_ref": "someone/not-registered"}))
 
-        result = evaluate(request, rules, profiles=REAL)
+        result = _eval(request, rules, profiles=REAL)
 
         assert result.outcome is RoutingOutcome.MODEL_UNAVAILABLE
         assert result.selected is None
 
     def test_the_decision_carries_no_nested_decision(self):
-        record = evaluate(_request(), RuleSet.empty(), profiles=REAL).to_mapping()
+        record = _eval(_request(), RuleSet.empty(), profiles=REAL).to_mapping()
 
         assert "fallbacks" not in record
         assert not any(isinstance(v, dict) and "outcome" in v for v in record.values())
@@ -537,7 +555,7 @@ class TestT16NoCandidateExpansion:
         request = _request(candidates=[{"model_ref": FIRST_REF}])
         rules = _rules(_rule(select={"model_ref": sorted(REAL)[-1]}))
 
-        result = evaluate(request, rules, profiles=REAL)
+        result = _eval(request, rules, profiles=REAL)
 
         assert result.candidates == (FIRST_REF,)
         assert result.selected is None
@@ -551,7 +569,7 @@ class TestT17NoConstraintRelaxation:
         assert evaluate(request, rules, profiles=REAL).selected is None
 
     def test_no_authorization_is_produced(self):
-        record = evaluate(_request(), RuleSet.empty(), profiles=REAL).to_mapping()
+        record = _eval(_request(), RuleSet.empty(), profiles=REAL).to_mapping()
 
         for forbidden in ("permission", "permission_level", "approval", "grant",
                           "allowed", "authorization"):
@@ -565,7 +583,7 @@ class TestT17NoConstraintRelaxation:
 
 class TestT18SelectionCarriesNoPermission:
     def test_the_decision_names_no_permission(self):
-        result = evaluate(_request(), _rules(_rule()), profiles=REAL)
+        result = _eval(_request(), _rules(_rule()), profiles=REAL)
 
         assert result.outcome is RoutingOutcome.SELECTED
         assert "permission" not in str(result.to_mapping())
@@ -576,7 +594,7 @@ class TestT19StrongerModelDoesNotRaiseALevel:
         request = _request(sensitivity="read")
         rules = _rules(_rule())
 
-        result = evaluate(request, rules, profiles=REAL)
+        result = _eval(request, rules, profiles=REAL)
 
         assert result.requested["sensitivity"] == "read"
 
@@ -589,21 +607,21 @@ class TestT20SensitivityChangesNoEligibility:
     )
     def test_every_level_gives_the_same_outcome(self, level):
         rules = _rules(_rule())
-        baseline = evaluate(_request(sensitivity="read"), rules, profiles=REAL)
+        baseline = _eval(_request(sensitivity="read"), rules, profiles=REAL)
 
-        result = evaluate(_request(sensitivity=level), rules, profiles=REAL)
+        result = _eval(_request(sensitivity=level), rules, profiles=REAL)
 
         assert result.outcome is baseline.outcome
         assert result.selected == baseline.selected
 
     def test_a_capability_requirement_is_unaffected_by_sensitivity(self):
         rules = _rules(_rule())
-        plain = evaluate(
+        plain = _eval(
             _request(requested_capability="tool_calling", sensitivity="read"),
             rules,
             profiles=REAL,
         )
-        elevated = evaluate(
+        elevated = _eval(
             _request(requested_capability="tool_calling", sensitivity="remote-change"),
             rules,
             profiles=REAL,
@@ -612,7 +630,7 @@ class TestT20SensitivityChangesNoEligibility:
         assert plain.outcome is elevated.outcome
 
     def test_sensitivity_is_preserved_in_the_decision(self):
-        result = evaluate(
+        result = _eval(
             _request(sensitivity="test"), _rules(_rule()), profiles=REAL
         )
 
@@ -633,7 +651,7 @@ class TestT21NoInference:
         request = _request(task={"task_class": "modify"})
         rules = _rules(_rule(match={"task_class": "modify"}))
 
-        result = evaluate(request, rules, profiles=REAL)
+        result = _eval(request, rules, profiles=REAL)
 
         assert result.outcome is RoutingOutcome.SELECTED
         assert "permission" not in str(result.to_mapping())
@@ -646,7 +664,7 @@ class TestT22CapabilityIsNeverPromoted:
             for ref, profile in REAL.items()
         }
 
-        evaluate(_request(requested_capability="tool_calling"), _rules(_rule()), profiles=REAL)
+        _eval(_request(requested_capability="tool_calling"), _rules(_rule()), profiles=REAL)
 
         after = {
             ref: str(profile.capability(CapabilityName.TOOL_CALLING).status)
@@ -697,7 +715,7 @@ class TestT23NoProviderCall:
         rules = _rules(_rule())
         snapshot = copy.deepcopy(request.to_mapping())
 
-        evaluate(request, rules, profiles=REAL)
+        _eval(request, rules, profiles=REAL)
 
         assert request.to_mapping() == snapshot
 
@@ -749,7 +767,7 @@ class TestT26NoAIO5EventRegistered:
 
 class TestT27DecisionCarriesNoContent:
     def test_the_record_is_an_allowlist(self):
-        record = evaluate(_request(), _rules(_rule()), profiles=REAL).to_mapping()
+        record = _eval(_request(), _rules(_rule()), profiles=REAL).to_mapping()
 
         assert set(record) == {
             "schema_version", "decision_id", "decided_at", "outcome", "reason_code",
@@ -758,7 +776,7 @@ class TestT27DecisionCarriesNoContent:
         }
 
     def test_the_record_carries_no_content_field(self):
-        record = evaluate(_request(), _rules(_rule()), profiles=REAL).to_mapping()
+        record = _eval(_request(), _rules(_rule()), profiles=REAL).to_mapping()
         text = str(record)
 
         for forbidden in ("prompt", "messages", "api_key", "token", "credential"):
@@ -780,15 +798,15 @@ class TestT27DecisionCarriesNoContent:
 
 class TestT28RulesRevisionIsRecorded:
     def test_the_revision_appears_in_the_decision(self):
-        result = evaluate(_request(), _rules(_rule(), revision="rev-42"), profiles=REAL)
+        result = _eval(_request(), _rules(_rule(), revision="rev-42"), profiles=REAL)
 
         assert result.rules_revision == "rev-42"
         assert result.to_mapping()["rules_revision"] == "rev-42"
 
     def test_a_different_revision_is_a_different_decision(self):
         request = _request()
-        one = evaluate(request, _rules(_rule(), revision="a"), profiles=REAL)
-        other = evaluate(request, _rules(_rule(), revision="b"), profiles=REAL)
+        one = _eval(request, _rules(_rule(), revision="a"), profiles=REAL)
+        other = _eval(request, _rules(_rule(), revision="b"), profiles=REAL)
 
         assert one.semantic_content() != other.semantic_content()
 
@@ -803,12 +821,12 @@ class TestT29IndependenceIsARequirement:
         request = _request(require_independence=True)
         rules = _rules(_rule())
 
-        result = evaluate(request, rules, profiles=REAL)
+        result = _eval(request, rules, profiles=REAL)
 
         assert result.to_mapping()["requested"]["require_independence"] is True
 
     def test_no_independent_agent_is_executed(self):
-        result = evaluate(
+        result = _eval(
             _request(require_independence=True), _rules(_rule()), profiles=REAL
         )
 
@@ -818,7 +836,7 @@ class TestT29IndependenceIsARequirement:
     def test_the_agent_hint_is_a_hint(self):
         rules = _rules(_rule(select={"model_ref": FIRST_REF, "agent": "codex"}))
 
-        result = evaluate(_request(require_independence=True), rules, profiles=REAL)
+        result = _eval(_request(require_independence=True), rules, profiles=REAL)
 
         assert result.agent_hint == "codex"
         assert result.outcome is RoutingOutcome.SELECTED
@@ -977,3 +995,241 @@ class TestT38Layer0:
 
         assert completed.returncode == 0, completed.stdout + completed.stderr
         assert "Layer 0 = PASS" in completed.stdout
+
+
+# --------------------------------------------------------------------------
+# Round 1 review fixes
+# --------------------------------------------------------------------------
+
+
+class TestProviderEnablementFailsClosed:
+    """Review P1. An omitted config used to mean "do not check"."""
+
+    def test_omitting_enablement_enables_nothing(self):
+        request = _request(candidates=[{"model_ref": FIRST_REF}])
+        rules = _rules(_rule())
+
+        # `evaluate` directly, so the fail-closed default is what runs.
+        result = evaluate(request, rules, profiles=REAL)
+
+        assert result.outcome is RoutingOutcome.MODEL_UNAVAILABLE
+        assert result.reason_code == "PROVIDER_DISABLED"
+        assert result.selected is None
+
+    def test_an_empty_enablement_set_selects_nothing(self):
+        result = _eval(
+            _request(candidates=[{"model_ref": FIRST_REF}]),
+            _rules(_rule()),
+            enabled_providers=frozenset(),
+        )
+
+        assert result.selected is None
+
+    def test_a_disabled_provider_is_not_selected(self):
+        provider = FIRST_REF.split("/")[0]
+
+        result = _eval(
+            _request(candidates=[{"model_ref": FIRST_REF}]),
+            _rules(_rule()),
+            enabled_providers=frozenset({"some-other-provider"}),
+        )
+
+        assert result.outcome is RoutingOutcome.MODEL_UNAVAILABLE
+        assert provider not in ("some-other-provider",)
+
+    def test_an_enabled_provider_is_selected(self):
+        """The positive control that keeps the rule from being a blanket refusal."""
+        result = _eval(_request(candidates=[{"model_ref": FIRST_REF}]), _rules(_rule()))
+
+        assert result.outcome is RoutingOutcome.SELECTED
+        assert result.selected == FIRST_REF
+
+    def test_the_verified_control_selects_when_its_provider_is_enabled(self):
+        control = _verified_profile(FIRST_REF, CapabilityName.TOOL_CALLING)
+        profiles = {**REAL, FIRST_REF: control}
+
+        enabled = _eval(
+            _request(requested_capability="tool_calling"),
+            _rules(_rule()),
+            profiles=profiles,
+            enabled_providers=frozenset({control.provider_id}),
+        )
+        disabled = _eval(
+            _request(requested_capability="tool_calling"),
+            _rules(_rule()),
+            profiles=profiles,
+            enabled_providers=frozenset(),
+        )
+
+        assert enabled.outcome is RoutingOutcome.SELECTED
+        assert disabled.outcome is RoutingOutcome.MODEL_UNAVAILABLE
+
+
+class TestInvalidRulesIsAnOutcome:
+    """Review P1. `INVALID_RULES` was frozen and unreachable."""
+
+    def _raw(self, **rule_overrides):
+        rule = {
+            "rule_id": "r",
+            "priority": 0,
+            "reason_code": "R",
+            "match": {},
+            "select": {"model_ref": FIRST_REF},
+        }
+        rule.update(rule_overrides)
+        return {"version": 1, "revision": "r", "rules": [rule]}
+
+    @pytest.mark.parametrize(
+        "rule_set",
+        [
+            {"version": 2, "revision": "r", "rules": []},
+            {"version": 1, "rules": []},
+            {"version": 1, "revision": "r", "rules": [{"rule_id": "x", "priority": "high",
+                                                       "reason_code": "R",
+                                                       "select": {"model_ref": "a/b"}}]},
+            {"version": 1, "revision": "r", "rules": [{"rule_id": "x", "priority": 0,
+                                                       "reason_code": "R", "select": {}}]},
+            {"version": 1, "revision": "r", "rules": [{"rule_id": "x", "priority": 0,
+                                                       "reason_code": "R", "nonsense": 1,
+                                                       "select": {"model_ref": "a/b"}}]},
+        ],
+    )
+    def test_an_invalid_rule_set_is_an_outcome(self, rule_set):
+        result = evaluate_mapping(
+            {
+                "schema_version": 1,
+                "task": {"task_class": "simple"},
+                "workspace": {"workspace_id": "ws"},
+                "actor": {"id": "x", "type": "service"},
+                "candidates": [{"model_ref": FIRST_REF}],
+            },
+            rule_set,
+            profiles=REAL,
+            enabled_providers=ALL_ENABLED,
+        )
+
+        assert result.outcome is RoutingOutcome.INVALID_RULES
+        assert result.selected is None
+        assert result.matched_rule is None
+
+    def test_a_duplicate_rule_id_is_an_outcome(self):
+        result = evaluate_mapping(
+            {
+                "schema_version": 1,
+                "task": {"task_class": "simple"},
+                "workspace": {"workspace_id": "ws"},
+                "actor": {"id": "x", "type": "service"},
+                "candidates": [{"model_ref": FIRST_REF}],
+            },
+            {"version": 1, "revision": "r", "rules": [self._raw()["rules"][0]] * 2},
+            profiles=REAL,
+            enabled_providers=ALL_ENABLED,
+        )
+
+        assert result.outcome is RoutingOutcome.INVALID_RULES
+
+    def test_no_partial_application(self):
+        """Validation completes before any rule runs, so nothing is half-applied."""
+        raw_rule = self._raw()["rules"][0]
+        good = dict(raw_rule, rule_id="a")
+        bad = dict(raw_rule, rule_id="b", priority="high")
+
+        result = evaluate_mapping(
+            {
+                "schema_version": 1,
+                "task": {"task_class": "simple"},
+                "workspace": {"workspace_id": "ws"},
+                "actor": {"id": "x", "type": "service"},
+                "candidates": [{"model_ref": FIRST_REF}],
+            },
+            {"version": 1, "revision": "r", "rules": [good, bad]},
+            profiles=REAL,
+            enabled_providers=ALL_ENABLED,
+        )
+
+        assert result.outcome is RoutingOutcome.INVALID_RULES
+        assert result.matched_rule is None
+
+    def test_a_valid_rule_set_still_selects(self):
+        """The control: the projection did not swallow the working path."""
+        result = evaluate_mapping(
+            {
+                "schema_version": 1,
+                "task": {"task_class": "simple"},
+                "workspace": {"workspace_id": "ws"},
+                "actor": {"id": "x", "type": "service"},
+                "candidates": [{"model_ref": FIRST_REF}],
+            },
+            self._raw(),
+            profiles=REAL,
+            enabled_providers=ALL_ENABLED,
+        )
+
+        assert result.outcome is RoutingOutcome.SELECTED
+
+
+class TestRequestSchemaIsNotPermissive:
+    """Review P2. A bare candidate string and an unknown capability were accepted."""
+
+    def test_a_bare_candidate_string_is_refused(self):
+        with pytest.raises(InvalidRequest) as excinfo:
+            _request(candidates=[FIRST_REF])
+
+        assert "bare string" in str(excinfo.value)
+
+    def test_a_bare_candidate_string_is_an_outcome(self):
+        result = evaluate_mapping(
+            {
+                "schema_version": 1,
+                "task": {"task_class": "simple"},
+                "workspace": {"workspace_id": "ws"},
+                "actor": {"id": "x", "type": "service"},
+                "candidates": [FIRST_REF],
+            },
+            {"version": 1, "revision": "r", "rules": []},
+            profiles=REAL,
+            enabled_providers=ALL_ENABLED,
+        )
+
+        assert result.outcome is RoutingOutcome.INVALID_REQUEST
+
+    def test_a_candidate_with_an_unknown_field_is_refused(self):
+        with pytest.raises(InvalidRequest):
+            _request(candidates=[{"model_ref": FIRST_REF, "weight": 3}])
+
+    @pytest.mark.parametrize(
+        "capability",
+        ["tool_calling", "structured_output", "streaming", "reasoning", "prompt_caching"],
+    )
+    def test_every_real_capability_is_accepted(self, capability):
+        request = _request(requested_capability=capability)
+
+        assert request.requested_capability == capability
+
+    def test_an_unknown_capability_is_refused_at_the_boundary(self):
+        with pytest.raises(InvalidRequest) as excinfo:
+            _request(requested_capability="made_up_capability")
+
+        assert "capability names" in str(excinfo.value)
+
+    def test_an_unknown_capability_is_invalid_request_not_a_routing_miss(self):
+        result = evaluate_mapping(
+            {
+                "schema_version": 1,
+                "task": {"task_class": "simple"},
+                "workspace": {"workspace_id": "ws"},
+                "actor": {"id": "x", "type": "service"},
+                "candidates": [{"model_ref": FIRST_REF}],
+                "requested_capability": "made_up_capability",
+            },
+            {"version": 1, "revision": "r", "rules": []},
+            profiles=REAL,
+            enabled_providers=ALL_ENABLED,
+        )
+
+        assert result.outcome is RoutingOutcome.INVALID_REQUEST
+        assert result.outcome is not RoutingOutcome.NO_ELIGIBLE_MODEL
+
+    def test_a_rule_matching_an_unknown_capability_is_invalid_rules(self):
+        with pytest.raises(InvalidRules):
+            _rules(_rule(match={"requested_capability": "made_up_capability"}))

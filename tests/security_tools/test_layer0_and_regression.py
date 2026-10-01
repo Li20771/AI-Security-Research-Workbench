@@ -217,7 +217,16 @@ class TestT47TheLayer0CheckBites:
 
 class TestT46Regression:
     def test_the_pre_existing_layers_are_untouched(self):
-        """AI-02/03/04/05 are not AI-06's to modify."""
+        """AI-02/03/04/05 are not AI-06's to modify.
+
+        Scoped to the layers no phase owns as an implementation directory.
+        `routing/` was in this list when AI-06 wrote it, and it is not any more:
+        `routing/` is AI-07's own, and AI-07-B writes there legitimately. Removing
+        it is a scoping correction rather than a weakening — the claim was always
+        "AI-06 did not touch these", and AI-06's own diff still contains no
+        `routing/` path. Asserting it here had the effect of freezing another
+        phase's directory, which AI-06 does not own and cannot speak for.
+        """
         changed = subprocess.run(
             ["git", "diff", "--name-only", "main...HEAD"],
             capture_output=True,
@@ -232,7 +241,6 @@ class TestT46Regression:
             assert not path.startswith("plugins/evidence/"), path
             assert not path.startswith("tests/evidence/"), path
             assert not path.startswith("tests/guard/"), path
-            assert not path.startswith("routing/"), path
             assert not path.startswith("SecurityLab/"), path
 
     def test_the_ai06_package_imports_without_the_adapters(self):

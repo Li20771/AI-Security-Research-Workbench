@@ -13,6 +13,7 @@ from typing import Any, Mapping, Sequence
 
 from plugins.guard.vocabulary import ActorType, PermissionLevel
 
+from providers.model_profile import CapabilityName
 from providers.profile import ModelRef, ProfileError
 
 from routing.errors import InvalidRequest
@@ -175,9 +176,23 @@ class RouterRequest:
             raise InvalidRequest("candidates must be a list")
         candidates: list[str] = []
         for entry in raw_candidates:
-            ref = entry.get("model_ref") if isinstance(entry, Mapping) else entry
+            # §5.1 declares `candidates: [{model_ref: string}]`. A bare string is
+            # refused rather than accepted as a convenience: the shape is frozen,
+            # and a lenient reader is a reader that accepts the next thing too.
+            if not isinstance(entry, Mapping):
+                raise InvalidRequest(
+                    "every candidate must be an object of the form "
+                    "{'model_ref': 'provider_id/model_id'}; a bare string is not the "
+                    "declared shape (§5.1)"
+                )
+            unknown_entry = set(entry) - {"model_ref"}
+            if unknown_entry:
+                raise InvalidRequest(
+                    "candidates[] has field(s) the contract does not define: "
+                    f"{', '.join(sorted(map(str, unknown_entry)))}"
+                )
             try:
-                candidates.append(str(ModelRef.parse(ref)))
+                candidates.append(str(ModelRef.parse(entry.get("model_ref"))))
             except ProfileError:
                 raise InvalidRequest(
                     "every candidate must be a model reference of the form "
@@ -186,7 +201,21 @@ class RouterRequest:
         if not candidates:
             raise InvalidRequest("candidates must name at least one model reference")
 
-        capability = _text_or_none(raw.get("requested_capability"), "requested_capability", maximum=64)
+        # §5.1: `requested_capability` is one of AI-02's CapabilityName members.
+        # An unknown name is INVALID_REQUEST at the boundary, not a routing miss
+        # later: an unlisted value is never treated as an ordinary one.
+        capability = _text_or_none(
+            raw.get("requested_capability"), "requested_capability", maximum=64
+        )
+        if capability is not None:
+            try:
+                CapabilityName(capability)
+            except ValueError:
+                raise InvalidRequest(
+                    "requested_capability is not one of AI-02's capability names; "
+                    "an unlisted capability is refused at the request boundary "
+                    "rather than routed on as an ordinary one (§5.1)"
+                ) from None
 
         return cls(
             task_class=task_class,
