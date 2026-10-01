@@ -8,6 +8,33 @@ presence. `experiment_id` and `evidence_id` are the two fields most likely to be
 "unified" with their neighbours by a well-meaning refactor, because they look
 like the fields next to them. They are not: one is AI-05's own record identity
 and one is operational correlation metadata, and the digests have to show it.
+
+### CONTRACT TEST-MODEL LIMITATION: canonical case C11 is unreachable
+
+`docs/AI-05_EVIDENCE_EXECUTION_PLAN.md` §15.5 lists **C11**:
+
+    same claim, different producer   ->  content_digest DIFFERENT
+                                         (provenance is semantic)
+
+C11 cannot be exercised against an admitted record. It requires two records
+differing only in `producer`, and §6.5 registers exactly one producer token per
+admitted event — so the second record is `REJECTED` by `check_cross_field`
+before any digest is computed. There is no admitted pair to compare.
+
+This is a limitation of the frozen contract's test model, not a defect in this
+implementation and not a gap papered over:
+
+* C11 is **not** deleted or weakened. It stands in the contract unchanged.
+* No invalid-but-admitted record is manufactured to satisfy it.
+* No internal backdoor was added to bypass the registry for it.
+* The semantic classification C11 asserts is covered directly instead, by
+  `test_the_producer_is_carried_by_the_content_projection` and
+  `test_the_same_holds_for_the_other_five_admitted_events`, which read the real
+  public projection of validly admitted records.
+
+Closing C11 for real would require a contract amendment — for instance a
+canonical case that varies a field the registry does not pin. PR #34 does not
+make one.
 """
 
 from __future__ import annotations
@@ -181,6 +208,60 @@ class TestT8OperationalFieldsAreIndividuallyExcludedFromTheContentDigest:
         raw["provenance"]["producer"] = "ai-06"
         with pytest.raises(ev_errors.ProducerNotRegistered):
             _parse(raw)
+
+    def test_the_producer_is_carried_by_the_content_projection(self, record_factory, build):
+        """Direct coverage of the frozen semantic classification of `producer`.
+
+        The companion test above proves the classification *at the table* and
+        proves the operational half by observation. It cannot prove the semantic
+        half by varying `producer`, because the §6.5 registry fixes one token per
+        event. This test closes that gap the only way the contract permits: it
+        takes a validly admitted record and reads the real public projection.
+
+        No invalid record is manufactured and the registry is not touched.
+        """
+        from plugins.evidence import content_projection
+
+        raw = record_factory()
+        record = build(raw)
+        registered = raw["provenance"]["producer"]
+
+        projection = content_projection(record)
+        assert "producer" in projection
+        assert projection["producer"] == registered == "ai-03"
+        assert "producer_version" not in projection
+
+    def test_the_same_holds_for_the_other_five_admitted_events(self, build):
+        """Every admitted event carries its own registered token, and no more.
+
+        One case per registry row, so the assertion is not accidentally true of
+        a single producer.
+        """
+        from plugins.evidence import content_projection
+        from tests.evidence.conftest import (
+            make_capability_observation,
+            make_decision,
+            make_execution,
+            make_observation,
+            make_provider_probe,
+        )
+
+        cases = [
+            (make_observation(), "ai-03"),
+            (make_provider_probe(), "ai-02"),
+            (make_capability_observation(), "ai-02"),
+            (make_decision(), "ai-04"),
+            (make_execution(), "ai-06"),
+            (make_execution(provenance={
+                "producer": "ai-06", "producer_version": "1.0.0",
+                "producer_type": "service",
+                "actor": {"id": "ai-06", "type": "agent"},
+                "workspace_id": "ws-1"}), "ai-06"),
+        ]
+        for raw, token in cases:
+            projection = content_projection(build(raw))
+            assert projection["producer"] == token
+            assert "producer_version" not in projection
 
 
 class TestT22dCallerSuppliedGeneratedFields:
