@@ -359,6 +359,13 @@ Timestamp
 
 ## AI-06 — Security Research Tools Plugin
 
+**Status: IMPLEMENTATION COMPLETE / PR OPEN, NOT MERGED.** Branch
+`feature/ai-06-security-tools-v1`. The Tool API, the eight adapter families, the four
+boundaries (Guard, workspace, execution, vehicle), the Evidence projection and the AI-06
+Layer 0 check are implemented and measured; see
+[AI-06_EVIDENCE_2026-10-01.md](AI-06_EVIDENCE_2026-10-01.md) and the AI-06 section of
+[PROJECT_STATUS.md](PROJECT_STATUS.md).
+
 目标：将安全研究中高频工具抽象成统一 Tool API。
 
 第一批：
@@ -672,7 +679,7 @@ SecurityLab
 | AI-03 | **COMPLETE** — C0–C8 PASS; merged as `548bc041` (PR #28); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-04 | **COMPLETE** — merged as `254823f7` (PR #32); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-05 | **B1 COMPLETE** (PR #34); **B2 COMPLETE** — P1 `844df7be` (PR #41), P2 `b8692c18` (PR #42) and P3 `67515ff9` (PR #44) merged; **AI-05 INCOMPLETE** — C-1 DEFERRED, §30 step 7 unimplemented; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
-| AI-06 | NOT STARTED |
+| AI-06 | **IMPLEMENTATION COMPLETE** — PR open, not merged; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-07 | NOT STARTED |
 | AI-08 | NOT STARTED |
 | AI-09 | NOT STARTED |

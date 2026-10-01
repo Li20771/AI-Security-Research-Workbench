@@ -68,6 +68,38 @@ LIVE_SELECTION = re.compile(r"-m\s*['\"]?layer4")
 LIVE_HTTP_CLIENTS = ("curl ", "wget ", "Invoke-WebRequest", "requests.get", "httpx.")
 
 #: AI-05 §1.2: what the Evidence package may never reach, wherever it is used.
+#: AI-06 §16: what the Tool layer may never reach.
+SECURITY_TOOLS_FORBIDDEN_IMPORTS = (
+    "socket",
+    "http",
+    "urllib",
+    "urllib3",
+    "requests",
+    "httpx",
+    "aiohttp",
+    "ftplib",
+    "smtplib",
+    "telnetlib",
+    "asyncio",
+    "multiprocessing",
+    "routing",
+)
+
+SECURITY_TOOLS_FORBIDDEN_BUILTINS = ("eval", "exec", "compile", "__import__")
+
+#: AI-06 §10.2: the other workspace is not a special case here.
+SECURITY_TOOLS_FORBIDDEN_LITERALS = (
+    "SecurityLab/",
+    "Li20771/SecurityLab",
+    "/mnt/d/SecurityLab",
+)
+
+#: AI-06 §13.1: v1 registers no git write.
+SECURITY_TOOLS_GIT_WRITE_VERBS = (
+    "commit", "push", "merge", "reset", "checkout", "rebase", "tag",
+    "fetch", "pull", "clean", "stash", "branch_create", "remote",
+)
+
 EVIDENCE_FORBIDDEN_IMPORTS = (
     "socket",
     "http",
@@ -851,6 +883,197 @@ def check_evidence_plugin_boundary() -> list[str]:
     return problems
 
 
+def check_security_tools_boundary() -> list[str]:
+    """AI-06 §3.2, §7.4, §9, §11, §12, §16: the Tool layer, as a gate.
+
+    Parsed with `ast` **and** exercised, because the two catch different
+    regressions:
+
+    ```text
+    structural   a `shell=True` that a reviewer would have to notice
+    behavioural  a registry that stopped agreeing with the frozen vocabulary,
+                 or a vehicle adapter that started accepting a real target
+    ```
+
+    A check that only read the source would pass a package whose registry had
+    silently gained a write operation, and one that only ran behaviour would miss
+    a shell path no test happens to take. Both run.
+    """
+    import ast
+
+    package = ROOT / "plugins" / "security_tools"
+    adapters = ROOT / "tools"
+    if not package.is_dir():
+        return ["plugins/security_tools is absent; AI-06 is not implemented"]
+
+    problems: list[str] = []
+
+    # (1) Structural: what the source can do.
+    for path in sorted(package.glob("*.py")) + sorted(adapters.rglob("*.py")):
+        if "__pycache__" in path.as_posix():
+            continue
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        except SyntaxError as exc:  # pragma: no cover - surfaced as a failure
+            problems.append(f"{_display(path)} does not parse: {exc}")
+            continue
+
+        imported: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imported.add(node.module)
+
+        roots = {name.split(".")[0] for name in imported}
+        for banned in SECURITY_TOOLS_FORBIDDEN_IMPORTS:
+            if banned in roots:
+                problems.append(
+                    f"{_display(path)} imports {banned!r}; the Tool layer reaches "
+                    "no network and routes nothing (§16)"
+                )
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                for keyword in node.keywords:
+                    if keyword.arg == "shell":
+                        is_false = (
+                            isinstance(keyword.value, ast.Constant)
+                            and keyword.value.value is False
+                        )
+                        if not is_false:
+                            problems.append(
+                                f"{_display(path)}:{node.lineno} passes a truthy "
+                                "`shell`; §11.1 forbids a shell interpreter "
+                                "outright and without exception"
+                            )
+                if isinstance(node.func, ast.Name) and node.func.id in SECURITY_TOOLS_FORBIDDEN_BUILTINS:
+                    problems.append(
+                        f"{_display(path)}:{node.lineno} calls {node.func.id}()"
+                    )
+
+        source = path.read_text(encoding="utf-8")
+        if "import subprocess" in source and path.name != "runner.py":
+            problems.append(
+                f"{_display(path)} imports subprocess; runner.py is the one "
+                "module in AI-06 that starts a process (§11)"
+            )
+        if "os.environ.copy()" in source or "dict(os.environ)" in source:
+            problems.append(
+                f"{_display(path)} passes the whole parent environment; §11.2 "
+                "forbids it and §14.1 makes it a credential leak"
+            )
+        for needle in SECURITY_TOOLS_FORBIDDEN_LITERALS:
+            if needle in source:
+                problems.append(
+                    f"{_display(path)} names {needle!r}; the other workspace is "
+                    "not a special case and is not reachable from here (§10.2)"
+                )
+
+    # (2) Behavioural: what the registry and the adapters actually do.
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+
+    try:
+        import tools as tools_package
+
+        from plugins.security_tools import AdapterFamily
+        from plugins.security_tools.vocabulary import V1_PERMITTED_VEHICLE_INTERFACES
+    except ImportError as exc:  # pragma: no cover - surfaced as a failure
+        return problems + [f"the AI-06 package could not be imported: {exc}"]
+
+    registry = tools_package.default_registry()
+
+    if len(AdapterFamily) != 8:
+        problems.append(
+            f"AdapterFamily has {len(AdapterFamily)} members; §5.3 freezes eight"
+        )
+    if registry.families != frozenset(AdapterFamily):
+        missing = sorted(f.value for f in frozenset(AdapterFamily) - registry.families)
+        problems.append(
+            f"the default registry does not represent every family; missing: {missing}"
+        )
+
+    git_identity = next(
+        (i for i in registry.identities if i.adapter_family is AdapterFamily.GIT), None
+    )
+    if git_identity is not None:
+        declared = set(registry.capability_names(git_identity))
+        writes = declared & set(SECURITY_TOOLS_GIT_WRITE_VERBS)
+        if writes:
+            problems.append(
+                f"the git family registers write operation(s) {sorted(writes)}; "
+                "§13.1 freezes v1 as read-only"
+            )
+
+    for descriptor in registry.descriptors():
+        if descriptor.needs_network:
+            problems.append(
+                f"{descriptor.identity.tool_id} declares a network-capable "
+                "operation; §16 forbids one in v1"
+            )
+        for spec in descriptor.operations:
+            interface = spec.environment.vehicle_interface
+            if interface not in {None, *V1_PERMITTED_VEHICLE_INTERFACES} and str(
+                interface
+            ) != "none":
+                problems.append(
+                    f"{descriptor.identity.tool_id}.{spec.name} declares vehicle "
+                    f"interface {interface}; §12.1 permits vcan, simulator and "
+                    "isolated_harness only"
+                )
+
+    # The vehicle adapter must refuse a real target, and a real target must not
+    # be reachable by any declared operation.
+    try:
+        from plugins.security_tools.request import ToolRequest
+
+        vehicle = next(
+            (
+                d
+                for d in registry.descriptors()
+                if d.identity.adapter_family is AdapterFamily.VEHICLE_NETWORK
+            ),
+            None,
+        )
+        if vehicle is not None:
+            probe = ToolRequest.from_mapping(
+                {
+                    "schema_version": 1,
+                    "workspace": {"workspace_id": "probe", "root": None},
+                    "tool": vehicle.identity.to_mapping(),
+                    "operation": vehicle.operations[0].name,
+                    "arguments": {"interface": "can0", "frame": "1#2"},
+                    "actor": {"id": "probe", "type": "service"},
+                    "permission_level": "test",
+                    "target": {
+                        "kind": "vehicle",
+                        "identifier": "can0",
+                        "environment": "real",
+                        "interface": "can",
+                        "is_real": True,
+                        "sensitivity": "internal",
+                    },
+                    "execution": {"timeout_seconds": 1, "environment": {}},
+                }
+            )
+            from plugins.security_tools.guards import check_v1_target_boundary
+
+            try:
+                check_v1_target_boundary(probe, vehicle.operations[0])
+            except Exception:  # noqa: BLE001 - a refusal is the expected outcome
+                pass
+            else:
+                problems.append(
+                    "the v1 target boundary accepted a real vehicle target; "
+                    "§12.2 forbids it and this is the check that must fail first"
+                )
+    except Exception as exc:  # noqa: BLE001 - surfaced as a failure
+        problems.append(f"the vehicle probe could not run: {exc}")
+
+    return problems
+
+
 def check_layer_markers() -> list[str]:
     """Every test module belongs to exactly one layer.
 
@@ -926,6 +1149,10 @@ def main() -> int:
     report.check(
         "evidence plugin boundary and durability tiers",
         check_evidence_plugin_boundary(),
+    )
+    report.check(
+        "security tools boundary and adapter families",
+        check_security_tools_boundary(),
     )
 
     if report.failures:

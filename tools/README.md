@@ -5,6 +5,6 @@ Controlled research tool adapters.
 - `git/`
 - `github/`
 - `tests/`
-- `vehicle-network/`
+- `vehicle_network/`
 - `firmware/`
-- `reverse-engineering/`
+- `reverse_engineering/`
