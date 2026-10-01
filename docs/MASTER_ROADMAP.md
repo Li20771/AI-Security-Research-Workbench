@@ -279,6 +279,26 @@ C0-C10    = all PASS
 
 ## AI-05 — Evidence / Audit Plugin
 
+**Status: INCOMPLETE.** B1 (the offline logical core) is complete and merged; B2 has not started.
+This section keeps the original design as written — B1 completing does not change what AI-05 is
+for, and it does not change any later stage's dependency on it.
+
+```text
+AI-05-A  = COMPLETE / MERGED   contract frozen (docs/AI-05_EVIDENCE_EXECUTION_PLAN.md)
+AI-05-B1 = COMPLETE / MERGED   offline logical core
+AI-05-B2 = NOT STARTED         admission, Store, lifecycle
+AI-05    = INCOMPLETE
+
+B1 merge SHA = 0403fcd83b740f0603af7204e77f6e6905a84cf0   (PR #34)
+B1 evidence  = docs/AI-05-B1_EVIDENCE_2026-10-01.md
+```
+
+B1 built the record model, the §15.2 field table, the two digests, the grammars, the §6.5
+registry and the §6.6 cross-field rules, and nothing else: no storage, no admission pipeline, no
+Store. Everything below that depends on Evidence being *recorded and persisted* — audit trails,
+benchmark consumption, reproducibility of a completed task — is therefore still ahead, and B1
+alone does not satisfy it.
+
 目标：每个 Agent 任务都能形成可复核的实验记录。
 
 核心字段：
@@ -625,7 +645,7 @@ SecurityLab
 | AI-02 | **COMPLETE** — closed 2026-09-29, see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-03 | **COMPLETE** — C0–C8 PASS; merged as `548bc041` (PR #28); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-04 | **COMPLETE** — merged as `254823f7` (PR #32); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
-| AI-05 | NOT STARTED — next stage |
+| AI-05 | **B1 COMPLETE** — merged as `0403fcd8` (PR #34); B2 NOT STARTED; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-06 | NOT STARTED |
 | AI-07 | NOT STARTED |
 | AI-08 | NOT STARTED |
