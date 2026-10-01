@@ -72,6 +72,50 @@ def agent_modules() -> list[pathlib.Path]:
     return sorted(p for p in AGENTS_DIR.rglob("*.py") if "__pycache__" not in p.parts)
 
 
+#: Directories holding first-party Python, for checks that range over the code
+#: rather than over one layer.
+PYTHON_ROOTS = ("agents", "plugins", "providers", "routing", "scripts", "tests", "tools")
+
+
+def python_modules() -> list[pathlib.Path]:
+    modules: list[pathlib.Path] = []
+    for root in PYTHON_ROOTS:
+        modules.extend(
+            p for p in pathlib.Path(root).rglob("*.py") if "__pycache__" not in p.parts
+        )
+    return sorted(modules)
+
+
+def string_literals(path: pathlib.Path) -> list[str]:
+    """Every string constant in the module that is **not** a docstring.
+
+    The AI-08 modules document their own prohibitions at length, so a search
+    over raw text matches the prose that states a rule and fails the test that
+    checks it. A docstring is an `ast.Constant` like any other, so it has to be
+    excluded by position rather than by hoping nobody writes one.
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    docstring_nodes: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            body = getattr(node, "body", [])
+            if (
+                body
+                and isinstance(body[0], ast.Expr)
+                and isinstance(body[0].value, ast.Constant)
+                and isinstance(body[0].value.value, str)
+            ):
+                docstring_nodes.add(id(body[0].value))
+
+    return [
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and id(node) not in docstring_nodes
+    ]
+
+
 class EchoAdapter:
     """The smallest adapter that can run: it reports success and does nothing.
 

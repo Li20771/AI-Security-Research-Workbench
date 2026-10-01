@@ -25,6 +25,8 @@ from agents.vocabulary import (
     role_for,
 )
 
+from tests.agents.conftest import python_modules, string_literals
+
 pytestmark = pytest.mark.layer1
 
 VOCABULARY_SOURCE = pathlib.Path("agents/vocabulary.py")
@@ -147,18 +149,33 @@ class TestIdentityIsNotDiscovered:
         assert resolve_agent("codex") is resolve_agent("codex") is AgentId.CODEX
 
     def test_the_example_configs_are_not_an_identity_source(self):
-        """§5.4: they are documentation, and no code reads them."""
-        import subprocess
+        """§5.4: they are documentation, and no code reads them.
 
+        The check ranges over **string literals that are not docstrings**, in
+        every first-party Python module. A raw text search would match the prose
+        in `agents/vocabulary.py` and in this file that states the rule — which
+        is exactly how this assertion failed the first time it ran against
+        tracked files, having passed while they were still untracked.
+
+        This guard names the paths it guards, so it exempts itself, the way
+        `tests/unit/test_live_verification.py` already does for its own subject.
+        """
         for path in ("config/dsh/config.example.yaml", "config/codex/config.example.yaml"):
             assert pathlib.Path(path).is_file()
-        hits = subprocess.run(
-            ["git", "grep", "-l", "-e", "config/dsh", "-e", "config/codex", "--", "*.py"],
-            capture_output=True,
-            text=True,
-            check=False,
-        ).stdout.split()
-        assert hits == [], hits
+
+        needles = ("config/dsh", "config/codex")
+        # Compared resolved: `python_modules()` yields repository-relative
+        # paths and `__file__` is absolute, so comparing them as written never
+        # exempts the guard and the guard flags itself.
+        exemption = pathlib.Path(__file__).resolve()
+        offenders = []
+        for module in python_modules():
+            if module.resolve() == exemption:
+                continue
+            for literal in string_literals(module):
+                if any(needle in literal for needle in needles):
+                    offenders.append(f"{module.as_posix()}: {literal!r}")
+        assert offenders == [], offenders
 
 
 class TestARoleIsNotAnIndependenceFinding:
