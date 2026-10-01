@@ -222,6 +222,35 @@ class BindingArmMismatch(CrossFieldViolation):
 
 
 # --------------------------------------------------------------------------
+# Workspace isolation (§18) — added by AI-05-B2
+# --------------------------------------------------------------------------
+
+
+class WorkspaceAgreementViolation(EvidenceError):
+    """Two workspace-scoped fields of one record name different workspaces (§18.1).
+
+    **Why this is not a `CrossFieldViolation`.** That family is the §6.6 rule
+    set — a frozen, enumerable list of producer/actor/kind combinations. §18 is a
+    separate frozen section, and §22.2 gives "workspace mismatch" its own row
+    rather than folding it into the cross-field rows. Subclassing
+    `CrossFieldViolation` would place a §18 rule inside the §6.6 family and make
+    an `except CrossFieldViolation` handler claim a rule it does not hold.
+
+    **Why it is not a `RecordMalformed`.** §22.2 lists "malformed record" and
+    "workspace mismatch" as different conditions. Nothing about either value is
+    malformed; what fails is their agreement, and the caller's repair is to
+    change the scope, not the shape.
+
+    Subclasses `EvidenceError` directly for the same reason `UnsupportedVocabulary`
+    and `FieldClassViolation` do: the reason a record was rejected has to be
+    branchable without parsing prose, and a family a caller cannot name is a
+    family a caller cannot handle.
+    """
+
+    reason_code = "WORKSPACE_AGREEMENT_VIOLATION"
+
+
+# --------------------------------------------------------------------------
 # Set-semantic duplicates (§15.4) — added by Amendment 1 conformance
 # --------------------------------------------------------------------------
 
@@ -271,4 +300,5 @@ __all__ = [
     "RecordMalformed",
     "UnknownField",
     "UnsupportedVocabulary",
+    "WorkspaceAgreementViolation",
 ]
