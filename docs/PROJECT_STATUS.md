@@ -2,8 +2,9 @@
 > Baseline: 2026-09-26
 
 ## Current stage
-**AI-07 — Model Router v1 — COMPLETE / CLOSED.** Next stage **AI-08 — Codex Second
-Agent — NOT STARTED**.
+**AI-08 — Codex Second Agent — AI-08-A CONTRACT FROZEN; IMPLEMENTATION NOT STARTED.**
+AI-07 — Model Router v1 is **COMPLETE / CLOSED**. The next work item is the AI-08-A Contract
+Freeze review and merge checkpoint.
 
 AI-00 architecture and repository baseline is complete. **AI-01 DSH Baseline is COMPLETE** — see
 [AI-01 final gate status](#ai-01-final-gate-status). **AI-02 Model Layer is COMPLETE** — see
@@ -61,9 +62,49 @@ This file is the single entry point for deciding what to do next.
 
 ### Current work item
 
-**AI-07 — Model Router v1 — COMPLETE / MERGED / CLOSED.**
-Both halves are merged and nothing in AI-07 remains open. **AI-08 — Codex Second Agent is
-NOT STARTED**; this closeout does not begin it.
+**AI-08 — Codex Second Agent — AI-08-A CONTRACT FROZEN.**
+
+AI-08 is the phase that makes Codex a second Agent with its own identity, its own execution
+instance, its own result and its own provenance. **AI-08-A freezes the contract only.** No Agent
+runtime exists, no Codex backend is wired, and no execution has run.
+
+```text
+AI-08-A     = CONTRACT FROZEN      this sub-phase; awaiting the human merge checkpoint
+AI-08-B     = NOT STARTED          implementation, against the frozen contract
+AI-08       = IMPLEMENTATION NOT STARTED
+
+contract      = docs/AI-08_AGENT_EXECUTION_EXECUTION_PLAN.md
+contract blob = recorded when AI-08-A is merged
+base          = main @ a7c4a1e2536536940d96431883dadb592f7c151a
+amendments    = 2   AI-08-A Amendment 1 (review corrections, §22) and
+                      AI-08-A Amendment 2 (terminal-result invariant, §22)
+
+FROZEN here   AgentId, AgentRole, the identity boundary, the execution contract,
+              Context isolation, the independence definition I1-I8,
+              AgentResult, AgentExecutionOutcome, the Guard boundary,
+              the Evidence boundary, the cross-agent sharing prohibition,
+              the Codex provider boundary, the repository layout
+NOT STARTED   the Agent runtime, AgentResult, the Codex provider, any Agent code
+```
+
+**AI-08-A closes contract gate C0 only.** C1–C17 are AI-08-B's, and no part of AI-08 is a `PASS`
+yet.
+
+Two facts govern this phase and are recorded where a reader will find them rather than inferred:
+
+```text
+AI-08 v1 has NO provider binding. Every capability on every shipped model profile is
+UNKNOWN and no provider call has ever been made in this repository, so AI-08 v1 cannot
+execute anything through the provider layer and does not try to. Real Codex provider and
+model wiring is AI-09's.
+
+AI-08 v1 writes NO AI-05 EvidenceRecord. The only producer token admissible for an
+EXECUTION record is "ai-06", and AI-08 is not AI-06; writing under that token would be a
+false producer claim. The AI-08 producer token is DEFERRED pending an AI-05 amendment,
+and AI-08-B MUST NOT write Evidence in the meantime.
+```
+
+**Retained record — AI-07: COMPLETE / MERGED / CLOSED.**
 
 ```text
 AI-07-A merge       = 963c181ce2c41aed8f5e400193ad3aeda03d6bb0   (PR #48, merged)
@@ -72,9 +113,8 @@ AI-07-B head        = 679c927f6b4c82369c4e26b790dd31a8ac324598
                       the merge tree equals this tree — no content change
 AI-07 contract      = frozen, docs/AI-07_MODEL_ROUTER_EXECUTION_PLAN.md
 AI-07 contract blob = 2f8dcba8f9c2ca36e3d917fc6b69c3a5cb7f36fe
-                      unchanged by AI-07-B
+                      unchanged by AI-07-B, and unchanged by AI-08-A
 AI-07 evidence      = docs/AI-07_EVIDENCE_2026-10-01.md
-AI-08               = NOT STARTED
 ```
 
 **Retained record — AI-05-B2: COMPLETE / MERGED.** All three stages are merged. AI-05 itself is
@@ -182,8 +222,10 @@ PROJECT_STATUS.md
 
 ### Not yet started
 
-- AI-08 Codex Second Agent — **NOT STARTED**. AI-07 is complete and merged, so no
-  AI-07 work remains ahead of it.
+- AI-08 Codex Second Agent — **AI-08-A contract frozen; implementation NOT STARTED.**
+  AI-07 is complete and merged. AI-08-B implements against
+  [AI-08_AGENT_EXECUTION_EXECUTION_PLAN.md](AI-08_AGENT_EXECUTION_EXECUTION_PLAN.md), which is
+  frozen and awaiting its merge checkpoint.
 
 ## Completed
 
@@ -762,3 +804,105 @@ does not define; `fallback` was described as a boundary with no v1 trigger; and
 One fact governs v1 and is worth stating where a reader will find it: **every capability on every
 shipped model profile is `UNKNOWN`**, so a request that requires a capability has no eligible
 candidate and the outcome is `NO_ELIGIBLE_MODEL`. That is the honest state, not a defect.
+
+## AI-08 status
+
+**AI-08 — Codex Second Agent: AI-08-A CONTRACT FROZEN / IMPLEMENTATION NOT STARTED.**
+
+```text
+AI-08-A     = CONTRACT FROZEN      awaiting the human merge checkpoint
+AI-08-B     = NOT STARTED          implementation
+AI-08       = IMPLEMENTATION NOT STARTED
+
+base        = main @ a7c4a1e2536536940d96431883dadb592f7c151a
+contract    = docs/AI-08_AGENT_EXECUTION_EXECUTION_PLAN.md
+amendments  = 2   AI-08-A Amendment 1 (review corrections)
+                  AI-08-A Amendment 2 (terminal-result invariant)
+```
+
+AI-08 makes Codex a second Agent with its own identity, its own execution instance, its own result
+and its own provenance — not a DSH subprocess, not a DSH internal model switch, not a provider and
+not a model profile. **AI-08-A freezes the contract and implements nothing.**
+
+```text
+FROZEN at AI-08-A
+    the core-agent-layer identity, and that AI-08 is not a plugin, a provider,
+      a model profile or a DSH child process
+    AgentId — closed, exactly dsh | codex; a free string is never an identity
+    AgentRole — closed, PRIMARY | INDEPENDENT_SECOND; the registration is fixed
+    the three distinct questions: ActorType / AgentId / AgentRole
+    that identity is registered, never discovered
+    the Router boundary: a hint stays a hint; resolve_agent is the only way a
+      candidate becomes an identity
+    the execution contract: one request, one ExecutionId, one terminal result
+    that the invariant holds for ALL THREE outcomes: FAILED and BLOCKED still
+      terminate in exactly one AgentResult, and "the body did not start" is not
+      "no AgentResult exists"
+    that AgentResult.result is always present, and for FAILED/BLOCKED refers to
+      terminal failure/block metadata rather than a task result
+    that the AgentExecutionRequest carries NO ContextResponse, and that the
+      runtime establishes one execution-owned ContextResponse per execution
+    that runtime input may carry task content and durable records may not
+    Context isolation: same workspace, per-execution ContextResponse
+    the independence definition I1-I8, with I3 (result-is-not-input) as the key
+      v1 boundary
+    that I5 is fresh GuardRequest + fresh GuardDecision, NOT request_digest
+      uniqueness; request_digest is not an identity
+    what independence cannot prove, and that it is never a verdict
+    that AgentRole.INDEPENDENT_SECOND is an architectural role and NOT an
+      independence finding; the role alone never satisfies I1-I8
+    AgentResult — attributed by agent_id + execution_id, a claim with a
+      producer, never a PASS, and carrying no producer field in v1
+    AgentExecutionOutcome — COMPLETED | FAILED | BLOCKED, three members;
+      BLOCKED is execution-level, and a Guard-refused tool call never rewrites
+      the execution outcome
+    the Guard boundary: unchanged, fresh decision per invocation, and no
+      Agent-specific permission policy claimed or inferred
+    the Evidence boundary: AI-08 writes no EvidenceRecord in v1; execution-level
+      permission records satisfy the roadmap requirement without one
+    the cross-agent result sharing prohibition
+    the Codex provider boundary, deferred whole to AI-09
+    the repository layout, and the two AI-07 test assertions maintained
+```
+
+Measured on the AI-08-A branch:
+
+```text
+tests/routing                 134 passed
+whole repository             2271 passed, 2 skipped, 5 deselected
+Layer 0                       PASS (16 checks)
+```
+
+```text
+DEFERRED  the AI-08 producer token for Evidence   an AI-05 amendment is required
+                                                  before it exists (§13.2)
+DEFERRED  a per-Agent permission ceiling          OUT OF SCOPE. AI-08 v1 does not
+                                                  enforce or claim one, and AI-08-B
+                                                  MUST NOT infer one from AgentId,
+                                                  AgentRole or ActorType (§12.1.1)
+DEFERRED  AI-09  real Codex provider / model integration
+DEFERRED  AI-10  cross-agent review / second-opinion closure
+DEFERRED  AI-11  benchmark comparison
+DEFERRED  AI-12  routing v2 fallback / escalation
+DEFERRED  AI-13  retry / timeout / cancellation / checkpoint / resume /
+                 failure classification
+UNCHANGED AI-05 C-1, AI-05 D11, AI-03 G-14
+```
+
+**AI-08-A closes contract gate C0 and nothing else.** C1–C17 belong to AI-08-B, and no part of
+AI-08 is a `PASS`.
+
+Two facts are recorded here so that neither is inferred later:
+
+```text
+AI-08 v1 has NO provider binding. Every capability on every shipped model profile is
+UNKNOWN and no provider call has ever been made in this repository. AI-08 v1 therefore
+cannot execute anything through the provider layer, and does not try to. That is the
+honest state, not a defect; real wiring is AI-09's.
+
+AI-08 v1 writes NO AI-05 EvidenceRecord. `admitted_events_for(EXECUTION, None)` returns
+exactly one row, "AI-06 tool execution", whose producer token is "ai-06", and
+`g_registered` admits no other. An AI-08 record written under "ai-06" would be a false
+producer claim, which this repository refuses everywhere else. AI-08-B MUST NOT write
+Evidence; the token is DEFERRED pending an AI-05 amendment.
+```
