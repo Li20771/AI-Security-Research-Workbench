@@ -36,19 +36,33 @@ This file is the single entry point for deciding what to do next.
 **AI-05-B2 — Evidence admission, Store and lifecycle — NOT STARTED.**
 
 ```text
-AI-05 contract    = frozen, docs/AI-05_EVIDENCE_EXECUTION_PLAN.md
-AI-05 contract blob = a1df976deea70daea754d89574c47165140d00d0
-AI-05-A           = COMPLETE / MERGED   contract frozen, 1 amendment
-AI-05-B1          = COMPLETE / MERGED   offline logical core
-AI-05-B1 merge    = 0403fcd83b740f0603af7204e77f6e6905a84cf0  (PR #34, merged)
-AI-05-B2          = NOT STARTED
-AI-05 overall     = INCOMPLETE
+AI-05 contract      = frozen, docs/AI-05_EVIDENCE_EXECUTION_PLAN.md
+AI-05 contract blob = dd062148938f902109b49a496bb6051c3331a349
+                      current, after Amendment 2
+AI-05-A             = COMPLETE / MERGED   contract frozen, 2 amendments
+AI-05-B1            = COMPLETE / MERGED   offline logical core
+AI-05-B1 merge      = 0403fcd83b740f0603af7204e77f6e6905a84cf0  (PR #34, merged)
+AI-05-B2            = NOT STARTED
+AI-05 overall       = INCOMPLETE
+
+B1 verification-time contract blob
+                    = a1df976deea70daea754d89574c47165140d00d0
 ```
 
-AI-04 is closed. AI-05-A is closed: the contract was frozen and then amended once (Amendment 1),
-which replaced the container-level §15.2 table with a leaf table, declared the §6.5
-admitted-producer registry, added the §14.9 grammar table and declared the `ObservationFamily`
-vocabulary.
+AI-04 is closed. AI-05-A is closed: the contract was frozen and then **amended twice**.
+
+**Amendment 1** established the B1 implementation-ready schema — the leaf-level §15.2 digest table
+in place of the container table, the §6.5 admitted-producer registry, the §14.9 grammar table, and
+the `ObservationFamily` vocabulary.
+
+**Amendment 2** reconciled the human-approval v1 representability wording. A human approval remains
+conceptually a `DECISION` with `actor.type = human`, but the event is deferred and is not
+representable in v1, so the T4c matrix row now expects `REJECTED`, consistent with §6.5 and §6.6.
+
+The current contract blob is `dd062148938f902109b49a496bb6051c3331a349`. The blob that B1 was
+built, verified and merged **against** is `a1df976deea70daea754d89574c47165140d00d0`; Amendment 2
+came afterwards. B1's own evidence records the earlier value, and that is the correct historical
+fact rather than a stale pointer.
 
 AI-05-B1 is closed and merged. It built the record model, the §15.2 leaf field table, the two
 digests, the §14.9 named grammars, the §6.5 registry and the §6.6 cross-field rules — and
@@ -411,7 +425,7 @@ main           = contains AI-04
 Full evidence in [AI-05-B1_EVIDENCE_2026-10-01.md](AI-05-B1_EVIDENCE_2026-10-01.md).
 
 ```text
-AI-05-A  = COMPLETE / MERGED   contract frozen, 1 amendment
+AI-05-A  = COMPLETE / MERGED   contract frozen, 2 amendments
 AI-05-B1 = COMPLETE / MERGED   offline logical core
 AI-05-B2 = NOT STARTED         admission, Store, lifecycle
 AI-05    = INCOMPLETE          not closed
@@ -419,13 +433,29 @@ AI-05    = INCOMPLETE          not closed
 B1 merge SHA    = 0403fcd83b740f0603af7204e77f6e6905a84cf0   (PR #34)
 B1 merged head  = de63631ad88b42ad8a4bc1dbbc3997b25ab93d53
 audited code head = 39ddd27761ff7b3a08fd6311ec5e27a9326c7d82
-contract blob   = a1df976deea70daea754d89574c47165140d00d0
+
+contract blob   = dd062148938f902109b49a496bb6051c3331a349
                   docs/AI-05_EVIDENCE_EXECUTION_PLAN.md
+                  current, after Amendment 2
+
+B1 verification-time contract blob
+                = a1df976deea70daea754d89574c47165140d00d0
+                  the blob B1 was built, verified and merged against
 ```
 
-The contract reached `main` through PR #35 (Amendment 1). It was **not modified by B1**: its blob
-hash is identical before and after the merge, which is the check that makes that statement
-verifiable rather than asserted.
+The contract reached `main` through PR #35 (Amendment 1) and was amended a second time by PR #38
+(Amendment 2), which reconciled the human-approval v1 representability wording. Neither amendment
+was made by B1, and B1 was **not** modified by either: its blob hash is identical before and after
+the B1 merge, which is the check that makes that statement verifiable rather than asserted.
+
+The distinction between the two blob values is deliberate. `a1df976` is the contract B1's evidence
+was produced against and stays recorded as such there; `dd06214` is what `main` carries now.
+
+Amendment 2 changed what the contract **says** rather than what it **requires**. §6.5 already
+registered no producer for the human-approval event and §6.6 already rejected a non-service
+`DECISION` actor, so nothing admitted a human-actor record; four passages elsewhere said otherwise
+and now agree. That is why B1's evidence suite is unchanged and still green — the implementation
+was already on the correct side of the boundary the contract had drawn.
 
 ### What B1 built
 
