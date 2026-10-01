@@ -960,7 +960,7 @@ providers.validate          PASS
 ```
 
 ```text
-NOT RUN   required CI on this branch   — not yet run at the time of writing
+required CI on this branch   run 36892373480 — Layer 0 pass, Layers 1-3 pass
 DEFERRED  AI-09  real Codex provider / model integration
 DEFERRED  AI-10  cross-agent review / second-opinion closure
 DEFERRED  AI-11  benchmark comparison
