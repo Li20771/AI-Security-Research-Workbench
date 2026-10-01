@@ -426,7 +426,7 @@ no Codex provider, no Agent code of any kind.
 AI-08-A     = CONTRACT FROZEN      awaiting the human merge checkpoint
 AI-08-B     = NOT STARTED          implementation
 AI-08       = IMPLEMENTATION NOT STARTED
-amendments  = 0
+amendments  = 1                    AI-08-A Amendment 1, review corrections
 ```
 
 目标：把 Codex 建成独立的第二 Agent，而不是 DSH 子进程或 DSH 内部模型。
@@ -453,14 +453,23 @@ Codex = independent reviewer / second execution path
 - 身份来自注册表，不来自发现（不读目录、不读环境变量、不读配置）
 - Router 的 `agent_hint` 仍然只是 hint；`resolve_agent` 是候选变成身份的唯一入口
 - 一次 execution = 一个 `ExecutionId` + 一个 terminal `AgentResult`
-- Context 隔离：同一 workspace + 每个 execution 独立的 `ContextResponse`
+- `AgentExecutionRequest` **不携带** `ContextResponse`；由 execution runtime 为该次执行
+  建立唯一一份、归该 execution 所有的 `ContextResponse`
+- Context 隔离：同一 workspace + 每个 execution 独立的、execution-owned `ContextResponse`
 - 独立性 I1–I8，其中 I3（result 不得成为另一个 Agent 的 input）是 v1 的关键边界
 - 独立性只证明 provenance 独立，**不证明**结论正确；一致不等于验证
+- `AgentRole.INDEPENDENT_SECOND` 只是架构角色，**不是** independence finding；
+  角色本身永远不满足 I1–I8
+- I5 是「每次 tool 调用都新建 GuardRequest / GuardDecision」，**不是** `request_digest` 全局唯一
 - `AgentExecutionOutcome` 只有 `COMPLETED` / `FAILED` / `BLOCKED`；`COMPLETED != PASS`
+- `BLOCKED` 是 execution 级的（execution 未启动）；tool 被 Guard BLOCK 不会把整个
+  Agent execution 改写成 BLOCKED
 
 ```text
 DEFERRED  AI-08 producer token for Evidence   an AI-05 amendment is required first
-OPEN      a per-Agent permission ceiling      default recorded: NOT enforced and NOT claimed
+DEFERRED  a per-Agent permission ceiling      OUT OF SCOPE. AI-08 v1 does not enforce
+                                              or claim one, and AI-08-B MUST NOT infer
+                                              one from AgentId, AgentRole or ActorType.
 ```
 
 **AI-08 v1 has no provider binding** — every capability on every shipped model profile is

@@ -76,7 +76,7 @@ AI-08       = IMPLEMENTATION NOT STARTED
 contract      = docs/AI-08_AGENT_EXECUTION_EXECUTION_PLAN.md
 contract blob = recorded when AI-08-A is merged
 base          = main @ a7c4a1e2536536940d96431883dadb592f7c151a
-amendments    = 0
+amendments    = 1   AI-08-A Amendment 1 (review corrections, §22 of the contract)
 
 FROZEN here   AgentId, AgentRole, the identity boundary, the execution contract,
               Context isolation, the independence definition I1-I8,
@@ -815,7 +815,7 @@ AI-08       = IMPLEMENTATION NOT STARTED
 
 base        = main @ a7c4a1e2536536940d96431883dadb592f7c151a
 contract    = docs/AI-08_AGENT_EXECUTION_EXECUTION_PLAN.md
-amendments  = 0
+amendments  = 1   AI-08-A Amendment 1 (review corrections)
 ```
 
 AI-08 makes Codex a second Agent with its own identity, its own execution instance, its own result
@@ -833,16 +833,26 @@ FROZEN at AI-08-A
     the Router boundary: a hint stays a hint; resolve_agent is the only way a
       candidate becomes an identity
     the execution contract: one request, one ExecutionId, one terminal result
+    that the AgentExecutionRequest carries NO ContextResponse, and that the
+      runtime establishes one execution-owned ContextResponse per execution
     that runtime input may carry task content and durable records may not
     Context isolation: same workspace, per-execution ContextResponse
     the independence definition I1-I8, with I3 (result-is-not-input) as the key
       v1 boundary
+    that I5 is fresh GuardRequest + fresh GuardDecision, NOT request_digest
+      uniqueness; request_digest is not an identity
     what independence cannot prove, and that it is never a verdict
-    AgentResult — a claim with a producer, never a PASS
-    AgentExecutionOutcome — COMPLETED | FAILED | BLOCKED, three members
+    that AgentRole.INDEPENDENT_SECOND is an architectural role and NOT an
+      independence finding; the role alone never satisfies I1-I8
+    AgentResult — attributed by agent_id + execution_id, a claim with a
+      producer, never a PASS, and carrying no producer field in v1
+    AgentExecutionOutcome — COMPLETED | FAILED | BLOCKED, three members;
+      BLOCKED is execution-level, and a Guard-refused tool call never rewrites
+      the execution outcome
     the Guard boundary: unchanged, fresh decision per invocation, and no
-      Agent-specific permission policy claimed
-    the Evidence boundary: AI-08 writes no EvidenceRecord in v1
+      Agent-specific permission policy claimed or inferred
+    the Evidence boundary: AI-08 writes no EvidenceRecord in v1; execution-level
+      permission records satisfy the roadmap requirement without one
     the cross-agent result sharing prohibition
     the Codex provider boundary, deferred whole to AI-09
     the repository layout, and the two AI-07 test assertions maintained
@@ -859,8 +869,10 @@ Layer 0                       PASS (16 checks)
 ```text
 DEFERRED  the AI-08 producer token for Evidence   an AI-05 amendment is required
                                                   before it exists (§13.2)
-OPEN      a per-Agent permission ceiling          default recorded: NOT enforced
-                                                  in v1 and NOT claimed (§12.1)
+DEFERRED  a per-Agent permission ceiling          OUT OF SCOPE. AI-08 v1 does not
+                                                  enforce or claim one, and AI-08-B
+                                                  MUST NOT infer one from AgentId,
+                                                  AgentRole or ActorType (§12.1.1)
 DEFERRED  AI-09  real Codex provider / model integration
 DEFERRED  AI-10  cross-agent review / second-opinion closure
 DEFERRED  AI-11  benchmark comparison

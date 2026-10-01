@@ -287,6 +287,33 @@ FROZEN: a role is a property of the REGISTRATION, not of an execution instance.
         of truth.
 ```
 
+### 5.2.1 A role is not an independence finding — FROZEN
+
+`INDEPENDENT_SECOND` is an architectural name. It is the word `codex` would have been registered
+under even if nothing in this repository ever executed a second Agent. Stating the limit explicitly,
+because the name invites exactly one misreading:
+
+```text
+FROZEN: AgentRole.INDEPENDENT_SECOND is an ARCHITECTURAL ROLE.
+FROZEN: it is NOT an independence finding.
+FROZEN: the role ALONE MUST NOT satisfy I1-I8 (§9.1).
+FROZEN: the role MUST NOT be recorded, cited or counted as proof of structural
+        independence.
+FROZEN: a tool, a report or a test MUST NOT conclude "these two executions are
+        independent" from the registration table.
+```
+
+```text
+Structural independence exists ONLY when the I1-I8 execution-pair predicate holds
+over two actual executions. It is a property of an EXECUTION PAIR (§9.1), never a
+property of an Agent, and never a property of a registration row.
+```
+
+```text
+The vocabulary is unchanged by this clarification. No member is added, removed or
+renamed; this subsection states what the existing member does not mean.
+```
+
 ### 5.3 Three questions, three fields — FROZEN
 
 The most likely way to get this phase wrong is to collapse these into one another. They are not
@@ -401,13 +428,14 @@ has been produced for it.
 It MUST have all of:
 
 ```text
-an ExecutionId                      §7.2
-an AgentId                          §5.1
-a workspace identity                §8
-a declared input descriptor         §7.3
-a ContextResponse for this execution §8
-zero or more tool invocations       §12
-one terminal AgentResult            §10
+an ExecutionId                          §7.2
+an AgentId                              §5.1
+a workspace identity                    §7.3
+a declared input descriptor             §7.3
+exactly one ContextResponse             ESTABLISHED BY THE RUNTIME, not carried
+                                        in the request — §8
+zero or more tool invocations           §12
+one terminal AgentResult                §10
 ```
 
 ```text
@@ -415,6 +443,10 @@ FROZEN: an execution produces EXACTLY ONE terminal AgentResult.
         There is no partial result, no intermediate result and no second one.
 FROZEN: zero tool invocations is a valid execution. An execution that answered
         from context alone is complete, not incomplete.
+FROZEN: the ContextResponse is an OWNED OUTPUT of the execution, produced by the
+        execution runtime. It is NOT an input supplied through the request (§7.3).
+        "The request carries context" and "the execution establishes context" are
+        two competing semantics and only the second one holds here.
 ```
 
 ### 7.2 ExecutionId — FROZEN
@@ -451,14 +483,13 @@ FROZEN: AI-08 v1 has no parent-execution relationship, no retry lineage and no
 
 ### 7.3 AgentExecutionRequest — FROZEN
 
-The minimum an execution needs. It carries **no** credential, **no** tool argument and **no** Guard
-decision.
+The minimum an execution needs. It carries **no** credential, **no** tool argument, **no** Guard
+decision and **no** `ContextResponse`.
 
 ```text
 agent_id            an AgentId (§5.1)
 workspace           a workspace identity, the same scope AI-03 and AI-04 use
 task                a task descriptor or task reference
-context             the ContextResponse for this execution (§8)
 input               a declared input descriptor: a digest, or a reference to
                     bytes AI-08 does not itself store
 ```
@@ -466,11 +497,34 @@ input               a declared input descriptor: a digest, or a reference to
 ```text
 FROZEN: every field above is REQUIRED. An execution with no declared input is not
         an execution this contract produces.
+FROZEN: the request does NOT carry a ContextResponse. The execution runtime
+        ESTABLISHES one ContextResponse for the execution, from the execution's
+        own workspace and task (§8). AI-03's ContextResponse is an owned output
+        of an execution, and it is never a shared request input.
 FROZEN: the request carries no api_key, no token, no credential, no secret, no
         header and no authorization value. A field nobody defined is a field a
         credential can ride in on — the rule AI-04 §4 and AI-07 §5.3 already state
         for their own boundaries.
 FROZEN: an unknown field is REFUSED, not ignored.
+```
+
+If a caller needs to express **where** context should come from, it MAY pass a context
+**descriptor or reference** — a workspace-scoped source reference, never a `ContextResponse` object
+and never another execution's resolved context. A descriptor says what to read; it does not carry
+what was read.
+
+```text
+ALLOWED      a context descriptor / reference: where the execution should read from
+FORBIDDEN    a ContextResponse in the request
+FORBIDDEN    another execution's ContextResponse, by object or by reference
+FORBIDDEN    a context cache shared between two executions
+```
+
+```text
+DEFERRED: the AI-03 ContextRef derivation needed to make such a descriptor
+          first-class. AI-03 is not modified and G-14 remains deferred (§13.5).
+          Until it exists, the descriptor is a workspace-scoped reference and
+          nothing more.
 ```
 
 ### 7.4 Runtime input is not durable Evidence — FROZEN
@@ -510,6 +564,31 @@ same workspace
 independent ContextResponse per Agent execution
 ```
 
+### 8.1 Who establishes the context — FROZEN
+
+```text
+FROZEN: the EXECUTION RUNTIME establishes exactly one ContextResponse for the
+        execution, from the execution's own workspace and task.
+FROZEN: each execution therefore OWNS its ContextResponse. It is an output of
+        the execution, not an input to it.
+FROZEN: the AgentExecutionRequest does NOT carry a ContextResponse (§7.3). There
+        is no field for one, and supplying one is REFUSED rather than ignored.
+```
+
+```text
+FORBIDDEN:
+    passing a ContextResponse in AgentExecutionRequest
+    handing one execution's ContextResponse to another execution, by object or
+      by reference
+    sharing one context cache instance between two executions
+    a "shared context" the two Agents both read as their context object
+PERMITTED:
+    two executions reading the same read-only workspace facts, because each
+      established its OWN ContextResponse over them (§8.2)
+```
+
+### 8.2 What is isolated, and what is not — FROZEN
+
 ```text
 FROZEN: both Agents MAY target the same workspace_id, and MAY read the same
         read-only facts from it.
@@ -520,8 +599,6 @@ FROZEN: two executions MUST NOT share an AgentResult (§10).
 FROZEN: two executions MUST NOT share a Guard decision (§12).
 FROZEN: two executions MUST NOT share Agent-specific result state.
 ```
-
-What is isolated, and what is not:
 
 ```text
 ISOLATED      the resolved ContextResponse; the cache instance; result state;
@@ -567,12 +644,14 @@ I3  Input separation
     This is the KEY boundary of AI-08 v1. v1 is BLIND independent execution.
 
 I4  Context separation
-    each execution has its own ContextResponse (§8), and neither execution's
-    context object is the other's.
+    each execution ESTABLISHES and OWNS its own ContextResponse (§8.1), and
+    neither execution's context object is the other's. Neither execution's
+    context was supplied through its request.
 
 I5  Tool authorization separation
-    every tool invocation carries a FRESH GuardRequest and a FRESH GuardDecision.
-    No GuardDecision, and no request_digest, is reused across executions.
+    every tool invocation creates a FRESH GuardRequest and a FRESH GuardDecision.
+    No GuardDecision object is reused across executions.
+    No authorization result is reused across executions.
 
 I6  Result separation
     each execution produces its own AgentResult, and neither carries the other's.
@@ -586,6 +665,40 @@ I8  Provenance separation
     every AgentResult names its own agent_id and execution_id, and can be traced
     back to its own execution.
 ```
+
+### 9.1.1 request_digest is not an identity — FROZEN
+
+I5 is about **fresh authorization objects**, not about digest uniqueness. Stating the difference
+explicitly, because the two are easy to conflate:
+
+```text
+FROZEN: request_digest is a digest OF THE GUARD REQUEST. It is a property of the
+        request that was evaluated.
+FROZEN: request_digest does NOT define execution identity, and it does NOT define
+        Agent identity.
+FROZEN: request_digest is NOT required to be globally unique, and is NOT required
+        to differ between two executions.
+```
+
+```text
+Two executions MAY produce the same request_digest. That is not a violation of
+I5 and MUST NOT be treated as one — the requests would simply have been
+identical, which is a legitimate thing for two independent executions of the
+same task to produce.
+
+I5 is satisfied by fresh OBJECTS and a fresh DECISION each time, not by distinct
+digest VALUES.
+```
+
+```text
+FORBIDDEN: adding a nonce, a random field, a counter, a timestamp or any other
+           make-work value to a GuardRequest so that its digest differs.
+FORBIDDEN: changing AI-04's digest projection so that digests cannot collide.
+FORBIDDEN: a test that asserts request_digest uniqueness across executions.
+```
+
+AI-04 owns `request_digest` and its projection. AI-08 does not change it, does not constrain it,
+and does not depend on its uniqueness for anything.
 
 ```text
 FROZEN: I3 is a v1 boundary and MUST NOT be relaxed within AI-08.
@@ -671,6 +784,44 @@ FROZEN: AgentResult is a CLAIM WITH A PRODUCER. It records that an execution
 FROZEN: AgentResult MUST NOT be readable as PASS, as VERIFIED, or as success.
 ```
 
+### 10.1 Attribution, and what "producer" means here — FROZEN
+
+`AgentResult` is attributed by **two fields and no others**:
+
+```text
+agent_id        WHICH Agent's execution this result describes
+execution_id    WHICH execution this result terminates
+```
+
+```text
+FROZEN: in AI-08 v1 an AgentResult is RUNTIME / RUN DATA. It is NOT a durable
+        EvidenceRecord (§13.1), and it therefore has NO AI-05 producer field.
+FROZEN: AI-08 MUST NOT add a producer vocabulary to AgentResult, and MUST NOT
+        invent a second one anywhere.
+```
+
+When — and only when — a future AI-05 amendment makes an AI-08 execution admissible as durable
+Evidence, the two roles separate exactly as AI-05 §7 already defines them:
+
+```text
+producer    the AI-08 COMPONENT that WRITES the EvidenceRecord
+actor       the AGENT whose execution is DESCRIBED
+
+producer != actor
+```
+
+```text
+FROZEN: producer and actor are different questions and MUST NOT be conflated.
+FROZEN: an AgentId is an ACTOR value. It is never a producer token.
+FROZEN: AI-08 MUST NOT write an EvidenceRecord under a producer token that did
+        not write it (§13.1), and MUST NOT reuse "ai-06".
+```
+
+```text
+DEFERRED: the AI-08 producer token itself. Until AI-05 admits one, §13.1 stands
+          and no AI-08 EvidenceRecord exists to attribute.
+```
+
 ---
 
 ## 11. Agent execution outcome — FROZEN
@@ -689,10 +840,58 @@ class AgentExecutionOutcome(StrEnum):
 ```
 
 ```text
-COMPLETED   the Agent execution produced a result.
-FAILED      the execution started and did not produce a valid terminal result.
-BLOCKED     a required execution, authorization or environment condition
-            prevented execution, so nothing ran.
+COMPLETED   the Agent execution reached a terminal AgentResult.
+FAILED      the Agent execution STARTED but could not reach a valid terminal
+            AgentResult.
+BLOCKED     an EXECUTION-LEVEL precondition prevented the Agent execution from
+            STARTING.
+```
+
+### 11.1 BLOCKED is execution-level — FROZEN
+
+The distinction between "never started" and "started and did not finish" is the whole reason
+`FAILED` and `BLOCKED` are separate members, and it is stated explicitly because the two are the
+easiest pair in this contract to collapse.
+
+```text
+FROZEN: BLOCKED means the Agent execution did not start. An execution that never
+        began cannot have "partially run" and cannot have "run but failed".
+FROZEN: FAILED means the Agent execution did start. An execution that started is
+        never BLOCKED.
+FROZEN: an execution-level precondition is something that prevents the execution
+        from beginning at all — an unavailable Agent, an unusable workspace, a
+        missing declared input, an authorization that refuses the execution
+        itself.
+```
+
+### 11.2 Tool-level BLOCKED is not execution-level BLOCKED — FROZEN
+
+```text
+ToolOutcome.BLOCKED   ≠   AgentExecutionOutcome.BLOCKED
+```
+
+```text
+FROZEN: a tool invocation that Guard BLOCKs does NOT automatically rewrite the
+        whole Agent execution as execution-level BLOCKED.
+FROZEN: a tool-level refusal is recorded AT THE TOOL LEVEL, in the tool
+        invocation's own result, where AI-06 already records it correctly.
+FROZEN: the Agent execution's own outcome is then determined by what the
+        execution actually did — it started, so it is COMPLETED or FAILED, not
+        BLOCKED.
+FROZEN: no path converts one tool invocation's refusal into an execution-level
+        BLOCKED, and no path converts it into a COMPLETED that hides it.
+```
+
+```text
+An execution whose only tool call was refused by Guard still ran. It reached a
+terminal result that says so. That is the honest record, and it is what makes the
+two vocabularies worth keeping apart.
+```
+
+```text
+FROZEN: Agent-level classification MUST NOT invent retry, cancellation, resume,
+        fallback or escalation semantics. A refused tool call does not become a
+        retryable state here. Those belong to AI-13 (§11.3).
 ```
 
 ```text
@@ -707,7 +906,10 @@ It is a claim about the EXECUTION, never a claim about the research question.
 
 `BLOCKED` appears in `GuardDecision`, in `StatusValue` and in `ToolOutcome` as well. That is the
 same known cost AI-07 §10.1 recorded; AI-08 does not remove it by merging the types, and it does
-not rename its own member to avoid the collision.
+not rename its own member to avoid the collision. §11.2 is how the collision is kept from becoming
+a conflation.
+
+### 11.3 No AI-12 / AI-13 vocabulary — FROZEN
 
 v1 adds **no** member beyond these three:
 
@@ -771,11 +973,30 @@ ALLOWED   let the two Guard decisions differ, because their actor.id differs and
 NOT CLAIMED   that the difference is an authorization difference
 ```
 
+#### 12.1.1 The per-Agent permission ceiling — DEFERRED / OUT OF SCOPE
+
+This was recorded as `OPEN` at the AI-08-A freeze. **Amendment 1 closes it**, because an `OPEN`
+that a later implementation phase could resolve on its own is an opening for AI-08-B to invent an
+authorization design while implementing.
+
 ```text
-OPEN: whether a per-Agent permission CEILING is enforced caller-side and recorded,
-      or deferred to AI-09 / AI-10. Default recorded: NOT enforced in v1, and NOT
-      claimed. A caller-side ceiling would be a convention in the request AI-08
-      builds, not a Guard feature, and it MUST NOT be described as one.
+FROZEN: AI-08 v1 does not ENFORCE a per-Agent permission ceiling.
+FROZEN: AI-08 v1 does not CLAIM a per-Agent permission ceiling.
+FROZEN: the ceiling is OUT OF SCOPE for AI-08, not a decision left to AI-08-B.
+
+FROZEN: any future Agent-specific permission ceiling requires an explicit
+        authorization design and a contract amendment first.
+FROZEN: AI-08-B MUST NOT infer a ceiling from AgentId, from AgentRole, or from
+        ActorType. None of the three is an authorization input.
+FROZEN: no caller-side, convention-based, or "by construction" ceiling may be
+        introduced in AI-08-B and described as an Agent-specific permission.
+```
+
+```text
+An observable side-effect of §12 is NOT a policy. That two Guard decisions differ
+because their actor.id differs is an attribution fact, and §12.1 already forbids
+reading it as an authorization difference. Amendment 1 extends the same
+prohibition to any per-Agent ceiling built on top of it.
 ```
 
 ---
@@ -836,6 +1057,36 @@ FROZEN: an AgentResult is a claim with producer/actor provenance. It is NOT a
         PASS, NOT VERIFIED, and NOT a truth verdict.
 FROZEN: no path converts an AgentResult, or two AgentResults, into a PASS.
 ```
+
+### 13.4 "Independent tool permission records" — what AI-08 actually provides
+
+The roadmap requires *"独立工具权限记录"* — independent tool permission records. That requirement is
+**satisfied in AI-08 v1**, and it is satisfied without any durable record and without touching
+AI-05:
+
+```text
+SUPPLIED BY   a fresh GuardRequest and a fresh GuardDecision for EVERY tool
+              invocation, per execution (§12, I5)
+NOT REQUIRED  a durable AI-05 EvidenceRecord
+```
+
+```text
+FROZEN: the roadmap's "independent tool permission records" means EXECUTION-LEVEL
+        AUTHORIZATION RECORDS: each Agent's tool invocations carry their own
+        Guard decision, made against their own request, with their own actor.id.
+FROZEN: it does NOT mean a durable AI-05 EvidenceRecord, and AI-08 v1 MUST NOT
+        be read as claiming one (§13.1).
+FROZEN: the independence of these records is exactly I5 — fresh objects, fresh
+        decisions, no reuse. It is not digest uniqueness (§9.1.1).
+```
+
+```text
+This is why AI-08 v1 can satisfy the requirement while writing no Evidence at all,
+and why it therefore does not conflict with AI-05 C-1: C-1 governs DURABLE
+ADMISSION (§13.5), and §13.4 produces no durable record for C-1 to govern.
+```
+
+### 13.5 Deferred elsewhere — unchanged
 
 ### 13.4 Deferred elsewhere — unchanged
 
@@ -1059,28 +1310,35 @@ Layers 1 only. **AI-08 adds no layer 4** — v1 reaches no network and starts no
 | T10 | ids are not inherited | §7.2 | no parent, no retry lineage, no reuse |
 | T11 | the request is closed | §7.3 | unknown field refused; no credential, no tool argument |
 | T12 | runtime input ≠ durable result | §7.4 | real task content may be input; it never reaches AgentResult |
-| T13 | context is per-execution | §8 | two executions, two ContextResponses, same workspace |
-| T14 | context is not shared | §8 | neither execution holds the other's context object |
-| T15 | I1 identity separation | §9.1 | distinct agent ids, both registered |
-| T16 | I2 execution separation | §9.1 | distinct execution ids, neither derived |
-| T17 | I3 input separation | §9.1 | neither result is the other's input, both directions |
-| T18 | I4 context separation | §9.1 | distinct context per execution |
-| T19 | I5 authorization separation | §9.1 | fresh request and fresh decision per invocation |
-| T20 | I6 result separation | §9.1 | two results, neither carrying the other |
-| T21 | I7 failure separation | §9.1 | FAILED/BLOCKED never becomes the other's COMPLETED |
-| T22 | I8 provenance separation | §9.1 | each result names its own agent and execution |
-| T23 | independence is not a verdict | §9.2 | the predicate returns a finding, never PASS/VERIFIED |
-| T24 | the result is not a verdict | §10 | AgentResult carries no PASS, no VERIFIED, no success |
-| T25 | the outcome vocabulary is three | §11 | exactly COMPLETED, FAILED, BLOCKED |
-| T26 | no AI-13 vocabulary leaked | §11 | no TIMED_OUT/CANCELLED/RETRYING/FALLBACK/ESCALATED |
-| T27 | Guard is unchanged | §12 | no actor-keyed policy field; no second evaluator |
-| T28 | no ceiling is claimed | §12.1 | no document or code claims an Agent-specific permission |
-| T29 | no Evidence is written | §13.1 | AI-08 writes no EvidenceRecord under any token |
-| T30 | no cross-agent injection | §14 | neither result reaches the other's input |
-| T31 | no network, no subprocess | §15 | agents/ imports no HTTP client and spawns nothing |
-| T32 | no provider binding | §15 | no model profile, no provider id, no endpoint |
-| T33 | Layer 0 gate | §17 | the AI-08 gate exists and passes (AI-08-B) |
-| T34 | the boundary holds | §17.1 | agents/ is a core layer and not a plugin package |
+| T13 | the request carries no context | §7.3 | a `ContextResponse` in the request is REFUSED, not ignored |
+| T14 | context is execution-owned | §8.1 | the runtime establishes it; two executions, two ContextResponses |
+| T15 | context is not shared | §8.2 | neither execution holds the other's context object or cache |
+| T16 | I1 identity separation | §9.1 | distinct agent ids, both registered |
+| T17 | I2 execution separation | §9.1 | distinct execution ids, neither derived |
+| T18 | I3 input separation | §9.1 | neither result is the other's input, both directions |
+| T19 | I4 context separation | §9.1, §8.1 | each execution established and owns its own context |
+| T20 | I5 authorization separation | §9.1 | a fresh request and a fresh decision per invocation — NOT digest uniqueness |
+| T21 | request_digest is not an identity | §9.1.1 | equal digests across executions are not a violation; no nonce is added |
+| T22 | I6 result separation | §9.1 | two results, neither carrying the other |
+| T23 | I7 failure separation | §9.1 | FAILED/BLOCKED never becomes the other's COMPLETED |
+| T24 | I8 provenance separation | §9.1 | each result names its own agent and execution |
+| T25 | independence is not a verdict | §9.2 | the predicate returns a finding, never PASS/VERIFIED |
+| T26 | a role is not a finding | §5.2.1 | `INDEPENDENT_SECOND` alone never satisfies I1–I8 |
+| T27 | the result is not a verdict | §10 | AgentResult carries no PASS, no VERIFIED, no success |
+| T28 | attribution is two fields | §10.1 | `agent_id` + `execution_id`, and no fabricated producer field |
+| T29 | the outcome vocabulary is three | §11 | exactly COMPLETED, FAILED, BLOCKED |
+| T30 | BLOCKED is execution-level | §11.1 | BLOCKED means never started; a started execution is never BLOCKED |
+| T31 | tool BLOCKED ≠ execution BLOCKED | §11.2 | a Guard-refused tool call does not rewrite the execution outcome |
+| T32 | no AI-13 vocabulary leaked | §11.3 | no TIMED_OUT/CANCELLED/RETRYING/FALLBACK/ESCALATED |
+| T33 | Guard is unchanged | §12 | no actor-keyed policy field; no second evaluator |
+| T34 | no ceiling is claimed | §12.1.1 | no Agent-specific permission is enforced, claimed or inferred |
+| T35 | no Evidence is written | §13.1 | AI-08 writes no EvidenceRecord under any token |
+| T36 | permission records are execution-level | §13.4 | fresh Guard decisions satisfy the roadmap requirement; no durable record |
+| T37 | no cross-agent injection | §14 | neither result reaches the other's input |
+| T38 | no network, no subprocess | §15 | agents/ imports no HTTP client and spawns nothing |
+| T39 | no provider binding | §15 | no model profile, no provider id, no endpoint |
+| T40 | Layer 0 gate | §17 | the AI-08 gate exists and passes (AI-08-B) |
+| T41 | the boundary holds | §17.1 | agents/ is a core layer and not a plugin package |
 
 ---
 
@@ -1094,13 +1352,13 @@ AI-08 is complete only when every gate below passes.
 | C1 | Agent identity frozen | AgentId and AgentRole are closed, and the registration is total |
 | C2 | Identity boundary verified | a hint never becomes an identity without `resolve_agent` |
 | C3 | Execution contract verified | one request, one ExecutionId, one terminal result |
-| C4 | Context isolation verified | same workspace, per-execution ContextResponse |
-| C5 | Independence verified | I1–I8 all hold, and each has a direct assertion |
-| C6 | Non-provability stated | no artifact claims independence is verification |
-| C7 | Result boundary verified | AgentResult carries no verdict, no raw output, no credential |
-| C8 | Outcome vocabulary verified | exactly three members; no AI-12/AI-13 vocabulary |
-| C9 | Guard boundary verified | no Guard change, fresh decision per invocation, no ceiling claimed |
-| C10 | Evidence boundary verified | no AI-08 EvidenceRecord written; no AI-05 change |
+| C4 | Context isolation verified | same workspace; the runtime establishes an execution-owned ContextResponse, and the request carries none |
+| C5 | Independence verified | I1–I8 all hold, each with a direct assertion, and no digest-uniqueness requirement is asserted |
+| C6 | Non-provability stated | no artifact claims independence is verification, and no role is read as a finding |
+| C7 | Result boundary verified | AgentResult carries no verdict, no raw output, no credential, no fabricated producer field |
+| C8 | Outcome vocabulary verified | exactly three members; BLOCKED is execution-level and a tool refusal never rewrites it; no AI-12/AI-13 vocabulary |
+| C9 | Guard boundary verified | no Guard change, fresh request and fresh decision per invocation, digest uniqueness neither required nor tested, no ceiling claimed or inferred |
+| C10 | Evidence boundary verified | no AI-08 EvidenceRecord written; no AI-05 change; execution-level permission records present |
 | C11 | Sharing prohibition verified | no cross-agent result injection exists |
 | C12 | Provider boundary verified | no network, no subprocess, no provider or model binding |
 | C13 | Layer 0 PASS | the AI-08 structural and behavioural check exists and passes |
@@ -1131,12 +1389,14 @@ AI-08-B implements:
 the AgentId and AgentRole vocabularies, and the frozen registration table
 the identity boundary: resolve_agent, refusing everything unregistered
 the execution contract: AgentExecutionRequest, ExecutionId, the execution instance
-Context acquisition: one ContextResponse per execution, same workspace
+Context acquisition: the RUNTIME establishes exactly one execution-owned
+  ContextResponse per execution, from that execution's workspace and task.
+  The request carries none, and none is passed in (§7.3, §8.1).
 AgentResult, and AgentExecutionOutcome
 the independence predicate over I1–I8
 the Guard call path: one fresh request and one fresh decision per tool invocation
 the Layer 0 AI-08 gate
-tests/agents/, layer 1, covering T1–T34
+tests/agents/, layer 1, covering T1–T41
 ```
 
 AI-08-B MUST NOT:
@@ -1145,9 +1405,16 @@ AI-08-B MUST NOT:
 write an EvidenceRecord                      (§13.1)
 modify AI-03, AI-04, AI-05 or AI-07          (§16)
 add a provider, a model profile or a network call (§15)
-add a retry, timeout or cancellation mechanism    (§11)
+add a retry, timeout or cancellation mechanism    (§11.3)
 add cross-agent comparison or injection           (§14)
-claim an Agent-specific permission ceiling        (§12.1)
+enforce, claim or infer an Agent-specific
+  permission ceiling from AgentId, AgentRole
+  or ActorType                                    (§12.1.1)
+carry a ContextResponse in AgentExecutionRequest  (§7.3)
+add a nonce, counter or random field so that a
+  Guard request digest becomes unique             (§9.1.1)
+rewrite an execution outcome because one tool
+  invocation was refused                          (§11.2)
 ```
 
 ---
@@ -1158,7 +1425,78 @@ claim an Agent-specific permission ceiling        (§12.1)
 AI-08-A   FROZEN    no amendments
 ```
 
-An amendment is required before any frozen rule above changes. One has not been written.
+### Amendment 1 — AI-08-A review corrections
+
+```text
+AI-08-A Amendment 1   FROZEN    written before AI-08-B began
+base                  main @ a7c4a1e2536536940d96431883dadb592f7c151a
+PR                    #51, the same contract-freeze PR
+```
+
+Six corrections, all found by review of the initial freeze. **Every one is a clarification or a
+relaxation. None widens AI-08's authority, adds a capability, or changes any boundary shared with
+AI-03, AI-04, AI-05, AI-06 or AI-07.**
+
+```text
+1  ContextResponse ownership                              §7.1, §7.3, §8.1, §8.2, §9 I4, §21, T13–T15, T19
+   The freeze listed `context` as a REQUIRED AgentExecutionRequest field while
+   also freezing that each execution establishes its OWN ContextResponse. Two
+   competing semantics cannot both hold. RESOLVED: the request does not carry a
+   ContextResponse; the execution runtime establishes exactly one and the
+   execution owns it. A context descriptor/reference may be passed instead.
+
+2  Guard digest uniqueness                                §9.1 I5, §9.1.1 (new), T20, T21, C5, C9
+   I5 required that no `request_digest` be reused across executions. That is not
+   something AI-08 can require, and asserting it would have invited a nonce or a
+   Guard change to satisfy a requirement that does not exist. RESOLVED: I5 is
+   about fresh OBJECTS and a fresh DECISION, not distinct digest VALUES.
+   request_digest is not an identity and is not required to be unique.
+
+3  BLOCKED semantics                                      §11.1, §11.2 (new), §11.3, T29–T32, C8
+   `BLOCKED` was defined as "a condition prevented execution, so nothing ran",
+   which left a Guard-refused TOOL call able to rewrite a whole Agent execution
+   as BLOCKED. RESOLVED: BLOCKED is EXECUTION-LEVEL and means the execution never
+   started; a tool-level refusal is recorded at the tool level and never
+   rewrites the execution outcome. ToolOutcome.BLOCKED ≠
+   AgentExecutionOutcome.BLOCKED.
+
+4  Per-Agent permission ceiling                           §12.1.1 (new), T34, C9
+   Recorded as OPEN at the freeze, with "default: not enforced". An OPEN that
+   AI-08-B could resolve while implementing is an opening to invent an
+   authorization design. RESOLVED: DEFERRED / OUT OF SCOPE. AI-08-B MUST NOT
+   infer a ceiling from AgentId, AgentRole or ActorType.
+
+5  AgentRole is not an independence finding               §5.2.1 (new), T26, C6
+   `AgentRole.INDEPENDENT_SECOND` names an architectural role and could be
+   misread as establishing independence. RESOLVED: the role alone never
+   satisfies I1–I8 and is never proof of structural independence, which is a
+   property of an execution PAIR only. The vocabulary is unchanged.
+
+6  AgentResult producer wording                           §10.1 (new), §13.4 (new), T28, T36, C7, C10
+   "a claim with a producer" in §10 and §13.3 read as though AgentResult carried
+   an AI-05 producer field, which it does not: in v1 it is run data. RESOLVED:
+   attribution is `agent_id` + `execution_id`, and no producer field exists.
+   Where a future AI-05 amendment admits an AI-08 record, producer is the
+   writing COMPONENT and actor is the described AGENT — producer != actor.
+   §13.4 additionally records that the roadmap's "independent tool permission
+   records" are satisfied by fresh GuardRequest + GuardDecision per invocation
+   (execution-level), not by a durable EvidenceRecord — which is why AI-08 v1
+   satisfies that requirement without conflicting with AI-05 C-1.
+```
+
+```text
+EXPLICITLY NOT CHANGED by Amendment 1:
+    any AgentId, AgentRole or AgentExecutionOutcome member
+    the registration table (dsh -> PRIMARY, codex -> INDEPENDENT_SECOND)
+    I1, I2, I3, I6, I7, I8
+    the Guard boundary (§12): Guard is not modified, and not required to change
+    the Evidence boundary (§13.1): AI-08 still writes no EvidenceRecord in v1
+    the cross-agent sharing prohibition (§14)
+    the Codex provider boundary (§15)
+    the AI-07 contract, and any AI-03/AI-04/AI-05/AI-06 implementation
+```
+
+An amendment is required before any frozen rule above changes.
 
 ---
 
@@ -1166,6 +1504,7 @@ An amendment is required before any frozen rule above changes. One has not been 
 
 ```text
 AI-08-A   FROZEN    this document
+AI-08-A   Amendment 1 applied before AI-08-B began (§22)
 base      main @ a7c4a1e2536536940d96431883dadb592f7c151a
 date      2026-10-01
 
@@ -1175,27 +1514,34 @@ Frozen here:
     AgentId, a closed two-member vocabulary, and that a free string is never
       a trusted identity
     AgentRole, a closed two-member vocabulary, and the fixed registration
+    that a role is NOT an independence finding (Amendment 1)
     the three distinct questions: ActorType / AgentId / AgentRole
     that identity is registered, never discovered
     the Router boundary: a hint stays a hint, and resolve_agent is the only
       way a candidate becomes an identity
     the execution contract: one request, one ExecutionId, one terminal result
+    that the request carries no ContextResponse, and that the runtime
+      establishes one execution-owned ContextResponse (Amendment 1)
     that runtime input may carry task content and durable records may not
     Context isolation: same workspace, per-execution ContextResponse
     the independence definition I1–I8, with I3 as the key v1 boundary
+    that I5 is fresh objects and a fresh decision, NOT digest uniqueness
+      (Amendment 1)
     what independence cannot prove, and that it is never a verdict
-    AgentResult, and that it is a claim with a producer and not a PASS
-    AgentExecutionOutcome: three members, and no AI-12/AI-13 vocabulary
+    AgentResult, its two attribution fields, and that it is a claim with a
+      producer and not a PASS
+    AgentExecutionOutcome: three members; BLOCKED is execution-level and a
+      tool refusal never rewrites it (Amendment 1)
     the Guard boundary: unchanged, fresh decision per invocation, and no
-      Agent-specific permission policy claimed
+      Agent-specific permission policy claimed or inferred
     the Evidence boundary: AI-08 writes no EvidenceRecord in v1, and why
+    that execution-level permission records satisfy the roadmap requirement
+      without a durable record (Amendment 1)
     the cross-agent result sharing prohibition
     the Codex provider boundary, deferred whole to AI-09
     the repository layout, and the two AI-07 test assertions maintained here
 
 Not decided here:
-    whether a per-Agent permission ceiling is enforced caller-side   OPEN,
-      default recorded as not enforced and not claimed (§12.1)
     the AI-08 producer token for Evidence                             DEFERRED,
       and an AI-05 amendment is required before it exists (§13.2)
     the AI-08 Layer 0 gate implementation                             AI-08-B (§17)
@@ -1203,6 +1549,10 @@ Not decided here:
       within the layout frozen at §17
     how a second opinion is actually closed                           AI-10
     whether Codex may use a different provider family                 AI-09
+
+Closed by Amendment 1, previously OPEN:
+    a per-Agent permission ceiling        DEFERRED / OUT OF SCOPE (§12.1.1).
+                                          AI-08-B MUST NOT infer one.
 ```
 
 ```text
