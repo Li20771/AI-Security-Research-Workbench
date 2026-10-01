@@ -153,7 +153,8 @@ PROJECT_STATUS.md
 
 ### Not yet started
 
-- AI-07 Router implementation — **DEFERRED**, and untouched by AI-03
+- AI-07 Router **implementation** — contract frozen (AI-07-A, PR #48);
+  the router itself is NOT STARTED
 
 ## Completed
 
@@ -671,3 +672,29 @@ BLOCKED   real CAN / ECU / vehicle   — refused by §12.2, by design and assert
 Router (AI-07) = DEFERRED / UNIMPLEMENTED — untouched, no interface reserved
 SecurityLab    = UNCHANGED
 ```
+
+## AI-07 status
+
+**AI-07 — Plugin 5: Model Router v1: CONTRACT FROZEN / PR OPEN, NOT MERGED.**
+
+```text
+AI-07-A  = CONTRACT FROZEN / PR #48 OPEN, NOT MERGED
+AI-07-B  = NOT STARTED
+AI-07    = not closed
+
+contract = docs/AI-07_MODEL_ROUTER_EXECUTION_PLAN.md
+blob     = 2f8dcba8f9c2ca36e3d917fc6b69c3a5cb7f36fe   (after Amendment 1)
+amendments = 1
+
+Router (AI-07) as an implementation = NOT STARTED; routing/ holds a README and
+no Python.
+```
+
+Amendment 1 reconciled four internal inconsistencies before implementation began: `sensitivity`
+had an eligibility effect with no AI-02 source field; `max_cost_class` named a vocabulary AI-02
+does not define; `fallback` was described as a boundary with no v1 trigger; and
+`require_independence` needed an explicit non-claim. Security and authority impact: none.
+
+One fact governs v1 and is worth stating where a reader will find it: **every capability on every
+shipped model profile is `UNKNOWN`**, so a request that requires a capability has no eligible
+candidate and the outcome is `NO_ELIGIBLE_MODEL`. That is the honest state, not a defect.

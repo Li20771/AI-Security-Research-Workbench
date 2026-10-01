@@ -257,8 +257,7 @@ requested_capability: string|null   # one of AI-02's CapabilityName members (§6
 modality: string|null         # the input modality the task needs (§6.3)
 
 constraints:
-  max_cost_class: string|null       # AI-02's cost class (§6.4)
-  max_latency_class: string|null    # AI-02's latency class, when one exists (§6.4)
+  max_latency_class: string|null    # no AI-02 source field exists; see §6.4
 
 sensitivity: read|analyze|test|modify|system-change|remote-change|null
 
@@ -272,10 +271,24 @@ candidates:
   - model_ref: string         # "provider_id/model_id", AI-02's own composition
 ```
 
-### 5.2 `sensitivity` is carried, never used to authorize — FROZEN
+### 5.2 `sensitivity` is carried and recorded, and changes nothing — FROZEN
 
-`sensitivity` is AI-04's `PermissionLevel`, imported and not restated. **It is an input to
-eligibility, not a grant.**
+`sensitivity` is AI-04's `PermissionLevel`, imported and not restated.
+
+**v1 does not use it to change model eligibility.** An earlier revision of this section said it
+MAY narrow the candidate set. That was wrong, and Amendment 1 records why: AI-02's `ModelProfile`
+has no permission, authorization or sensitivity-compatibility field, and §7.2's rule schema has no
+`sensitivity` match. A narrowing could therefore only have been performed against data that does
+not exist — which means AI-07-B would have had to invent a model-side permission mapping to obey
+it. Inventing one is exactly what §8 forbids.
+
+```text
+FROZEN: `sensitivity` is carried and recorded for routing traceability.
+FROZEN: AI-07 v1 does NOT use it to change model eligibility.
+FROZEN: `sensitivity` MUST NOT authorize.
+FROZEN: `sensitivity` MUST NOT widen or narrow the candidate set in v1.
+FROZEN: `sensitivity` MUST be preserved unchanged in the RouterDecision.
+```
 
 ```text
 AI-07 MUST NOT:
@@ -283,14 +296,13 @@ AI-07 MUST NOT:
     a file path, task wording, model confidence, or a previous routing
     decide that a task is "safe enough" to skip an approval
     attach a permission level to a selection
+    derive a model-side permission, clearance or compatibility attribute
     emit anything a caller could read as an authorization
-
-AI-07 MAY:
-    use `sensitivity` to narrow the candidate set, and MUST say so in the decision
+    define a security-level vocabulary of its own
 ```
 
-A Router that could widen a permission would be the second permission system this contract exists
-to prevent (§8, §10).
+AI-04 owns `PermissionLevel` and authorization. AI-07 records what it was given and routes on
+descriptors that exist.
 
 ### 5.3 What a request must not carry — FROZEN
 
@@ -381,20 +393,30 @@ a multimodal requirement matches on `modality`, not on a capability
 `PricingCatalog`, `project_cost`. Pricing is **dated metadata with no hardcoded price** — AI-02 §9
 records that a price carries the date it was observed.
 
+**AI-02 defines no cost CLASS.** There is no `cheap`, `medium` or `expensive` anywhere, and no
+field to carry one. An earlier revision of §5.1 declared `max_cost_class: string|null` with the
+comment *"AI-02's cost class"*. That was a false reference — the field does not exist — and
+Amendment 1 corrects it. A RouterRequest carrying a cost-class constraint would have named a
+vocabulary AI-07 had invented, which is the one thing §6.1 forbids.
+
 ```text
+FROZEN: cost-class routing is DEFERRED in AI-07 v1, because AI-02 does not
+        expose a cost-class vocabulary.
+FROZEN: AI-07 MUST NOT invent a cost class.
+FROZEN: AI-07 MUST NOT convert numeric pricing metadata into a class of its own.
+FROZEN: a RouterRequest carrying an unsupported cost-class constraint is
+        INVALID_REQUEST. It MUST NOT be silently ignored, and it MUST NOT be
+        dropped as though it had been satisfied.
 FROZEN: AI-07 reads cost through AI-02's types and computes nothing itself.
-FROZEN: a constraint on a cost or latency class that no shipped profile declares
-        is UNSATISFIABLE, and the outcome is NO_ELIGIBLE_MODEL — not a guess.
 DEFERRED: whether AI-02 exposes a latency CLASS. No such field exists today, and
-        AI-07 does not invent one; a `max_latency_class` constraint is recorded
-        as unsupported rather than silently ignored.
+        AI-07 does not invent one; a `max_latency_class` constraint is likewise
+        INVALID_REQUEST rather than silently ignored.
 ```
 
-**In v1 both constraints are unsatisfiable, and that is the honest state.** The default
-`PricingCatalog` is empty — no pricing YAML exists in the repository — and no profile carries a
-latency class. A rule set that asks for either produces `NO_ELIGIBLE_MODEL`, which is a true
-answer to a question the repository has no data for. AI-07 MUST NOT substitute a model to make
-such a rule succeed (§9), and MUST NOT invent a price.
+**In v1 every cost and latency constraint is unsupported, and that is the honest state.** The
+default `PricingCatalog` is empty — no pricing YAML exists in the repository — and no profile
+carries a latency class. Naming them as unsupported is a true answer to a question the repository
+has no data for. AI-07 MUST NOT substitute a model to make such a request succeed (§9).
 
 ```text
 FROZEN: a provider that ships `enabled: false` is not a candidate. AI-07 reads
@@ -547,17 +569,41 @@ fallback != evidence
 fallback != retry-until-success
 ```
 
+**AI-07 v1 has NO automatic fallback mechanism.** An earlier revision described a fallback as
+"a second routing decision over the remaining candidates, made by the same rule set", while also
+saying the Router does not retry and while §13.3 listed `fallbacks` on the decision. Those three
+cannot all hold, nothing in §5.1, §7.2 or §17 gave a fallback a trigger, and Amendment 1 records
+the correction.
+
 ```text
-FROZEN: a fallback is a second ROUTING decision over the remaining candidates, made
-        by the same rule set, and recorded as its own decision. It is not a
-        mutation of the first.
-FROZEN: a fallback MUST NOT relax a capability requirement, a modality requirement,
-        a cost or latency constraint, or a sensitivity.
-FROZEN: a fallback MUST NOT bypass Guard, widen a permission, or reach a model the
-        request's `candidates` did not name.
-FROZEN: the Router does not retry. Attempting a model, observing a failure and
-        trying another is execution, and AI-07 does not execute (§14).
+FROZEN: AI-07 v1 has NO automatic fallback mechanism.
+FROZEN: AI-07 does NOT retry a selected model.
+FROZEN: AI-07 keeps no retry state and no "the previous model failed, therefore
+        try X" state. It has no memory of a previous evaluation.
 ```
+
+A caller MAY submit a second `RouterRequest` after a previous decision, and that request is
+evaluated **independently**:
+
+```text
+the second request is a request like any other
+it MUST NOT gain authorization from the previous decision
+it MUST NOT be influenced by hidden Router state, because none exists
+if it is intended as a fallback it MUST NOT widen the original candidate set
+if it is intended as a fallback it MUST NOT relax a capability, modality or any
+  other constraint
+it MUST NOT relax `sensitivity`, which §5.2 does not use for eligibility at all
+```
+
+```text
+FROZEN: no path in AI-07 turns a failed or unavailable selection into a second
+        one. A second decision exists because a caller asked for one, and the
+        relationship between two decisions is external correlation metadata —
+        not an execution or retry mechanism owned by AI-07.
+```
+
+Attempting a model, observing a failure and trying another is execution, and AI-07 does not
+execute (§14).
 
 ```text
 an unavailable model does NOT mean:
@@ -627,9 +673,24 @@ AI-08 owns:   the independent Agent, its context, its execution and its result
 ```text
 FROZEN: AI-07 MUST NOT implement AI-08. No Codex adapter, no second execution path,
         no cross-agent comparison, no "the two agree so it passed".
-DEFERRED: how an independent Agent is identified. `select.agent` exists as a hint
-        and AI-07-B MUST NOT treat it as an execution path.
+FROZEN: AI-07 MAY record the requirement.
+FROZEN: AI-07 MAY carry an `agent` hint.
+FROZEN: AI-07 MUST NOT assert that the hint identifies a VERIFIED or otherwise
+        established independent Agent. A hint is a hint.
+FROZEN: AI-07 MUST NOT execute or validate the independent Agent, and MUST NOT
+        claim any independence property about it.
+DEFERRED: how an independent Agent is identified. AI-08 owns identity, execution
+        and independence semantics.
 ```
+
+```text
+FROZEN: `SELECTED` with `require_independence: true` MUST NOT be read as
+        "an independent Agent has executed", nor as any claim that one exists.
+        It records that the caller asked for one.
+```
+
+This follows AI-06 §8.2's rule one layer over: a claim is a claim with a producer, and AI-07 is not
+the producer of an independence claim.
 
 AI-00 §13 records the rule this protects: agreement between two agents is not verification.
 
@@ -748,9 +809,17 @@ requested        the request's descriptors, never its content
 matched_rule     rule_id, or null
 candidates       the ordered candidate set considered
 selected         model_ref and agent hint, or null
-fallbacks        any second decision over the remaining candidates
 rules_revision   the revision used (§12.3)
 ```
+
+```text
+FROZEN: a RouterDecision describes exactly ONE evaluation. It carries no
+        `fallbacks` and no nested decision.
+```
+
+A later, caller-submitted `RouterRequest` produces another `RouterDecision`. The relationship
+between the two, if any, is external correlation metadata and is not an execution or retry
+mechanism owned by AI-07 (§9).
 
 No prompt, no message, no tool arguments, no credential, no provider payload.
 
@@ -899,12 +968,13 @@ a network.
 | T12 | an unresolvable `model_ref` | §7.7 | `MODEL_UNAVAILABLE` | no substitution |
 | T13 | a duplicate `rule_id` | §12.4 | `INVALID_RULES` | not resolved by keeping the first or last |
 | T14 | an unsupported rule-set version | §12.4 | `INVALID_RULES` | as T13 |
-| T15 | a fallback does not relax a constraint | §9 | the fallback fails too | fallback is not a loophole |
-| T16 | a fallback does not widen the candidate set | §9 | refused | no reaching outside `candidates` |
-| T17 | a fallback does not bypass Guard | §8, §9 | no authorization is produced | Router is not a gate |
+| T14b | a cost-class or latency-class constraint | §6.4 | `INVALID_REQUEST`, never silently ignored | no invented vocabulary |
+| T15 | no automatic retry | §9 | a failed selection produces no second evaluation | v1 has no retry |
+| T16 | no automatic candidate expansion | §9 | the candidate set is never widened by the Router | selection is not a search |
+| T17 | no constraint relaxation | §9 | a second request is evaluated under its own constraints, unchanged | fallback is not a loophole |
 | T18 | a selection carries no permission | §8 | no grant anywhere in the decision | selection ≠ authorization |
 | T19 | a stronger model does not raise a level | §8 | unchanged | exactly the bypass F-09 closes |
-| T20 | `sensitivity` narrows and never widens | §5.2 | the set shrinks or holds | carried, not granted |
+| T20 | `sensitivity` is carried unchanged | §5.2 | it grants nothing, and neither widens nor narrows eligibility | recorded, not used to authorize |
 | T21 | no inference from a tool name or path | §15 | the level is not derived | no name-based privilege |
 | T22 | a capability is never promoted | §6.2 | statuses unchanged after routing | AI-07 does not probe |
 | T23 | the Router makes no provider call | §14 | no transport is reachable | it selects, it does not execute |
@@ -913,7 +983,7 @@ a network.
 | T26 | no new AI-05 event is registered | §13.2 | the AI-05 registry is unchanged | a frozen registry is not AI-07's to edit |
 | T27 | a decision record carries no content | §13.3 | no prompt, argument or credential | as T3 |
 | T28 | the decision names the rules revision | §12.3 | the revision used is recorded | an unattributed decision is not auditable |
-| T29 | `require_independence` is expressed, not executed | §11 | no second agent runs | AI-08 owns it |
+| T29 | `require_independence` is represented, not executed | §11 | the requirement is recorded; no independent Agent runs; no independence is claimed | AI-08 owns identity and execution |
 | T30 | no rule set is written or fetched | §12.2 | the Router only reads | configuration is reviewed, not generated |
 | T31 | the outcome vocabulary is AI-07's own | §10.1 | not merged with Guard, Status or Tool vocabularies | the three stay distinct |
 | T32 | no outcome becomes a selection | §10.2 | every failure stays a failure | fail closed |
@@ -949,8 +1019,8 @@ AI-07 is complete only when every gate below passes.
 | C1 | Router implemented | request, rules, decision, evaluation — and it selects |
 | C2 | Determinism verified | same input, same decision; ordering is total |
 | C3 | Capability rule verified | UNKNOWN never satisfies; VERIFIED does |
-| C4 | Authorization boundary verified | no selection grants, widens or bypasses anything |
-| C5 | Fallback boundary verified | no relaxation, no widening, no bypass, no retry |
+| C4 | Authorization boundary verified | no selection grants, widens or bypasses anything, and `sensitivity` changes no eligibility |
+| C5 | Fallback boundary verified | no automatic fallback, no retry, no expansion, no relaxation |
 | C6 | Failure semantics verified | every outcome is distinct, and none becomes a selection |
 | C7 | Configuration boundary verified | reviewed files only; no discovery, no runtime write |
 | C8 | Evidence boundary verified | no record written, no event registered, no content carried |
@@ -983,8 +1053,59 @@ record it, amend this contract (§18), then continue.
 
 ## 22. Amendment log
 
+#### Amendment 1 — AI-07-A contract consistency (2026-10-01)
+
+Found while reviewing the frozen contract against AI-02, before AI-07-B began. Four internal
+inconsistencies, each of which would have obliged AI-07-B to invent something the rest of this
+contract forbids.
+
 ```text
-(none)
+(a) §5.2 said `sensitivity` MAY narrow the candidate set. AI-02's ModelProfile has
+    no permission, authorization or sensitivity-compatibility field, and §7.2's
+    rule schema has no `sensitivity` match. The narrowing could only have run
+    against data that does not exist, so AI-07-B would have had to invent a
+    model-side permission mapping -- which §8 forbids.
+
+    §5.2 now states that `sensitivity` is carried and recorded for traceability,
+    does not change eligibility in v1, does not authorize, and is preserved
+    unchanged in the decision.
+
+(b) §5.1 declared `max_cost_class` with the comment "AI-02's cost class". AI-02
+    defines no cost class: it has PricingRecord, PricingRef, CostProjection and
+    PricingCatalog, and no `cheap`/`medium`/`expensive` anywhere. The field named
+    a vocabulary AI-07 had invented, against §6.1.
+
+    The field is removed from §5.1, and §6.4 now freezes that cost-class routing
+    is DEFERRED in v1, that AI-07 MUST NOT invent a class or convert numeric
+    pricing into one, and that a request carrying such a constraint is
+    INVALID_REQUEST rather than silently ignored.
+
+(c) §9 described a fallback as "a second routing decision over the remaining
+    candidates", §13.3 listed `fallbacks` on the decision, and §9 also said the
+    Router does not retry. Nothing in §5.1, §7.2 or §17 gave a fallback a trigger.
+    The three could not all hold.
+
+    §9 now freezes that v1 has NO automatic fallback and no retry and keeps no
+    retry state; a caller MAY submit a second request, which is evaluated
+    independently and gains nothing from the first. §13.3 now states that a
+    decision describes exactly one evaluation and carries no `fallbacks`.
+
+(d) §11 needed an explicit non-claim for `require_independence`. AI-07 may record
+    the requirement and carry an agent hint, and MUST NOT assert that the hint
+    identifies a verified independent Agent, MUST NOT execute or validate one,
+    and MUST NOT claim any independence property. `SELECTED` with
+    `require_independence: true` does not mean an independent Agent ran.
+```
+
+```text
+Security / authority impact:  NONE.
+
+No change to AI-02 / AI-03 / AI-04 / AI-05 / AI-06 authority, to provider
+behaviour, to tool execution, or to Evidence semantics. No provider, model,
+Guard, Evidence or Tool code is touched.
+
+The amendment removes ambiguity and prevents AI-07-B from inventing authority or
+vocabulary. It narrows what AI-07 may do; it does not widen anything.
 ```
 
 ---

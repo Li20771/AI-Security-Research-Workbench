@@ -1146,10 +1146,21 @@ def check_ai07_router_contract() -> list[str]:
         problems.append("docs/AI-07_MODEL_ROUTER_EXECUTION_PLAN.md is absent")
     else:
         frozen = contract.read_text(encoding="utf-8")
+        # Amendment 1's four clauses plus the two v1 rules they sit beside.
+        # Each is a rule AI-07-B would otherwise have had to invent its way past,
+        # so each is checked rather than trusted.
         for phrase in (
             "Router NEVER grants permission",
             "AI-07 MUST NOT register a new AI-05 event",
             "UNKNOWN` is NOT `available",
+            "`sensitivity` MUST NOT widen or narrow the candidate set in v1",
+            "AI-07 v1 does NOT use it to change model eligibility",
+            "cost-class routing is DEFERRED",
+            "AI-07 MUST NOT invent a cost class",
+            "AI-07 v1 has NO automatic fallback mechanism",
+            "AI-07 does NOT retry a selected model",
+            "and no nested decision",
+            "MUST NOT assert that the hint identifies a VERIFIED",
         ):
             if phrase not in frozen:
                 problems.append(
