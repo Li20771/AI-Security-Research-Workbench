@@ -449,6 +449,55 @@ FROZEN: the ContextResponse is an OWNED OUTPUT of the execution, produced by the
         two competing semantics and only the second one holds here.
 ```
 
+### 7.1.1 One terminal result, for every outcome — FROZEN
+
+`one terminal AgentResult` holds for **all three** `AgentExecutionOutcome` members, without
+exception. This is stated separately because it is the one place where a reader could reasonably —
+and wrongly — conclude that a failed or blocked execution has no result.
+
+```text
+FROZEN: COMPLETED, FAILED and BLOCKED each terminate in EXACTLY ONE
+        AgentResult. The count is one in all three cases.
+FROZEN: there is no outcome for which no AgentResult exists.
+```
+
+```text
+Agent execution body did not start
+    ≠
+no AgentResult exists
+```
+
+```text
+FROZEN: the execution CONTROLLER / RUNTIME produces the terminal AgentResult.
+        It does so whether or not the Agent execution BODY ran.
+FROZEN: for BLOCKED the body never started, and the controller still produces
+        the terminal AgentResult describing the blocking condition.
+FROZEN: for FAILED the body started and did not produce a valid task result, and
+        the controller still produces the terminal AgentResult describing the
+        failure.
+FROZEN: a terminal AgentResult is therefore NOT evidence that the Agent body ran.
+        It is evidence that the execution reached a terminal outcome, which is a
+        different claim (§8.2 of AI-00's rule, one layer over).
+```
+
+```text
+The invariant, for every execution:
+
+    one AgentExecutionRequest
+        ->
+    one ExecutionId
+        ->
+    one terminal AgentResult
+
+It holds identically for COMPLETED, FAILED and BLOCKED.
+```
+
+```text
+FROZEN: this introduces no fourth outcome and no non-terminal outcome (§11).
+FROZEN: "the controller produced a result" MUST NOT be read as "the Agent
+        completed the task" (§11.3).
+```
+
 ### 7.2 ExecutionId — FROZEN
 
 ```text
@@ -768,7 +817,11 @@ execution_id        the ExecutionId this result terminates (§7.2)
 workspace           the workspace identity the execution ran in
 input               the declared input digest or reference from the request (§7.3)
 outcome             a terminal AgentExecutionOutcome (§11)
-result              an output reference or a digest — not the raw output
+result              a terminal result reference or digest.
+                    When a task result/output exists, it refers to that.
+                    For FAILED and BLOCKED it MAY refer to the terminal
+                    failure/block result metadata instead of a task result.
+                    It is ALWAYS present, and it is never the raw output (§10.2).
 tool_results        references to tool invocations, zero or more
 timing              start and duration metadata
 blocking            for BLOCKED, the condition that prevented execution; for
@@ -822,6 +875,36 @@ DEFERRED: the AI-08 producer token itself. Until AI-05 admits one, §13.1 stands
           and no AI-08 EvidenceRecord exists to attribute.
 ```
 
+### 10.2 `result` is required, and it is not always a task result — FROZEN
+
+The field name invites one wrong reading: that a `FAILED` or `BLOCKED` result either has no
+`result` at all or must carry a successful one. Neither is true.
+
+```text
+FROZEN: `result` is present on EVERY terminal AgentResult, for all three
+        outcomes. There is no outcome for which it is absent.
+FROZEN: `result` names WHAT THE EXECUTION TERMINATED WITH — a task result for
+        COMPLETED, and the terminal failure or block metadata for FAILED and
+        BLOCKED.
+FROZEN: a FAILED or BLOCKED AgentResult is NOT required to carry a task result,
+        and MUST NOT be read as implying one exists.
+FROZEN: `blocking` carries the reason for FAILED and BLOCKED. `result` and
+        `blocking` are not alternatives: a FAILED or BLOCKED result carries both.
+```
+
+```text
+COMPLETED   result -> the task result, by reference or digest
+FAILED      result -> the terminal failure metadata, by reference or digest
+BLOCKED     result -> the terminal block metadata, by reference or digest
+```
+
+```text
+FROZEN: `result` MUST NOT carry raw model output, a raw prompt body, a raw task
+        body, tool arguments or any credential — for ANY outcome, not only for
+        COMPLETED. A failure record is not a place where the raw content that
+        caused the failure becomes storable.
+```
+
 ---
 
 ## 11. Agent execution outcome — FROZEN
@@ -840,11 +923,29 @@ class AgentExecutionOutcome(StrEnum):
 ```
 
 ```text
-COMPLETED   the Agent execution reached a terminal AgentResult.
-FAILED      the Agent execution STARTED but could not reach a valid terminal
-            AgentResult.
+COMPLETED   the execution reached a terminal AgentResult representing a
+            completed Agent execution.
+
+FAILED      the Agent execution STARTED but failed to produce a valid task
+            result. The execution runtime STILL produces exactly one terminal
+            AgentResult describing the failure.
+
 BLOCKED     an EXECUTION-LEVEL precondition prevented the Agent execution from
-            STARTING.
+            STARTING. The execution controller STILL produces exactly one
+            terminal AgentResult describing the blocking condition.
+```
+
+```text
+FROZEN: the "exactly one terminal AgentResult" invariant (§7.1.1) holds for
+        COMPLETED, FAILED and BLOCKED alike. FAILED and BLOCKED describe what
+        the EXECUTION BODY did or did not do — they do NOT mean that no
+        AgentResult exists.
+FROZEN: Agent execution body did not start  ≠  no AgentResult exists.
+```
+
+```text
+The vocabulary is unchanged by this amendment. No member is added, removed or
+renamed; this block states what the existing three members do and do not imply.
 ```
 
 ### 11.1 BLOCKED is execution-level — FROZEN
@@ -854,14 +955,30 @@ The distinction between "never started" and "started and did not finish" is the 
 easiest pair in this contract to collapse.
 
 ```text
-FROZEN: BLOCKED means the Agent execution did not start. An execution that never
+FROZEN: BLOCKED means the Agent execution BODY did not start. A body that never
         began cannot have "partially run" and cannot have "run but failed".
-FROZEN: FAILED means the Agent execution did start. An execution that started is
+FROZEN: FAILED means the Agent execution BODY did start. A body that started is
         never BLOCKED.
 FROZEN: an execution-level precondition is something that prevents the execution
-        from beginning at all — an unavailable Agent, an unusable workspace, a
-        missing declared input, an authorization that refuses the execution
-        itself.
+        BODY from beginning at all — an Agent that does not resolve, a workspace
+        that cannot be used, a missing or unreadable declared input, or a
+        ContextResponse that cannot be established.
+```
+
+```text
+FROZEN: BLOCKED does NOT mean "no AgentResult". The CONTROLLER still produces
+        exactly one terminal AgentResult, carrying BLOCKED and the blocking
+        condition (§7.1.1, §10.2).
+FROZEN: BLOCKED describes the EXECUTION BODY, never the record. The record
+        exists in all three outcomes.
+```
+
+```text
+FROZEN: AI-08 v1 has no execution-level authorization, so no authorization
+        refusal is an execution-level precondition. Guard authorizes tool
+        INVOCATIONS, not executions (§12), and a refused invocation is a
+        TOOL-level event (§11.2). This list is closed for v1: it contains no
+        authorization member, and AI-08-B MUST NOT add one.
 ```
 
 ### 11.2 Tool-level BLOCKED is not execution-level BLOCKED — FROZEN
@@ -883,16 +1000,25 @@ FROZEN: no path converts one tool invocation's refusal into an execution-level
 ```
 
 ```text
-An execution whose only tool call was refused by Guard still ran. It reached a
-terminal result that says so. That is the honest record, and it is what makes the
-two vocabularies worth keeping apart.
+An execution whose only tool call was refused by Guard still started and still
+ran. It terminated in exactly one AgentResult saying so (§7.1.1). That is the
+honest record, and it is what makes the two vocabularies worth keeping apart.
+```
+
+```text
+FROZEN: a tool refusal means the execution BODY started, so the outcome is
+        COMPLETED or FAILED — never BLOCKED, and never "no AgentResult". The
+        refused invocation is visible in the AgentResult's tool_results, where
+        AI-06's own ToolOutcome records it.
 ```
 
 ```text
 FROZEN: Agent-level classification MUST NOT invent retry, cancellation, resume,
         fallback or escalation semantics. A refused tool call does not become a
-        retryable state here. Those belong to AI-13 (§11.3).
+        retryable state here. Those belong to AI-13 (§11.4).
 ```
+
+### 11.3 What COMPLETED does not mean — FROZEN
 
 ```text
 FROZEN: COMPLETED ≠ PASS
@@ -900,8 +1026,21 @@ FROZEN: COMPLETED ≠ VERIFIED
 FROZEN: COMPLETED ≠ CORRECT
 FROZEN: COMPLETED ≠ task success
 
-COMPLETED means one thing: an Agent execution reached a terminal result.
+COMPLETED means one thing: an Agent execution reached a terminal result
+representing a completed Agent execution.
 It is a claim about the EXECUTION, never a claim about the research question.
+```
+
+```text
+FROZEN: this applies to the RECORD as well as the outcome. That the controller
+        produced a terminal AgentResult MUST NOT be read as "the Agent completed
+        the task", and MUST NOT be read as a verdict on the task.
+```
+
+```text
+The same limit applies to FAILED and BLOCKED from the other side: a FAILED or
+BLOCKED record is a claim that the EXECUTION did not complete, never a claim
+that the task is impossible or that the research question is answered.
 ```
 
 `BLOCKED` appears in `GuardDecision`, in `StatusValue` and in `ToolOutcome` as well. That is the
@@ -909,7 +1048,7 @@ same known cost AI-07 §10.1 recorded; AI-08 does not remove it by merging the t
 not rename its own member to avoid the collision. §11.2 is how the collision is kept from becoming
 a conflation.
 
-### 11.3 No AI-12 / AI-13 vocabulary — FROZEN
+### 11.4 No AI-12 / AI-13 vocabulary — FROZEN
 
 v1 adds **no** member beyond these three:
 
@@ -1324,10 +1463,10 @@ Layers 1 only. **AI-08 adds no layer 4** — v1 reaches no network and starts no
 | T26 | a role is not a finding | §5.2.1 | `INDEPENDENT_SECOND` alone never satisfies I1–I8 |
 | T27 | the result is not a verdict | §10 | AgentResult carries no PASS, no VERIFIED, no success |
 | T28 | attribution is two fields | §10.1 | `agent_id` + `execution_id`, and no fabricated producer field |
-| T29 | the outcome vocabulary is three | §11 | exactly COMPLETED, FAILED, BLOCKED |
-| T30 | BLOCKED is execution-level | §11.1 | BLOCKED means never started; a started execution is never BLOCKED |
-| T31 | tool BLOCKED ≠ execution BLOCKED | §11.2 | a Guard-refused tool call does not rewrite the execution outcome |
-| T32 | no AI-13 vocabulary leaked | §11.3 | no TIMED_OUT/CANCELLED/RETRYING/FALLBACK/ESCALATED |
+| T29 | the outcome vocabulary is three | §11 | exactly COMPLETED, FAILED, BLOCKED — no fourth member |
+| T30 | BLOCKED is execution-level | §11.1 | BLOCKED means the execution BODY never started; a body that started is never BLOCKED |
+| T31 | tool BLOCKED ≠ execution BLOCKED | §11.2 | a Guard-refused tool call does not rewrite the execution outcome; the body started, so the outcome is COMPLETED or FAILED |
+| T32 | no AI-13 vocabulary leaked | §11.4 | no TIMED_OUT/CANCELLED/RETRYING/FALLBACK/ESCALATED |
 | T33 | Guard is unchanged | §12 | no actor-keyed policy field; no second evaluator |
 | T34 | no ceiling is claimed | §12.1.1 | no Agent-specific permission is enforced, claimed or inferred |
 | T35 | no Evidence is written | §13.1 | AI-08 writes no EvidenceRecord under any token |
@@ -1337,6 +1476,8 @@ Layers 1 only. **AI-08 adds no layer 4** — v1 reaches no network and starts no
 | T39 | no provider binding | §15 | no model profile, no provider id, no endpoint |
 | T40 | Layer 0 gate | §17 | the AI-08 gate exists and passes (AI-08-B) |
 | T41 | the boundary holds | §17.1 | agents/ is a core layer and not a plugin package |
+| T42 | **one terminal result, every outcome** | §7.1.1, §11 | **FAILED and BLOCKED executions still terminate in exactly ONE AgentResult; neither means "no AgentResult". The body not starting ≠ the record not existing.** |
+| T43 | `result` is always present | §10.2 | present for all three outcomes; a FAILED/BLOCKED `result` refers to terminal failure/block metadata, never to a task result it does not have |
 
 ---
 
@@ -1349,12 +1490,12 @@ AI-08 is complete only when every gate below passes.
 | C0 | Contract frozen | this document is frozen and its amendment log is open |
 | C1 | Agent identity frozen | AgentId and AgentRole are closed, and the registration is total |
 | C2 | Identity boundary verified | a hint never becomes an identity without `resolve_agent` |
-| C3 | Execution contract verified | one request, one ExecutionId, one terminal result |
+| C3 | Execution contract verified | one request, one ExecutionId, one terminal result — for **all three** outcomes, with FAILED and BLOCKED still producing exactly one AgentResult |
 | C4 | Context isolation verified | same workspace; the runtime establishes an execution-owned ContextResponse, and the request carries none |
 | C5 | Independence verified | I1–I8 all hold, each with a direct assertion, and no digest-uniqueness requirement is asserted |
 | C6 | Non-provability stated | no artifact claims independence is verification, and no role is read as a finding |
-| C7 | Result boundary verified | AgentResult carries no verdict, no raw output, no credential, no fabricated producer field |
-| C8 | Outcome vocabulary verified | exactly three members; BLOCKED is execution-level and a tool refusal never rewrites it; no AI-12/AI-13 vocabulary |
+| C7 | Result boundary verified | `result` is present for every outcome and is never a task result that does not exist; AgentResult carries no verdict, no raw output, no credential, no fabricated producer field |
+| C8 | Outcome vocabulary verified | exactly three members; BLOCKED is execution-level and means the body did not start, never "no AgentResult"; a tool refusal never rewrites it; no AI-12/AI-13 vocabulary |
 | C9 | Guard boundary verified | no Guard change, fresh request and fresh decision per invocation, digest uniqueness neither required nor tested, no ceiling claimed or inferred |
 | C10 | Evidence boundary verified | no AI-08 EvidenceRecord written; no AI-05 change; execution-level permission records present |
 | C11 | Sharing prohibition verified | no cross-agent result injection exists |
@@ -1394,7 +1535,7 @@ AgentResult, and AgentExecutionOutcome
 the independence predicate over I1–I8
 the Guard call path: one fresh request and one fresh decision per tool invocation
 the Layer 0 AI-08 gate
-tests/agents/, layer 1, covering T1–T41
+tests/agents/, layer 1, covering T1–T43
 ```
 
 AI-08-B MUST NOT:
@@ -1403,7 +1544,7 @@ AI-08-B MUST NOT:
 write an EvidenceRecord                      (§13.1)
 modify AI-03, AI-04, AI-05 or AI-07          (§16)
 add a provider, a model profile or a network call (§15)
-add a retry, timeout or cancellation mechanism    (§11.3)
+add a retry, timeout or cancellation mechanism    (§11.4)
 add cross-agent comparison or injection           (§14)
 enforce, claim or infer an Agent-specific
   permission ceiling from AgentId, AgentRole
@@ -1450,7 +1591,7 @@ AI-03, AI-04, AI-05, AI-06 or AI-07.**
    about fresh OBJECTS and a fresh DECISION, not distinct digest VALUES.
    request_digest is not an identity and is not required to be unique.
 
-3  BLOCKED semantics                                      §11.1, §11.2 (new), §11.3, T29–T32, C8
+3  BLOCKED semantics                                      §11.1, §11.2 (new), §11.4, T29–T32, C8
    `BLOCKED` was defined as "a condition prevented execution, so nothing ran",
    which left a Guard-refused TOOL call able to rewrite a whole Agent execution
    as BLOCKED. RESOLVED: BLOCKED is EXECUTION-LEVEL and means the execution never
@@ -1494,6 +1635,76 @@ EXPLICITLY NOT CHANGED by Amendment 1:
     the AI-07 contract, and any AI-03/AI-04/AI-05/AI-06 implementation
 ```
 
+### Amendment 2 — the terminal-result invariant
+
+```text
+AI-08-A Amendment 2   FROZEN    written before AI-08-B began
+base                  main @ a7c4a1e2536536940d96431883dadb592f7c151a
+PR                    #51, the same contract-freeze PR
+```
+
+One correction. It was the only blocking contradiction left in the contract.
+
+```text
+1  The terminal-result invariant, for every outcome
+   §7.1.1 (new), §10 (result field + §10.2 new), §11, §11.1, §11.2, §11.3 (new),
+   §11.4 (renumbered from §11.3), T29–T31, T42, T43, C3, C7, C8
+
+   §7.1 froze "every execution produces EXACTLY ONE terminal AgentResult",
+   while §11 defined FAILED as "the execution STARTED but could not reach a
+   valid terminal AgentResult". Read literally, FAILED was an outcome with no
+   result — a direct contradiction of §7.1, and one that would have left
+   AI-08-B to decide the invariant's scope while implementing.
+
+   RESOLVED: the invariant holds for ALL THREE outcomes. The execution
+   CONTROLLER / RUNTIME produces the terminal AgentResult, whether or not the
+   Agent execution BODY ran.
+
+       Agent execution body did not start
+           ≠
+       no AgentResult exists
+
+   COMPLETED  the execution reached a terminal AgentResult representing a
+              completed Agent execution
+   FAILED     the body STARTED but failed to produce a valid task result; the
+              runtime STILL produces exactly one terminal AgentResult
+              describing the failure
+   BLOCKED    an execution-level precondition prevented the body from STARTING;
+              the controller STILL produces exactly one terminal AgentResult
+              describing the blocking condition
+
+   `result` is correspondingly ALWAYS present (§10.2): a task result for
+   COMPLETED, and the terminal failure or block metadata for FAILED and
+   BLOCKED. A FAILED or BLOCKED result is not required to carry a task result
+   and MUST NOT be read as implying one exists.
+```
+
+```text
+ALSO IN AMENDMENT 2, a precision fix in the same area:
+
+   §11.1 previously listed "an authorization that refuses the execution itself"
+   as an execution-level precondition. AI-08 v1 has no execution-level
+   authorization — Guard authorizes tool INVOCATIONS, not executions (§12), and
+   §12.1.1 states there is no Agent-specific permission policy at all. The
+   precondition list is now closed and contains no authorization member, so
+   AI-08-B cannot read an execution-level authorization into existence.
+
+   §11.3 was renumbered to §11.4 to make room for the COMPLETED non-claims as
+   §11.3. All references were updated.
+```
+
+```text
+EXPLICITLY NOT CHANGED by Amendment 2:
+    any AgentId, AgentRole or AgentExecutionOutcome member — still exactly three
+    COMPLETED ≠ PASS / VERIFIED / CORRECT / task success
+    ToolOutcome.BLOCKED ≠ AgentExecutionOutcome.BLOCKED
+    a Guard-refused tool call still never rewrites the execution outcome
+    no retry / cancel / resume / fallback / escalation — AI-13's, unchanged
+    the Guard boundary, the Evidence boundary, the cross-agent sharing
+      prohibition, the Codex provider boundary
+    the AI-07 contract, and any AI-03/AI-04/AI-05/AI-06 implementation
+```
+
 An amendment is required before any frozen rule above changes.
 
 ---
@@ -1503,6 +1714,7 @@ An amendment is required before any frozen rule above changes.
 ```text
 AI-08-A   FROZEN    this document
 AI-08-A   Amendment 1 applied before AI-08-B began (§22)
+AI-08-A   Amendment 2 applied before AI-08-B began (§22)
 base      main @ a7c4a1e2536536940d96431883dadb592f7c151a
 date      2026-10-01
 
@@ -1517,9 +1729,14 @@ Frozen here:
     that identity is registered, never discovered
     the Router boundary: a hint stays a hint, and resolve_agent is the only
       way a candidate becomes an identity
-    the execution contract: one request, one ExecutionId, one terminal result
+    the execution contract: one request, one ExecutionId, one terminal result —
+      for ALL THREE outcomes. FAILED and BLOCKED still terminate in exactly one
+      AgentResult; the body not starting does not mean the record does not exist
+      (Amendment 2)
     that the request carries no ContextResponse, and that the runtime
       establishes one execution-owned ContextResponse (Amendment 1)
+    that `result` is always present, and for FAILED/BLOCKED refers to terminal
+      failure or block metadata rather than a task result (Amendment 2)
     that runtime input may carry task content and durable records may not
     Context isolation: same workspace, per-execution ContextResponse
     the independence definition I1–I8, with I3 as the key v1 boundary
@@ -1529,7 +1746,8 @@ Frozen here:
     AgentResult, its two attribution fields, and that it is a claim with a
       producer and not a PASS
     AgentExecutionOutcome: three members; BLOCKED is execution-level and a
-      tool refusal never rewrites it (Amendment 1)
+      tool refusal never rewrites it (Amendment 1); and each of the three still
+      produces exactly one terminal AgentResult (Amendment 2)
     the Guard boundary: unchanged, fresh decision per invocation, and no
       Agent-specific permission policy claimed or inferred
     the Evidence boundary: AI-08 writes no EvidenceRecord in v1, and why

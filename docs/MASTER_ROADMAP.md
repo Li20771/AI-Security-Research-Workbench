@@ -426,7 +426,8 @@ no Codex provider, no Agent code of any kind.
 AI-08-A     = CONTRACT FROZEN      awaiting the human merge checkpoint
 AI-08-B     = NOT STARTED          implementation
 AI-08       = IMPLEMENTATION NOT STARTED
-amendments  = 1                    AI-08-A Amendment 1, review corrections
+amendments  = 2                    AI-08-A Amendment 1 (review corrections)
+                                   AI-08-A Amendment 2 (terminal-result invariant)
 ```
 
 目标：把 Codex 建成独立的第二 Agent，而不是 DSH 子进程或 DSH 内部模型。
@@ -462,8 +463,12 @@ Codex = independent reviewer / second execution path
   角色本身永远不满足 I1–I8
 - I5 是「每次 tool 调用都新建 GuardRequest / GuardDecision」，**不是** `request_digest` 全局唯一
 - `AgentExecutionOutcome` 只有 `COMPLETED` / `FAILED` / `BLOCKED`；`COMPLETED != PASS`
-- `BLOCKED` 是 execution 级的（execution 未启动）；tool 被 Guard BLOCK 不会把整个
-  Agent execution 改写成 BLOCKED
+- `BLOCKED` 是 execution 级的（execution **body** 未启动）；tool 被 Guard BLOCK 不会把
+  整个 Agent execution 改写成 BLOCKED
+- 「one ExecutionId → one terminal AgentResult」对 **三种 outcome 全部成立**：
+  FAILED / BLOCKED 仍然各产生恰好一个 AgentResult；body 未启动 ≠ 没有 AgentResult
+- `AgentResult.result` 恒存在；FAILED / BLOCKED 时指向 terminal failure/block metadata，
+  而不是一个并不存在的 task result
 
 ```text
 DEFERRED  AI-08 producer token for Evidence   an AI-05 amendment is required first

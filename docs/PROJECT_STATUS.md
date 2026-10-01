@@ -76,7 +76,8 @@ AI-08       = IMPLEMENTATION NOT STARTED
 contract      = docs/AI-08_AGENT_EXECUTION_EXECUTION_PLAN.md
 contract blob = recorded when AI-08-A is merged
 base          = main @ a7c4a1e2536536940d96431883dadb592f7c151a
-amendments    = 1   AI-08-A Amendment 1 (review corrections, §22 of the contract)
+amendments    = 2   AI-08-A Amendment 1 (review corrections, §22) and
+                      AI-08-A Amendment 2 (terminal-result invariant, §22)
 
 FROZEN here   AgentId, AgentRole, the identity boundary, the execution contract,
               Context isolation, the independence definition I1-I8,
@@ -815,7 +816,8 @@ AI-08       = IMPLEMENTATION NOT STARTED
 
 base        = main @ a7c4a1e2536536940d96431883dadb592f7c151a
 contract    = docs/AI-08_AGENT_EXECUTION_EXECUTION_PLAN.md
-amendments  = 1   AI-08-A Amendment 1 (review corrections)
+amendments  = 2   AI-08-A Amendment 1 (review corrections)
+                  AI-08-A Amendment 2 (terminal-result invariant)
 ```
 
 AI-08 makes Codex a second Agent with its own identity, its own execution instance, its own result
@@ -833,6 +835,11 @@ FROZEN at AI-08-A
     the Router boundary: a hint stays a hint; resolve_agent is the only way a
       candidate becomes an identity
     the execution contract: one request, one ExecutionId, one terminal result
+    that the invariant holds for ALL THREE outcomes: FAILED and BLOCKED still
+      terminate in exactly one AgentResult, and "the body did not start" is not
+      "no AgentResult exists"
+    that AgentResult.result is always present, and for FAILED/BLOCKED refers to
+      terminal failure/block metadata rather than a task result
     that the AgentExecutionRequest carries NO ContextResponse, and that the
       runtime establishes one execution-owned ContextResponse per execution
     that runtime input may carry task content and durable records may not
