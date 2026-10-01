@@ -1354,9 +1354,49 @@ schema or lowering a boundary.
 
 ## 22. Amendment log
 
+#### Amendment 1 — two declared fields the contract required but did not name (2026-10-01)
+
+Found while implementing AI-06-B. §18 requires an amendment for an
+`OperationSpec` field and for a `ToolResult` field, so both are recorded here
+rather than added quietly.
+
+Neither is a new rule. Both are fields the frozen text already *requires* a
+value for while naming no field to carry it, and both are additions to a list
+rather than changes to a rule:
+
 ```text
-(none)
+(a) §11.5 says the exit-code semantics are "stated in the OperationSpec", and
+    §7.2's list of what an operation MUST declare names no field for them. The
+    semantics genuinely vary and the general rule is explicitly forbidden: a
+    YARA run reports a match through its exit status (0 or 1), while a `git
+    status` that exits 1 has failed. Without a declared field the only
+    implementation left is the general rule §11.5 forbids.
+
+    OperationSpec gains:
+
+        expected_exit_codes: frozenset[int] = frozenset({0})
+
+    The exit codes that mean the operation COMPLETED. Any other exit code is
+    FAILED. The exit code itself is recorded as observed either way (§11.5).
+
+(b) §14.3 requires every result to pass a projection, and §31 of the AI-06-B
+    execution brief requires the fact to be recorded; §8.1's result shape has
+    `truncated` and no field for redaction. A result that was altered and does
+    not say so is a false record of what the tool said (§15.5's argument,
+    applied to the second way a result can change).
+
+    ToolResult gains:
+
+        redacted: bool = False
+
+    Set when the §14.3 projection changed anything, so that "the tool did not
+    print this" and "this was masked" are distinguishable.
 ```
+
+No boundary, scope, deliverable, capability, workspace rule, vehicle rule,
+network rule or authority relation changed. `AdapterFamily` remains eight,
+`ToolOutcome` remains six, the outcome projection is unchanged, and neither
+addition is an authorization input.
 
 ---
 

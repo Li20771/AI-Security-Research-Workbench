@@ -33,6 +33,12 @@ boundary and T12/T13.
 `67515ff96dbd95ee5a8f73923d5eadc3f097501a` (PR #44). P3 added the admission pipeline, the
 filesystem Store, uniqueness, staged discard and the §31 Layer 0 evidence check.
 
+**AI-06 — Security Research Tools Plugin is IMPLEMENTATION COMPLETE, PR OPEN, NOT MERGED** —
+branch `feature/ai-06-security-tools-v1`. The Tool API, eight adapter families, the Guard,
+workspace, execution, vehicle and secret boundaries, the Evidence projection and the AI-06
+Layer 0 check are all in this PR. Full evidence in
+[AI-06_EVIDENCE_2026-10-01.md](AI-06_EVIDENCE_2026-10-01.md).
+
 **AI-05-B2 is COMPLETE**: every stage of its frozen scope has been implemented and merged. **AI-05
 as a whole remains INCOMPLETE**, because C-1 is still DEFERRED — §30 step 7 is unimplemented,
 T22a/T22b/T22c remain unrunnable, and §32's C6 gate is therefore not closed. See
@@ -147,7 +153,6 @@ PROJECT_STATUS.md
 
 ### Not yet started
 
-- AI-06 Security Tools implementation
 - AI-07 Router implementation — **DEFERRED**, and untouched by AI-03
 
 ## Completed
@@ -623,3 +628,36 @@ main                  = contains AI-05-B1
 `PASS` `FAIL` `BLOCKED` `NOT_RUN` `UNKNOWN`
 
 Do not turn missing environment, skipped execution, or blocked actions into PASS.
+
+## AI-06 status
+
+**AI-06 — Security Research Tools Plugin: IMPLEMENTATION COMPLETE / PR OPEN, NOT MERGED.**
+Frozen contract `docs/AI-06_SECURITY_TOOLS_EXECUTION_PLAN.md`, blob
+`1cff20f7969c61c2870e8ed13c86cf7d784644ea`, amended once.
+
+```text
+AI-06-A     = COMPLETE / MERGED   contract frozen (PR #46)
+AI-06-B     = IMPLEMENTATION COMPLETE / PR OPEN, NOT MERGED
+AI-06       = not closed until the PR merges and its CI is read
+
+merge SHA   = not yet merged; recorded at closeout
+evidence    = docs/AI-06_EVIDENCE_2026-10-01.md
+```
+
+Measured on the branch head:
+
+```text
+tests/security_tools          153 passed, 1 skipped
+whole repository             2106 passed, 2 skipped, 5 deselected
+Layer 0                      PASS (15 checks)
+```
+
+```text
+NOT_RUN   GitHub and MCP operations  — boundary declared, no operation (§13.2, §13.5, §16)
+NOT_RUN   Ghidra                     — declared by the roadmap, not taken on in v1
+NOT_RUN   the T17 symlink case       — this host refuses symlink creation (WinError 1314)
+BLOCKED   real CAN / ECU / vehicle   — refused by §12.2, by design and asserted
+
+Router (AI-07) = DEFERRED / UNIMPLEMENTED — untouched, no interface reserved
+SecurityLab    = UNCHANGED
+```
