@@ -841,8 +841,19 @@ class TestT29IndependenceIsARequirement:
         assert result.agent_hint == "codex"
         assert result.outcome is RoutingOutcome.SELECTED
 
-    def test_no_ai08_code_exists(self):
-        assert not pathlib.Path("agents/codex/adapter.py").exists()
+    def test_ai08_is_a_core_agent_layer_and_not_a_plugin(self):
+        """AI-08-A maintained this assertion; it is not AI-07's any more.
+
+        AI-07 asserted `agents/codex/adapter.py` did not exist, which froze a
+        PATH rather than a boundary and could not survive the phase it was
+        naming. AI-08 owns `agents/` from AI-08-A onward, so the claim kept here
+        is the one implementation cannot retire: the Agent layer is a core layer
+        at `agents/`, and is not a plugin package — the same shape as AI-07's own
+        `plugins/router/` assertion.
+        """
+        assert pathlib.Path("agents").is_dir()
+        assert not pathlib.Path("plugins/agent").exists()
+        assert not pathlib.Path("plugins/codex").exists()
 
 
 class TestT30ConfigurationIsReadOnly:
@@ -971,6 +982,16 @@ class TestT36TheContractAndTheDirectoryAgree:
 
 class TestT37Regression:
     def test_the_pre_existing_layers_are_untouched(self):
+        """AI-07 wrote this to prove ITS OWN diff was clean. AI-08-A maintained it.
+
+        The comparison is `main...HEAD` — the CURRENT branch's diff — so from
+        AI-07's merge onward it constrains every later phase, and it would fail
+        on the first branch that legitimately adds code under `agents/`.
+
+        `agents/` therefore left the protected set at AI-08-A, which is when it
+        entered AI-08's ownership. The earlier-phase boundaries are unchanged,
+        and `routing/` is deliberately still NOT protected.
+        """
         import subprocess
 
         changed = subprocess.run(
@@ -979,7 +1000,7 @@ class TestT37Regression:
         ).stdout.split()
 
         for path in changed:
-            for protected in ("providers/", "plugins/", "tools/", "agents/"):
+            for protected in ("providers/", "plugins/", "tools/"):
                 assert not path.startswith(protected), path
 
 

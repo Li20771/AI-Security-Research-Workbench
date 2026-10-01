@@ -417,6 +417,18 @@ second opinion -> independent Agent
 
 ## AI-08 — Codex Second Agent
 
+**Status: AI-08-A CONTRACT FROZEN — implementation NOT STARTED.** The contract is
+[AI-08_AGENT_EXECUTION_EXECUTION_PLAN.md](AI-08_AGENT_EXECUTION_EXECUTION_PLAN.md), frozen at
+AI-08-A on base `main @ a7c4a1e2`. AI-08-A implements nothing: no Agent runtime, no AgentResult,
+no Codex provider, no Agent code of any kind.
+
+```text
+AI-08-A     = CONTRACT FROZEN      awaiting the human merge checkpoint
+AI-08-B     = NOT STARTED          implementation
+AI-08       = IMPLEMENTATION NOT STARTED
+amendments  = 0
+```
+
 目标：把 Codex 建成独立的第二 Agent，而不是 DSH 子进程或 DSH 内部模型。
 
 设计：
@@ -432,6 +444,30 @@ Codex = independent reviewer / second execution path
 - 独立结果
 - 独立工具权限记录
 - 不共享未验证的模型判断
+
+冻结要点（AI-08-A）：
+
+- `AgentId` 是封闭词表，v1 只有 `dsh` / `codex`；自由字符串永远不是可信身份
+- `AgentRole`（`PRIMARY` / `INDEPENDENT_SECOND`）是 AI-08 自己的角色词汇，
+  与 AI-04 的 `ActorType` 是三个不同的问题，不得互相混淆
+- 身份来自注册表，不来自发现（不读目录、不读环境变量、不读配置）
+- Router 的 `agent_hint` 仍然只是 hint；`resolve_agent` 是候选变成身份的唯一入口
+- 一次 execution = 一个 `ExecutionId` + 一个 terminal `AgentResult`
+- Context 隔离：同一 workspace + 每个 execution 独立的 `ContextResponse`
+- 独立性 I1–I8，其中 I3（result 不得成为另一个 Agent 的 input）是 v1 的关键边界
+- 独立性只证明 provenance 独立，**不证明**结论正确；一致不等于验证
+- `AgentExecutionOutcome` 只有 `COMPLETED` / `FAILED` / `BLOCKED`；`COMPLETED != PASS`
+
+```text
+DEFERRED  AI-08 producer token for Evidence   an AI-05 amendment is required first
+OPEN      a per-Agent permission ceiling      default recorded: NOT enforced and NOT claimed
+```
+
+**AI-08 v1 has no provider binding** — every capability on every shipped model profile is
+`UNKNOWN` and no provider call has ever been made in this repository. Real Codex provider and model
+wiring is AI-09's. **AI-08 v1 writes no AI-05 EvidenceRecord**: the only producer token admissible
+for an EXECUTION record is `ai-06`, and an AI-08 record written under that token would be a false
+producer claim.
 
 ---
 
@@ -680,7 +716,7 @@ SecurityLab
 | AI-05 | **B1 COMPLETE** (PR #34); **B2 COMPLETE** — P1 `844df7be` (PR #41), P2 `b8692c18` (PR #42) and P3 `67515ff9` (PR #44) merged; **AI-05 INCOMPLETE** — C-1 DEFERRED, §30 step 7 unimplemented; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-06 | **COMPLETE** — merged as `3b1917ab` (PR #47); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-07 | **COMPLETE** — contract `963c181c` (PR #48), implementation `e57541f9` (PR #49) merged; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
-| AI-08 | NOT STARTED |
+| AI-08 | **AI-08-A CONTRACT FROZEN** — implementation NOT STARTED; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-09 | NOT STARTED |
 | AI-10 | NOT STARTED |
 | AI-11 | NOT STARTED |
