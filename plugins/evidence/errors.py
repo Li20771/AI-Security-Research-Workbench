@@ -277,6 +277,67 @@ class StoredIntegrityFailure(EvidenceError):
 
 
 # --------------------------------------------------------------------------
+# The Store (§19, §20, §30 step 14) — added by AI-05-B2 P3
+# --------------------------------------------------------------------------
+
+
+class DuplicateEvidenceId(EvidenceError):
+    """A record with this `evidence_id` is already written (§8.2, §30 step 14).
+
+    `duplicate evidence_id -> REJECTED`. It is a collision or an overwrite
+    attempt, and §22.2 gives it its own row.
+
+    **Why this is not a `CrossFieldViolation`.** Nothing about the new record
+    is wrong on its own; it collides with a record that already exists. The
+    caller's repair is to generate a different identity, not to change a field.
+    The rule belongs to admission and the detection belongs to the Store — this
+    is the error both reach for.
+    """
+
+    reason_code = "DUPLICATE_EVIDENCE_ID"
+
+
+class RecordNotFound(EvidenceError):
+    """No record with this `evidence_id` is stored.
+
+    A read of an absent record is a lookup that found nothing, not a malformed
+    record and not an integrity failure. §13.3 is the adjacent case and says
+    the same thing about artifacts: absence is a query-time fact.
+    """
+
+    reason_code = "RECORD_NOT_FOUND"
+
+
+class StoredBytesUnreadable(RecordMalformed):
+    """A stored file is not UTF-8, or not JSON, so no record can be read from it.
+
+    Subclasses `RecordMalformed` because it is a malformed stored form and a
+    caller catching that family should catch this too. It carries its own code
+    because the repair differs from a field-level rejection: the bytes never
+    reached a parser at all.
+    """
+
+    reason_code = "STORED_BYTES_UNREADABLE"
+
+
+class PromotedRecordNotDiscardable(EvidenceError):
+    """`discard` was asked to remove a record from the promoted tier (§19.2, §20.2).
+
+    ```text
+    discard   remove the whole record from a NON-durable tier   ALLOWED
+    delete    destroy a record whose existence WAS guaranteed   FORBIDDEN
+    ```
+
+    A promoted record's existence is guaranteed, so AI-05 has no operation that
+    removes one. This error exists so that the prohibition is enforced rather
+    than merely absent: a discard aimed at the promoted tier is refused by the
+    code path that would otherwise have deleted the file.
+    """
+
+    reason_code = "PROMOTED_RECORD_NOT_DISCARDABLE"
+
+
+# --------------------------------------------------------------------------
 # Set-semantic duplicates (§15.4) — added by Amendment 1 conformance
 # --------------------------------------------------------------------------
 
@@ -310,6 +371,7 @@ __all__ = [
     "CallerSuppliedIdentity",
     "CrossFieldViolation",
     "DuplicateElement",
+    "DuplicateEvidenceId",
     "DuplicateOrdinal",
     "EvidenceError",
     "FamilyStatusMismatch",
@@ -322,8 +384,11 @@ __all__ = [
     "ProducerNotRegistered",
     "ProducerRoleViolation",
     "ProducerTypeNotAdmitted",
+    "PromotedRecordNotDiscardable",
     "RawContentRejected",
     "RecordMalformed",
+    "RecordNotFound",
+    "StoredBytesUnreadable",
     "StoredIntegrityFailure",
     "UnknownField",
     "UnsupportedVocabulary",

@@ -24,12 +24,14 @@ IMPLEMENTED HERE
     the leaf-accurate field table and the two digests
     the §18.1 workspace agreement rule and the §22.1 outcome mapping
     the §17 stored form: to_stored_mapping, load_stored and its verification
+    the §20 filesystem Store: write, read, staged discard, and §30 step 14
 
 NOT IMPLEMENTED
     the published admission rule set (C-1), which §30 step 7 needs
-    §30 step 14 uniqueness                 ContextRef derivation from AI-03
-    lifecycle and the Store protocol       any storage backend
-    any byte encoding — the Store does that, and there is no Store yet
+    ContextRef derivation from AI-03
+    a promotion API, a superseded_by query and a retrieval shape — D11 leaves
+    these undefined, and the Store's Python surface is provisional rather than
+    a frozen contract
 ```
 
 Usage:
@@ -48,8 +50,10 @@ all six §6.5 registry rows register `service`.
 
 **Boundaries this package must keep.** It imports no network client, spawns no
 subprocess, executes no tool, routes nothing, authorizes nothing, promotes no
-capability, performs no file I/O, and ingests no artifact bytes. Frozen types
-from AI-02, AI-03 and AI-04 are **imported, not restated** (§3).
+capability, and ingests no artifact bytes. The **only** module that touches a
+filesystem is `store.py`, and only under the root it is handed; every other
+module is pure. Frozen types from AI-02, AI-03 and AI-04 are **imported, not
+restated** (§3).
 
 Contract: `docs/AI-05_EVIDENCE_EXECUTION_PLAN.md`.
 B2 staging decisions: `docs/AI-05-B2_DECISIONS_2026-10-01.md`.
@@ -60,6 +64,7 @@ from __future__ import annotations
 from plugins.evidence.admission import (
     AdmissionResult,
     admit,
+    admit_to_store,
     check_workspace_agreement,
 )
 from plugins.evidence.canonical import (
@@ -88,6 +93,7 @@ from plugins.evidence.errors import (
     CallerSuppliedIdentity,
     CrossFieldViolation,
     DuplicateElement,
+    DuplicateEvidenceId,
     DuplicateOrdinal,
     EvidenceError,
     FamilyStatusMismatch,
@@ -100,8 +106,11 @@ from plugins.evidence.errors import (
     ProducerNotRegistered,
     ProducerRoleViolation,
     ProducerTypeNotAdmitted,
+    PromotedRecordNotDiscardable,
     RawContentRejected,
     RecordMalformed,
+    RecordNotFound,
+    StoredBytesUnreadable,
     StoredIntegrityFailure,
     UnknownField,
     UnsupportedVocabulary,
@@ -156,6 +165,10 @@ from plugins.evidence.models import (
     new_evidence_id,
     observation_payload,
     value_digest_of,
+)
+from plugins.evidence.store import (
+    EvidenceStore,
+    EvidenceTier,
 )
 from plugins.evidence.stored import (
     load_stored,
@@ -212,10 +225,13 @@ __all__ = [
     "DigestOrigin",
     "DigestRole",
     "DuplicateElement",
+    "DuplicateEvidenceId",
     "DuplicateOrdinal",
     "EvidenceError",
     "EvidenceKind",
     "EvidenceRecord",
+    "EvidenceStore",
+    "EvidenceTier",
     "ExecutionPayload",
     "FamilyStatusMismatch",
     "FieldClass",
@@ -237,15 +253,18 @@ __all__ = [
     "ProducerRoleViolation",
     "ProducerType",
     "ProducerTypeNotAdmitted",
+    "PromotedRecordNotDiscardable",
     "Provenance",
     "ProviderBinding",
     "ProviderProbeObservation",
     "RawContentRejected",
     "RecordMalformed",
+    "RecordNotFound",
     "RecordRef",
     "References",
     "SourceReadObservation",
     "StatusValue",
+    "StoredBytesUnreadable",
     "StoredIntegrityFailure",
     "SupersedeRef",
     "ToolCall",
@@ -255,6 +274,7 @@ __all__ = [
     "WorkspaceBinding",
     "actor_type_is_permitted",
     "admit",
+    "admit_to_store",
     "admitted_events_for",
     "assign_digests",
     "canonical_json",
