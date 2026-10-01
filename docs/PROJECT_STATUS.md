@@ -29,8 +29,13 @@ boundary and T12/T13.
 **AI-05-B2-P2 is COMPLETE and MERGED** — merged to `main` as
 `b8692c181f646386430dccd419595ca88e0cc4db` (PR #42). P2 added the §17 stored-form round-trip.
 
-AI-05 as a whole is **INCOMPLETE**: B2 is partially delivered, P3 has not started, and no admission
-pipeline, Store, uniqueness or lifecycle exists. See [AI-05 status](#ai-05-status).
+**AI-05-B2-P3 is IMPLEMENTATION COMPLETE, PR OPEN, NOT MERGED** — branch
+`feature/ai-05-b2-p3-admission-store-lifecycle`. P3 added the admission pipeline, the filesystem
+Store, uniqueness, staged discard and the §31 Layer 0 evidence check. Its merge SHA is recorded at
+closeout.
+
+AI-05 as a whole is **INCOMPLETE**: B2's P3 is not merged, so nothing is closed. See
+[AI-05 status](#ai-05-status).
 
 The GitHub `main` branch protection requirement is **BLOCKED** by the current GitHub
 Free/private-repository plan and is retained as a documented platform limitation; it is not
@@ -43,7 +48,7 @@ This file is the single entry point for deciding what to do next.
 ### Current work item
 
 **AI-05-B2 — Evidence admission, Store and lifecycle — PARTIAL / NOT COMPLETE.**
-P1 and P2 are merged; P3 has not started.
+P1 and P2 are merged; P3 is implementation complete and its PR is open, not merged.
 
 ```text
 AI-05 contract      = frozen, docs/AI-05_EVIDENCE_EXECUTION_PLAN.md
@@ -62,9 +67,10 @@ AI-05-B2-P1 merge   = 844df7beb3ada381c71c945991c551403595885a  (PR #41, merged)
 AI-05-B2-P2         = COMPLETE / MERGED   §17 stored-form round-trip
 AI-05-B2-P2 merge   = b8692c181f646386430dccd419595ca88e0cc4db  (PR #42, merged)
 
-AI-05-B2-P3         = NOT STARTED         admission pipeline, Store, uniqueness,
-                                          lifecycle, Layer 0 evidence check
-AI-05-B2            = INCOMPLETE          not closed
+AI-05-B2-P3         = IMPLEMENTATION COMPLETE / PR OPEN, NOT MERGED
+                    = admission pipeline, Store, uniqueness, staged discard,
+                      §31 Layer 0 evidence check
+AI-05-B2            = INCOMPLETE          P3 not merged; nothing is closed
 AI-05 overall       = INCOMPLETE          not closed
 
 B1 verification-time contract blob
@@ -92,10 +98,10 @@ nothing else. It added **no storage, no admission pipeline and no Store**. Full 
 [AI-05-B1_EVIDENCE_2026-10-01.md](AI-05-B1_EVIDENCE_2026-10-01.md).
 
 > **AI-05-B2 is partially delivered and is not closed.** P1 (workspace agreement) and P2
-> (stored-form round-trip) are merged. P3 has not started, and there is still no admission
-> pipeline, no `rules.py`, no Store protocol, no storage backend, no uniqueness and no
-> lifecycle. B2's remaining design is a separate work stage and is deliberately not specified
-> here.
+> (stored-form round-trip) are merged. P3 — the admission pipeline, the filesystem Store,
+> uniqueness, staged discard and the §31 Layer 0 check — is implementation complete with its PR
+> open and **not merged**, so nothing in it is closed. There is still no `rules.py`: C-1 remains
+> DEFERRED and §30 step 7 is unimplemented.
 
 The merged AI-03, AI-04, AI-05-B1 and both merged AI-05-B2 branches
 (`feature/ai-03-context-plugin`, `feature/ai-04-guard-implementation`,
@@ -136,7 +142,6 @@ PROJECT_STATUS.md
 
 ### Not yet started
 
-- AI-05-B2-P3 admission pipeline, Store, uniqueness and lifecycle
 - AI-06 Security Tools implementation
 - AI-07 Router implementation — **DEFERRED**, and untouched by AI-03
 
@@ -449,18 +454,21 @@ main           = contains AI-04
 ## AI-05 status
 
 **AI-05 — Evidence / Audit Plugin: INCOMPLETE.** B1 is complete and merged. B2 is partially
-delivered: P1 and P2 are merged, P3 has not started. AI-05 is not closed.
-Full evidence in [AI-05-B1_EVIDENCE_2026-10-01.md](AI-05-B1_EVIDENCE_2026-10-01.md) and
-[AI-05-B2-P2_EVIDENCE_2026-10-01.md](AI-05-B2-P2_EVIDENCE_2026-10-01.md).
+delivered: P1 and P2 are merged and P3 is implementation complete with its PR open, not merged.
+AI-05 is not closed.
+Full evidence in [AI-05-B1_EVIDENCE_2026-10-01.md](AI-05-B1_EVIDENCE_2026-10-01.md),
+[AI-05-B2-P2_EVIDENCE_2026-10-01.md](AI-05-B2-P2_EVIDENCE_2026-10-01.md) and
+[AI-05-B2-P3_EVIDENCE_2026-10-01.md](AI-05-B2-P3_EVIDENCE_2026-10-01.md).
 
 ```text
 AI-05-A     = COMPLETE / MERGED   contract frozen, 2 amendments
 AI-05-B1    = COMPLETE / MERGED   offline logical core
 AI-05-B2-P1 = COMPLETE / MERGED   §18.1 workspace agreement, T12/T13
 AI-05-B2-P2 = COMPLETE / MERGED   §17 stored-form round-trip
-AI-05-B2-P3 = NOT STARTED         admission pipeline, Store, uniqueness,
-                                  lifecycle, §31 Layer 0 evidence check
-AI-05-B2    = INCOMPLETE          not closed
+AI-05-B2-P3 = IMPLEMENTATION COMPLETE / PR OPEN, NOT MERGED
+                    admission pipeline, filesystem Store, uniqueness,
+                    staged discard, §31 Layer 0 evidence check
+AI-05-B2    = INCOMPLETE          P3 not merged; nothing is closed
 AI-05       = INCOMPLETE          not closed
 
 B1 merge SHA    = 0403fcd83b740f0603af7204e77f6e6905a84cf0   (PR #34)
@@ -473,6 +481,11 @@ P1 head         = 2474ddbea6fc71054f79b30ada6db3efec292557
 P2 merge SHA    = b8692c181f646386430dccd419595ca88e0cc4db   (PR #42)
 P2 head         = a403a792420bfd33904d98e9ad78d66d72ecf2ec
 P2 base         = 844df7beb3ada381c71c945991c551403595885a
+
+P3 branch       = feature/ai-05-b2-p3-admission-store-lifecycle
+P3 base         = bf0790ac0ba1de2b79d4835c70b8a50fb12502c8
+P3 merge SHA    = not yet merged; recorded at closeout
+P3 evidence     = docs/AI-05-B2-P3_EVIDENCE_2026-10-01.md
 
 contract blob   = dd062148938f902109b49a496bb6051c3331a349
                   docs/AI-05_EVIDENCE_EXECUTION_PLAN.md
@@ -501,18 +514,34 @@ P2   §17 stored-form round-trip: to_stored_mapping, load_stored and
      generated fields are restored on the stored path only, and both digests are
      recomputed and compared with the stored values. 5 files, +1376 / -47.
      No Store, no filesystem persistence, no uniqueness, no lifecycle.
+
+P3   the admission pipeline, the filesystem Store, uniqueness, staged discard
+     and §31's Layer 0 structural check — implementation complete, PR open,
+     NOT merged.
+     admit_to_store() runs §30 steps 1-6 and 8-14 and persists. The Store
+     writes UTF-8 JSON, one record per file, atomically and without overwrite;
+     it computes no digest and canonicalizes nothing. Duplicate evidence_id is
+     REJECTED with the existing record untouched; duplicate content_digest is
+     ACCEPTED, and both records are stored. discard is staged-only.
+     The two tiers are two types: StagedEvidenceStore writes, and
+     PromotedEvidenceStore has no write at all, so admission cannot be aimed at
+     the durable tier and there is no programmatic promotion path.
+     Layer 0 is now 14 checks.
 ```
 
 ### What B2 has not delivered
 
 ```text
-P3   the admission pipeline as an ordered §30 whole, the Store, §30 step 14
-     uniqueness, lifecycle and discard, and §31's Layer 0 structural check for
-     plugins/evidence.
+P3   is not merged, so nothing in it is closed.
+
+D11  four items remain undefined and were deliberately not frozen: the
+     retrieval return shape, the superseded_by query shape, the promotion API,
+     and discard cleanup granularity. The Store's Python surface is documented
+     as provisional rather than as contract.
 
 C-1  remains DEFERRED. The published admission rule set is not published, so
      §30 step 7 is unimplemented and T22a / T22b / T22c remain unrunnable. An
-     ACCEPTED from the existing admission boundary is therefore not a full §30
+     ACCEPTED from admit() or admit_to_store is therefore not a full §30
      admission, and no document should read it as one.
 ```
 

@@ -29,6 +29,13 @@ workspace-state/
 # Generated evidence / benchmark / workflow data
 evidence/runs/*
 !evidence/runs/.gitkeep
+
+# AI-05 staged Evidence. Local and discardable (B2 decision D4/D5): a staged
+# record may be discarded as a whole, so it is not committed. `evidence/promoted/`
+# is deliberately NOT listed here — a promoted record is durable via Git and is
+# retained by it.
+evidence/staged/*
+!evidence/staged/.gitkeep
 benchmarks/results/*
 !benchmarks/results/.gitkeep
 workflows/runs/*

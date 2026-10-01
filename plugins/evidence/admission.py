@@ -12,17 +12,16 @@ converts B1's exceptions into a §22.1 outcome.
 steps 1-4, 4b, 6, 8-13   B1, reached through EvidenceRecord.from_mapping and
                          assign_digests. Composed, not reimplemented.
 step 5 (agreement half)  HERE — check_workspace_agreement
+step 14 (uniqueness)     HERE — admit_to_store, against the Store's written ids
 step 7                   NOT IMPLEMENTED. It requires the published admission
                          rule set, which is C-1 and remains DEFERRED. Nothing
                          here invents one.
-step 14 (uniqueness)     NOT IMPLEMENTED. It requires the Store, which does not
-                         exist yet (B2 decision D8: the rule is admission's, the
-                         mechanism is the Store's).
 ```
 
-**An `ACCEPTED` from this module is therefore not yet a full §30 admission.**
-Steps 7 and 14 have not run. That is a property of B2's staging, and it is said
-here rather than left for a reader to infer from a green test.
+`admit()` stops at step 13 and stores nothing; `admit_to_store()` runs step 14
+and persists. **Neither implements step 7**, so an `ACCEPTED` from either is not
+a full §30 admission. That is a property of B2's staging, and it is said here
+rather than left for a reader to infer from a green test.
 
 ### §18.1, mapped onto the record that actually exists
 
@@ -62,13 +61,18 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from plugins.evidence.digests import assign_digests
-from plugins.evidence.errors import EvidenceError, WorkspaceAgreementViolation
+from plugins.evidence.errors import (
+    DuplicateEvidenceId,
+    EvidenceError,
+    WorkspaceAgreementViolation,
+)
 from plugins.evidence.models import EvidenceRecord
 from plugins.evidence.vocabulary import AdmissionOutcome
 
 __all__ = [
     "AdmissionResult",
     "admit",
+    "admit_to_store",
     "check_workspace_agreement",
 ]
 
@@ -122,16 +126,20 @@ class AdmissionResult:
     exceptions are the *reason*, and `reason_code` carries that reason across
     the boundary without prose parsing.
 
-    `UNAVAILABLE` is deliberately not producible here. §22.3 separates
-    INCOMPLETE CONTENT from WRITE FAILURE, and a write cannot fail before a
-    store exists.
+    `UNAVAILABLE` is producible only by `admit_to_store`, and only for a write
+    failure. §22.3 separates INCOMPLETE CONTENT from WRITE FAILURE: the first is
+    `REJECTED` and the caller is told which requirement failed, the second is
+    `UNAVAILABLE` and the caller is told the write did not happen. `admit()`
+    cannot produce it, because it touches no store.
     """
 
     outcome: AdmissionOutcome
     #: The `reason_code` of the `EvidenceError` that rejected the record, or
     #: `None` when accepted. Never a message and never a supplied value.
     reason_code: str | None = None
-    #: The admitted record, carrying both digests. `None` when rejected.
+    #: The admitted record, carrying both digests. `None` when rejected, and
+    #: `None` when `UNAVAILABLE` — nothing was stored, and §22.3 puts the
+    #: failure in the return value rather than in a record.
     record: EvidenceRecord | None = None
 
     @property
@@ -152,7 +160,7 @@ def admit(raw: object, *, clock=None) -> AdmissionResult:
 
     Returns `ACCEPTED` with the digested record, or `REJECTED` with the
     `reason_code` of the rule that refused it. Nothing is stored either way —
-    there is no store in this stage, and §30's "stores nothing" is satisfied
+    this function takes no store, and §30's "stores nothing" is satisfied
     trivially rather than claimed.
 
     The supplied mapping is never modified. `from_mapping` builds new frozen
@@ -168,3 +176,81 @@ def admit(raw: object, *, clock=None) -> AdmissionResult:
             outcome=AdmissionOutcome.REJECTED, reason_code=exc.reason_code
         )
     return AdmissionResult(outcome=AdmissionOutcome.ACCEPTED, record=record)
+
+
+def admit_to_store(
+    raw: object, *, store, clock=None
+) -> AdmissionResult:
+    """The §30 pipeline through persistence. `admit()`, then steps 14 and store.
+
+    ```text
+    admit(raw)                        §30 steps 1-13, unchanged
+    store.contains(evidence_id)       §30 step 14
+    store.write(record)               the write §30 exists to gate
+    ```
+
+    A duplicate `evidence_id` is `REJECTED` with
+    `DUPLICATE_EVIDENCE_ID` and **the existing record is untouched**: the
+    collision is detected before the write and enforced again by the Store, so
+    there is no path on which a new record replaces an old one and is then
+    reported as a failure.
+
+    A duplicate `content_digest` is not a conflict. Two records making the same
+    claim are two events (§8.2), they carry different `evidence_id`s and
+    different `record_digest`s, and both are stored. `content_digest` is not a
+    key of this store and is never used as one.
+
+    A write that fails for a reason other than collision is `UNAVAILABLE` with
+    `STORAGE_FAILURE` (§22.2, §22.3): the record was valid and storage did not
+    complete. Nothing is stored, and no record describing the failure is
+    written — the failure belongs in the return value.
+
+    The rule that a duplicate identity is refused is admission's (D8). The
+    Store supplies only the detection: `contains`, and a write that cannot
+    overwrite. Neither module holds both halves.
+
+    **Admission targets the staged tier, and only the staged tier.** A promoted
+    store has no `write` at all, and this function refuses a store without one
+    rather than letting the absence surface as an `AttributeError`:
+
+    ```text
+    TypeError   the store cannot accept a record, so it is not a staged store
+    ```
+
+    Without that refusal this function would itself be a programmatic promotion
+    path — `admit_to_store(raw, store=promoted)` would store an ordinarily
+    admitted record in the durable tier, and no `promote()` method would be
+    needed to reach it. §20.3 makes promotion a human act, so the refusal is the
+    boundary rather than a courtesy.
+    """
+    if not callable(getattr(store, "write", None)):
+        raise TypeError(
+            "admit_to_store persists a newly admitted record, so it requires a "
+            "store that accepts one — a staged store. The store given has no "
+            "write operation, which is what a promoted store is: promotion is a "
+            "human act that copies the bytes of a staged record to a new "
+            "location (§20.3), and AI-05 has no operation that puts a record "
+            "there"
+        )
+
+    result = admit(raw, clock=clock)
+    if result.outcome is not AdmissionOutcome.ACCEPTED:
+        return result
+
+    record = result.record
+    try:
+        if store.contains(record.evidence_id):
+            return AdmissionResult(
+                outcome=AdmissionOutcome.REJECTED,
+                reason_code=DuplicateEvidenceId.reason_code,
+            )
+        store.write(record)
+    except DuplicateEvidenceId as exc:
+        return AdmissionResult(
+            outcome=AdmissionOutcome.REJECTED, reason_code=exc.reason_code
+        )
+    except OSError:
+        return AdmissionResult(
+            outcome=AdmissionOutcome.UNAVAILABLE, reason_code="STORAGE_FAILURE"
+        )
+    return result
