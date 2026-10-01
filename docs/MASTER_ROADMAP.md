@@ -417,15 +417,16 @@ second opinion -> independent Agent
 
 ## AI-08 — Codex Second Agent
 
-**Status: AI-08-A CONTRACT FROZEN — implementation NOT STARTED.** The contract is
+**Status: AI-08-A COMPLETE / MERGED; AI-08-B IMPLEMENTED ON BRANCH.** The contract is
 [AI-08_AGENT_EXECUTION_EXECUTION_PLAN.md](AI-08_AGENT_EXECUTION_EXECUTION_PLAN.md), frozen at
-AI-08-A on base `main @ a7c4a1e2`. AI-08-A implements nothing: no Agent runtime, no AgentResult,
-no Codex provider, no Agent code of any kind.
+AI-08-A and merged as `2117cdf4` (PR #51). AI-08-B implements the runtime against it on
+`feature/ai-08-agent-runtime` and is awaiting its merge checkpoint.
 
 ```text
-AI-08-A     = CONTRACT FROZEN      awaiting the human merge checkpoint
-AI-08-B     = NOT STARTED          implementation
-AI-08       = IMPLEMENTATION NOT STARTED
+AI-08-A     = COMPLETE / MERGED    contract frozen          (PR #51, 2117cdf4)
+AI-08-B     = IMPLEMENTED ON BRANCH, NOT MERGED
+AI-08       = NOT CLOSED           awaiting the human merge checkpoint
+contract    = unchanged by AI-08-B; blob 7fa9effd
 amendments  = 2                    AI-08-A Amendment 1 (review corrections)
                                    AI-08-A Amendment 2 (terminal-result invariant)
 ```
@@ -476,6 +477,18 @@ DEFERRED  a per-Agent permission ceiling      OUT OF SCOPE. AI-08 v1 does not en
                                               or claim one, and AI-08-B MUST NOT infer
                                               one from AgentId, AgentRole or ActorType.
 ```
+
+AI-08-B 实现要点：
+
+- `agents/` 是 core Agent layer（namespace package），不是 plugin layer
+- 一次 execution：一个 `AgentExecutionRequest` → 一个 `ExecutionId` → 一个 terminal `AgentResult`；
+  COMPLETED / FAILED / BLOCKED 三者皆然
+- Context 由 runtime 建立、归该 execution 所有；request 只携带 descriptor，绝不携带 `ContextResponse`
+- AI-08 不直接调用 Guard：它把 `actor = AgentId` 的 `ToolRequest` 交给 AI-06，
+  由 AI-06 为每次 invocation 新建 `GuardRequest` / `GuardDecision`；不复用、不缓存
+- AI-08 不写任何 EvidenceRecord，也不 import `plugins.evidence`（Layer 0 会拦）
+- v1 的 body 不做推理、不联网、不绑模型；它产出的是 provenance reference，不是 task result
+- `COMPLETED != PASS`；`AgentRole.INDEPENDENT_SECOND` 不是 independence finding
 
 **AI-08 v1 has no provider binding** — every capability on every shipped model profile is
 `UNKNOWN` and no provider call has ever been made in this repository. Real Codex provider and model
@@ -730,7 +743,7 @@ SecurityLab
 | AI-05 | **B1 COMPLETE** (PR #34); **B2 COMPLETE** — P1 `844df7be` (PR #41), P2 `b8692c18` (PR #42) and P3 `67515ff9` (PR #44) merged; **AI-05 INCOMPLETE** — C-1 DEFERRED, §30 step 7 unimplemented; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-06 | **COMPLETE** — merged as `3b1917ab` (PR #47); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-07 | **COMPLETE** — contract `963c181c` (PR #48), implementation `e57541f9` (PR #49) merged; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
-| AI-08 | **AI-08-A CONTRACT FROZEN** — implementation NOT STARTED; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
+| AI-08 | **AI-08-A MERGED** (`2117cdf4`, PR #51); **AI-08-B IMPLEMENTED ON BRANCH** — awaiting review; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-09 | NOT STARTED |
 | AI-10 | NOT STARTED |
 | AI-11 | NOT STARTED |
