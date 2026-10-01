@@ -69,6 +69,33 @@ LIVE_HTTP_CLIENTS = ("curl ", "wget ", "Invoke-WebRequest", "requests.get", "htt
 
 #: AI-05 §1.2: what the Evidence package may never reach, wherever it is used.
 #: AI-06 §16: what the Tool layer may never reach.
+#: AI-07 §14: the Router selects and never executes.
+ROUTING_FORBIDDEN_IMPORTS = (
+    "socket",
+    "http",
+    "urllib",
+    "urllib3",
+    "requests",
+    "httpx",
+    "aiohttp",
+    "ftplib",
+    "smtplib",
+    "asyncio",
+    "multiprocessing",
+    "subprocess",
+    "shutil",
+    "plugins.guard",
+    "plugins.evidence",
+    "plugins.security_tools",
+    "tools",
+)
+
+ROUTING_FORBIDDEN_BUILTINS = ("eval", "exec", "compile", "__import__", "open")
+
+#: AI-07 §10.2: the other workspace is not reachable from the Router.
+ROUTING_FORBIDDEN_LITERALS = ("SecurityLab/", "Li20771/SecurityLab", "/mnt/d/SecurityLab")
+
+
 SECURITY_TOOLS_FORBIDDEN_IMPORTS = (
     "socket",
     "http",
@@ -1075,26 +1102,26 @@ def check_security_tools_boundary() -> list[str]:
 
 
 def check_ai07_router_contract() -> list[str]:
-    """AI-07 §1.1, §8, §13.2, §17: the Router's identity, as a gate.
+    """AI-07 §1.1, §8, §13.2, §14, §16, §17: the Router, as a gate.
 
-    AI-07-A freezes a contract and implements nothing, so the check for this
-    phase is a **contract/document consistency** one. It establishes that the
-    identity is structural rather than declared, and that no implementation
-    arrived under cover of a contract PR:
+    Upgraded by AI-07-B from the contract-freeze absence check to an
+    implementation boundary gate. Two halves, and they catch different
+    regressions:
 
     ```text
-    routing/ is not a plugin layer       not under plugins/, no __init__.py
-    routing/ contains no Python          AI-07 implementation = NOT STARTED
-    routing/ does not reach providers    the layer boundary holds
-    the README still states the boundary "never grants permissions"
-    the contract exists and freezes the  the identity, the authorization rule and
-      same three prohibitions            the evidence rule
+    structural   what routing/ can reach -- no network, no subprocess, no Guard,
+                 no Evidence, no tools, and no plugin packaging
+    behavioural  what the Router actually does -- UNKNOWN does not satisfy a
+                 capability, no rule set selects a default, and the tracked
+                 default rule set carries no rule that was never authored
     ```
 
-    It will need to grow when AI-07-B lands. What it must never become is a check
-    that passes because there is nothing to check: today it asserts absence, and
-    absence is exactly the claim.
+    What it must never become is a check that passes because there is nothing to
+    check. During AI-07-A it asserted `routing/` contained no Python, which was
+    the honest claim then; now it asserts what the Python may do.
     """
+    import ast
+
     problems: list[str] = []
 
     routing = ROOT / "routing"
@@ -1103,7 +1130,7 @@ def check_ai07_router_contract() -> list[str]:
     if not routing.is_dir():
         return ["routing/ is absent; AI-07's declared home does not exist"]
 
-    # (1) Not a plugin layer, and not on its way to becoming one.
+    # (1) Identity: a core service, not a plugin layer (§1.1, §17).
     if (plugins / "router").exists():
         problems.append(
             "plugins/router/ exists; AI-07 is a Workbench core service and not a "
@@ -1115,32 +1142,53 @@ def check_ai07_router_contract() -> list[str]:
             "not a plugin package (§17)"
         )
 
-    # (2) AI-07-A implements nothing.
-    implementation = sorted(
-        path.name for path in routing.rglob("*.py") if "__pycache__" not in path.parts
-    )
-    if implementation:
-        problems.append(
-            f"routing/ contains Python ({', '.join(implementation)}); AI-07-A "
-            "freezes a contract and AI-07 implementation is NOT STARTED"
-        )
+    # (2) Structural: what routing/ may reach (§14, §30).
+    for path in sorted(routing.rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        except SyntaxError as exc:  # pragma: no cover - surfaced as a failure
+            problems.append(f"{_display(path)} does not parse: {exc}")
+            continue
 
-    # (3) The declared identity is still stated where AI-07 will read it.
-    readme = routing / "README.md"
-    if readme.is_file():
-        text = readme.read_text(encoding="utf-8")
-        for phrase in (
-            "never grants permissions",
-            "not a DSH plugin",
-            "Guard remains authoritative",
-        ):
-            if phrase not in text:
+        imported: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imported.add(node.module)
+
+        roots = {name.split(".")[0] for name in imported}
+        for banned in ROUTING_FORBIDDEN_IMPORTS:
+            if banned in roots:
                 problems.append(
-                    f"routing/README.md no longer states {phrase!r}; §1.1 and §9 "
-                    "freeze that boundary and this check is what keeps it"
+                    f"{_display(path)} imports {banned!r}; the Router selects and "
+                    "does not execute (§14), and it authorizes nothing (§8)"
                 )
 
-    # (4) The contract exists and freezes the same three prohibitions.
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                for keyword in node.keywords:
+                    if keyword.arg == "shell":
+                        problems.append(
+                            f"{_display(path)}:{node.lineno} passes a `shell` "
+                            "keyword; AI-07 starts no process at all (§14)"
+                        )
+                if isinstance(node.func, ast.Name) and node.func.id in ROUTING_FORBIDDEN_BUILTINS:
+                    problems.append(
+                        f"{_display(path)}:{node.lineno} calls {node.func.id}()"
+                    )
+
+        source = path.read_text(encoding="utf-8")
+        for needle in ROUTING_FORBIDDEN_LITERALS:
+            if needle in source:
+                problems.append(
+                    f"{_display(path)} names {needle!r}; the other workspace is not "
+                    "a special case and is not reachable from here"
+                )
+
+    # (3) The contract is still frozen as AI-07-A left it.
     contract = ROOT / "docs" / "AI-07_MODEL_ROUTER_EXECUTION_PLAN.md"
     if not contract.is_file():
         problems.append("docs/AI-07_MODEL_ROUTER_EXECUTION_PLAN.md is absent")
@@ -1167,6 +1215,113 @@ def check_ai07_router_contract() -> list[str]:
                     f"the AI-07 contract no longer freezes {phrase!r}; §6.2, §8 and "
                     "§13.2 are load-bearing and this check is what keeps them"
                 )
+
+    # (4) Behavioural: what the Router actually does.
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    try:
+        from providers.model_registry import load_all_model_profiles
+
+        from routing.profile import capability_is_available
+        from routing.request import RouterRequest
+        from routing.router import evaluate
+        from routing.rules import RuleSet
+        from routing.vocabulary import RoutingOutcome
+    except ImportError as exc:  # pragma: no cover - surfaced as a failure
+        return problems + [f"the AI-07 package could not be imported: {exc}"]
+
+    profiles = load_all_model_profiles()
+
+    # §6.2: UNKNOWN is not available. Asserted against every shipped profile,
+    # so the rule is checked against the repository rather than a copy of it.
+    try:
+        from providers.model_profile import CapabilityName
+
+        for ref, profile in profiles.items():
+            for name in CapabilityName:
+                if capability_is_available(profile, name):
+                    problems.append(
+                        f"{ref} reports {name} as VERIFIED and no provider call has "
+                        "ever been made; §6.2 makes UNKNOWN unavailable, and a "
+                        "VERIFIED status is a dated observation AI-02 owns"
+                    )
+    except Exception as exc:  # noqa: BLE001 - surfaced as a failure
+        problems.append(f"the capability probe could not run: {exc}")
+
+    # A capability requirement must not select, and a missing rule must not
+    # produce an implicit default (§7.6).
+    try:
+        base = {
+            "schema_version": 1,
+            "task": {"task_class": "probe"},
+            "workspace": {"workspace_id": "probe"},
+            "actor": {"id": "probe", "type": "service"},
+            "candidates": [{"model_ref": ref} for ref in sorted(profiles)],
+        }
+        empty = RuleSet.empty()
+        plain = evaluate(RouterRequest.from_mapping(base), empty, profiles=profiles)
+        if plain.outcome is not RoutingOutcome.NO_ELIGIBLE_MODEL:
+            problems.append(
+                "an empty rule set selected a model; §7.6 makes no matching rule "
+                "NO_ELIGIBLE_MODEL and there is no implicit default"
+            )
+
+        first_ref = sorted(profiles)[0]
+        one_rule = RuleSet.from_mapping(
+            {
+                "version": 1,
+                "revision": "probe",
+                "rules": [
+                    {
+                        "rule_id": "probe",
+                        "priority": 0,
+                        "reason_code": "PROBE",
+                        "select": {"model_ref": first_ref},
+                    }
+                ],
+            }
+        )
+        requiring = RouterRequest.from_mapping(
+            {**base, "requested_capability": "tool_calling"}
+        )
+        outcome = evaluate(requiring, one_rule, profiles=profiles).outcome
+        if outcome is RoutingOutcome.SELECTED:
+            problems.append(
+                "a capability requirement selected a model whose capability is "
+                "UNKNOWN; §6.2 makes UNKNOWN unavailable"
+            )
+    except Exception as exc:  # noqa: BLE001 - surfaced as a failure
+        problems.append(f"the routing probe could not run: {exc}")
+
+    # (5) The tracked default rule set exists and carries no invented rule.
+    default_rules = ROOT / "config" / "routing" / "default.rules.yaml"
+    if not default_rules.is_file():
+        problems.append("config/routing/default.rules.yaml is absent (§12.1)")
+    else:
+        text = default_rules.read_text(encoding="utf-8")
+        try:
+            import yaml
+
+            parsed = yaml.safe_load(text) or {}
+            if parsed.get("version") != 1:
+                problems.append("the default rule set does not declare version 1")
+            if not parsed.get("revision"):
+                problems.append("the default rule set declares no revision (§12.3)")
+            for entry in parsed.get("rules", []) or []:
+                if "model_profile" in entry:
+                    problems.append(
+                        "the default rule set names a `model_profile`, which is the "
+                        "roadmap's sketch rather than a model reference (§3.2)"
+                    )
+                select = entry.get("select", {}) or {}
+                ref = select.get("model_ref")
+                if ref is not None and ref not in profiles:
+                    problems.append(
+                        f"the default rule set selects {ref!r}, which AI-02 does not "
+                        "register; §3.2 forbids inventing a profile to match the sketch"
+                    )
+        except Exception as exc:  # noqa: BLE001 - surfaced as a failure
+            problems.append(f"the default rule set could not be read: {exc}")
 
     return problems
 
