@@ -315,6 +315,10 @@ B2 has added the §18.1 workspace agreement boundary (P1), the §17 stored-form 
 merged, a record can be admitted and persisted under `evidence/staged/`, read back and verified,
 and discarded as a whole.
 
+Promotion stays a human act and has no AI-05 operation: the two tiers are two types, and the
+promoted one has no `write`, so an admitted record cannot be routed into the durable tier by any
+call. The promoted tier is read-only and is never deleted by AI-05.
+
 What is still ahead even then: C-1 leaves §30 step 7 unimplemented, ContextRef derivation from
 AI-03 is not wired, and four items the B2 decision record left undefined — the retrieval return
 shape, the `superseded_by` query shape, the promotion API and discard cleanup granularity — remain

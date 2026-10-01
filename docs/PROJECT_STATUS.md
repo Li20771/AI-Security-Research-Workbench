@@ -523,6 +523,9 @@ P3   the admission pipeline, the filesystem Store, uniqueness, staged discard
      it computes no digest and canonicalizes nothing. Duplicate evidence_id is
      REJECTED with the existing record untouched; duplicate content_digest is
      ACCEPTED, and both records are stored. discard is staged-only.
+     The two tiers are two types: StagedEvidenceStore writes, and
+     PromotedEvidenceStore has no write at all, so admission cannot be aimed at
+     the durable tier and there is no programmatic promotion path.
      Layer 0 is now 14 checks.
 ```
 
