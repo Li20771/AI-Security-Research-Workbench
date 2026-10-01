@@ -12,8 +12,9 @@ Evidence does not grant authorization.
 Evidence does not promote capability state.
 ```
 
-This package is **AI-05-B1, the logical core**, now conformant with the frozen
-contract as amended. It is offline, pure, and has no storage:
+This package carries **AI-05-B1, the logical core**, plus the first AI-05-B2
+increment, the §18.1 workspace agreement boundary. It is offline, pure, and has
+no storage:
 
 ```text
 IMPLEMENTED HERE
@@ -21,11 +22,13 @@ IMPLEMENTED HERE
     the §6.5 admitted-producer registry and the §6.6 cross-field rules
     the thirteen frozen grammars (§14.9)
     the leaf-accurate field table and the two digests
+    the §18.1 workspace agreement rule and the §22.1 outcome mapping
 
 NOT IMPLEMENTED
-    the admission pipeline                  ContextRef derivation from AI-03
-    artifact rule enforcement               the published admission rule set (C-1)
-    lifecycle and the Store protocol        any storage backend
+    the published admission rule set (C-1), which §30 step 7 needs
+    §30 step 14 uniqueness                 the stored-form loader
+    ContextRef derivation from AI-03       lifecycle and the Store protocol
+    any storage backend
 ```
 
 Usage:
@@ -48,10 +51,16 @@ capability, performs no file I/O, and ingests no artifact bytes. Frozen types
 from AI-02, AI-03 and AI-04 are **imported, not restated** (§3).
 
 Contract: `docs/AI-05_EVIDENCE_EXECUTION_PLAN.md`.
+B2 staging decisions: `docs/AI-05-B2_DECISIONS_2026-10-01.md`.
 """
 
 from __future__ import annotations
 
+from plugins.evidence.admission import (
+    AdmissionResult,
+    admit,
+    check_workspace_agreement,
+)
 from plugins.evidence.canonical import (
     CONTENT_EXCLUDED_PATHS,
     FIELD_TABLE,
@@ -94,6 +103,7 @@ from plugins.evidence.errors import (
     RecordMalformed,
     UnknownField,
     UnsupportedVocabulary,
+    WorkspaceAgreementViolation,
 )
 from plugins.evidence.grammar import (
     GRAMMAR_NAMES,
@@ -181,6 +191,7 @@ __all__ = [
     "ActorType",
     "ActorTypeNotAdmitted",
     "AdmissionOutcome",
+    "AdmissionResult",
     "AdmittedEvent",
     "ArtifactRef",
     "Artifacts",
@@ -233,12 +244,15 @@ __all__ = [
     "ToolCall",
     "UnknownField",
     "UnsupportedVocabulary",
+    "WorkspaceAgreementViolation",
     "WorkspaceBinding",
     "actor_type_is_permitted",
+    "admit",
     "admitted_events_for",
     "assign_digests",
     "canonical_json",
     "check_cross_field",
+    "check_workspace_agreement",
     "content_digest",
     "content_projection",
     "g_digest",
