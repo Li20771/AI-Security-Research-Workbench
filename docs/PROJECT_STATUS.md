@@ -2,7 +2,8 @@
 > Baseline: 2026-09-26
 
 ## Current stage
-**AI-05 — Evidence / Audit Plugin**
+**AI-07 — Model Router v1 — COMPLETE / CLOSED.** Next stage **AI-08 — Codex Second
+Agent — NOT STARTED**.
 
 AI-00 architecture and repository baseline is complete. **AI-01 DSH Baseline is COMPLETE** — see
 [AI-01 final gate status](#ai-01-final-gate-status). **AI-02 Model Layer is COMPLETE** — see
@@ -39,6 +40,12 @@ workspace, execution, vehicle and secret boundaries, the Evidence projection and
 Layer 0 check are all in this PR. Full evidence in
 [AI-06_EVIDENCE_2026-10-01.md](AI-06_EVIDENCE_2026-10-01.md).
 
+**AI-07 — Model Router v1 is COMPLETE and MERGED** — AI-07-A (contract, PR #48) merged as
+`963c181ce2c41aed8f5e400193ad3aeda03d6bb0`, and AI-07-B (implementation, PR #49) merged as
+`e57541f90d693472c695143af0bc79215d462fab`. The phase is **CLOSED**. Its contract blob was not
+modified by AI-07-B. Full evidence in
+[AI-07_EVIDENCE_2026-10-01.md](AI-07_EVIDENCE_2026-10-01.md). See [AI-07 status](#ai-07-status).
+
 **AI-05-B2 is COMPLETE**: every stage of its frozen scope has been implemented and merged. **AI-05
 as a whole remains INCOMPLETE**, because C-1 is still DEFERRED — §30 step 7 is unimplemented,
 T22a/T22b/T22c remain unrunnable, and §32's C6 gate is therefore not closed. See
@@ -54,8 +61,24 @@ This file is the single entry point for deciding what to do next.
 
 ### Current work item
 
-**AI-05-B2 — Evidence admission, Store and lifecycle — COMPLETE / MERGED.**
-All three stages are merged. AI-05 itself is **not** closed: C-1 remains DEFERRED.
+**AI-07 — Model Router v1 — COMPLETE / MERGED / CLOSED.**
+Both halves are merged and nothing in AI-07 remains open. **AI-08 — Codex Second Agent is
+NOT STARTED**; this closeout does not begin it.
+
+```text
+AI-07-A merge       = 963c181ce2c41aed8f5e400193ad3aeda03d6bb0   (PR #48, merged)
+AI-07-B merge       = e57541f90d693472c695143af0bc79215d462fab   (PR #49, merged)
+AI-07-B head        = 679c927f6b4c82369c4e26b790dd31a8ac324598
+                      the merge tree equals this tree — no content change
+AI-07 contract      = frozen, docs/AI-07_MODEL_ROUTER_EXECUTION_PLAN.md
+AI-07 contract blob = 2f8dcba8f9c2ca36e3d917fc6b69c3a5cb7f36fe
+                      unchanged by AI-07-B
+AI-07 evidence      = docs/AI-07_EVIDENCE_2026-10-01.md
+AI-08               = NOT STARTED
+```
+
+**Retained record — AI-05-B2: COMPLETE / MERGED.** All three stages are merged. AI-05 itself is
+**not** closed: C-1 remains DEFERRED.
 
 ```text
 AI-05 contract      = frozen, docs/AI-05_EVIDENCE_EXECUTION_PLAN.md
@@ -119,6 +142,12 @@ The merged AI-03, AI-04, AI-05-B1 and both merged AI-05-B2 branches
 `feature/ai-05-b1-logical-core`, `feature/ai-05-b2-admission-store-lifecycle`,
 `feature/ai-05-b2-stored-form-loader`) may be deleted.
 
+The two AI-07 branches (`feature/ai-07-router-contract`, `feature/ai-07-router-v1`) may also be
+deleted. Both are contained in `main`: `feature/ai-07-router-v1` at
+`679c927f6b4c82369c4e26b790dd31a8ac324598` has no commit that `main` does not already contain,
+and no file differs between that head and `main`. Their deletion is a plain branch delete, not a
+force delete, and nothing in AI-07 depends on them surviving.
+
 No force push and no history rewrite was performed at any point in AI-03, AI-04, AI-05-B1 or
 AI-05-B2.
 Each merge was a human decision taken at the GitHub checkpoint, not by the agent that implemented
@@ -153,8 +182,8 @@ PROJECT_STATUS.md
 
 ### Not yet started
 
-- AI-07 Router **implementation** — contract frozen (AI-07-A, PR #48);
-  the router itself is NOT STARTED
+- AI-08 Codex Second Agent — **NOT STARTED**. AI-07 is complete and merged, so no
+  AI-07 work remains ahead of it.
 
 ## Completed
 
@@ -183,7 +212,6 @@ PROJECT_STATUS.md
   the opt-in path; no provider call has been made)
 - Executable Evidence/Audit plugin
 - Research tool adapters
-- Model Router implementation
 - Codex integration
 - Benchmark dataset
 - Cross-Agent Review implementation
@@ -675,24 +703,56 @@ SecurityLab    = UNCHANGED
 
 ## AI-07 status
 
-**AI-07 — Plugin 5: Model Router v1: IMPLEMENTATION COMPLETE / PR OPEN, NOT MERGED.**
+**AI-07 — Plugin 5: Model Router v1: COMPLETE / MERGED / CLOSED.**
 
 ```text
-AI-07-A  = COMPLETE / MERGED
-AI-07-B  = IMPLEMENTATION COMPLETE / PR OPEN, NOT MERGED
-AI-07    = not closed until the PR merges and mainline CI is read
+AI-07-A  = COMPLETE / MERGED   contract frozen        (PR #48)
+AI-07-B  = COMPLETE / MERGED   implementation         (PR #49)
+AI-07    = COMPLETE / CLOSED
+
+merge SHA (A)  = 963c181ce2c41aed8f5e400193ad3aeda03d6bb0
+merge SHA (B)  = e57541f90d693472c695143af0bc79215d462fab
+PR #49 head    = 679c927f6b4c82369c4e26b790dd31a8ac324598
+                 the merge tree equals this tree — the merge changed no content
 
 contract = docs/AI-07_MODEL_ROUTER_EXECUTION_PLAN.md
 blob     = 2f8dcba8f9c2ca36e3d917fc6b69c3a5cb7f36fe   (after Amendment 1)
 amendments = 1
+         identical at 963c181, 679c927 and e57541f — AI-07-B did not modify it
 
-The router is implemented in `routing/`. Measured: `tests/routing` 110 passed;
-whole repository 2247 passed, 2 skipped, 5 deselected; Layer 0 PASS (16 checks).
-
-Every capability on every shipped profile is `UNKNOWN`, so a request requiring
-one yields `NO_ELIGIBLE_MODEL`. That is the v1 design, and T9 is the synthetic
-control proving the rule is not a blanket refusal.
+evidence = docs/AI-07_EVIDENCE_2026-10-01.md
 ```
+
+Measured on `main` at `e57541f`:
+
+```text
+tests/routing                 134 passed
+tests/security_tools           16 passed   (the T46/T47 file)
+whole repository              2271 passed, 2 skipped, 5 deselected
+Layer 0                       PASS (16 checks)
+compileall / providers.validate / git diff --check     clean
+```
+
+Required CI ran on the merge commit `e57541f` itself (run 36880374948, push event):
+**Layer 0 — repository policy** and **Layers 1-3 — offline model and context layers** both
+`success`. C11 is closed by that run; a local run would not have closed it.
+
+The router is implemented in `routing/`. Every capability on every shipped profile is
+`UNKNOWN`, so a request requiring one yields `NO_ELIGIBLE_MODEL`. That is the v1 design, and
+T9 is the synthetic control proving the rule is not a blanket refusal.
+
+```text
+DEFERRED  tuned rule set              AI-00 F-12: Router v2's, on benchmark data
+DEFERRED  independent Agent identity  AI-08 owns identity, execution and independence semantics
+DEFERRED  policy discovery            Q-1, AI-04's existing deferred item
+DEFERRED  cost-class routing          AI-02 defines no cost-class vocabulary
+DEFERRED  latency class               AI-02 exposes no latency class
+UNKNOWN   every capability on every shipped profile
+NOT_RUN   Ghidra, GitHub/MCP operations, the T17 symlink case   (AI-06, unchanged)
+BLOCKED   real CAN / ECU / vehicle    AI-04 §8.2 / D-12, by design and asserted
+```
+
+Closing AI-07 does not convert any line above into a PASS.
 
 Amendment 1 reconciled four internal inconsistencies before implementation began: `sensitivity`
 had an eligibility effect with no AI-02 source field; `max_cost_class` named a vocabulary AI-02
