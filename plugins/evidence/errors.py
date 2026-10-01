@@ -169,18 +169,104 @@ class CallerSuppliedIdentity(CallerSuppliedGeneratedField):
     reason_code = "CALLER_SUPPLIED_IDENTITY"
 
 
+# --------------------------------------------------------------------------
+# Cross-field rules (§6.6) — added by Amendment 1 conformance
+# --------------------------------------------------------------------------
+
+
+class CrossFieldViolation(RecordMalformed):
+    """A field is well-formed on its own but contradicts another field (§6.6).
+
+    A distinct family from a shape or vocabulary failure, because the caller's
+    repair is different: nothing about the offending value is wrong, and what
+    must change is the combination.
+    """
+
+    reason_code = "CROSS_FIELD_VIOLATION"
+
+
+class ProducerNotRegistered(CrossFieldViolation):
+    """The producer token is not registered for this kind and family (§6.5)."""
+
+    reason_code = "PRODUCER_NOT_REGISTERED"
+
+
+class ProducerTypeNotAdmitted(CrossFieldViolation):
+    """`producer_type` is a valid `ProducerType` member but not the one this
+    event registers (§6.5, §6.6).
+
+    Distinct from `ProducerRoleViolation`, which is the vocabulary-level refusal
+    of `human`. Here the value is a legal member of the vocabulary and is still
+    not admissible, because all six registry rows register `service`.
+    """
+
+    reason_code = "PRODUCER_TYPE_NOT_ADMITTED"
+
+
+class ActorTypeNotAdmitted(CrossFieldViolation):
+    """`actor.type` is not one of the values this kind admits (§6.6)."""
+
+    reason_code = "ACTOR_TYPE_NOT_ADMITTED"
+
+
+class FamilyStatusMismatch(CrossFieldViolation):
+    """The status field present is not the one this family declares (§11)."""
+
+    reason_code = "FAMILY_STATUS_MISMATCH"
+
+
+class BindingArmMismatch(CrossFieldViolation):
+    """The binding arm present is not the one this family selects (§11)."""
+
+    reason_code = "BINDING_ARM_MISMATCH"
+
+
+# --------------------------------------------------------------------------
+# Set-semantic duplicates (§15.4) — added by Amendment 1 conformance
+# --------------------------------------------------------------------------
+
+
+class DuplicateElement(RecordMalformed):
+    """A set-semantic collection carries the same element twice (§15.4).
+
+    REJECTED rather than deduplicated. Deduplicating would be the silent
+    substitution §14.4.1 forbids, and a set that preserves multiplicity is not
+    a set.
+    """
+
+    reason_code = "DUPLICATE_ELEMENT"
+
+
+class DuplicateOrdinal(DuplicateElement):
+    """Two `payload.tool_calls[]` entries share an ordinal (§11.1).
+
+    The ordering must be total, or "the order" is indeterminate and would need
+    a tie-break comparator — which §15.4 forbids.
+    """
+
+    reason_code = "DUPLICATE_ORDINAL"
+
+
 __all__ = [
+    "ActorTypeNotAdmitted",
+    "BindingArmMismatch",
     "CallerSuppliedDigest",
     "CallerSuppliedGeneratedField",
     "CallerSuppliedIdentity",
+    "CrossFieldViolation",
+    "DuplicateElement",
+    "DuplicateOrdinal",
     "EvidenceError",
+    "FamilyStatusMismatch",
     "FieldClassViolation",
     "InvalidDigestShape",
     "InvalidIdentifier",
     "MissingRequiredField",
     "NonCanonicalDigestCase",
     "PayloadKindMismatch",
+    "ProducerNotRegistered",
     "ProducerRoleViolation",
+    "ProducerTypeNotAdmitted",
     "RawContentRejected",
     "RecordMalformed",
     "UnknownField",

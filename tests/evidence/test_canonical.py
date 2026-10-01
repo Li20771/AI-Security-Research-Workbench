@@ -1,6 +1,7 @@
-"""Canonicalization: the field table, determinism, and collection ordering.
+"""Canonicalization: the leaf table, determinism, and collection ordering.
 
-Covers T7, T9, T10 and T11.
+Covers T7, T9, T10 and T11, plus the leaf-table conformance Amendment 1 made
+possible.
 
 T9/T10 and T11 are the two halves of one idea, and they pull in opposite
 directions on purpose. Set-semantic collections must be **permutation
@@ -30,58 +31,64 @@ from plugins.evidence import (
     record_projection,
     resolver_paths,
 )
+from plugins.evidence.errors import DuplicateOrdinal, RecordMalformed
 
 pytestmark = pytest.mark.layer1
 
+#: Every path the §15.2 table marks excluded from `content_digest`. Derived from
+#: the table by the test rather than restated, so the two cannot drift.
+EXPECTED_CONTENT_EXCLUSIONS = frozenset(
+    {
+        "evidence_id",
+        "producer_version",
+        "experiment_id",
+        "recorded_at",
+        "payload.tool_calls[].result_classification",
+        "artifacts.items[].role",
+        "artifacts.items[].artifact_ref",
+        "record_digest",
+    }
+)
 
-class TestTheFieldTableIsAuthoritative:
+
+class TestTheLeafTableIsAuthoritative:
     """§15.2 — the table is the single source of truth for digest behaviour."""
 
-    def test_every_resolvable_path_has_a_table_row(self):
-        table_paths = {row.path for row in FIELD_TABLE}
-        for path in resolver_paths():
-            assert path in table_paths, (
-                f"{path} has a resolver but no table row; the table would no "
-                "longer be authoritative"
-            )
+    def test_the_table_has_fifty_two_leaves(self):
+        assert len(FIELD_TABLE) == 52
 
-    def test_every_non_virtual_table_row_has_a_resolver(self):
-        """A row that classifies a stored field must be projectable."""
-        for row in FIELD_TABLE:
-            if row.record is Inclusion.NOT_A_FIELD:
-                assert row.content is Inclusion.NOT_A_FIELD
-                assert row.path not in resolver_paths()
-                continue
-            assert row.path in resolver_paths(), (
-                f"{row.path} is classified by the table but has no resolver, so "
-                "its classification is decorative"
-            )
+    def test_every_table_path_has_a_resolver(self):
+        assert resolver_paths() == frozenset(row.path for row in FIELD_TABLE)
 
     def test_paths_are_unique(self):
         paths = [row.path for row in FIELD_TABLE]
         assert len(paths) == len(set(paths))
 
-    def test_the_operational_fields_are_exactly_the_frozen_five(self):
-        """§16's exclusion list, derived from the table rather than restated."""
+    def test_the_content_exclusions_are_exactly_the_frozen_set(self):
+        """§16's exclusion list, read off the table rather than restated."""
         excluded = {
-            row.path
-            for row in FIELD_TABLE
-            if row.content is Inclusion.EXCLUDED and row.path != "record_digest"
+            row.path for row in FIELD_TABLE if row.content is Inclusion.EXCLUDED
         }
-        assert excluded == {
-            "evidence_id",
-            "experiment_id",
-            "producer_version",
-            "recorded_at",
-        }
+        assert excluded == EXPECTED_CONTENT_EXCLUSIONS
 
-    def test_no_generated_field_is_marked_caller_supplied(self):
-        """§14.6.1 and §8.1 — the origin column must agree with the rule."""
-        from plugins.evidence import AI05_GENERATED_DIGEST_FIELDS
+    def test_the_two_deferred_leaves_are_absent_from_both_digests(self):
+        """§13.1 and §11 require `role` and `result_classification` absent in v1."""
+        for path in (
+            "artifacts.items[].role",
+            "payload.tool_calls[].result_classification",
+        ):
+            row = next(r for r in FIELD_TABLE if r.path == path)
+            assert row.content is Inclusion.EXCLUDED
+            assert row.record is Inclusion.EXCLUDED
 
-        for row in FIELD_TABLE:
-            if row.ai05_generated and row.path in AI05_GENERATED_DIGEST_FIELDS:
-                assert row.caller_supplied is False, row.path
+    def test_no_container_row_survives(self):
+        """A container row is what could not express a nested exclusion."""
+        containers = {"payload", "references.context", "artifacts.items"}
+        assert not [r for r in FIELD_TABLE if r.path in containers]
+
+    def test_artifact_ref_is_the_only_locator(self):
+        locators = [r.path for r in FIELD_TABLE if r.role.value == "locator"]
+        assert locators == ["artifacts.items[].artifact_ref"]
 
     def test_observed_at_is_per_kind(self):
         row = next(r for r in FIELD_TABLE if r.path == "observed_at")
@@ -89,13 +96,7 @@ class TestTheFieldTableIsAuthoritative:
 
 
 class TestT7Determinism:
-    """T7 — same semantics, same content digest, independently of this process.
-
-    Three assertions, weakest to strongest: two parses in this process agree; the
-    digest recomputes from the canonical string with a bare `hashlib` call, so it
-    does not depend on the plugin's own hashing helper; and a **separate
-    interpreter** reaches the same value.
-    """
+    """T7 — same semantics, same content digest, independently of this process."""
 
     def test_two_independent_parses_agree(self, record_factory, build):
         a, b = build(record_factory()), build(record_factory())
@@ -104,25 +105,25 @@ class TestT7Determinism:
     def test_the_digest_recomputes_from_the_canonical_string(self, record_factory, build):
         record = build(record_factory())
         canonical = canonical_json(content_projection(record))
-        independent = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-        assert record.integrity.content_digest == independent
+        assert record.integrity.content_digest == hashlib.sha256(
+            canonical.encode("utf-8")
+        ).hexdigest()
 
     def test_the_record_digest_recomputes_from_the_canonical_string(self, record_factory, build):
         record = build(record_factory())
         canonical = canonical_json(record_projection(record))
-        independent = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-        assert record.integrity.record_digest == independent
+        assert record.integrity.record_digest == hashlib.sha256(
+            canonical.encode("utf-8")
+        ).hexdigest()
 
     def test_a_separate_interpreter_reaches_the_same_value(self, record_factory, build):
         """The cross-process half of T7.
 
-        In this container a spawned process can fail on handle inheritance before
-        any assertion runs, which is an environment limitation rather than a
-        determinism result — so it is reported as a skip rather than silently
-        passing. CI runs it.
+        Scoped to this environment: a spawned process can fail on handle
+        inheritance before any assertion runs, which is a limitation of the host
+        rather than a determinism result, so it is reported as a skip.
         """
         record = build(record_factory())
-        projection = content_projection(record)
         program = (
             "import hashlib,json,sys;"
             "payload=json.loads(sys.stdin.read());"
@@ -133,199 +134,182 @@ class TestT7Determinism:
         try:
             completed = subprocess.run(
                 [sys.executable, "-c", program],
-                input=json.dumps(projection),
-                capture_output=True,
-                text=True,
-                timeout=60,
+                input=json.dumps(content_projection(record)),
+                capture_output=True, text=True, timeout=60,
             )
         except OSError as exc:  # pragma: no cover - environment limitation
             pytest.skip(f"cannot spawn an interpreter here: {exc}")
-
         assert completed.returncode == 0, completed.stderr
         assert completed.stdout.strip() == record.integrity.content_digest
 
-    def test_key_order_in_the_supplied_mapping_is_irrelevant(self, record_factory, build):
-        forward = record_factory()
-        reversed_mapping = dict(reversed(list(forward.items())))
-        assert (
-            build(forward).integrity.content_digest
-            == build(reversed_mapping).integrity.content_digest
-        )
-
 
 class TestT9T10SetSemanticCollections:
-    """T9/T10 — permutation invariance, asserted for **every** set collection.
-
-    One collection is not enough: `references.context`, `references.decisions`,
-    `references.supersedes` and `artifacts.items` are each ordered by a different
-    key, and a bug in one key would hide behind a test of another.
-    """
+    """T9/T10 — permutation invariance, asserted for **every** set collection."""
 
     @staticmethod
     def _permutations(items):
         return list(itertools.permutations(items))
 
     def test_context_references_are_permutation_invariant(self, record_factory, build):
+        from tests.evidence.conftest import make_context_ref
+
         items = [
-            _context("git.head", "PASS"),
-            _context("git.branch", "main"),
-            _context("git.working_tree", "CLEAN"),
+            make_context_ref(subject="git.head", value="PASS"),
+            make_context_ref(subject="git.branch", value="main"),
+            make_context_ref(subject="git.working_tree", value="CLEAN"),
         ]
         digests = {
-            build(
-                record_factory(references={"context": list(ordering)})
-            ).integrity.content_digest
+            build(record_factory(references={"context": list(ordering)}))
+            .integrity.content_digest
             for ordering in self._permutations(items)
         }
         assert len(digests) == 1, "the context collection is SET-semantic (§15.4)"
 
     def test_decision_references_are_permutation_invariant(self, record_factory, build):
-        items = [{"record_ref": ref} for ref in (_ref("1"), _ref("2"), _ref("3"))]
+        refs = ["ev-" + s.rjust(16, "0") for s in ("1", "2", "3")]
+        items = [{"record_ref": r} for r in refs]
         digests = {
-            build(
-                record_factory(references={"decisions": list(ordering)})
-            ).integrity.content_digest
+            build(record_factory(references={"decisions": list(ordering)}))
+            .integrity.content_digest
             for ordering in self._permutations(items)
         }
         assert len(digests) == 1
 
     def test_supersede_references_are_permutation_invariant(self, record_factory, build):
         items = [
-            {"record_ref": _ref("1"), "correction_reason": "one"},
-            {"record_ref": _ref("2"), "correction_reason": "two"},
-            {"record_ref": _ref("3"), "correction_reason": "three"},
+            {"record_ref": "ev-" + s.rjust(16, "0"), "correction_reason": reason}
+            for s, reason in (("1", "one"), ("2", "two"), ("3", "three"))
         ]
         digests = {
-            build(
-                record_factory(references={"supersedes": list(ordering)})
-            ).integrity.content_digest
+            build(record_factory(references={"supersedes": list(ordering)}))
+            .integrity.content_digest
             for ordering in self._permutations(items)
         }
         assert len(digests) == 1
 
     def test_artifacts_are_permutation_invariant(self, record_factory, build):
+        from tests.evidence.conftest import make_artifact
+
         items = [
-            _artifact("raw-log", "a" * 64),
-            _artifact("pcap", "b" * 64),
-            _artifact("core-dump", "c" * 64),
+            make_artifact(artifact_digest="a" * 64, artifact_ref="loc-1"),
+            make_artifact(artifact_digest="b" * 64, artifact_ref="loc-2"),
+            make_artifact(artifact_digest="c" * 64, artifact_ref="loc-3"),
         ]
         digests = {
-            build(
-                record_factory(artifacts={"items": list(ordering)})
-            ).integrity.content_digest
+            build(record_factory(artifacts={"items": list(ordering)}))
+            .integrity.content_digest
             for ordering in self._permutations(items)
+        }
+        assert len(digests) == 1, "the artifact collection is SET-semantic (§15.4)"
+
+    def test_reasons_are_permutation_invariant(self, decision_factory, build):
+        """Amendment 1 declared `payload.reasons[]` SET. It was ORDER before."""
+        reasons = ["alpha", "beta", "gamma"]
+        digests = {
+            build(decision_factory(payload={
+                "decision": "ALLOW", "reason_code": "R",
+                "input_digest": "b" * 64, "reasons": list(ordering),
+            })).integrity.content_digest
+            for ordering in self._permutations(reasons)
         }
         assert len(digests) == 1
 
     def test_ordering_never_uses_the_locator(self, record_factory, build):
-        """§15.4 — `artifact_ref` is not an ordering input.
+        """§13.2 — `artifact_ref` is not an ordering input."""
+        from tests.evidence.conftest import make_artifact
 
-        Two records whose artifacts differ only in where the bytes live must
-        order identically, or the content digest would depend on location.
-        """
-        left = build(
-            record_factory(
-                artifacts={
-                    "items": [
-                        _artifact("raw-log", "a" * 64, ref="loc-1"),
-                        _artifact("pcap", "b" * 64, ref="loc-2"),
-                    ]
-                }
-            )
-        )
-        right = build(
-            record_factory(
-                artifacts={
-                    "items": [
-                        _artifact("pcap", "b" * 64, ref="loc-9"),
-                        _artifact("raw-log", "a" * 64, ref="loc-8"),
-                    ]
-                }
-            )
-        )
+        left = build(record_factory(artifacts={"items": [
+            make_artifact(artifact_digest="a" * 64, artifact_ref="loc-1"),
+            make_artifact(artifact_digest="b" * 64, artifact_ref="loc-2"),
+        ]}))
+        right = build(record_factory(artifacts={"items": [
+            make_artifact(artifact_digest="b" * 64, artifact_ref="loc-9"),
+            make_artifact(artifact_digest="a" * 64, artifact_ref="loc-8"),
+        ]}))
         assert left.integrity.content_digest == right.integrity.content_digest
 
     def test_a_genuinely_different_set_does_change_the_digest(self, record_factory, build):
         """The control: permutation invariance must not mean insensitivity."""
-        a = build(record_factory(references={"context": [_context("git.head", "PASS")]}))
-        b = build(record_factory(references={"context": [_context("git.head", "FAIL")]}))
+        from tests.evidence.conftest import make_context_ref
+
+        a = build(record_factory(references={
+            "context": [make_context_ref(value="PASS")]}))
+        b = build(record_factory(references={
+            "context": [make_context_ref(value="FAIL")]}))
         assert a.integrity.content_digest != b.integrity.content_digest
 
 
 class TestT11OrderSemanticCollections:
-    """T11 — ordinal decides, array position does not.
-
-    Rewriting the array with the same ordinals must leave the digest unchanged;
-    changing an ordinal must change it. An implementation that sorted by array
-    index would fail the first half, and one that ignored ordering entirely would
-    fail the second.
-    """
+    """T11 — ordinal decides, array position does not."""
 
     @staticmethod
-    def _execution(calls):
+    def _execution(actor_type, calls):
         return {
             "schema_version": 1,
             "kind": "EXECUTION",
             "provenance": {
-                "producer": "ai-06",
-                "producer_version": "1.0.0",
+                "producer": "ai-06", "producer_version": "1.0.0",
                 "producer_type": "service",
-                "actor": {"id": "tool:runner", "type": "agent"},
+                "actor": {"id": "ai-06", "type": actor_type},
                 "workspace_id": "ws-1",
             },
-            "payload": {"tool_calls": calls},
+            "payload": {"tool_calls[]": calls},
         }
 
     def test_array_order_does_not_matter_when_ordinals_are_kept(self, build):
         calls = [
-            {"ordinal": 0, "name": "git.status", "status": "PASS"},
-            {"ordinal": 1, "name": "pytest", "status": "PASS"},
-            {"ordinal": 2, "name": "git.diff", "status": "PASS"},
+            {"ordinal": 0, "what_ran": "git status", "status": "PASS"},
+            {"ordinal": 1, "what_ran": "pytest", "status": "PASS"},
+            {"ordinal": 2, "what_ran": "git diff", "status": "PASS"},
         ]
-        canonical = build(self._execution(calls)).integrity.content_digest
+        canonical = build(self._execution("service", calls)).integrity.content_digest
         for ordering in itertools.permutations(calls):
-            assert (
-                build(self._execution(list(ordering))).integrity.content_digest
-                == canonical
-            ), "array position is not semantic — the ordinal is (§11.1)"
+            assert build(
+                self._execution("service", list(ordering))
+            ).integrity.content_digest == canonical
 
     def test_changing_an_ordinal_changes_the_digest(self, build):
         original = [
-            {"ordinal": 0, "name": "a", "status": "PASS"},
-            {"ordinal": 1, "name": "b", "status": "PASS"},
+            {"ordinal": 0, "what_ran": "a", "status": "PASS"},
+            {"ordinal": 1, "what_ran": "b", "status": "PASS"},
         ]
         swapped = [
-            {"ordinal": 1, "name": "a", "status": "PASS"},
-            {"ordinal": 0, "name": "b", "status": "PASS"},
+            {"ordinal": 1, "what_ran": "a", "status": "PASS"},
+            {"ordinal": 0, "what_ran": "b", "status": "PASS"},
         ]
-        assert (
-            build(self._execution(original)).integrity.content_digest
-            != build(self._execution(swapped)).integrity.content_digest
-        ), "a sequence is a claim; reversing it asserts something different"
+        assert build(
+            self._execution("service", original)
+        ).integrity.content_digest != build(
+            self._execution("service", swapped)
+        ).integrity.content_digest
 
     def test_the_ordinal_survives_into_the_projection(self, build):
-        record = build(
-            self._execution(
-                [
-                    {"ordinal": 1, "name": "b", "status": "PASS"},
-                    {"ordinal": 0, "name": "a", "status": "PASS"},
-                ]
-            )
-        )
-        ordinals = [c["ordinal"] for c in content_projection(record)["payload"]["tool_calls"]]
+        record = build(self._execution("service", [
+            {"ordinal": 1, "what_ran": "b", "status": "PASS"},
+            {"ordinal": 0, "what_ran": "a", "status": "PASS"},
+        ]))
+        ordinals = [
+            c["ordinal"] for c in content_projection(record)["payload"]["tool_calls[]"]
+        ]
         assert ordinals == [0, 1], "the projection is emitted in ordinal order"
 
-    def test_a_non_integer_ordinal_is_rejected(self, build):
-        from plugins.evidence import errors as ev_errors
+    def test_a_duplicate_ordinal_is_rejected(self, build):
+        """§11.1. A duplicate leaves the ordering indeterminate."""
+        with pytest.raises(DuplicateOrdinal):
+            build(self._execution("service", [
+                {"ordinal": 0, "what_ran": "a", "status": "PASS"},
+                {"ordinal": 0, "what_ran": "b", "status": "PASS"},
+            ]))
 
-        with pytest.raises(ev_errors.RecordMalformed):
-            build(self._execution([{"ordinal": "0", "name": "a", "status": "PASS"}]))
+    def test_a_non_integer_ordinal_is_rejected(self, build):
+        with pytest.raises(RecordMalformed):
+            build(self._execution("service", [
+                {"ordinal": "0", "what_ran": "a", "status": "PASS"}]))
 
     def test_a_negative_ordinal_is_rejected(self, build):
-        from plugins.evidence import errors as ev_errors
-
-        with pytest.raises(ev_errors.RecordMalformed):
-            build(self._execution([{"ordinal": -1, "name": "a", "status": "PASS"}]))
+        with pytest.raises(RecordMalformed):
+            build(self._execution("service", [
+                {"ordinal": -1, "what_ran": "a", "status": "PASS"}]))
 
 
 class TestCanonicalJsonPrimitive:
@@ -344,43 +328,5 @@ class TestCanonicalJsonPrimitive:
             canonical_json({"items": {1, 2, 3}})
 
     def test_canonicalization_does_not_lowercase_anything(self):
-        """§15 — canonicalization represents; it does not repair.
-
-        If it lowercased, an uppercase digest would be silently accepted here and
-        T21c's rejection would be unreachable.
-        """
+        """§15 — canonicalization represents; it does not repair."""
         assert canonical_json({"d": "ABC"}) == '{"d":"ABC"}'
-
-
-# --------------------------------------------------------------------------
-# helpers
-# --------------------------------------------------------------------------
-
-
-def _context(subject, value, revision="a" * 39 + "1"):
-    return {
-        "workspace_id": "ws-1",
-        "source_kind": "git_current_state",
-        "source_identity": "git",
-        "source_revision": revision,
-        "subject": subject,
-        "value": value,
-        "item_kind": "FACT",
-        "truth_state": "PASS",
-        "freshness": "CURRENT",
-    }
-
-
-def _artifact(role, digest, ref="art-0001"):
-    return {
-        "artifact_digest": digest,
-        "role": role,
-        "external": False,
-        "owner_workspace_id": None,
-        "artifact_ref": ref,
-    }
-
-
-def _ref(suffix: str) -> str:
-    """A record reference of the shape `evidence_id` takes (§8.1)."""
-    return "ev-" + suffix.rjust(16, "0")

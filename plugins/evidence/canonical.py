@@ -1,36 +1,36 @@
-"""Canonicalization and the authoritative field table.
+"""Canonicalization and the authoritative leaf table.
 
 Implements contract §15 — and §15.2 in particular, which is **the single source
 of truth for digest behaviour**. The table is data here, not prose: both
 projections are built by walking it, so a field cannot acquire a second
 classification somewhere else without a test noticing.
 
+**Amendment 1 made the table leaf-based.** Before it, five rows described
+*containers* (`payload`, `references.context[]`, `artifacts.items[]` and two
+more) and everything inside them was classified by that single row. That could
+not express a nested exclusion, so `artifact_ref`'s exclusion from
+`content_digest` lived in an imperative `pop` inside this module — a rule the
+table could be walked to and never discover. Every leaf is now a row, and this
+module contains no hidden field removal at all.
+
 The serialization primitive is imported from AI-04's `plugins.guard.digest`,
-because §15 says AI-04's §20.2 rules are imported rather than restated. What is
+because §15 imports AI-04's §20.2 rules rather than restating them. What is
 **not** imported is AI-04's projection: `request_projection` and
-`evaluation_projection` answer AI-04's questions about AI-04's fields. AI-05
-owns its own classification.
+`evaluation_projection` answer AI-04's questions about AI-04's fields.
 
 ### What canonicalization is not allowed to do
 
-It represents an already-valid record deterministically. It does not make an
-invalid record valid. Specifically it never:
-
-    strips arbitrary fields           lowercases arbitrary fields
-    redacts                           normalizes secrets
-    repairs malformed values          drops unknown fields
-
-An uppercase SHA-256 is **rejected**, not quietly lowered — normalizing would
-mean substituting an accepted value, which §14.4 forbids. Canonicalization runs
-after validation and never instead of it.
+It represents an already-valid record deterministically. It never strips, lowercases,
+redacts, normalizes, repairs or drops. An uppercase SHA-256 is **rejected** upstream
+rather than lowered here — canonicalization runs after validation and never instead
+of it.
 
 ### Two orders, deliberately different (§15.4)
 
-Set-semantic collections are sorted by their frozen identity tuple before
-hashing, so a digest cannot depend on the order a caller happened to write a
-list in. Order-semantic collections keep their meaning but are still sorted —
-by their **explicit ordinal**, never by array position. Array position is an
-input the caller controls; sorting by it is the defect AI-04-B §E.1 recorded.
+Set-semantic collections are sorted by their frozen identity tuple before hashing,
+so a digest cannot depend on the order a caller happened to write a list in.
+Order-semantic collections keep their meaning but are still sorted — by their
+**explicit ordinal**, never by array position.
 """
 
 from __future__ import annotations
@@ -42,6 +42,7 @@ from typing import Any, Callable, Mapping
 # The serialization primitive only. AI-04's semantic projections are not reused.
 from plugins.guard.digest import canonical_json, sha256_hex
 
+from plugins.evidence.errors import RecordMalformed
 from plugins.evidence.models import EvidenceRecord
 from plugins.evidence.vocabulary import EvidenceKind
 
@@ -55,6 +56,7 @@ __all__ = [
     "content_projection",
     "observed_at_is_semantic",
     "record_projection",
+    "resolver_paths",
     "sha256_hex",
 ]
 
@@ -67,90 +69,94 @@ class DigestRole(StrEnum):
     IDENTITY = "identity"
     LOCATOR = "locator"
     INTEGRITY = "integrity"
-    RUNTIME = "runtime"
     NOT_CONTENT = "not_content"
 
 
 class Inclusion(StrEnum):
-    """Whether a field enters a given digest (§15.2)."""
+    """Whether a leaf enters a given digest (§15.2)."""
 
     INCLUDED = "included"
     EXCLUDED = "excluded"
     PER_KIND = "per_kind"
     #: It *is* the digest, so it is not its own input.
     IS_THE_DIGEST = "is_the_digest"
-    #: Not a field of the record at all.
-    NOT_A_FIELD = "not_a_field"
 
 
 @dataclass(frozen=True, slots=True)
 class FieldRow:
-    """One row of the §15.2 authoritative table."""
+    """One leaf of the §15.2 authoritative table."""
 
     path: str
     role: DigestRole
     content: Inclusion
     record: Inclusion
-    caller_supplied: bool
-    ai05_generated: bool
 
 
-#: §15.2, transcribed. This tuple **is** the contract's table.
-#:
-#: `record` is the digest over the stored record; `content` is the semantic
-#: equivalence digest. A field may be in the second and not the first
-#: (`record_digest`), or the first and not the second (`evidence_id`,
-#: `recorded_at`, `experiment_id`, `producer_version`, `artifact_ref`).
+#: §15.2, transcribed leaf by leaf. 52 rows, two of them deferred and therefore
+#: absent from every record — they are listed so that a reader can see the
+#: contract's full shape rather than infer its absence.
 FIELD_TABLE: tuple[FieldRow, ...] = (
     # ---- identity -------------------------------------------------------
-    FieldRow("evidence_id", DigestRole.IDENTITY, Inclusion.EXCLUDED,
-             Inclusion.INCLUDED, False, True),
-    FieldRow("schema_version", DigestRole.SEMANTIC, Inclusion.INCLUDED,
-             Inclusion.INCLUDED, True, False),
-    FieldRow("kind", DigestRole.SEMANTIC, Inclusion.INCLUDED,
-             Inclusion.INCLUDED, True, False),
+    FieldRow("evidence_id", DigestRole.IDENTITY, Inclusion.EXCLUDED, Inclusion.INCLUDED),
+    FieldRow("schema_version", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    FieldRow("kind", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
     # ---- provenance -----------------------------------------------------
-    FieldRow("producer", DigestRole.SEMANTIC, Inclusion.INCLUDED,
-             Inclusion.INCLUDED, True, False),
-    FieldRow("producer_version", DigestRole.OPERATIONAL, Inclusion.EXCLUDED,
-             Inclusion.INCLUDED, True, False),
-    FieldRow("producer_type", DigestRole.SEMANTIC, Inclusion.INCLUDED,
-             Inclusion.INCLUDED, True, False),
-    FieldRow("actor.id", DigestRole.SEMANTIC, Inclusion.INCLUDED,
-             Inclusion.INCLUDED, True, False),
-    FieldRow("actor.type", DigestRole.SEMANTIC, Inclusion.INCLUDED,
-             Inclusion.INCLUDED, True, False),
-    FieldRow("workspace_id", DigestRole.SEMANTIC, Inclusion.INCLUDED,
-             Inclusion.INCLUDED, True, False),
-    FieldRow("experiment_id", DigestRole.OPERATIONAL, Inclusion.EXCLUDED,
-             Inclusion.INCLUDED, True, False),
-    FieldRow("observed_at", DigestRole.SEMANTIC, Inclusion.PER_KIND,
-             Inclusion.INCLUDED, True, False),
-    FieldRow("recorded_at", DigestRole.OPERATIONAL, Inclusion.EXCLUDED,
-             Inclusion.INCLUDED, False, True),
-    # ---- payload --------------------------------------------------------
-    FieldRow("payload", DigestRole.SEMANTIC, Inclusion.INCLUDED,
-             Inclusion.INCLUDED, True, False),
+    FieldRow("producer", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    FieldRow("producer_version", DigestRole.OPERATIONAL, Inclusion.EXCLUDED, Inclusion.INCLUDED),
+    FieldRow("producer_type", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    FieldRow("actor.id", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    FieldRow("actor.type", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    FieldRow("workspace_id", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    FieldRow("experiment_id", DigestRole.OPERATIONAL, Inclusion.EXCLUDED, Inclusion.INCLUDED),
+    FieldRow("observed_at", DigestRole.SEMANTIC, Inclusion.PER_KIND, Inclusion.INCLUDED),
+    FieldRow("recorded_at", DigestRole.OPERATIONAL, Inclusion.EXCLUDED, Inclusion.INCLUDED),
+    # ---- payload: OBSERVATION -------------------------------------------
+    FieldRow("payload.family", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    FieldRow("payload.subject", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    FieldRow("payload.binding.source_kind", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    FieldRow("payload.binding.source_identity", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    FieldRow("payload.binding.source_revision", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    FieldRow("payload.binding.model_ref", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    FieldRow("payload.binding.endpoint_host", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    FieldRow("payload.binding.capability", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    FieldRow("payload.read_status", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    FieldRow("payload.run_status", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    FieldRow("payload.outcome", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    FieldRow("payload.candidate_status", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    FieldRow("payload.observed", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    # ---- payload: DECISION ----------------------------------------------
+    FieldRow("payload.decision", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    FieldRow("payload.reason_code", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    FieldRow("payload.reasons[]", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    FieldRow("payload.input_digest", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    # ---- payload: EXECUTION ---------------------------------------------
+    FieldRow("payload.tool_calls[].ordinal", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    FieldRow("payload.tool_calls[].what_ran", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    FieldRow("payload.tool_calls[].status", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    FieldRow("payload.tool_calls[].result_classification", DigestRole.SEMANTIC,
+             Inclusion.EXCLUDED, Inclusion.EXCLUDED),
     # ---- references -----------------------------------------------------
-    FieldRow("references.context", DigestRole.SEMANTIC, Inclusion.INCLUDED,
-             Inclusion.INCLUDED, True, False),
-    FieldRow("references.decisions", DigestRole.SEMANTIC, Inclusion.INCLUDED,
-             Inclusion.INCLUDED, True, False),
-    FieldRow("references.supersedes", DigestRole.SEMANTIC, Inclusion.INCLUDED,
-             Inclusion.INCLUDED, True, False),
+    FieldRow("references.context[].workspace_id", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    FieldRow("references.context[].source_kind", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    FieldRow("references.context[].source_identity", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    FieldRow("references.context[].source_revision", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    FieldRow("references.context[].subject", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    FieldRow("references.context[].value_digest", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    FieldRow("references.context[].item_kind", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    FieldRow("references.context[].truth_state", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    FieldRow("references.context[].freshness", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    FieldRow("references.decisions[].record_ref", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    FieldRow("references.supersedes[].record_ref", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    FieldRow("references.supersedes[].correction_reason", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
     # ---- artifacts ------------------------------------------------------
-    FieldRow("artifacts.items", DigestRole.SEMANTIC, Inclusion.INCLUDED,
-             Inclusion.INCLUDED, True, False),
+    FieldRow("artifacts.items[].artifact_digest", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    FieldRow("artifacts.items[].role", DigestRole.SEMANTIC, Inclusion.EXCLUDED, Inclusion.EXCLUDED),
+    FieldRow("artifacts.items[].external", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    FieldRow("artifacts.items[].owner_workspace_id", DigestRole.SEMANTIC, Inclusion.INCLUDED, Inclusion.INCLUDED),
+    FieldRow("artifacts.items[].artifact_ref", DigestRole.LOCATOR, Inclusion.EXCLUDED, Inclusion.INCLUDED),
     # ---- integrity ------------------------------------------------------
-    FieldRow("content_digest", DigestRole.INTEGRITY, Inclusion.IS_THE_DIGEST,
-             Inclusion.INCLUDED, False, True),
-    FieldRow("record_digest", DigestRole.INTEGRITY, Inclusion.EXCLUDED,
-             Inclusion.IS_THE_DIGEST, False, True),
-    # ---- not fields of the record ---------------------------------------
-    FieldRow("storage_tier", DigestRole.NOT_CONTENT, Inclusion.NOT_A_FIELD,
-             Inclusion.NOT_A_FIELD, False, False),
-    FieldRow("artifact_availability", DigestRole.RUNTIME, Inclusion.NOT_A_FIELD,
-             Inclusion.NOT_A_FIELD, False, False),
+    FieldRow("content_digest", DigestRole.INTEGRITY, Inclusion.IS_THE_DIGEST, Inclusion.INCLUDED),
+    FieldRow("record_digest", DigestRole.INTEGRITY, Inclusion.EXCLUDED, Inclusion.IS_THE_DIGEST),
 )
 
 _TABLE_BY_PATH: Mapping[str, FieldRow] = {row.path: row for row in FIELD_TABLE}
@@ -174,127 +180,182 @@ def observed_at_is_semantic(kind: EvidenceKind) -> bool:
     return kind in TIME_BOUND_KINDS
 
 
-def _context_items(record: EvidenceRecord, digest: str) -> list[dict[str, Any]]:
-    """ContextRefs, SET-semantic, sorted by the frozen identity tuple (§15.4).
+# --------------------------------------------------------------------------
+# Top-level scalar leaves
+# --------------------------------------------------------------------------
 
-    Every ContextRef field is in both digests (§15.2), so `digest` is unused.
+
+def _scalar(record: EvidenceRecord, leaf: str) -> Any:
+    """One top-level scalar leaf, by its contract name."""
+    if leaf == "evidence_id":
+        return record.identity.evidence_id
+    if leaf == "schema_version":
+        return record.schema_version
+    if leaf == "kind":
+        return str(record.identity.kind)
+    if leaf == "producer":
+        return record.provenance.producer
+    if leaf == "producer_version":
+        return record.provenance.producer_version
+    if leaf == "producer_type":
+        return str(record.provenance.producer_type)
+    if leaf == "actor.id":
+        return record.provenance.actor.id
+    if leaf == "actor.type":
+        return str(record.provenance.actor.type)
+    if leaf == "workspace_id":
+        return record.provenance.workspace_id
+    if leaf == "experiment_id":
+        return record.provenance.experiment_id
+    if leaf == "observed_at":
+        return record.provenance.observed_at
+    if leaf == "recorded_at":
+        return record.provenance.recorded_at
+    if leaf == "content_digest":
+        return record.integrity.content_digest
+    if leaf == "record_digest":
+        return record.integrity.record_digest
+    raise RecordMalformed(f"no resolver for the frozen leaf {leaf!r}")
+
+
+def _scalar_paths() -> tuple[str, ...]:
+    """The top-level leaves: table paths with no container prefix."""
+    return tuple(
+        row.path for row in FIELD_TABLE if _owner(row.path) is None
+    )
+
+
+# --------------------------------------------------------------------------
+# Collections
+# --------------------------------------------------------------------------
+
+
+def _collection_items(record: EvidenceRecord, container: str) -> list[Any]:
+    """The ordered items of one set-semantic collection (§15.4).
+
+    Ordered by `canonical_key`, which each type defines as its frozen identity
+    tuple. Never by array position and never by a locator.
     """
-    return [
-        item.to_projection()
-        for item in sorted(record.references.context, key=lambda i: i.canonical_key)
-    ]
+    if container == "references.context[]":
+        return sorted(record.references.context, key=lambda i: i.canonical_key)
+    if container == "references.decisions[]":
+        return sorted(record.references.decisions, key=lambda i: i.canonical_key)
+    if container == "references.supersedes[]":
+        return sorted(record.references.supersedes, key=lambda i: i.canonical_key)
+    if container == "artifacts.items[]":
+        return sorted(record.artifacts.items, key=lambda i: i.canonical_key)
+    raise RecordMalformed(f"unknown collection {container!r}")
 
 
-def _decision_refs(record: EvidenceRecord, digest: str) -> list[dict[str, Any]]:
-    """RecordRefs, SET-semantic, sorted by `record_ref` (§15.4)."""
-    return [
-        item.to_projection()
-        for item in sorted(record.references.decisions, key=lambda i: i.canonical_key)
-    ]
+#: The five containers. `payload` holds one item; the other four are collections.
+_COLLECTIONS: tuple[str, ...] = (
+    "payload",
+    "references.context[]",
+    "references.decisions[]",
+    "references.supersedes[]",
+    "artifacts.items[]",
+)
 
 
-def _supersede_refs(record: EvidenceRecord, digest: str) -> list[dict[str, Any]]:
-    """SupersedeRefs, SET-semantic, sorted by `record_ref` (§15.4)."""
-    return [
-        item.to_projection()
-        for item in sorted(record.references.supersedes, key=lambda i: i.canonical_key)
-    ]
+def _owner(path: str) -> str | None:
+    """The container a leaf belongs to, or None for a top-level leaf.
 
-
-def _artifact_items(record: EvidenceRecord, digest: str) -> list[dict[str, Any]]:
-    """ArtifactRefs, SET-semantic, sorted by `(role, artifact_digest)` (§15.4).
-
-    Never by `artifact_ref`. The locator is not an ordering input, and ordering
-    by it would make the content digest depend on where the bytes live — the
-    opposite of the location-independence §15.3 requires.
-
-    **`artifact_ref` is dropped from the content projection.** §15.2 marks it
-    LOCATOR / OPERATIONAL, excluded from `content_digest` and included in
-    `record_digest`. It is nested inside this collection rather than being a
-    top-level field, so the exclusion has to be applied here — per item — rather
-    than by skipping a table row. Getting this wrong makes the content digest
-    depend on where an artifact happens to live, which is exactly the property
-    the two-digest model exists to provide.
+    `payload.tool_calls[].ordinal` belongs to `payload` — the tool-call
+    collection is nested inside the payload rather than being a sixth container,
+    because the contract declares it as `payload.tool_calls[]`.
     """
-    items = sorted(record.artifacts.items, key=lambda i: i.canonical_key)
-    projections = [item.to_projection() for item in items]
-    if digest == "content":
-        for projection in projections:
-            projection.pop("artifact_ref", None)
-    return projections
+    for container in _COLLECTIONS:
+        if path.startswith(container + "."):
+            return container
+    return None
 
 
-def _payload(record: EvidenceRecord, digest: str) -> dict[str, Any]:
-    """The payload projection, with ORDER-semantic collections sorted by ordinal.
-
-    Tool calls are emitted in ascending `ordinal`, **not** in array order. Array
-    position is an input the caller controls; sorting by it is the defect
-    AI-04-B §E.1 recorded.
-    """
-    projection = record.payload.to_projection()
-    calls = projection.get("tool_calls")
-    if isinstance(calls, list):
-        projection["tool_calls"] = sorted(calls, key=lambda c: c["ordinal"])
-    return projection
+def _leaf_within(path: str, container: str) -> str:
+    """The leaf's name inside its container, e.g. `tool_calls[].ordinal`."""
+    return path[len(container) + 1:]
 
 
-#: One resolver per table path. A path with no resolver, or a resolver with no
-#: path, is a defect that `test_canonical.py` fails on — which is what keeps the
-#: table authoritative instead of decorative.
-_RESOLVERS: Mapping[str, Callable[[EvidenceRecord, str], Any]] = {
-    "evidence_id": lambda r, d: r.identity.evidence_id,
-    "schema_version": lambda r, d: r.schema_version,
-    "kind": lambda r, d: str(r.identity.kind),
-    "producer": lambda r, d: r.provenance.producer,
-    "producer_version": lambda r, d: r.provenance.producer_version,
-    "producer_type": lambda r, d: str(r.provenance.producer_type),
-    "actor.id": lambda r, d: r.provenance.actor.id,
-    "actor.type": lambda r, d: str(r.provenance.actor.type),
-    "workspace_id": lambda r, d: r.provenance.workspace_id,
-    "experiment_id": lambda r, d: r.provenance.experiment_id,
-    "observed_at": lambda r, d: r.provenance.observed_at,
-    "recorded_at": lambda r, d: r.provenance.recorded_at,
-    "payload": _payload,
-    "references.context": _context_items,
-    "references.decisions": _decision_refs,
-    "references.supersedes": _supersede_refs,
-    "artifacts.items": _artifact_items,
-    "content_digest": lambda r, d: r.integrity.content_digest,
-    "record_digest": lambda r, d: r.integrity.record_digest,
-}
+def _include(row: FieldRow, digest: str, record: EvidenceRecord) -> bool:
+    decision = row.content if digest == "content" else row.record
+    if decision is Inclusion.PER_KIND:
+        return observed_at_is_semantic(record.identity.kind)
+    return decision is Inclusion.INCLUDED
 
 
-def resolver_paths() -> frozenset[str]:
-    """The paths that have a resolver. Used by the conformance test."""
-    return frozenset(_RESOLVERS)
+# --------------------------------------------------------------------------
+# Projections
+# --------------------------------------------------------------------------
 
 
 def _project(record: EvidenceRecord, *, digest: str) -> dict[str, Any]:
     """Walk the table and build the projection for one digest."""
     out: dict[str, Any] = {}
-    for row in FIELD_TABLE:
-        if row.path not in _RESOLVERS:
-            continue
-        decision = row.content if digest == "content" else row.record
-        if decision is Inclusion.PER_KIND:
-            include = (
-                observed_at_is_semantic(record.identity.kind)
-                if row.path == "observed_at"
-                else False
-            )
+
+    for leaf in _scalar_paths():
+        row = _TABLE_BY_PATH[leaf]
+        if _include(row, digest, record):
+            out[leaf] = _scalar(record, leaf)
+
+    for container in _COLLECTIONS:
+        entries: list[dict[str, Any]] = []
+        if container == "payload":
+            items = [record.payload]
         else:
-            include = decision is Inclusion.INCLUDED
-        if include:
-            out[row.path] = _RESOLVERS[row.path](record, digest)
+            items = _collection_items(record, container)
+
+        rows = {
+            _leaf_within(row.path, container): row
+            for row in FIELD_TABLE
+            if _owner(row.path) == container
+        }
+
+        for item in items:
+            projected = item.to_projection()
+            entry: dict[str, Any] = {}
+            for leaf, value in projected.items():
+                if leaf == "tool_calls[]":
+                    # A nested ORDER-semantic collection inside the payload.
+                    inner = []
+                    for call in value:
+                        inner.append({
+                            k: v
+                            for k, v in call.items()
+                            if _include(
+                                rows[f"tool_calls[].{k}"], digest, record
+                            )
+                        })
+                    entry["tool_calls[]"] = inner
+                    continue
+                row = rows.get(leaf)
+                if row is None:
+                    # A model field the table does not classify is a defect in
+                    # this module, not a value to skip silently.
+                    raise RecordMalformed(
+                        f"{container}.{leaf} has no row in the §15.2 table"
+                    )
+                if _include(row, digest, record):
+                    entry[leaf] = value
+            entries.append(entry)
+
+        if container == "payload":
+            out["payload"] = entries[0]
+        else:
+            out[container] = entries
+
     return out
+
+
+def resolver_paths() -> frozenset[str]:
+    """Every table path this module can resolve. Used by the conformance test."""
+    return frozenset(row.path for row in FIELD_TABLE)
 
 
 def content_projection(record: EvidenceRecord) -> dict[str, Any]:
     """The semantic projection hashed into `content_digest` (§16).
 
     Invariant across promotion and relocation: it carries no `evidence_id`, no
-    `recorded_at`, no `experiment_id`, no `producer_version` and no
-    `artifact_ref`.
+    `recorded_at`, no `experiment_id`, no `producer_version`, no `artifact_ref`,
+    and neither deferred field.
     """
     return _project(record, digest="content")
 
@@ -302,8 +363,8 @@ def content_projection(record: EvidenceRecord) -> dict[str, Any]:
 def record_projection(record: EvidenceRecord) -> dict[str, Any]:
     """The projection hashed into `record_digest` (§17).
 
-    Covers every stored field except `record_digest` itself, so that repointing
-    an `artifact_ref` at different bytes, or changing an operational timestamp,
-    is **detectable** rather than invisible.
+    Covers every stored leaf except `record_digest` itself, so that repointing an
+    `artifact_ref` at different bytes, or changing an operational timestamp, is
+    **detectable** rather than invisible.
     """
     return _project(record, digest="record")

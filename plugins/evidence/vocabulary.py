@@ -8,20 +8,28 @@ AI-04, and `ItemKind`, `StatusValue` and `Freshness` come from AI-03. Redefining
 one would mean two definitions in one repository, one place to update, and one of
 them forgotten — which is exactly the defect AI-04 §28.2 names.
 
-The one thing AI-05 adds on top of an imported vocabulary is a **role
-constraint**, not a new enum:
+AI-05 **owns** two vocabularies, both added by Amendment 1:
 
-    producer_type  MUST be in  { agent, service, unknown }   — NOT human
-    actor.type     MUST be in  { human, agent, service, unknown }
+    ProducerType       agent | service | unknown
+    ObservationFamily  SOURCE_READ | PROVIDER_PROBE | CAPABILITY_OBSERVATION
 
-`human` stays a member of the inherited `ActorType` because removing it would be
-a redefinition of a frozen type. It is simply not reachable in the producer role:
-the producer is the component that WROTE the record, and §7 states that a human
-does not author an EvidenceRecord directly.
+It **imports** four and does not redefine them:
 
-Without the constraint, `producer = human, producer_type = human` would be
-schema-legal while contradicting §7 — a state the schema accepts and the prose
-forbids. T4b asserts the rejection and T4c is its positive control.
+    ActorType      AI-04   the type of actor.type
+    GuardDecision  AI-04
+    ItemKind       AI-03
+    StatusValue    AI-03
+    Freshness      AI-03
+
+`producer_type` is a `ProducerType`, **not** an `ActorType`. Before Amendment 1
+the contract expressed the producer role as "`ActorType` minus `human`", which
+left `producer = human, producer_type = human` schema-legal while the prose
+forbade it. A closed three-member type admits no such state.
+
+**Vocabulary membership and admission are two different checks.** `agent` is a
+valid `ProducerType` member and is still REJECTED for every v1 admitted event,
+because all six registry rows (§6.5) register `service`. `producer_type_is_permitted`
+answers the vocabulary question; the registry answers the admission question.
 """
 
 from __future__ import annotations
@@ -117,29 +125,59 @@ AI05_GENERATED_DIGEST_FIELDS: frozenset[str] = frozenset(
 CALLER_SUPPLIED_DIGEST_FIELDS: frozenset[str] = frozenset({"artifact_digest"})
 
 
-#: The producer role constraint (§7.1). Narrower than the inherited vocabulary.
-PERMITTED_PRODUCER_TYPES: frozenset[ActorType] = frozenset(
-    {ActorType.AGENT, ActorType.SERVICE, ActorType.UNKNOWN}
-)
+class ProducerType(StrEnum):
+    """The producer role vocabulary (Amendment 1, §7.1). Closed, owned by AI-05.
+
+    **This is not `ActorType`.** Before Amendment 1 the contract described
+    `producer_type` as a narrower use of AI-04's `ActorType`, which made the
+    producer role a constraint on another component's type. The two are now
+    distinct types and `ActorType` is not redefined.
+
+    Membership here is necessary but not sufficient for admission: all six v1
+    admitted events in the §6.5 registry require `service`, so `agent` and
+    `unknown` are valid vocabulary members that no admitted v1 record may use.
+    Vocabulary membership and admission are separate checks.
+    """
+
+    AGENT = "agent"
+    SERVICE = "service"
+    UNKNOWN = "unknown"
+
+
+class ObservationFamily(StrEnum):
+    """The observation family vocabulary (Amendment 1, §6.7). Closed, owned by AI-05.
+
+    Exactly three members. `family` is REQUIRED on every OBSERVATION, selects the
+    binding arm and the status field, and is never inferred from a producer name.
+    A fourth member requires an amendment.
+    """
+
+    SOURCE_READ = "SOURCE_READ"
+    PROVIDER_PROBE = "PROVIDER_PROBE"
+    CAPABILITY_OBSERVATION = "CAPABILITY_OBSERVATION"
+
 
 #: The actor vocabulary, unchanged from AI-04's `ActorType`.
 PERMITTED_ACTOR_TYPES: frozenset[ActorType] = frozenset(ActorType)
 
 
 def producer_type_is_permitted(value: object) -> bool:
-    """Whether `value` is a valid **producer** type (§7.1).
+    """Whether `value` is a member of `ProducerType` (§7.1).
 
-    Membership in the inherited vocabulary is necessary but not sufficient:
-    `human` is a member and is rejected here.
+    This is the VOCABULARY check only. Whether the member is admissible for a
+    given event is the registry's question, not this one: `agent` is a valid
+    member and is still REJECTED for every v1 admitted event, because §6.5
+    registers `service` for all six.
     """
     try:
-        return ActorType(value) in PERMITTED_PRODUCER_TYPES
+        ProducerType(value)
     except ValueError:
         return False
+    return True
 
 
 def actor_type_is_permitted(value: object) -> bool:
-    """Whether `value` is a valid **actor** type (§7.1)."""
+    """Whether `value` is a member of AI-04's `ActorType` (§7.1)."""
     try:
         ActorType(value)
     except ValueError:
@@ -151,7 +189,6 @@ __all__ = [
     "AI05_GENERATED_DIGEST_FIELDS",
     "CALLER_SUPPLIED_DIGEST_FIELDS",
     "PERMITTED_ACTOR_TYPES",
-    "PERMITTED_PRODUCER_TYPES",
     "ActorType",
     "AdmissionOutcome",
     "DigestOrigin",
@@ -160,6 +197,8 @@ __all__ = [
     "Freshness",
     "GuardDecision",
     "ItemKind",
+    "ObservationFamily",
+    "ProducerType",
     "StatusValue",
     "actor_type_is_permitted",
     "producer_type_is_permitted",

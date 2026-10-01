@@ -12,21 +12,20 @@ Evidence does not grant authorization.
 Evidence does not promote capability state.
 ```
 
-This package is **AI-05-B1, the logical core**. It is offline, pure, and has no
-storage:
+This package is **AI-05-B1, the logical core**, now conformant with the frozen
+contract as amended. It is offline, pure, and has no storage:
 
 ```text
-IMPLEMENTED HERE (B1)
-    the record model and its typed payloads
-    the authoritative digest field table (§15.2)
-    canonicalization and collection ordering
-    content_digest, record_digest, value_digest
+IMPLEMENTED HERE
+    the record model and its three typed payloads
+    the §6.5 admitted-producer registry and the §6.6 cross-field rules
+    the thirteen frozen grammars (§14.9)
+    the leaf-accurate field table and the two digests
 
-NOT IMPLEMENTED (later phases)
-    admission pipeline (B2)            ContextRef derivation from AI-03 (B2)
-    artifact rule enforcement (B2)     the published admission rule set (C-1)
-    lifecycle and the Store protocol (B3)
-    any storage backend (B4)           any file I/O, at all
+NOT IMPLEMENTED
+    the admission pipeline                  ContextRef derivation from AI-03
+    artifact rule enforcement               the published admission rule set (C-1)
+    lifecycle and the Store protocol        any storage backend
 ```
 
 Usage:
@@ -39,12 +38,14 @@ record = assign_digests(record)                  # fills content_digest/record_d
 record.integrity.content_digest
 ```
 
+**Vocabulary membership and admission are two checks.** `agent` is a valid
+`ProducerType` member and is still REJECTED for every v1 admitted event, because
+all six §6.5 registry rows register `service`.
+
 **Boundaries this package must keep.** It imports no network client, spawns no
 subprocess, executes no tool, routes nothing, authorizes nothing, promotes no
 capability, performs no file I/O, and ingests no artifact bytes. Frozen types
-from AI-02, AI-03 and AI-04 are **imported, not restated** (§3): a second
-definition in one repository means two places to update and one of them
-forgotten.
+from AI-02, AI-03 and AI-04 are **imported, not restated** (§3).
 
 Contract: `docs/AI-05_EVIDENCE_EXECUTION_PLAN.md`.
 """
@@ -70,50 +71,84 @@ from plugins.evidence.digests import (
     record_digest,
 )
 from plugins.evidence.errors import (
+    ActorTypeNotAdmitted,
+    BindingArmMismatch,
     CallerSuppliedDigest,
     CallerSuppliedGeneratedField,
     CallerSuppliedIdentity,
+    CrossFieldViolation,
+    DuplicateElement,
+    DuplicateOrdinal,
     EvidenceError,
+    FamilyStatusMismatch,
     FieldClassViolation,
     InvalidDigestShape,
     InvalidIdentifier,
     MissingRequiredField,
     NonCanonicalDigestCase,
     PayloadKindMismatch,
+    ProducerNotRegistered,
     ProducerRoleViolation,
+    ProducerTypeNotAdmitted,
     RawContentRejected,
     RecordMalformed,
     UnknownField,
     UnsupportedVocabulary,
 )
+from plugins.evidence.grammar import (
+    GRAMMAR_NAMES,
+    g_digest,
+    g_evidence_id,
+    g_host,
+    g_ident,
+    g_locator,
+    g_modelref,
+    g_opaque_id,
+    g_ordinal,
+    g_registered,
+    g_revision,
+    g_subject,
+    g_text,
+    g_timestamp,
+    revision_length_for,
+)
 from plugins.evidence.models import (
+    ADMITTED_EVENTS,
     EVIDENCE_ID_PREFIX,
-    IDENTIFIER_RE,
+    MAX_TEXT_LENGTH,
+    OBSERVATION_BY_FAMILY,
     PAYLOAD_BY_KIND,
     SUPPORTED_SCHEMA_VERSION,
     Actor,
+    AdmittedEvent,
     ArtifactRef,
     Artifacts,
+    CapabilityObservation,
     ContextRef,
     DecisionPayload,
     EvidenceRecord,
     ExecutionPayload,
     Identity,
     Integrity,
-    ObservationPayload,
+    ProviderBinding,
+    ProviderProbeObservation,
     Provenance,
     RecordRef,
     References,
+    SourceReadObservation,
     SupersedeRef,
     ToolCall,
+    WorkspaceBinding,
+    admitted_events_for,
+    check_cross_field,
     new_evidence_id,
+    observation_payload,
     value_digest_of,
 )
 from plugins.evidence.vocabulary import (
     AI05_GENERATED_DIGEST_FIELDS,
     CALLER_SUPPLIED_DIGEST_FIELDS,
     PERMITTED_ACTOR_TYPES,
-    PERMITTED_PRODUCER_TYPES,
     ActorType,
     AdmissionOutcome,
     DigestOrigin,
@@ -122,38 +157,50 @@ from plugins.evidence.vocabulary import (
     Freshness,
     GuardDecision,
     ItemKind,
+    ObservationFamily,
+    ProducerType,
     StatusValue,
     actor_type_is_permitted,
     producer_type_is_permitted,
 )
 
 __all__ = [
+    "ADMITTED_EVENTS",
     "AI05_GENERATED_DIGEST_FIELDS",
     "CALLER_SUPPLIED_DIGEST_FIELDS",
     "CONTENT_EXCLUDED_PATHS",
     "EVIDENCE_ID_PREFIX",
     "FIELD_TABLE",
-    "IDENTIFIER_RE",
+    "GRAMMAR_NAMES",
+    "MAX_TEXT_LENGTH",
+    "OBSERVATION_BY_FAMILY",
     "PAYLOAD_BY_KIND",
     "PERMITTED_ACTOR_TYPES",
-    "PERMITTED_PRODUCER_TYPES",
     "SUPPORTED_SCHEMA_VERSION",
     "Actor",
     "ActorType",
+    "ActorTypeNotAdmitted",
     "AdmissionOutcome",
+    "AdmittedEvent",
     "ArtifactRef",
     "Artifacts",
+    "BindingArmMismatch",
     "CallerSuppliedDigest",
     "CallerSuppliedGeneratedField",
     "CallerSuppliedIdentity",
+    "CapabilityObservation",
     "ContextRef",
+    "CrossFieldViolation",
     "DecisionPayload",
     "DigestOrigin",
     "DigestRole",
+    "DuplicateElement",
+    "DuplicateOrdinal",
     "EvidenceError",
     "EvidenceKind",
     "EvidenceRecord",
     "ExecutionPayload",
+    "FamilyStatusMismatch",
     "FieldClass",
     "FieldClassViolation",
     "FieldRow",
@@ -167,30 +214,54 @@ __all__ = [
     "ItemKind",
     "MissingRequiredField",
     "NonCanonicalDigestCase",
-    "ObservationPayload",
+    "ObservationFamily",
     "PayloadKindMismatch",
+    "ProducerNotRegistered",
     "ProducerRoleViolation",
+    "ProducerType",
+    "ProducerTypeNotAdmitted",
     "Provenance",
+    "ProviderBinding",
+    "ProviderProbeObservation",
     "RawContentRejected",
     "RecordMalformed",
     "RecordRef",
     "References",
+    "SourceReadObservation",
     "StatusValue",
     "SupersedeRef",
     "ToolCall",
     "UnknownField",
     "UnsupportedVocabulary",
+    "WorkspaceBinding",
     "actor_type_is_permitted",
+    "admitted_events_for",
     "assign_digests",
     "canonical_json",
+    "check_cross_field",
     "content_digest",
     "content_projection",
+    "g_digest",
+    "g_evidence_id",
+    "g_host",
+    "g_ident",
+    "g_locator",
+    "g_modelref",
+    "g_opaque_id",
+    "g_ordinal",
+    "g_registered",
+    "g_revision",
+    "g_subject",
+    "g_text",
+    "g_timestamp",
     "new_evidence_id",
+    "observation_payload",
     "observed_at_is_semantic",
     "producer_type_is_permitted",
     "record_digest",
     "record_projection",
     "resolver_paths",
+    "revision_length_for",
     "sha256_hex",
     "value_digest_of",
 ]
