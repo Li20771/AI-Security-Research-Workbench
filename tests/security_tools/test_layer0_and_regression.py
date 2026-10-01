@@ -217,15 +217,17 @@ class TestT47TheLayer0CheckBites:
 
 class TestT46Regression:
     def test_the_pre_existing_layers_are_untouched(self):
-        """AI-02/03/04/05 are not AI-06's to modify.
+        """T46 protects implementation boundaries owned by earlier phases.
 
-        Scoped to the layers no phase owns as an implementation directory.
-        `routing/` was in this list when AI-06 wrote it, and it is not any more:
-        `routing/` is AI-07's own, and AI-07-B writes there legitimately. Removing
-        it is a scoping correction rather than a weakening — the claim was always
-        "AI-06 did not touch these", and AI-06's own diff still contains no
-        `routing/` path. Asserting it here had the effect of freezing another
-        phase's directory, which AI-06 does not own and cannot speak for.
+        AI-02 / AI-03 / AI-04 / AI-05 and SecurityLab remain protected: their
+        layers are not any later phase's to modify. `routing/` is intentionally
+        not protected here, because AI-07 owns that directory and AI-07-B writes
+        there legitimately.
+
+        The base is `git diff --name-only main...HEAD` — the branch under test
+        against `main` — not AI-06's historical commit range. The assertion is
+        therefore about the boundaries still in force for this branch, and claims
+        nothing about what any earlier phase's own commits contained.
         """
         changed = subprocess.run(
             ["git", "diff", "--name-only", "main...HEAD"],
