@@ -279,27 +279,28 @@ C0-C10    = all PASS
 
 ## AI-05 — Evidence / Audit Plugin
 
-**Status: INCOMPLETE.** B1 (the offline logical core) is complete and merged. B2 is partially
-delivered — P1 and P2 are merged, P3 is implementation complete with its PR open and not merged.
-This section keeps the original design as written — B1 completing does not change what AI-05 is
-for, and it does not change any later stage's dependency on it.
+**Status: INCOMPLETE.** B1 (the offline logical core) is complete and merged, and so is the whole
+of B2. AI-05 is not closed, and the reason is C-1 rather than anything B2 left undone.
+This section keeps the original design as written — B1 and B2 completing do not change what AI-05
+is for, and they do not change any later stage's dependency on it.
 
 ```text
 AI-05-A     = COMPLETE / MERGED   contract frozen (docs/AI-05_EVIDENCE_EXECUTION_PLAN.md)
 AI-05-B1    = COMPLETE / MERGED   offline logical core
 AI-05-B2-P1 = COMPLETE / MERGED   §18.1 workspace agreement, T12/T13
 AI-05-B2-P2 = COMPLETE / MERGED   §17 stored-form round-trip
-AI-05-B2-P3 = IMPLEMENTATION COMPLETE / PR OPEN, NOT MERGED
-                    admission pipeline, filesystem Store, uniqueness,
-                    staged discard, §31 Layer 0 evidence check
-AI-05       = INCOMPLETE          P3 not merged
+AI-05-B2-P3 = COMPLETE / MERGED   admission pipeline, filesystem Store,
+                                  uniqueness, staged discard,
+                                  §31 Layer 0 evidence check
+AI-05-B2    = COMPLETE            its frozen scope is implemented and merged
+AI-05       = INCOMPLETE          C-1 is DEFERRED
 
 B1 merge SHA = 0403fcd83b740f0603af7204e77f6e6905a84cf0   (PR #34)
 B1 evidence  = docs/AI-05-B1_EVIDENCE_2026-10-01.md
 P1 merge SHA = 844df7beb3ada381c71c945991c551403595885a   (PR #41)
 P2 merge SHA = b8692c181f646386430dccd419595ca88e0cc4db   (PR #42)
 P2 evidence  = docs/AI-05-B2-P2_EVIDENCE_2026-10-01.md
-P3 branch    = feature/ai-05-b2-p3-admission-store-lifecycle
+P3 merge SHA = 67515ff96dbd95ee5a8f73923d5eadc3f097501a   (PR #44)
 P3 evidence  = docs/AI-05-B2-P3_EVIDENCE_2026-10-01.md
 B2 decisions = docs/AI-05-B2_DECISIONS_2026-10-01.md
 ```
@@ -310,19 +311,19 @@ Store. Everything below that depends on Evidence being *recorded and persisted* 
 benchmark consumption, reproducibility of a completed task — is therefore still ahead, and B1
 alone does not satisfy it.
 
-B2 has added the §18.1 workspace agreement boundary (P1), the §17 stored-form round-trip (P2), and
-— in P3, which is not yet merged — the admission pipeline and a filesystem Store. Once P3 is
-merged, a record can be admitted and persisted under `evidence/staged/`, read back and verified,
-and discarded as a whole.
+B2 added the §18.1 workspace agreement boundary (P1), the §17 stored-form round-trip (P2), and the
+admission pipeline and filesystem Store (P3). A record can now be admitted and persisted under
+`evidence/staged/`, read back and verified, and discarded as a whole.
 
 Promotion stays a human act and has no AI-05 operation: the two tiers are two types, and the
 promoted one has no `write`, so an admitted record cannot be routed into the durable tier by any
 call. The promoted tier is read-only and is never deleted by AI-05.
 
-What is still ahead even then: C-1 leaves §30 step 7 unimplemented, ContextRef derivation from
-AI-03 is not wired, and four items the B2 decision record left undefined — the retrieval return
-shape, the `superseded_by` query shape, the promotion API and discard cleanup granularity — remain
-undefined rather than settled by the Store's provisional surface.
+What is still ahead: C-1 leaves §30 step 7 unimplemented and T22a/T22b/T22c unrunnable, so §32's
+C6 gate is not closed. ContextRef derivation from AI-03 is not wired. And four items the B2
+decision record left undefined — the retrieval return shape, the `superseded_by` query shape, the
+promotion API and discard cleanup granularity — remain undefined rather than settled by the
+Store's provisional surface.
 
 目标：每个 Agent 任务都能形成可复核的实验记录。
 
@@ -670,7 +671,7 @@ SecurityLab
 | AI-02 | **COMPLETE** — closed 2026-09-29, see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-03 | **COMPLETE** — C0–C8 PASS; merged as `548bc041` (PR #28); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-04 | **COMPLETE** — merged as `254823f7` (PR #32); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
-| AI-05 | **B1 COMPLETE** — merged as `0403fcd8` (PR #34); **B2 PARTIAL** — P1 `844df7be` (PR #41) and P2 `b8692c18` (PR #42) merged, P3 implementation complete with its PR open and not merged; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
+| AI-05 | **B1 COMPLETE** (PR #34); **B2 COMPLETE** — P1 `844df7be` (PR #41), P2 `b8692c18` (PR #42) and P3 `67515ff9` (PR #44) merged; **AI-05 INCOMPLETE** — C-1 DEFERRED, §30 step 7 unimplemented; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-06 | NOT STARTED |
 | AI-07 | NOT STARTED |
 | AI-08 | NOT STARTED |
