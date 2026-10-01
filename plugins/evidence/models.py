@@ -232,6 +232,9 @@ class Actor:
     def to_projection(self) -> dict[str, Any]:
         return {"actor.id": self.id, "actor.type": str(self.type)}
 
+    def to_mapping(self) -> dict[str, Any]:
+        return {"id": self.id, "type": str(self.type)}
+
 
 @dataclass(frozen=True, slots=True)
 class WorkspaceBinding:
@@ -269,6 +272,13 @@ class WorkspaceBinding:
         )
 
     def to_projection(self) -> dict[str, Any]:
+        return {
+            "source_kind": str(self.source_kind),
+            "source_identity": self.source_identity,
+            "source_revision": self.source_revision,
+        }
+
+    def to_mapping(self) -> dict[str, Any]:
         return {
             "source_kind": str(self.source_kind),
             "source_identity": self.source_identity,
@@ -313,6 +323,13 @@ class ProviderBinding:
         )
 
     def to_projection(self) -> dict[str, Any]:
+        return {
+            "model_ref": self.model_ref,
+            "endpoint_host": self.endpoint_host,
+            "capability": None if self.capability is None else str(self.capability),
+        }
+
+    def to_mapping(self) -> dict[str, Any]:
         return {
             "model_ref": self.model_ref,
             "endpoint_host": self.endpoint_host,
@@ -431,6 +448,96 @@ class ContextRef:
             "freshness": str(self.freshness),
         }
 
+    #: The stored form's keys. `value_digest` replaces the supplied `value`;
+    #: there is no key for the raw value, because §12.4 forbids persisting one.
+    _STORED_KEYS = frozenset(
+        {
+            "workspace_id",
+            "source_kind",
+            "source_identity",
+            "source_revision",
+            "subject",
+            "value_digest",
+            "item_kind",
+            "truth_state",
+            "freshness",
+        }
+    )
+
+    def to_mapping(self) -> dict[str, Any]:
+        """The stored form (§12.1): nine fields, `value_digest`, no raw `value`."""
+        return {
+            "workspace_id": self.workspace_id,
+            "source_kind": str(self.source_kind),
+            "source_identity": self.source_identity,
+            "source_revision": self.source_revision,
+            "subject": self.subject,
+            "value_digest": self.value_digest,
+            "item_kind": str(self.item_kind),
+            "truth_state": str(self.truth_state),
+            "freshness": str(self.freshness),
+        }
+
+    @classmethod
+    def from_stored_mapping(cls, raw: object, where: str = "references.context[]") -> "ContextRef":
+        """Rebuild a written ContextRef from the digest it already carries (§17).
+
+        This is the **stored path**, and it is not the caller path. The supplied
+        form carries the raw `value` and no digest, because AI-05 computes the
+        digest from something it admitted; the stored form carries the digest
+        and no value, because §12.4 forbids persisting one and there is nothing
+        left to recompute it from.
+
+        `from_mapping` above still refuses a caller-supplied `value_digest`
+        outright. Nothing here relaxes that: the two entry points are separate
+        methods with separate key sets, and no argument turns one into the
+        other.
+
+        The digest is validated for shape (`g_digest`) and by nothing else —
+        it cannot be recomputed, because the value it was computed from is not
+        stored. That is exactly why the digest is also inside `record_digest`:
+        a substituted `value_digest` is caught by round-trip verification, not
+        by this parser.
+        """
+        data = _mapping(raw, where)
+        if "value" in data:
+            raise UnknownField(
+                f"{where}.value: the stored form carries no raw value (§12.4). A "
+                "raw value MUST NOT be persisted in a ContextRef, so its presence "
+                "here is refused rather than read or discarded"
+            )
+        _closed_keys(data, cls._STORED_KEYS, where)
+        source_kind = _enum(
+            _required(data, "source_kind", where), SourceKind, f"{where}.source_kind"
+        )
+        return cls(
+            workspace_id=g_ident(
+                _required(data, "workspace_id", where), f"{where}.workspace_id"
+            ),
+            source_kind=source_kind,
+            source_identity=g_opaque_id(
+                _required(data, "source_identity", where), f"{where}.source_identity"
+            ),
+            source_revision=g_revision(
+                _required(data, "source_revision", where),
+                source_kind,
+                f"{where}.source_revision",
+            ),
+            subject=g_subject(_required(data, "subject", where), f"{where}.subject"),
+            value_digest=g_digest(
+                _required(data, "value_digest", where), f"{where}.value_digest"
+            ),
+            item_kind=_enum(
+                _required(data, "item_kind", where), ItemKind, f"{where}.item_kind"
+            ),
+            truth_state=_enum(
+                _required(data, "truth_state", where), StatusValue, f"{where}.truth_state"
+            ),
+            freshness=_enum(
+                _required(data, "freshness", where), Freshness, f"{where}.freshness"
+            ),
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class ArtifactRef:
@@ -512,6 +619,15 @@ class ArtifactRef:
             "artifact_ref": self.artifact_ref,
         }
 
+    def to_mapping(self) -> dict[str, Any]:
+        """The stored form is the supplied form: nothing here is generated."""
+        return {
+            "artifact_digest": self.artifact_digest,
+            "external": self.external,
+            "owner_workspace_id": self.owner_workspace_id,
+            "artifact_ref": self.artifact_ref,
+        }
+
 
 @dataclass(frozen=True, slots=True)
 class RecordRef:
@@ -541,6 +657,9 @@ class RecordRef:
         return (self.record_ref,)
 
     def to_projection(self) -> dict[str, Any]:
+        return {"record_ref": self.record_ref}
+
+    def to_mapping(self) -> dict[str, Any]:
         return {"record_ref": self.record_ref}
 
 
@@ -581,6 +700,12 @@ class SupersedeRef:
         return (self.record_ref,)
 
     def to_projection(self) -> dict[str, Any]:
+        return {
+            "record_ref": self.record_ref,
+            "correction_reason": self.correction_reason,
+        }
+
+    def to_mapping(self) -> dict[str, Any]:
         return {
             "record_ref": self.record_ref,
             "correction_reason": self.correction_reason,
@@ -638,6 +763,16 @@ class SourceReadObservation:
             "observed": self.observed,
         }
 
+    def to_mapping(self) -> dict[str, Any]:
+        """Nested, keyed as `from_mapping` reads it — the inverse, not the projection."""
+        return {
+            "family": str(self.family),
+            "subject": self.subject,
+            "binding": self.binding.to_mapping(),
+            "read_status": str(self.read_status),
+            "observed": self.observed,
+        }
+
 
 @dataclass(frozen=True, slots=True)
 class ProviderProbeObservation:
@@ -679,6 +814,16 @@ class ProviderProbeObservation:
             "binding.capability": (
                 None if self.binding.capability is None else str(self.binding.capability)
             ),
+            "run_status": str(self.run_status),
+            "observed": self.observed,
+        }
+
+    def to_mapping(self) -> dict[str, Any]:
+        """Nested, keyed as `from_mapping` reads it — the inverse, not the projection."""
+        return {
+            "family": str(self.family),
+            "subject": self.subject,
+            "binding": self.binding.to_mapping(),
             "run_status": str(self.run_status),
             "observed": self.observed,
         }
@@ -744,6 +889,17 @@ class CapabilityObservation:
             "binding.capability": (
                 None if self.binding.capability is None else str(self.binding.capability)
             ),
+            "outcome": str(self.outcome),
+            "candidate_status": str(self.candidate_status),
+            "observed": self.observed,
+        }
+
+    def to_mapping(self) -> dict[str, Any]:
+        """Nested, keyed as `from_mapping` reads it — the inverse, not the projection."""
+        return {
+            "family": str(self.family),
+            "subject": self.subject,
+            "binding": self.binding.to_mapping(),
             "outcome": str(self.outcome),
             "candidate_status": str(self.candidate_status),
             "observed": self.observed,
@@ -833,6 +989,20 @@ class DecisionPayload:
             "reasons[]": sorted(self.reasons),
         }
 
+    def to_mapping(self) -> dict[str, Any]:
+        """The key is `reasons`, which is what `from_mapping` reads.
+
+        The projection spells it `reasons[]`; the two shapes are deliberately
+        not the same object, and copying the projection here would have carried
+        a key `from_mapping` does not accept.
+        """
+        return {
+            "decision": str(self.decision),
+            "reason_code": self.reason_code,
+            "input_digest": self.input_digest,
+            "reasons": sorted(self.reasons),
+        }
+
 
 @dataclass(frozen=True, slots=True)
 class ToolCall:
@@ -863,6 +1033,13 @@ class ToolCall:
         )
 
     def to_projection(self) -> dict[str, Any]:
+        return {
+            "ordinal": self.ordinal,
+            "what_ran": self.what_ran,
+            "status": str(self.status),
+        }
+
+    def to_mapping(self) -> dict[str, Any]:
         return {
             "ordinal": self.ordinal,
             "what_ran": self.what_ran,
@@ -917,6 +1094,20 @@ class ExecutionPayload:
             ]
         }
 
+    def to_mapping(self) -> dict[str, Any]:
+        """Emitted in ordinal order, so the stored bytes are deterministic.
+
+        `from_mapping` reads `tool_calls[]` and requires the ordinals to be
+        unique, so a stored array written in any order re-reads to the same
+        record — the order is the ordinal's job, not the array's (§11.1).
+        """
+        return {
+            "tool_calls[]": [
+                call.to_mapping()
+                for call in sorted(self.tool_calls, key=lambda c: c.ordinal)
+            ]
+        }
+
 
 PAYLOAD_BY_KIND: Mapping[EvidenceKind, type] = {
     EvidenceKind.DECISION: DecisionPayload,
@@ -938,6 +1129,27 @@ class Identity:
 
     def to_projection(self) -> dict[str, Any]:
         return {"evidence_id": self.evidence_id, "kind": str(self.kind)}
+
+    def to_mapping(self) -> dict[str, Any]:
+        return {"evidence_id": self.evidence_id, "kind": str(self.kind)}
+
+    @classmethod
+    def from_stored_mapping(cls, raw: object, where: str = "identity") -> "Identity":
+        """Rebuild the identity section of a written record (§5, §8.1).
+
+        The stored path reads an `evidence_id`; the caller path never sees one.
+        `EvidenceRecord.from_mapping` still raises `CallerSuppliedIdentity` for
+        a supplied `evidence_id`, and this method does not change that — it is
+        reached only from `stored.load_stored`.
+        """
+        data = _mapping(raw, where)
+        _closed_keys(data, frozenset({"evidence_id", "kind"}), where)
+        return cls(
+            kind=_enum(_required(data, "kind", where), EvidenceKind, f"{where}.kind"),
+            evidence_id=g_evidence_id(
+                _required(data, "evidence_id", where), f"{where}.evidence_id"
+            ),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -972,16 +1184,17 @@ class Provenance:
         }
     )
 
-    @classmethod
-    def from_mapping(cls, raw: object, where: str = "provenance") -> "Provenance":
-        data = _mapping(raw, where)
-        if "recorded_at" in data:
-            raise CallerSuppliedGeneratedField(
-                f"{where}.recorded_at: AI-05 stamps this when it writes the "
-                "record (§15.2); it is not caller-supplied"
-            )
-        _closed_keys(data, cls._SUPPLIED_KEYS, where)
+    #: The stored form adds the one field the caller form must not carry.
+    _STORED_KEYS = _SUPPLIED_KEYS | {"recorded_at"}
 
+    @classmethod
+    def _validated_fields(cls, data: Mapping[str, Any], where: str) -> dict[str, Any]:
+        """Every field except `recorded_at`, which the two entry points source apart.
+
+        Shared so the caller path and the stored path cannot drift on the
+        producer role constraint, the actor parse, or either timestamp's shape.
+        The field list lives here once; neither entry point restates it.
+        """
         raw_type = _required(data, "producer_type", where)
         if not producer_type_is_permitted(raw_type):
             raise ProducerRoleViolation(
@@ -994,7 +1207,7 @@ class Provenance:
 
         observed_at = data.get("observed_at")
         experiment_id = data.get("experiment_id")
-        return cls(
+        return dict(
             producer=g_text(_required(data, "producer", where), f"{where}.producer"),
             producer_version=g_ident(
                 _required(data, "producer_version", where), f"{where}.producer_version"
@@ -1004,7 +1217,6 @@ class Provenance:
             workspace_id=g_ident(
                 _required(data, "workspace_id", where), f"{where}.workspace_id"
             ),
-            recorded_at="",
             experiment_id=(
                 None
                 if experiment_id is None
@@ -1016,6 +1228,50 @@ class Provenance:
                 else g_timestamp(observed_at, f"{where}.observed_at")
             ),
         )
+
+    @classmethod
+    def from_mapping(cls, raw: object, where: str = "provenance") -> "Provenance":
+        data = _mapping(raw, where)
+        if "recorded_at" in data:
+            raise CallerSuppliedGeneratedField(
+                f"{where}.recorded_at: AI-05 stamps this when it writes the "
+                "record (§15.2); it is not caller-supplied"
+            )
+        _closed_keys(data, cls._SUPPLIED_KEYS, where)
+        return cls(recorded_at="", **cls._validated_fields(data, where))
+
+    @classmethod
+    def from_stored_mapping(cls, raw: object, where: str = "provenance") -> "Provenance":
+        """Rebuild provenance from a written record, `recorded_at` included (§17).
+
+        The caller path refuses `recorded_at` because AI-05 stamps it; the
+        stored path requires it, because a record that has been written has
+        one. The two are separate methods with separate key sets rather than
+        one method with an `allow_generated_fields` switch — a switch would put
+        both boundaries behind one flag, and a caller reaching the wrong branch
+        would be a configuration mistake instead of a type error.
+        """
+        data = _mapping(raw, where)
+        _closed_keys(data, cls._STORED_KEYS, where)
+        return cls(
+            recorded_at=g_timestamp(
+                _required(data, "recorded_at", where), f"{where}.recorded_at"
+            ),
+            **cls._validated_fields(data, where),
+        )
+
+    def to_mapping(self) -> dict[str, Any]:
+        """The stored form: every `_STORED_KEYS` field, `recorded_at` included."""
+        return {
+            "producer": self.producer,
+            "producer_version": self.producer_version,
+            "producer_type": str(self.producer_type),
+            "actor": self.actor.to_mapping(),
+            "workspace_id": self.workspace_id,
+            "experiment_id": self.experiment_id,
+            "observed_at": self.observed_at,
+            "recorded_at": self.recorded_at,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -1029,28 +1285,24 @@ class References:
     _KEYS = frozenset({"context", "decisions", "supersedes"})
 
     @classmethod
-    def from_mapping(cls, raw: object, where: str = "references") -> "References":
-        if raw is None:
-            return cls()
-        data = _mapping(raw, where)
-        _closed_keys(data, cls._KEYS, where)
-        context = tuple(
-            ContextRef.from_mapping(entry, f"{where}.context[]")
-            for entry in _sequence(data.get("context", []), f"{where}.context")
-        )
-        decisions = tuple(
-            RecordRef.from_mapping(entry, f"{where}.decisions[]")
-            for entry in _sequence(data.get("decisions", []), f"{where}.decisions")
-        )
-        supersedes = tuple(
-            SupersedeRef.from_mapping(entry, f"{where}.supersedes[]")
-            for entry in _sequence(data.get("supersedes", []), f"{where}.supersedes")
-        )
-        for name, keys in (
-            ("context", [item.canonical_key for item in context]),
-            ("decisions", [item.canonical_key for item in decisions]),
-            ("supersedes", [item.canonical_key for item in supersedes]),
+    def _checked(
+        cls,
+        where: str,
+        context: tuple[ContextRef, ...],
+        decisions: tuple[RecordRef, ...],
+        supersedes: tuple[SupersedeRef, ...],
+    ) -> "References":
+        """Build the section, applying §15.4's duplicate rule to all three sets.
+
+        One place, reached by both entry points, so the caller path and the
+        stored path cannot disagree about what a duplicate is.
+        """
+        for name, items in (
+            ("context", context),
+            ("decisions", decisions),
+            ("supersedes", supersedes),
         ):
+            keys = [item.canonical_key for item in items]
             if len(set(keys)) != len(keys):
                 raise DuplicateElement(
                     f"{where}.{name} is SET-semantic (§15.4) and a duplicate element "
@@ -1058,11 +1310,84 @@ class References:
                 )
         return cls(context=context, decisions=decisions, supersedes=supersedes)
 
+    @classmethod
+    def from_mapping(cls, raw: object, where: str = "references") -> "References":
+        if raw is None:
+            return cls()
+        data = _mapping(raw, where)
+        _closed_keys(data, cls._KEYS, where)
+        return cls._checked(
+            where,
+            tuple(
+                ContextRef.from_mapping(entry, f"{where}.context[]")
+                for entry in _sequence(data.get("context", []), f"{where}.context")
+            ),
+            tuple(
+                RecordRef.from_mapping(entry, f"{where}.decisions[]")
+                for entry in _sequence(data.get("decisions", []), f"{where}.decisions")
+            ),
+            tuple(
+                SupersedeRef.from_mapping(entry, f"{where}.supersedes[]")
+                for entry in _sequence(data.get("supersedes", []), f"{where}.supersedes")
+            ),
+        )
+
+    @classmethod
+    def from_stored_mapping(cls, raw: object, where: str = "references") -> "References":
+        """As `from_mapping`, with the stored ContextRef parser in place of the caller one.
+
+        `ContextRef` is the only member of this section whose two forms differ,
+        so it is the only parser that is swapped. `decisions` and `supersedes`
+        carry no generated field and are read by the same code.
+        """
+        if raw is None:
+            return cls()
+        data = _mapping(raw, where)
+        _closed_keys(data, cls._KEYS, where)
+        return cls._checked(
+            where,
+            tuple(
+                ContextRef.from_stored_mapping(entry, f"{where}.context[]")
+                for entry in _sequence(data.get("context", []), f"{where}.context")
+            ),
+            tuple(
+                RecordRef.from_mapping(entry, f"{where}.decisions[]")
+                for entry in _sequence(data.get("decisions", []), f"{where}.decisions")
+            ),
+            tuple(
+                SupersedeRef.from_mapping(entry, f"{where}.supersedes[]")
+                for entry in _sequence(data.get("supersedes", []), f"{where}.supersedes")
+            ),
+        )
+
     def to_projection(self) -> dict[str, Any]:
         return {
             "context": [item.to_projection() for item in self.context],
             "decisions": [item.to_projection() for item in self.decisions],
             "supersedes": [item.to_projection() for item in self.supersedes],
+        }
+
+    def to_mapping(self) -> dict[str, Any]:
+        """Sets emitted in canonical order, so the stored bytes are deterministic.
+
+        The order is not part of the record's meaning — §15.4 makes all three
+        SET — so a stored array in any order re-reads to the same record and to
+        the same digests. Emitting them sorted is a storage choice, not a claim
+        that the order carries information.
+        """
+        return {
+            "context": [
+                item.to_mapping()
+                for item in sorted(self.context, key=lambda i: i.canonical_key)
+            ],
+            "decisions": [
+                item.to_mapping()
+                for item in sorted(self.decisions, key=lambda i: i.canonical_key)
+            ],
+            "supersedes": [
+                item.to_mapping()
+                for item in sorted(self.supersedes, key=lambda i: i.canonical_key)
+            ],
         }
 
 
@@ -1094,6 +1419,15 @@ class Artifacts:
     def to_projection(self) -> dict[str, Any]:
         return {"items": [item.to_projection() for item in self.items]}
 
+    def to_mapping(self) -> dict[str, Any]:
+        """Canonical order, as `References.to_mapping` — the collection is SET."""
+        return {
+            "items": [
+                item.to_mapping()
+                for item in sorted(self.items, key=lambda i: i.canonical_key)
+            ]
+        }
+
 
 @dataclass(frozen=True, slots=True)
 class Integrity:
@@ -1107,6 +1441,35 @@ class Integrity:
             "content_digest": self.content_digest,
             "record_digest": self.record_digest,
         }
+
+    def to_mapping(self) -> dict[str, Any]:
+        return {
+            "content_digest": self.content_digest,
+            "record_digest": self.record_digest,
+        }
+
+    @classmethod
+    def from_stored_mapping(cls, raw: object, where: str = "integrity") -> "Integrity":
+        """Read the integrity section of a written record (§16, §17).
+
+        Both digests are REQUIRED here, where the caller path has neither: a
+        record that has been written carries both, and a stored record missing
+        one is a malformed stored form rather than a record awaiting admission.
+
+        Shape is validated; the **values are not trusted**. Whether they are
+        the right digests for this record is decided by
+        `stored.verify_stored_integrity`, which recomputes them.
+        """
+        data = _mapping(raw, where)
+        _closed_keys(data, frozenset({"content_digest", "record_digest"}), where)
+        return cls(
+            content_digest=g_digest(
+                _required(data, "content_digest", where), f"{where}.content_digest"
+            ),
+            record_digest=g_digest(
+                _required(data, "record_digest", where), f"{where}.record_digest"
+            ),
+        )
 
 
 # --------------------------------------------------------------------------
@@ -1200,21 +1563,10 @@ class EvidenceRecord:
             )
 
         _closed_keys(data, _TOP_KEYS, "record")
-
-        version = data.get("schema_version")
-        if version != SUPPORTED_SCHEMA_VERSION:
-            raise UnsupportedVocabulary(
-                f"record.schema_version {version!r} is not supported; this "
-                f"contract defines {SUPPORTED_SCHEMA_VERSION}"
-            )
+        version = _schema_version(data, "record")
 
         kind = _enum(_required(data, "kind", "record"), EvidenceKind, "record.kind")
-        payload_raw = _required(data, "payload", "record")
-
-        if kind is EvidenceKind.OBSERVATION:
-            _family, payload = observation_payload(payload_raw, "payload")
-        else:
-            payload = PAYLOAD_BY_KIND[kind].from_mapping(payload_raw, "payload")
+        payload = _parse_payload(kind, _required(data, "payload", "record"))
 
         provenance = Provenance.from_mapping(
             _required(data, "provenance", "record"), "provenance"
@@ -1249,6 +1601,48 @@ class EvidenceRecord:
                 f"kind {self.identity.kind} requires a {expected.__name__}; got "
                 f"{type(self.payload).__name__}"
             )
+
+    def to_stored_mapping(self) -> dict[str, Any]:
+        """The §5 envelope, fully populated — this record's stored representation.
+
+        **This is not `record_projection()`.** The projection is a digest input,
+        and it is not a stored form for four reasons that were checked against
+        the code rather than assumed from the name:
+
+        ```text
+        1  it omits `record_digest`, because a digest MUST NOT be its own input
+           (§17). A stored record must carry that digest, since §17's whole point
+           is that a later reader can verify the record with it.
+        2  it is flat and keyed by contract leaf paths: `binding.source_kind`,
+           where every payload parser reads a nested `binding`.
+        3  it spells `payload.reasons[]` with brackets that `DecisionPayload`
+           does not read, while `ExecutionPayload` keeps the brackets on
+           `tool_calls[]` — so the projection is not the inverse of any parser.
+        4  it names its containers `references.context[]`, which is a leaf path
+           and not a section name.
+        ```
+
+        Reusing the projection would also make the on-disk format a by-product
+        of the §15.2 digest table, so a future classification change would
+        silently change the storage format and break the round-trip of every
+        record already written. §20.4's D3 requires a written record to be
+        readable by a future session, so the two are kept separate: §15.2
+        decides what is hashed, this decides what is stored, and both are
+        complete over the persisted fields.
+
+        JSON is not imported here. This returns a plain mapping of `str`, `int`,
+        `bool`, `None`, `list` and `dict`; encoding it to bytes is the Store's
+        business, and the package still performs no I/O.
+        """
+        return {
+            "schema_version": self.schema_version,
+            "identity": self.identity.to_mapping(),
+            "payload": self.payload.to_mapping(),
+            "provenance": self.provenance.to_mapping(),
+            "references": self.references.to_mapping(),
+            "artifacts": self.artifacts.to_mapping(),
+            "integrity": self.integrity.to_mapping(),
+        }
 
 
 __all__ = [
@@ -1355,3 +1749,40 @@ def _enum(value: object, kind: type, field_name: str):
         raise UnsupportedVocabulary(
             f"{field_name}: {value!r} is not one of {allowed}"
         ) from None
+
+
+# --------------------------------------------------------------------------
+# shared internals — the two record-level steps both entry points run
+# --------------------------------------------------------------------------
+
+
+def _schema_version(data: Mapping[str, Any], where: str) -> int:
+    """§30 step 2: the record's `schema_version` must be the one this contract defines.
+
+    Shared by the caller parser and the stored loader. Both refuse an
+    unsupported version and both refuse it identically, because a vocabulary
+    the two disagreed about would be two contracts in one package.
+    """
+    version = data.get("schema_version")
+    if version != SUPPORTED_SCHEMA_VERSION:
+        raise UnsupportedVocabulary(
+            f"{where}.schema_version {version!r} is not supported; this "
+            f"contract defines {SUPPORTED_SCHEMA_VERSION}"
+        )
+    return version
+
+
+def _parse_payload(kind: EvidenceKind, raw: object, where: str = "payload"):
+    """§11: dispatch a payload to the class its kind declares.
+
+    `OBSERVATION` is a typed union whose arm the explicit `family` selects, so
+    it goes through `observation_payload`; `DECISION` and `EXECUTION` have one
+    payload class each. The kind is passed in rather than re-derived, so the
+    caller parser and the stored loader cannot dispatch differently — the
+    caller path reads `kind` from the envelope, the stored path from the
+    `identity` section, and both arrive here.
+    """
+    if kind is EvidenceKind.OBSERVATION:
+        _family, payload = observation_payload(raw, where)
+        return payload
+    return PAYLOAD_BY_KIND[kind].from_mapping(raw, where)
