@@ -33,8 +33,8 @@ boundary and T12/T13.
 `67515ff96dbd95ee5a8f73923d5eadc3f097501a` (PR #44). P3 added the admission pipeline, the
 filesystem Store, uniqueness, staged discard and the §31 Layer 0 evidence check.
 
-**AI-06 — Security Research Tools Plugin is IMPLEMENTATION COMPLETE, PR OPEN, NOT MERGED** —
-branch `feature/ai-06-security-tools-v1`. The Tool API, eight adapter families, the Guard,
+**AI-06 — Security Research Tools Plugin is COMPLETE and MERGED** — merged to `main` as
+`3b1917ab596931ec89de8c17a02266b5902557a5` (PR #47). The Tool API, eight adapter families, the Guard,
 workspace, execution, vehicle and secret boundaries, the Evidence projection and the AI-06
 Layer 0 check are all in this PR. Full evidence in
 [AI-06_EVIDENCE_2026-10-01.md](AI-06_EVIDENCE_2026-10-01.md).
@@ -631,7 +631,7 @@ Do not turn missing environment, skipped execution, or blocked actions into PASS
 
 ## AI-06 status
 
-**AI-06 — Security Research Tools Plugin: IMPLEMENTATION COMPLETE / PR OPEN, NOT MERGED.**
+**AI-06 — Security Research Tools Plugin: COMPLETE / MERGED.**
 Frozen contract `docs/AI-06_SECURITY_TOOLS_EXECUTION_PLAN.md`.
 
 ```text
@@ -645,12 +645,12 @@ The two are not interchangeable: `1cff20f7` is what AI-06-A merged, and
 
 ```text
 AI-06-A     = COMPLETE / MERGED   contract frozen (PR #46)
-AI-06-B     = IMPLEMENTATION COMPLETE / PR OPEN, NOT MERGED
-              PR #47; one review fix applied in the same PR (Guard
-              attribution, see the evidence record section O)
-AI-06       = not closed until the PR merges and its CI is read
+AI-06-B     = COMPLETE / MERGED   implementation (PR #47), one review fix in
+                                  the same PR (Guard attribution, section O
+                                  of the evidence record)
+AI-06       = COMPLETE
 
-merge SHA   = not yet merged; recorded at closeout
+merge SHA   = 3b1917ab596931ec89de8c17a02266b5902557a5   (PR #47)
 evidence    = docs/AI-06_EVIDENCE_2026-10-01.md
 ```
 
