@@ -1088,8 +1088,6 @@ ADMISSION (§13.5), and §13.4 produces no durable record for C-1 to govern.
 
 ### 13.5 Deferred elsewhere — unchanged
 
-### 13.4 Deferred elsewhere — unchanged
-
 ```text
 AI-05 C-1   published admission rule set          remains DEFERRED
 AI-05 D11   retrieval shape, superseded_by query,
