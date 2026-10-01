@@ -251,6 +251,32 @@ class WorkspaceAgreementViolation(EvidenceError):
 
 
 # --------------------------------------------------------------------------
+# Stored form (§17) — added by AI-05-B2 P2
+# --------------------------------------------------------------------------
+
+
+class StoredIntegrityFailure(EvidenceError):
+    """A written record's recomputed digests disagree with the ones it carries (§17).
+
+    **Why this is not `CallerSuppliedDigest`.** That error is about ORIGIN — a
+    caller supplied a value for a field AI-05 generates. Here the origin was
+    correct: AI-05 computed these digests and wrote them. What failed is that
+    the content they describe is no longer the content present. The two say
+    different things about the same field, and a handler that treated one as
+    the other would relax the wrong boundary.
+
+    **Why it is not a `RecordMalformed`.** §22.2 gives "malformed record" and
+    "digest mismatch" separate rows. The stored form parsed correctly; the
+    record is simply not the record its digest describes.
+
+    Both digests share one code because §22.2 states one condition for both,
+    and the message names which one failed.
+    """
+
+    reason_code = "STORED_INTEGRITY_FAILURE"
+
+
+# --------------------------------------------------------------------------
 # Set-semantic duplicates (§15.4) — added by Amendment 1 conformance
 # --------------------------------------------------------------------------
 
@@ -298,6 +324,7 @@ __all__ = [
     "ProducerTypeNotAdmitted",
     "RawContentRejected",
     "RecordMalformed",
+    "StoredIntegrityFailure",
     "UnknownField",
     "UnsupportedVocabulary",
     "WorkspaceAgreementViolation",

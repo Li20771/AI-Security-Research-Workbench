@@ -23,12 +23,13 @@ IMPLEMENTED HERE
     the thirteen frozen grammars (§14.9)
     the leaf-accurate field table and the two digests
     the §18.1 workspace agreement rule and the §22.1 outcome mapping
+    the §17 stored form: to_stored_mapping, load_stored and its verification
 
 NOT IMPLEMENTED
     the published admission rule set (C-1), which §30 step 7 needs
-    §30 step 14 uniqueness                 the stored-form loader
-    ContextRef derivation from AI-03       lifecycle and the Store protocol
-    any storage backend
+    §30 step 14 uniqueness                 ContextRef derivation from AI-03
+    lifecycle and the Store protocol       any storage backend
+    any byte encoding — the Store does that, and there is no Store yet
 ```
 
 Usage:
@@ -101,6 +102,7 @@ from plugins.evidence.errors import (
     ProducerTypeNotAdmitted,
     RawContentRejected,
     RecordMalformed,
+    StoredIntegrityFailure,
     UnknownField,
     UnsupportedVocabulary,
     WorkspaceAgreementViolation,
@@ -154,6 +156,10 @@ from plugins.evidence.models import (
     new_evidence_id,
     observation_payload,
     value_digest_of,
+)
+from plugins.evidence.stored import (
+    load_stored,
+    verify_stored_integrity,
 )
 from plugins.evidence.vocabulary import (
     AI05_GENERATED_DIGEST_FIELDS,
@@ -240,6 +246,7 @@ __all__ = [
     "References",
     "SourceReadObservation",
     "StatusValue",
+    "StoredIntegrityFailure",
     "SupersedeRef",
     "ToolCall",
     "UnknownField",
@@ -268,6 +275,7 @@ __all__ = [
     "g_subject",
     "g_text",
     "g_timestamp",
+    "load_stored",
     "new_evidence_id",
     "observation_payload",
     "observed_at_is_semantic",
@@ -278,4 +286,5 @@ __all__ = [
     "revision_length_for",
     "sha256_hex",
     "value_digest_of",
+    "verify_stored_integrity",
 ]
