@@ -187,25 +187,37 @@ class TestTheGateBites:
         assert any("fallback" in problem for problem in fired), fired
 
 
-class TestNoImplementationArrivedUnderAContractPR:
-    """AI-07-A freezes a contract; these are the absences it claims."""
+class TestTheIdentityHoldsAfterImplementation:
+    """What AI-07-A asserted as absence, restated as a property.
 
-    def test_routing_contains_no_python(self):
-        assert list((ROOT / "routing").rglob("*.py")) == []
+    AI-07-A claimed `routing/` contained no Python. That was the honest claim for
+    a contract-freeze phase, and AI-07-B supersedes it by implementing the router.
+    The claims that survive are the structural ones, and they are the ones that
+    mattered: the directory is a core service, not a plugin layer, and the
+    roadmap's sketch is still not a schema.
+    """
 
-    def test_routing_is_not_a_plugin_package(self):
+    def test_routing_is_still_not_a_plugin_package(self):
         assert not (ROOT / "routing" / "__init__.py").exists()
         assert not (ROOT / "plugins" / "router").exists()
 
-    def test_no_router_module_exists_anywhere(self):
-        for name in ("router.py", "rules.py", "decision.py", "request.py"):
-            assert not (ROOT / "routing" / name).exists(), name
+    def test_the_router_exists_where_the_core_service_belongs(self):
+        assert (ROOT / "routing" / "router.py").is_file()
 
-    def test_the_config_example_is_still_loaded_by_nothing(self):
-        """§3.2: the sketch names profiles that do not exist."""
+    def test_the_config_example_is_still_not_a_schema(self):
+        """§3.2: the sketch names profiles that do not exist.
+
+        `rules.example.yaml` is intent, and nothing loads it. The tracked default
+        rule set is a different file, and it is empty.
+        """
         text = (ROOT / "config" / "routing" / "rules.example.yaml").read_text(
             encoding="utf-8"
         )
 
         assert "model_profile: fast" in text
-        assert not (ROOT / "routing" / "rules.py").exists()
+
+    def test_no_invented_profile_was_created_to_match_the_sketch(self):
+        from providers.model_registry import load_all_model_profiles
+
+        for invented in ("fast", "strong", "multimodal"):
+            assert invented not in load_all_model_profiles()

@@ -1,0 +1,44 @@
+# AI-07 v1 — the tracked default rule set.
+#
+# Contract §7.4: v1 ships the MECHANISM and a minimal default rule set. It does
+# not ship a tuned one. AI-00 F-12 — "Model routing v2 must be built on real
+# benchmark data" — and there is no benchmark, so a default rule set presented
+# as tuned would be a claim this repository cannot support.
+#
+# A rule set is a reviewed file, tracked in Git, in the same sense AI-02's
+# provider profiles and AI-04's policies are. It is not generated, not fetched,
+# and not discovered at runtime (§12.1, §12.2).
+#
+# Schema (contract §7.2), and nothing here is optional except `match`, which may
+# be omitted or empty — an absent match field is NO CONSTRAINT, not an empty one:
+#
+#   version:  1
+#   revision: string          recorded in every decision (§12.3)
+#   rules:
+#     - rule_id:   string     unique within this file; a duplicate is INVALID_RULES
+#       priority:  integer    lower runs first; ties break on rule_id (§7.5)
+#       reason_code: string   a stable machine-readable label, never prose
+#       match:                every present field must match; absent = unconstrained
+#         task_class:            string|null
+#         requested_capability:  string|null
+#         modality:              string|null
+#         require_independence:  bool|null
+#       select:               a rule that selects nothing is INVALID_RULES
+#         model_ref: string|null   "provider_id/model_id" — AI-02's own composition
+#         agent:     string|null   a HINT, not an execution path (§11)
+#
+# NOT a schema, and deliberately absent:
+#   max_cost_class   AI-02 defines no cost-class vocabulary, and cost-class
+#                    routing is DEFERRED in v1 (§6.4). A request carrying one is
+#                    INVALID_REQUEST, and no rule may name one.
+#   fallbacks        v1 has no automatic fallback, no retry and no retry state
+#                    (§9). A second decision exists because a caller asked for one.
+#   sensitivity      carried and recorded, and it changes no eligibility (§5.2).
+#
+# The rules below are intentionally EMPTY. Add rules by editing this file and
+# reviewing it like code; do not expect the Router to invent one, and do not
+# expect it to fall back to a default when nothing matches.
+
+version: 1
+revision: "ai-07-v1-empty"
+rules: []

@@ -675,19 +675,23 @@ SecurityLab    = UNCHANGED
 
 ## AI-07 status
 
-**AI-07 — Plugin 5: Model Router v1: CONTRACT FROZEN / PR OPEN, NOT MERGED.**
+**AI-07 — Plugin 5: Model Router v1: IMPLEMENTATION COMPLETE / PR OPEN, NOT MERGED.**
 
 ```text
-AI-07-A  = CONTRACT FROZEN / PR #48 OPEN, NOT MERGED
-AI-07-B  = NOT STARTED
-AI-07    = not closed
+AI-07-A  = COMPLETE / MERGED
+AI-07-B  = IMPLEMENTATION COMPLETE / PR OPEN, NOT MERGED
+AI-07    = not closed until the PR merges and mainline CI is read
 
 contract = docs/AI-07_MODEL_ROUTER_EXECUTION_PLAN.md
 blob     = 2f8dcba8f9c2ca36e3d917fc6b69c3a5cb7f36fe   (after Amendment 1)
 amendments = 1
 
-Router (AI-07) as an implementation = NOT STARTED; routing/ holds a README and
-no Python.
+The router is implemented in `routing/`. Measured: `tests/routing` 110 passed;
+whole repository 2247 passed, 2 skipped, 5 deselected; Layer 0 PASS (16 checks).
+
+Every capability on every shipped profile is `UNKNOWN`, so a request requiring
+one yields `NO_ELIGIBLE_MODEL`. That is the v1 design, and T9 is the synthetic
+control proving the rule is not a blanket refusal.
 ```
 
 Amendment 1 reconciled four internal inconsistencies before implementation began: `sensitivity`

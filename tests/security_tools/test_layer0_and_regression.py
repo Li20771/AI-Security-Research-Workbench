@@ -217,7 +217,18 @@ class TestT47TheLayer0CheckBites:
 
 class TestT46Regression:
     def test_the_pre_existing_layers_are_untouched(self):
-        """AI-02/03/04/05 are not AI-06's to modify."""
+        """T46 protects implementation boundaries owned by earlier phases.
+
+        AI-02 / AI-03 / AI-04 / AI-05 and SecurityLab remain protected: their
+        layers are not any later phase's to modify. `routing/` is intentionally
+        not protected here, because AI-07 owns that directory and AI-07-B writes
+        there legitimately.
+
+        The base is `git diff --name-only main...HEAD` — the branch under test
+        against `main` — not AI-06's historical commit range. The assertion is
+        therefore about the boundaries still in force for this branch, and claims
+        nothing about what any earlier phase's own commits contained.
+        """
         changed = subprocess.run(
             ["git", "diff", "--name-only", "main...HEAD"],
             capture_output=True,
@@ -232,7 +243,6 @@ class TestT46Regression:
             assert not path.startswith("plugins/evidence/"), path
             assert not path.startswith("tests/evidence/"), path
             assert not path.startswith("tests/guard/"), path
-            assert not path.startswith("routing/"), path
             assert not path.startswith("SecurityLab/"), path
 
     def test_the_ai06_package_imports_without_the_adapters(self):

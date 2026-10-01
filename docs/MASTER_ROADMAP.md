@@ -679,7 +679,7 @@ SecurityLab
 | AI-04 | **COMPLETE** — merged as `254823f7` (PR #32); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-05 | **B1 COMPLETE** (PR #34); **B2 COMPLETE** — P1 `844df7be` (PR #41), P2 `b8692c18` (PR #42) and P3 `67515ff9` (PR #44) merged; **AI-05 INCOMPLETE** — C-1 DEFERRED, §30 step 7 unimplemented; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-06 | **COMPLETE** — merged as `3b1917ab` (PR #47); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
-| AI-07 | NOT STARTED |
+| AI-07 | **IMPLEMENTATION COMPLETE** — PR open, not merged; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-08 | NOT STARTED |
 | AI-09 | NOT STARTED |
 | AI-10 | NOT STARTED |
