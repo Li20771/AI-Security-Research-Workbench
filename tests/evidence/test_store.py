@@ -21,9 +21,10 @@ import pytest
 
 from plugins.evidence import (
     EvidenceRecord,
-    EvidenceStore,
-    EvidenceTier,
+    PromotedEvidenceStore,
+    StagedEvidenceStore,
     StoredIntegrityFailure,
+    admit_to_store,
     assign_digests,
     load_stored,
 )
@@ -42,12 +43,26 @@ def _written(**overrides) -> EvidenceRecord:
 
 @pytest.fixture
 def staged(tmp_path):
-    return EvidenceStore(tmp_path / "staged")
+    return StagedEvidenceStore(tmp_path / "staged")
 
 
 @pytest.fixture
 def promoted(tmp_path):
-    return EvidenceStore(tmp_path / "promoted", tier=EvidenceTier.PROMOTED)
+    return PromotedEvidenceStore(tmp_path / "promoted")
+
+
+def _promote_by_hand(staged, promoted, record):
+    """Put a staged record's bytes in the promoted directory the way a human does.
+
+    There is no promotion method to call — that is the point of §20.3 — so the
+    test performs the act itself: copy the file, byte for byte, to a new
+    location. Nothing here is an AI-05 operation, and the invariants it must
+    preserve are asserted in `TestPromotionInvariants`.
+    """
+    promoted.root.mkdir(parents=True, exist_ok=True)
+    (promoted.root / f"{record.evidence_id}.json").write_bytes(
+        (staged.root / f"{record.evidence_id}.json").read_bytes()
+    )
 
 
 # --------------------------------------------------------------------------
@@ -91,7 +106,7 @@ class TestThePhysicalFormat:
 
     def test_the_store_writes_under_its_root_and_nowhere_else(self, tmp_path):
         root = tmp_path / "only-here"
-        store = EvidenceStore(root)
+        store = StagedEvidenceStore(root)
 
         store.write(_written())
 
@@ -100,7 +115,7 @@ class TestThePhysicalFormat:
 
     def test_nothing_is_written_until_a_write_is_asked_for(self, tmp_path):
         root = tmp_path / "untouched"
-        EvidenceStore(root)
+        StagedEvidenceStore(root)
 
         assert not root.exists()
 
@@ -162,9 +177,9 @@ class TestFilesystemRoundTrip:
         """
         root = tmp_path / "staged"
         record = _written()
-        EvidenceStore(root).write(record)
+        StagedEvidenceStore(root).write(record)
 
-        recovered = EvidenceStore(root).read(record.evidence_id)
+        recovered = StagedEvidenceStore(root).read(record.evidence_id)
 
         assert recovered == record
 
@@ -330,7 +345,7 @@ class TestTheIdCannotEscapeTheRoot:
         methods that take an id straight from the caller.
         """
         root = tmp_path / "root"
-        store = EvidenceStore(root)
+        store = StagedEvidenceStore(root)
 
         for call in (store.read, store.contains, store.discard):
             with pytest.raises(ev_errors.EvidenceError):
@@ -424,16 +439,18 @@ class TestDiscard:
         assert staged.list_ids() == (keep.evidence_id,)
         assert staged.read(keep.evidence_id) == keep
 
-    def test_a_promoted_record_cannot_be_discarded(self, promoted):
+    def test_a_promoted_record_cannot_be_discarded(self, staged, promoted):
         record = _written()
-        promoted.write(record)
+        staged.write(record)
+        _promote_by_hand(staged, promoted, record)
 
         with pytest.raises(ev_errors.PromotedRecordNotDiscardable):
             promoted.discard(record.evidence_id)
 
-    def test_a_refused_discard_leaves_the_promoted_record_in_place(self, promoted):
+    def test_a_refused_discard_leaves_the_promoted_record_in_place(self, staged, promoted):
         record = _written()
-        promoted.write(record)
+        staged.write(record)
+        _promote_by_hand(staged, promoted, record)
 
         with pytest.raises(ev_errors.PromotedRecordNotDiscardable):
             promoted.discard(record.evidence_id)
@@ -444,6 +461,154 @@ class TestDiscard:
         """§19.2: the prohibition is the absence of an operation, checked."""
         for name in ("delete", "remove", "purge", "delete_record", "remove_record"):
             assert not hasattr(promoted, name), name
+
+
+# --------------------------------------------------------------------------
+# B — the promoted tier cannot be written, structurally
+# --------------------------------------------------------------------------
+
+
+class TestThePromotedTierCannotBeWritten:
+    """§20.3: promotion is a human act, so AI-05 has no operation that adds one.
+
+    The absence of a `promote()` method does not establish this on its own. A
+    store that accepts a record from an ordinary program *is* a programmatic
+    promotion path, whether or not a method is named for it — which is what the
+    promoted tier used to be.
+    """
+
+    def test_there_is_no_write_operation_to_call(self, promoted):
+        assert not hasattr(promoted, "write")
+
+    def test_no_write_like_operation_exists_either(self, promoted):
+        for name in ("write", "add", "put", "insert", "store", "save", "promote", "publish"):
+            assert not hasattr(promoted, name), name
+
+    def test_the_class_exposes_no_write_in_its_own_namespace(self):
+        """Not just absent on the instance — absent from the type."""
+        assert "write" not in vars(PromotedEvidenceStore)
+        assert "write" not in dir(PromotedEvidenceStore)
+
+    def test_a_promoted_store_cannot_be_handed_to_admission(self, promoted):
+        """The other half: admission cannot be aimed at the durable tier."""
+        with pytest.raises(TypeError):
+            admit_to_store(make_observation(), store=promoted, clock=lambda: FIXED_CLOCK)
+
+    def test_that_refusal_creates_nothing(self, promoted):
+        with pytest.raises(TypeError):
+            admit_to_store(make_observation(), store=promoted, clock=lambda: FIXED_CLOCK)
+
+        assert promoted.list_ids() == ()
+        assert not promoted.root.exists()
+
+    def test_the_staged_tier_still_writes(self, staged):
+        """The control: the capability was moved, not removed."""
+        record = _written()
+
+        staged.write(record)
+
+        assert staged.read(record.evidence_id) == record
+
+
+# --------------------------------------------------------------------------
+# C — the promoted tier still reads, and still verifies
+# --------------------------------------------------------------------------
+
+
+class TestThePromotedTierStillReads:
+    def test_a_promoted_record_can_be_read(self, staged, promoted):
+        record = _written()
+        staged.write(record)
+        _promote_by_hand(staged, promoted, record)
+
+        assert promoted.read(record.evidence_id) == record
+
+    def test_a_promoted_record_is_integrity_verified_on_read(self, staged, promoted):
+        """The loader runs on this tier too, so a tampered promotion is caught."""
+        record = _written()
+        staged.write(record)
+        _promote_by_hand(staged, promoted, record)
+        path = promoted.root / f"{record.evidence_id}.json"
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload["provenance"]["producer_version"] = "9.9.9"
+        path.write_text(json.dumps(payload), encoding="utf-8")
+
+        with pytest.raises(StoredIntegrityFailure):
+            promoted.read(record.evidence_id)
+
+    def test_a_promoted_record_is_listed_and_contained(self, staged, promoted):
+        record = _written()
+        staged.write(record)
+        _promote_by_hand(staged, promoted, record)
+
+        assert promoted.list_ids() == (record.evidence_id,)
+        assert promoted.contains(record.evidence_id) is True
+
+    def test_the_promoted_tier_still_refuses_a_traversal(self, promoted):
+        with pytest.raises(ev_errors.EvidenceError):
+            promoted.read("../../etc/passwd")
+
+
+# --------------------------------------------------------------------------
+# E — the invariants a human promotion must preserve
+# --------------------------------------------------------------------------
+
+
+class TestPromotionInvariants:
+    """§20.3. These are the invariants, not an implementation of promotion."""
+
+    def test_the_bytes_are_identical_after_promotion(self, staged, promoted):
+        record = _written()
+        staged.write(record)
+
+        _promote_by_hand(staged, promoted, record)
+
+        staged_bytes = (staged.root / f"{record.evidence_id}.json").read_bytes()
+        promoted_bytes = (promoted.root / f"{record.evidence_id}.json").read_bytes()
+        assert promoted_bytes == staged_bytes
+
+    def test_evidence_id_content_digest_and_record_digest_are_unchanged(self, staged, promoted):
+        record = _written()
+        staged.write(record)
+        _promote_by_hand(staged, promoted, record)
+
+        promoted_record = promoted.read(record.evidence_id)
+
+        assert promoted_record.evidence_id == record.evidence_id
+        assert (
+            promoted_record.integrity.content_digest
+            == record.integrity.content_digest
+        )
+        assert promoted_record.integrity.record_digest == record.integrity.record_digest
+
+    def test_the_promoted_record_is_the_same_record(self, staged, promoted):
+        record = _written()
+        staged.write(record)
+        _promote_by_hand(staged, promoted, record)
+
+        assert promoted.read(record.evidence_id) == record
+
+    def test_promotion_creates_no_new_record(self, staged, promoted):
+        record = _written()
+        staged.write(record)
+
+        _promote_by_hand(staged, promoted, record)
+
+        assert staged.list_ids() == (record.evidence_id,)
+        assert promoted.list_ids() == (record.evidence_id,)
+        assert len(staged.list_ids()) + len(promoted.list_ids()) == 2
+
+    def test_promotion_is_a_location_change_not_a_second_admission(self, staged, promoted):
+        """Two files, one record: the same identity in two places."""
+        record = _written()
+        staged.write(record)
+        _promote_by_hand(staged, promoted, record)
+
+        first = staged.read(record.evidence_id)
+        second = promoted.read(record.evidence_id)
+
+        assert first == second
+        assert first.integrity.record_digest == second.integrity.record_digest
 
 
 # --------------------------------------------------------------------------

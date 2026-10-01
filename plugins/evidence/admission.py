@@ -208,7 +208,31 @@ def admit_to_store(
     The rule that a duplicate identity is refused is admission's (D8). The
     Store supplies only the detection: `contains`, and a write that cannot
     overwrite. Neither module holds both halves.
+
+    **Admission targets the staged tier, and only the staged tier.** A promoted
+    store has no `write` at all, and this function refuses a store without one
+    rather than letting the absence surface as an `AttributeError`:
+
+    ```text
+    TypeError   the store cannot accept a record, so it is not a staged store
+    ```
+
+    Without that refusal this function would itself be a programmatic promotion
+    path — `admit_to_store(raw, store=promoted)` would store an ordinarily
+    admitted record in the durable tier, and no `promote()` method would be
+    needed to reach it. §20.3 makes promotion a human act, so the refusal is the
+    boundary rather than a courtesy.
     """
+    if not callable(getattr(store, "write", None)):
+        raise TypeError(
+            "admit_to_store persists a newly admitted record, so it requires a "
+            "store that accepts one — a staged store. The store given has no "
+            "write operation, which is what a promoted store is: promotion is a "
+            "human act that copies the bytes of a staged record to a new "
+            "location (§20.3), and AI-05 has no operation that puts a record "
+            "there"
+        )
+
     result = admit(raw, clock=clock)
     if result.outcome is not AdmissionOutcome.ACCEPTED:
         return result

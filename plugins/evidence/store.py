@@ -8,6 +8,45 @@ D3  UTF-8 JSON        one EvidenceRecord per file, <evidence_id>.json
 D4  two directories   evidence/staged/ (gitignored) · evidence/promoted/ (tracked)
 ```
 
+### The two tiers are two types, not one type with a flag
+
+```text
+StagedEvidenceStore     write · read · contains · list_ids · discard
+PromotedEvidenceStore   read · contains · list_ids · discard (refused)
+```
+
+**A promoted store has no `write`.** That is the whole of D9's promotion rule
+expressed where it cannot be argued with: §20.3 makes promotion a human act —
+same `evidence_id`, same `content_digest`, same `record_digest`, same bytes, a
+new location and nothing else — so there is no operation by which AI-05 adds a
+record to the promoted tier. A `write` that existed only to raise would still be
+a method a caller could reach, catch and route around; an absent one is not.
+
+This matters because the previous shape had exactly that hole. A single
+`EvidenceStore(root, tier=PROMOTED)` accepted `write`, so
+`admit_to_store(raw, store=promoted)` stored an ordinarily-admitted record
+directly into the promoted tier — a programmatic promotion path that no
+`promote()` method was needed to reach. The absence of a promotion API is not
+evidence that promotion is impossible; the store accepting an unearned record
+is evidence that it is not.
+
+### Why `discard` is still present, and still refuses
+
+`discard` is defined for both tiers and raises `PromotedRecordNotDiscardable`
+on the promoted one. That asymmetry with `write` is deliberate:
+
+```text
+discard  §19.2 makes it a TIER-CONDITIONAL operation. "staged may be
+         discarded; promoted MUST NOT be deleted" is one rule with two
+         outcomes, so the operation exists and its legality depends on the
+         tier. Naming the refusal is how the prohibition is stated.
+write    is not tier-conditional. Creating a record is what the staged tier is
+         for; the promoted tier receives records by human publication, which
+         is not an AI-05 operation at all. There is nothing for a promoted
+         `write` to do except refuse, and a method that exists only to refuse
+         is a signpost rather than a boundary.
+```
+
 ### What the Store is, and the four things it is not
 
 ```text
@@ -29,13 +68,11 @@ IT IS NOT  an admission authority   it reports a collision; the DECISION that a
                                     `admission.py` is where the two meet.
 ```
 
-### The root is a parameter, and the tier is explicit
+### The root is a parameter
 
-The Store never discovers a path. It is constructed with a root directory, so
-tests point it at a temporary directory and nothing in this module needs to know
-where the repository is. The tier is explicit because §19.2 and §20.2 make
-`discard` legal for a staged record and FORBIDDEN for a promoted one:
-`discard` refuses on a promoted Store rather than relying on nobody calling it.
+Neither type discovers a path. Each is constructed with a root directory, so
+tests point it at a temporary directory and nothing here needs to know where the
+repository is.
 
 ### Writing is atomic and never overwrites
 
@@ -55,12 +92,11 @@ mistaken for a record by `list_ids`.
 ### The Python surface here is provisional
 
 D11 leaves four things undefined: the retrieval return shape, the `superseded_by`
-query shape, the promotion API, and discard cleanup granularity. This class
-provides the minimum the frozen decisions need and **does not freeze them**.
-`read` returning an `EvidenceRecord` and `list_ids` returning a tuple of ids are
+query shape, the promotion API, and discard cleanup granularity. These types
+provide the minimum the frozen decisions need and **do not freeze them**. `read`
+returning an `EvidenceRecord` and `list_ids` returning a tuple of ids are
 implementation choices, not contract surface, and they may change when D11 is
-resolved. There is deliberately **no promotion method**: promotion is a human
-act (§20.3), and inventing an API for it would freeze a design D11 left open.
+resolved. There is deliberately **no promotion method on either type**.
 """
 
 from __future__ import annotations
@@ -82,8 +118,9 @@ from plugins.evidence.models import EvidenceRecord
 from plugins.evidence.stored import load_stored
 
 __all__ = [
-    "EvidenceStore",
     "EvidenceTier",
+    "PromotedEvidenceStore",
+    "StagedEvidenceStore",
 ]
 
 #: The suffix a stored record carries. `list_ids` matches on this, so a
@@ -103,28 +140,23 @@ class EvidenceTier(StrEnum):
     PROMOTED = "promoted"
 
 
-class EvidenceStore:
-    """One directory of stored records, at one tier.
+class _EvidenceDirectory:
+    """The surface both tiers share. Not exported, and not constructible as a tier.
 
-    Constructed with a root; it creates that directory on first write and never
-    looks outside it.
+    It holds the read path and the path rule. `write` is deliberately **not**
+    here: it belongs to the tier that may receive records, and putting it on a
+    common base is what produced a promoted store that accepted one.
     """
 
-    def __init__(self, root: str | os.PathLike[str], *, tier: EvidenceTier = EvidenceTier.STAGED) -> None:
+    #: Overridden by each tier; used for messages and for §19.2's rule.
+    tier: EvidenceTier
+
+    def __init__(self, root: str | os.PathLike[str]) -> None:
         self._root = Path(root)
-        self._tier = EvidenceTier(tier)
 
     @property
     def root(self) -> Path:
         return self._root
-
-    @property
-    def tier(self) -> EvidenceTier:
-        return self._tier
-
-    # ------------------------------------------------------------------
-    # paths
-    # ------------------------------------------------------------------
 
     def _path(self, evidence_id: object) -> Path:
         """The one file this `evidence_id` may name.
@@ -136,57 +168,6 @@ class EvidenceStore:
         this, `read("../../etc/passwd")` would be a traversal.
         """
         return self._root / (g_evidence_id(evidence_id, "evidence_id") + SUFFIX)
-
-    # ------------------------------------------------------------------
-    # write
-    # ------------------------------------------------------------------
-
-    def write(self, record: EvidenceRecord) -> None:
-        """Persist one admitted record. Raises `DuplicateEvidenceId` on collision.
-
-        Refuses a record that carries no digests: such a record is not one
-        AI-05 has written (§30 step 12 has not run), so storing it would create
-        a file that `load_stored` can never read back.
-
-        The bytes written are exactly `to_stored_mapping()` encoded as UTF-8
-        JSON. Nothing is added, reordered or recomputed.
-        """
-        if record.integrity.content_digest is None or record.integrity.record_digest is None:
-            raise StoredBytesUnreadable(
-                "this record carries no digests, so it is not one AI-05 has "
-                "written (§30 step 12). Storing it would create a file that "
-                "cannot be read back; assign its digests first"
-            )
-
-        path = self._path(record.evidence_id)
-        payload = json.dumps(
-            record.to_stored_mapping(), ensure_ascii=False, indent=2
-        ).encode("utf-8")
-
-        self._root.mkdir(parents=True, exist_ok=True)
-        # Same directory as the target, so the link below cannot cross a
-        # filesystem boundary. The name does not end in `.json`.
-        temporary = path.with_name(f"{path.name}.tmp-{os.getpid()}-{uuid4().hex[:8]}")
-
-        handle = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-        try:
-            with os.fdopen(handle, "wb") as stream:
-                stream.write(payload)
-                stream.flush()
-                os.fsync(stream.fileno())
-            try:
-                os.link(temporary, path)
-            except FileExistsError:
-                raise DuplicateEvidenceId(
-                    "a record with this evidence_id is already stored (§8.2, "
-                    "§30 step 14). The existing record is left exactly as it "
-                    "was: this is a collision, not an overwrite"
-                ) from None
-        finally:
-            try:
-                os.unlink(temporary)
-            except FileNotFoundError:  # pragma: no cover - already gone
-                pass
 
     # ------------------------------------------------------------------
     # read
@@ -206,7 +187,7 @@ class EvidenceStore:
         except FileNotFoundError:
             raise RecordNotFound(
                 f"no record is stored under this evidence_id in the "
-                f"{self._tier} tier"
+                f"{self.tier} tier"
             ) from None
         return self._decode(raw)
 
@@ -262,7 +243,7 @@ class EvidenceStore:
         There is no partial discard and no per-field removal: the operation
         removes a file or it raises.
         """
-        if self._tier is not EvidenceTier.STAGED:
+        if self.tier is not EvidenceTier.STAGED:
             raise PromotedRecordNotDiscardable(
                 "discard is a staged-tier operation (§19.2, §20.2). A promoted "
                 "record's existence was guaranteed, so AI-05 has no operation "
@@ -275,3 +256,76 @@ class EvidenceStore:
             raise RecordNotFound(
                 "no record is stored under this evidence_id in the staged tier"
             ) from None
+
+
+class StagedEvidenceStore(_EvidenceDirectory):
+    """The tier that receives records, and the only one that does.
+
+    A record reaches this tier by admission (§30) and leaves it by `discard`.
+    Nothing promotes out of it automatically: a human copies the bytes.
+    """
+
+    tier = EvidenceTier.STAGED
+
+    def write(self, record: EvidenceRecord) -> None:
+        """Persist one admitted record. Raises `DuplicateEvidenceId` on collision.
+
+        Refuses a record that carries no digests: such a record is not one
+        AI-05 has written (§30 step 12 has not run), so storing it would create
+        a file that `load_stored` can never read back.
+
+        The bytes written are exactly `to_stored_mapping()` encoded as UTF-8
+        JSON. Nothing is added, reordered or recomputed.
+        """
+        if record.integrity.content_digest is None or record.integrity.record_digest is None:
+            raise StoredBytesUnreadable(
+                "this record carries no digests, so it is not one AI-05 has "
+                "written (§30 step 12). Storing it would create a file that "
+                "cannot be read back; assign its digests first"
+            )
+
+        path = self._path(record.evidence_id)
+        payload = json.dumps(
+            record.to_stored_mapping(), ensure_ascii=False, indent=2
+        ).encode("utf-8")
+
+        self._root.mkdir(parents=True, exist_ok=True)
+        # Same directory as the target, so the link below cannot cross a
+        # filesystem boundary. The name does not end in `.json`.
+        temporary = path.with_name(f"{path.name}.tmp-{os.getpid()}-{uuid4().hex[:8]}")
+
+        handle = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        try:
+            with os.fdopen(handle, "wb") as stream:
+                stream.write(payload)
+                stream.flush()
+                os.fsync(stream.fileno())
+            try:
+                os.link(temporary, path)
+            except FileExistsError:
+                raise DuplicateEvidenceId(
+                    "a record with this evidence_id is already stored (§8.2, "
+                    "§30 step 14). The existing record is left exactly as it "
+                    "was: this is a collision, not an overwrite"
+                ) from None
+        finally:
+            try:
+                os.unlink(temporary)
+            except FileNotFoundError:  # pragma: no cover - already gone
+                pass
+
+
+class PromotedEvidenceStore(_EvidenceDirectory):
+    """The durable tier: read, and only read.
+
+    **There is no `write`.** A promoted record arrives when a human copies the
+    bytes of a staged record into this directory (§20.3), so there is no
+    operation here by which AI-05 — or a caller of AI-05 — could add one. The
+    absence is the enforcement, not a docstring: a method that existed only to
+    refuse would still be a method a caller could reach.
+
+    `read`, `contains` and `list_ids` are the same code the staged tier uses,
+    and `discard` is inherited and refused (§19.2).
+    """
+
+    tier = EvidenceTier.PROMOTED

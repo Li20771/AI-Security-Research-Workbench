@@ -24,7 +24,9 @@ IMPLEMENTED HERE
     the leaf-accurate field table and the two digests
     the §18.1 workspace agreement rule and the §22.1 outcome mapping
     the §17 stored form: to_stored_mapping, load_stored and its verification
-    the §20 filesystem Store: write, read, staged discard, and §30 step 14
+    the §20 filesystem Store, as two tiers: StagedEvidenceStore writes and
+    discards, PromotedEvidenceStore reads and has no write at all — and
+    §30 step 14
 
 NOT IMPLEMENTED
     the published admission rule set (C-1), which §30 step 7 needs
@@ -167,8 +169,9 @@ from plugins.evidence.models import (
     value_digest_of,
 )
 from plugins.evidence.store import (
-    EvidenceStore,
     EvidenceTier,
+    PromotedEvidenceStore,
+    StagedEvidenceStore,
 )
 from plugins.evidence.stored import (
     load_stored,
@@ -230,7 +233,6 @@ __all__ = [
     "EvidenceError",
     "EvidenceKind",
     "EvidenceRecord",
-    "EvidenceStore",
     "EvidenceTier",
     "ExecutionPayload",
     "FamilyStatusMismatch",
@@ -253,6 +255,7 @@ __all__ = [
     "ProducerRoleViolation",
     "ProducerType",
     "ProducerTypeNotAdmitted",
+    "PromotedEvidenceStore",
     "PromotedRecordNotDiscardable",
     "Provenance",
     "ProviderBinding",
@@ -263,6 +266,7 @@ __all__ = [
     "RecordRef",
     "References",
     "SourceReadObservation",
+    "StagedEvidenceStore",
     "StatusValue",
     "StoredBytesUnreadable",
     "StoredIntegrityFailure",

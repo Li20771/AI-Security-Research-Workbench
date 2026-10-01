@@ -26,8 +26,8 @@ import pytest
 
 from plugins.evidence import (
     AdmissionOutcome,
-    EvidenceStore,
-    EvidenceTier,
+    PromotedEvidenceStore,
+    StagedEvidenceStore,
     admit,
     admit_to_store,
     assign_digests,
@@ -53,7 +53,7 @@ def _admit(raw, store):
 
 @pytest.fixture
 def store(tmp_path):
-    return EvidenceStore(tmp_path / "staged")
+    return StagedEvidenceStore(tmp_path / "staged")
 
 
 # --------------------------------------------------------------------------
@@ -396,11 +396,104 @@ class TestThePipelineComposesRatherThanReimplements:
 
 class TestTheTiersStaySeparate:
     def test_a_staged_write_does_not_appear_in_the_promoted_tier(self, tmp_path):
-        staged = EvidenceStore(tmp_path / "staged")
-        promoted = EvidenceStore(tmp_path / "promoted", tier=EvidenceTier.PROMOTED)
+        staged = StagedEvidenceStore(tmp_path / "staged")
+        promoted = PromotedEvidenceStore(tmp_path / "promoted")
 
         result = _admit(make_observation(), staged)
 
         assert staged.list_ids() == (result.record.evidence_id,)
         assert promoted.list_ids() == ()
         assert promoted.contains(result.record.evidence_id) is False
+
+
+# --------------------------------------------------------------------------
+# A — admission cannot be aimed at the promoted tier
+# --------------------------------------------------------------------------
+
+
+class TestAdmissionTargetsStagedOnly:
+    """§20.3: promotion is human-controlled, so admission is not a way in.
+
+    This is the case the review found. `admit_to_store(raw, store=promoted)`
+    used to store an ordinarily admitted record in the durable tier, which made
+    the function a programmatic promotion path — reachable without any
+    `promote()` method existing.
+    """
+
+    def test_admission_refuses_a_promoted_store(self, tmp_path):
+        promoted = PromotedEvidenceStore(tmp_path / "promoted")
+
+        with pytest.raises(TypeError):
+            _admit(make_observation(), promoted)
+
+    def test_no_promoted_record_is_formed(self, tmp_path):
+        promoted = PromotedEvidenceStore(tmp_path / "promoted")
+
+        with pytest.raises(TypeError):
+            _admit(make_observation(), promoted)
+
+        assert promoted.list_ids() == ()
+        assert not promoted.root.exists()
+
+    def test_the_refusal_happens_before_any_work(self, tmp_path):
+        """The store is checked before the record is even parsed.
+
+        A rejection that happened after admission would still have generated an
+        evidence_id and computed digests for a record that can never be stored.
+        """
+        promoted = PromotedEvidenceStore(tmp_path / "promoted")
+
+        with pytest.raises(TypeError):
+            # not even a valid record: the store is refused first
+            _admit("not a record at all", promoted)
+
+    def test_the_refusal_names_the_boundary(self, tmp_path):
+        promoted = PromotedEvidenceStore(tmp_path / "promoted")
+
+        with pytest.raises(TypeError) as excinfo:
+            _admit(make_observation(), promoted)
+
+        message = str(excinfo.value)
+        assert "staged" in message.lower()
+        assert "no write operation" in message.lower()
+
+    def test_a_staged_store_is_still_accepted(self, tmp_path):
+        """The control: the refusal is about the tier, not about admission."""
+        staged = StagedEvidenceStore(tmp_path / "staged")
+
+        result = _admit(make_observation(), staged)
+
+        assert result.outcome is AdmissionOutcome.ACCEPTED
+        assert staged.list_ids() == (result.record.evidence_id,)
+
+    def test_there_is_no_second_hidden_path_to_the_promoted_tier(self):
+        """One place in the package writes to a store, and it is admission.
+
+        Scanned by receiver name rather than by the method name alone: `store.py`
+        calls `stream.write(...)` on a file handle, which is the write being
+        *defined*, not another path to it. What this rules out is a second
+        function that reaches a store with a record.
+        """
+        import ast
+        import pathlib
+
+        package = pathlib.Path("plugins/evidence")
+        callers = []
+        for path in sorted(package.glob("*.py")):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            enclosing = {}
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    for inner in ast.walk(node):
+                        enclosing[id(inner)] = node.name
+            for node in ast.walk(tree):
+                if (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "write"
+                    and isinstance(node.func.value, ast.Name)
+                    and node.func.value.id == "store"
+                ):
+                    callers.append((path.name, enclosing.get(id(node), "<module>")))
+
+        assert callers == [("admission.py", "admit_to_store")], callers
