@@ -14,6 +14,12 @@ installation model, and claiming it here would mean either an embedded JVM or a
 `PASS` with nothing behind it. The family is declared, the operation is not, and
 the Evidence record says `NOT_RUN` rather than dressing the gap as coverage.
 
+### An absent program is `BLOCKED`, not `FAILED`
+
+Decided once, in `execute_argv`, from the process outcome (§8.2: BLOCKED is "a
+precondition was unavailable, so nothing ran"). Adapters do not ask the host
+whether a program exists — that would make them untestable without it.
+
 ### A fuzzing run is bounded
 
 `afl_fuzz` takes a duration and runs under the request's timeout like any other
@@ -23,8 +29,6 @@ a whole.
 """
 
 from __future__ import annotations
-
-import shutil
 
 from plugins.security_tools.adapter import AdapterOutcome, Invocation, execute_argv
 from plugins.security_tools.descriptor import (
@@ -102,12 +106,6 @@ class Adapter:
 
     def execute(self, invocation: Invocation) -> AdapterOutcome:
         program = _PROGRAMS[invocation.operation]
-        if shutil.which(program) is None:
-            return AdapterOutcome.of(
-                ToolOutcome.NOT_RUN,
-                "PROGRAM_NOT_PRESENT",
-                stderr="the declared program is not present on this host",
-            )
 
         root = resolve_root(invocation.root)
         arguments = invocation.arguments

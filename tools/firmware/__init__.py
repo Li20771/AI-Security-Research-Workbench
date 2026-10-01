@@ -10,17 +10,21 @@ The adapter drives the program; it does not contain it. Whether a real run is
 possible is an environment question, and where it is not, the operation reports
 what actually happened rather than a hopeful success.
 
-### `NOT_RUN` is a result, not a failure to report
+### An absent program is `BLOCKED`, not `FAILED`
 
-An operation whose program is absent from the host produces `ToolOutcome.NOT_RUN`
-with an `UNKNOWN`-free reason code. It is **not** `COMPLETED`, and it is not
-`FAILED`: nothing was executed, and saying so is the honest answer. A test
-asserts the mapping rather than leaving it to the caller.
+An operation whose program is not present on the host produces
+`ToolOutcome.BLOCKED` with `PROGRAM_UNAVAILABLE` — §8.2 makes BLOCKED "a
+precondition was unavailable, so nothing ran", which is exactly this. It is not
+`COMPLETED` and it is not `FAILED`: nothing executed, and saying so is the
+honest answer.
+
+The decision is made once, in `execute_argv`, from the process outcome — not by
+each adapter asking the host whether a program exists. A host check inside an
+adapter would also make the adapter untestable without the program installed,
+which is how a suite ends up asserting things it never ran.
 """
 
 from __future__ import annotations
-
-import shutil
 
 from plugins.security_tools.adapter import AdapterOutcome, Invocation, execute_argv
 from plugins.security_tools.descriptor import (
@@ -108,12 +112,6 @@ class Adapter:
 
     def execute(self, invocation: Invocation) -> AdapterOutcome:
         program = _PROGRAMS[invocation.operation]
-        if shutil.which(program) is None:
-            return AdapterOutcome.of(
-                ToolOutcome.NOT_RUN,
-                "PROGRAM_NOT_PRESENT",
-                stderr="the declared program is not present on this host",
-            )
 
         root = resolve_root(invocation.root)
         arguments = invocation.arguments

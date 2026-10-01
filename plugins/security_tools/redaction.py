@@ -39,9 +39,14 @@ MASK = "[redacted]"
 #: long token would destroy digests and revisions, which is the defect AI-05
 #: §14.5 records about applying a redaction rule outside its domain.
 _PATTERNS: tuple[re.Pattern[str], ...] = (
-    # Authorization / credential headers, in a header or a printed dict.
-    re.compile(r"(?i)\b(authorization|proxy-authorization)\s*[:=]\s*\S+"),
+    # The scheme's value first, then the header. Order matters and was a defect:
+    # matching the header first consumed only `Authorization: Bearer`, because
+    # `\S+` stops at the space, and left the token itself in the clear.
     re.compile(r"(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{8,}"),
+    # Then the whole header line, so a scheme this file does not name is still
+    # masked with its value rather than masked up to it.
+    re.compile(r"(?i)\b(authorization|proxy-authorization)\s*[:=][^\n]*"),
+    re.compile(r"(?i)\b(set-cookie|cookie)\s*[:=][^\n]*"),
     # Common key prefixes. `sk-` is the shape Layer 0 already watches for.
     re.compile(r"\bsk-[A-Za-z0-9_-]{8,}"),
     re.compile(r"\b(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{16,}"),

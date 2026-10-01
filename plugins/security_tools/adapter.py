@@ -162,6 +162,22 @@ def execute_argv(invocation: Invocation, argv: Sequence[str]) -> AdapterOutcome:
             duration_ms=process.duration_ms,
         )
 
+    if process.exit_code is None:
+        # No exit code and no timeout means the process never ran: the program
+        # is absent or could not be started. That is `BLOCKED`, not `FAILED` —
+        # §8.2 makes BLOCKED "a precondition was unavailable, so nothing ran" —
+        # and it is decided here rather than by each adapter asking the host
+        # whether a program exists, which would also make an adapter untestable
+        # without the program installed.
+        return AdapterOutcome.of(
+            ToolOutcome.BLOCKED,
+            "PROGRAM_UNAVAILABLE",
+            exit_code=None,
+            stdout=process.stdout,
+            stderr=process.stderr,
+            duration_ms=process.duration_ms,
+        )
+
     completed = (
         process.exit_code is not None
         and process.exit_code in invocation.spec.expected_exit_codes
