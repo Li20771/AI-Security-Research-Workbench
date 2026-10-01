@@ -2,7 +2,7 @@
 > Baseline: 2026-09-26
 
 ## Current stage
-**AI-03 — Context Plugin**
+**AI-05 — Evidence / Audit Plugin**
 
 AI-00 architecture and repository baseline is complete. **AI-01 DSH Baseline is COMPLETE** — see
 [AI-01 final gate status](#ai-01-final-gate-status). **AI-02 Model Layer is COMPLETE** — see
@@ -16,6 +16,13 @@ contract, implementation, verification, and evidence are recorded in
 [AI-03_CONTEXT_PLUGIN_EVIDENCE_2026-09-29.md](AI-03_CONTEXT_PLUGIN_EVIDENCE_2026-09-29.md).
 See [AI-03 status](#ai-03-status).
 
+AI-04 is **COMPLETE and MERGED** — merged to `main` as
+`254823f74aa742a3f98d04f7d184b39c33369d98` (PR #32). See [AI-04 status](#ai-04-status).
+
+**AI-05-B1 is COMPLETE and MERGED** — merged to `main` as
+`0403fcd83b740f0603af7204e77f6e6905a84cf0` (PR #34). B1 is the **offline logical core only**;
+AI-05 as a whole is **INCOMPLETE** and B2 has not started. See [AI-05 status](#ai-05-status).
+
 The GitHub `main` branch protection requirement is **BLOCKED** by the current GitHub
 Free/private-repository plan and is retained as a documented platform limitation; it is not
 treated as a PASS.
@@ -26,29 +33,38 @@ This file is the single entry point for deciding what to do next.
 
 ### Current work item
 
-**AI-05 — Evidence / Audit Plugin — NOT STARTED.**
+**AI-05-B2 — Evidence admission, Store and lifecycle — NOT STARTED.**
 
 ```text
-AI-04 merge      = 254823f74aa742a3f98d04f7d184b39c33369d98  (PR #32, merged)
-AI-04 exit       = C0-C10 all PASS; CI green on the closeout head
-AI-05 contract   = not authored
-AI-05 branch     = none
-AI-05 status     = NOT STARTED
+AI-05 contract    = frozen, docs/AI-05_EVIDENCE_EXECUTION_PLAN.md
+AI-05 contract blob = a1df976deea70daea754d89574c47165140d00d0
+AI-05-A           = COMPLETE / MERGED   contract frozen, 1 amendment
+AI-05-B1          = COMPLETE / MERGED   offline logical core
+AI-05-B1 merge    = 0403fcd83b740f0603af7204e77f6e6905a84cf0  (PR #34, merged)
+AI-05-B2          = NOT STARTED
+AI-05 overall     = INCOMPLETE
 ```
 
-AI-04 is closed. The next stage is **AI-05 Evidence / Audit**, and it has no execution plan in
-the repository yet: no `docs/AI-05_*` file exists, so under the phase start rule (MASTER_ROADMAP
-§2.1) AI-05-A — freeze the contract — is the entry point. Implementation does not begin before
-the contract is frozen here.
+AI-04 is closed. AI-05-A is closed: the contract was frozen and then amended once (Amendment 1),
+which replaced the container-level §15.2 table with a leaf table, declared the §6.5
+admitted-producer registry, added the §14.9 grammar table and declared the `ObservationFamily`
+vocabulary.
 
-> **AI-05 has not been started.** No branch, no contract, no code. Recorded explicitly so its
-> absence is auditable rather than inferred.
+AI-05-B1 is closed and merged. It built the record model, the §15.2 leaf field table, the two
+digests, the §14.9 named grammars, the §6.5 registry and the §6.6 cross-field rules — and
+nothing else. It added **no storage, no admission pipeline and no Store**. Full evidence is in
+[AI-05-B1_EVIDENCE_2026-10-01.md](AI-05-B1_EVIDENCE_2026-10-01.md).
 
-The merged AI-03 and AI-04 branches (`feature/ai-03-context-plugin`,
-`feature/ai-04-guard-implementation`) may be deleted.
+> **AI-05-B2 has not been started.** No branch, no admission rule set, no `rules.py`, no Store
+> protocol, no storage backend, no lifecycle. B2's design is a separate work stage and is
+> deliberately not specified here.
 
-No force push and no history rewrite was performed at any point in AI-03 or AI-04. Each merge was
-a human decision taken at the GitHub checkpoint, not by the agent that implemented the phase.
+The merged AI-03, AI-04 and AI-05-B1 branches (`feature/ai-03-context-plugin`,
+`feature/ai-04-guard-implementation`, `feature/ai-05-b1-logical-core`) may be deleted.
+
+No force push and no history rewrite was performed at any point in AI-03, AI-04 or AI-05-B1.
+Each merge was a human decision taken at the GitHub checkpoint, not by the agent that implemented
+the phase.
 
 The closed AI-01 execution plan remains at
 [docs/AI-01_DSH_BASELINE_EXECUTION_PLAN.md](AI-01_DSH_BASELINE_EXECUTION_PLAN.md)
@@ -79,8 +95,7 @@ PROJECT_STATUS.md
 
 ### Not yet started
 
-- AI-04 Guard implementation
-- AI-05 Evidence implementation
+- AI-05-B2 Evidence admission, Store and lifecycle
 - AI-06 Security Tools implementation
 - AI-07 Router implementation — **DEFERRED**, and untouched by AI-03
 
@@ -388,6 +403,78 @@ SecurityLab    = UNCHANGED
 AI-02 / AI-03  = UNCHANGED
 Router (AI-07) = DEFERRED / UNIMPLEMENTED
 main           = contains AI-04
+```
+
+## AI-05 status
+
+**AI-05 — Evidence / Audit Plugin: INCOMPLETE.** B1 is complete and merged; B2 has not started.
+Full evidence in [AI-05-B1_EVIDENCE_2026-10-01.md](AI-05-B1_EVIDENCE_2026-10-01.md).
+
+```text
+AI-05-A  = COMPLETE / MERGED   contract frozen, 1 amendment
+AI-05-B1 = COMPLETE / MERGED   offline logical core
+AI-05-B2 = NOT STARTED         admission, Store, lifecycle
+AI-05    = INCOMPLETE          not closed
+
+B1 merge SHA    = 0403fcd83b740f0603af7204e77f6e6905a84cf0   (PR #34)
+B1 merged head  = de63631ad88b42ad8a4bc1dbbc3997b25ab93d53
+audited code head = 39ddd27761ff7b3a08fd6311ec5e27a9326c7d82
+contract blob   = a1df976deea70daea754d89574c47165140d00d0
+                  docs/AI-05_EVIDENCE_EXECUTION_PLAN.md
+```
+
+The contract reached `main` through PR #35 (Amendment 1). It was **not modified by B1**: its blob
+hash is identical before and after the merge, which is the check that makes that statement
+verifiable rather than asserted.
+
+### What B1 built
+
+```text
+plugins/evidence/   7 modules, 3018 lines
+tests/evidence/     5 modules, 1751 lines
+```
+
+The record model with typed per-family payloads, the §15.2 leaf field table held as data (52
+rows), `content_digest` and `record_digest` plus `value_digest`, the §14.9 named grammars, the
+§6.5 six-event producer registry, and the §6.6 cross-field rules.
+
+### Verified
+
+```text
+evidence tests   = 159 passed, 1 skipped
+whole repository = 1771 passed, 1 skipped, 5 deselected
+Layer 0          = PASS (13 checks)
+T35 boundary     = clean — no network client, no subprocess, no eval/exec/compile,
+                   no routing/tools import, no secret logging
+storage boundary = clean — no file I/O, no serializer, no JSON/YAML/SQLite,
+                   no filesystem access anywhere in the package
+contract         = unmodified; blob identical before and after the merge
+```
+
+The one skip is `T20c`, deferred against `C-1`: the contract does not name the published
+admission rule set. It is reported as a skip rather than faked.
+
+### Recorded, not hidden
+
+- **C11 is a limitation of the contract's test model, not of the implementation.** §15.5's
+  canonical case C11 requires two records differing only in `producer`, and §6.5 registers
+  exactly one producer token per admitted event, so no admitted pair exists to compare. C11 is
+  not deleted, not weakened, and not satisfied by a manufactured record. Closing it would require
+  a contract amendment, which B1 deliberately did not make.
+- **Four gaps were closed in the implementation before they were closed by a test.** G5, G9, G12
+  and G16 were proven indirectly at first; a later test-only commit added seven tests so that all
+  sixteen now have a direct assertion. Recorded because a gap closed without a test is closed by
+  argument.
+- **AI-05 persists nothing.** B1 is a pure logical core with no Store, so no `EvidenceRecord` is
+  written anywhere. AI-04's `evidence_ref` is therefore still always `null`, exactly as AI-04
+  records: B1 gives it something to point at in principle, but nothing yet to point at in fact.
+  That null state is an unchanged fact about AI-04, not unfinished work in B1.
+
+```text
+SecurityLab           = UNCHANGED
+AI-02 / AI-03 / AI-04 = UNCHANGED
+Router (AI-07)        = DEFERRED / UNIMPLEMENTED
+main                  = contains AI-05-B1
 ```
 
 ## Status semantics
