@@ -33,8 +33,8 @@ boundary and T12/T13.
 `67515ff96dbd95ee5a8f73923d5eadc3f097501a` (PR #44). P3 added the admission pipeline, the
 filesystem Store, uniqueness, staged discard and the §31 Layer 0 evidence check.
 
-**AI-06 — Security Research Tools Plugin is IMPLEMENTATION COMPLETE, PR OPEN, NOT MERGED** —
-branch `feature/ai-06-security-tools-v1`. The Tool API, eight adapter families, the Guard,
+**AI-06 — Security Research Tools Plugin is COMPLETE and MERGED** — merged to `main` as
+`3b1917ab596931ec89de8c17a02266b5902557a5` (PR #47). The Tool API, eight adapter families, the Guard,
 workspace, execution, vehicle and secret boundaries, the Evidence projection and the AI-06
 Layer 0 check are all in this PR. Full evidence in
 [AI-06_EVIDENCE_2026-10-01.md](AI-06_EVIDENCE_2026-10-01.md).
@@ -153,7 +153,8 @@ PROJECT_STATUS.md
 
 ### Not yet started
 
-- AI-07 Router implementation — **DEFERRED**, and untouched by AI-03
+- AI-07 Router **implementation** — contract frozen (AI-07-A, PR #48);
+  the router itself is NOT STARTED
 
 ## Completed
 
@@ -631,7 +632,7 @@ Do not turn missing environment, skipped execution, or blocked actions into PASS
 
 ## AI-06 status
 
-**AI-06 — Security Research Tools Plugin: IMPLEMENTATION COMPLETE / PR OPEN, NOT MERGED.**
+**AI-06 — Security Research Tools Plugin: COMPLETE / MERGED.**
 Frozen contract `docs/AI-06_SECURITY_TOOLS_EXECUTION_PLAN.md`.
 
 ```text
@@ -645,12 +646,12 @@ The two are not interchangeable: `1cff20f7` is what AI-06-A merged, and
 
 ```text
 AI-06-A     = COMPLETE / MERGED   contract frozen (PR #46)
-AI-06-B     = IMPLEMENTATION COMPLETE / PR OPEN, NOT MERGED
-              PR #47; one review fix applied in the same PR (Guard
-              attribution, see the evidence record section O)
-AI-06       = not closed until the PR merges and its CI is read
+AI-06-B     = COMPLETE / MERGED   implementation (PR #47), one review fix in
+                                  the same PR (Guard attribution, section O
+                                  of the evidence record)
+AI-06       = COMPLETE
 
-merge SHA   = not yet merged; recorded at closeout
+merge SHA   = 3b1917ab596931ec89de8c17a02266b5902557a5   (PR #47)
 evidence    = docs/AI-06_EVIDENCE_2026-10-01.md
 ```
 
@@ -671,3 +672,29 @@ BLOCKED   real CAN / ECU / vehicle   — refused by §12.2, by design and assert
 Router (AI-07) = DEFERRED / UNIMPLEMENTED — untouched, no interface reserved
 SecurityLab    = UNCHANGED
 ```
+
+## AI-07 status
+
+**AI-07 — Plugin 5: Model Router v1: CONTRACT FROZEN / PR OPEN, NOT MERGED.**
+
+```text
+AI-07-A  = CONTRACT FROZEN / PR #48 OPEN, NOT MERGED
+AI-07-B  = NOT STARTED
+AI-07    = not closed
+
+contract = docs/AI-07_MODEL_ROUTER_EXECUTION_PLAN.md
+blob     = 2f8dcba8f9c2ca36e3d917fc6b69c3a5cb7f36fe   (after Amendment 1)
+amendments = 1
+
+Router (AI-07) as an implementation = NOT STARTED; routing/ holds a README and
+no Python.
+```
+
+Amendment 1 reconciled four internal inconsistencies before implementation began: `sensitivity`
+had an eligibility effect with no AI-02 source field; `max_cost_class` named a vocabulary AI-02
+does not define; `fallback` was described as a boundary with no v1 trigger; and
+`require_independence` needed an explicit non-claim. Security and authority impact: none.
+
+One fact governs v1 and is worth stating where a reader will find it: **every capability on every
+shipped model profile is `UNKNOWN`**, so a request that requires a capability has no eligible
+candidate and the outcome is `NO_ELIGIBLE_MODEL`. That is the honest state, not a defect.

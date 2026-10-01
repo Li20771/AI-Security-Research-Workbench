@@ -1074,6 +1074,103 @@ def check_security_tools_boundary() -> list[str]:
     return problems
 
 
+def check_ai07_router_contract() -> list[str]:
+    """AI-07 §1.1, §8, §13.2, §17: the Router's identity, as a gate.
+
+    AI-07-A freezes a contract and implements nothing, so the check for this
+    phase is a **contract/document consistency** one. It establishes that the
+    identity is structural rather than declared, and that no implementation
+    arrived under cover of a contract PR:
+
+    ```text
+    routing/ is not a plugin layer       not under plugins/, no __init__.py
+    routing/ contains no Python          AI-07 implementation = NOT STARTED
+    routing/ does not reach providers    the layer boundary holds
+    the README still states the boundary "never grants permissions"
+    the contract exists and freezes the  the identity, the authorization rule and
+      same three prohibitions            the evidence rule
+    ```
+
+    It will need to grow when AI-07-B lands. What it must never become is a check
+    that passes because there is nothing to check: today it asserts absence, and
+    absence is exactly the claim.
+    """
+    problems: list[str] = []
+
+    routing = ROOT / "routing"
+    plugins = ROOT / "plugins"
+
+    if not routing.is_dir():
+        return ["routing/ is absent; AI-07's declared home does not exist"]
+
+    # (1) Not a plugin layer, and not on its way to becoming one.
+    if (plugins / "router").exists():
+        problems.append(
+            "plugins/router/ exists; AI-07 is a Workbench core service and not a "
+            "DSH plugin (§1.1, F-13)"
+        )
+    if (routing / "__init__.py").exists():
+        problems.append(
+            "routing/__init__.py exists; routing/ is a core-service directory and "
+            "not a plugin package (§17)"
+        )
+
+    # (2) AI-07-A implements nothing.
+    implementation = sorted(
+        path.name for path in routing.rglob("*.py") if "__pycache__" not in path.parts
+    )
+    if implementation:
+        problems.append(
+            f"routing/ contains Python ({', '.join(implementation)}); AI-07-A "
+            "freezes a contract and AI-07 implementation is NOT STARTED"
+        )
+
+    # (3) The declared identity is still stated where AI-07 will read it.
+    readme = routing / "README.md"
+    if readme.is_file():
+        text = readme.read_text(encoding="utf-8")
+        for phrase in (
+            "never grants permissions",
+            "not a DSH plugin",
+            "Guard remains authoritative",
+        ):
+            if phrase not in text:
+                problems.append(
+                    f"routing/README.md no longer states {phrase!r}; §1.1 and §9 "
+                    "freeze that boundary and this check is what keeps it"
+                )
+
+    # (4) The contract exists and freezes the same three prohibitions.
+    contract = ROOT / "docs" / "AI-07_MODEL_ROUTER_EXECUTION_PLAN.md"
+    if not contract.is_file():
+        problems.append("docs/AI-07_MODEL_ROUTER_EXECUTION_PLAN.md is absent")
+    else:
+        frozen = contract.read_text(encoding="utf-8")
+        # Amendment 1's four clauses plus the two v1 rules they sit beside.
+        # Each is a rule AI-07-B would otherwise have had to invent its way past,
+        # so each is checked rather than trusted.
+        for phrase in (
+            "Router NEVER grants permission",
+            "AI-07 MUST NOT register a new AI-05 event",
+            "UNKNOWN` is NOT `available",
+            "`sensitivity` MUST NOT widen or narrow the candidate set in v1",
+            "AI-07 v1 does NOT use it to change model eligibility",
+            "cost-class routing is DEFERRED",
+            "AI-07 MUST NOT invent a cost class",
+            "AI-07 v1 has NO automatic fallback mechanism",
+            "AI-07 does NOT retry a selected model",
+            "and no nested decision",
+            "MUST NOT assert that the hint identifies a VERIFIED",
+        ):
+            if phrase not in frozen:
+                problems.append(
+                    f"the AI-07 contract no longer freezes {phrase!r}; §6.2, §8 and "
+                    "§13.2 are load-bearing and this check is what keeps them"
+                )
+
+    return problems
+
+
 def check_layer_markers() -> list[str]:
     """Every test module belongs to exactly one layer.
 
@@ -1153,6 +1250,10 @@ def main() -> int:
     report.check(
         "security tools boundary and adapter families",
         check_security_tools_boundary(),
+    )
+    report.check(
+        "model router identity and contract freeze",
+        check_ai07_router_contract(),
     )
 
     if report.failures:
