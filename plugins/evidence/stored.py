@@ -56,14 +56,13 @@ from __future__ import annotations
 
 from plugins.evidence.admission import check_workspace_agreement
 from plugins.evidence.digests import content_digest, record_digest
-from plugins.evidence.errors import StoredIntegrityFailure, UnsupportedVocabulary
+from plugins.evidence.errors import StoredIntegrityFailure
 
-# `_closed_keys`, `_mapping` and `_required` are models.py's shared internals —
-# the block it labels as such. Importing them is how the loader applies the
-# same structural rules without a second copy of them.
+# `_closed_keys`, `_mapping`, `_required`, `_schema_version` and `_parse_payload`
+# are models.py's shared internals — the block it labels as such. Importing them
+# is how the loader runs the same structural rules and the same payload dispatch
+# without a second copy of either.
 from plugins.evidence.models import (
-    PAYLOAD_BY_KIND,
-    SUPPORTED_SCHEMA_VERSION,
     Artifacts,
     EvidenceRecord,
     Identity,
@@ -72,11 +71,11 @@ from plugins.evidence.models import (
     References,
     _closed_keys,  # noqa: PLC2701 - shared internals, same package
     _mapping,
+    _parse_payload,
     _required,
+    _schema_version,
     check_cross_field,
-    observation_payload,
 )
-from plugins.evidence.vocabulary import EvidenceKind
 
 __all__ = [
     "load_stored",
@@ -162,23 +161,13 @@ def load_stored(mapping: object) -> EvidenceRecord:
     """
     data = _mapping(mapping, "record")
     _closed_keys(data, _STORED_TOP_KEYS, "record")
-
-    version = data.get("schema_version")
-    if version != SUPPORTED_SCHEMA_VERSION:
-        raise UnsupportedVocabulary(
-            f"record.schema_version {version!r} is not supported; this "
-            f"contract defines {SUPPORTED_SCHEMA_VERSION}"
-        )
+    version = _schema_version(data, "record")
 
     identity = Identity.from_stored_mapping(
         _required(data, "identity", "record"), "identity"
     )
 
-    payload_raw = _required(data, "payload", "record")
-    if identity.kind is EvidenceKind.OBSERVATION:
-        _family, payload = observation_payload(payload_raw, "payload")
-    else:
-        payload = PAYLOAD_BY_KIND[identity.kind].from_mapping(payload_raw, "payload")
+    payload = _parse_payload(identity.kind, _required(data, "payload", "record"))
 
     record = EvidenceRecord(
         identity=identity,

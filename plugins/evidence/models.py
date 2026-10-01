@@ -1563,21 +1563,10 @@ class EvidenceRecord:
             )
 
         _closed_keys(data, _TOP_KEYS, "record")
-
-        version = data.get("schema_version")
-        if version != SUPPORTED_SCHEMA_VERSION:
-            raise UnsupportedVocabulary(
-                f"record.schema_version {version!r} is not supported; this "
-                f"contract defines {SUPPORTED_SCHEMA_VERSION}"
-            )
+        version = _schema_version(data, "record")
 
         kind = _enum(_required(data, "kind", "record"), EvidenceKind, "record.kind")
-        payload_raw = _required(data, "payload", "record")
-
-        if kind is EvidenceKind.OBSERVATION:
-            _family, payload = observation_payload(payload_raw, "payload")
-        else:
-            payload = PAYLOAD_BY_KIND[kind].from_mapping(payload_raw, "payload")
+        payload = _parse_payload(kind, _required(data, "payload", "record"))
 
         provenance = Provenance.from_mapping(
             _required(data, "provenance", "record"), "provenance"
@@ -1760,3 +1749,40 @@ def _enum(value: object, kind: type, field_name: str):
         raise UnsupportedVocabulary(
             f"{field_name}: {value!r} is not one of {allowed}"
         ) from None
+
+
+# --------------------------------------------------------------------------
+# shared internals — the two record-level steps both entry points run
+# --------------------------------------------------------------------------
+
+
+def _schema_version(data: Mapping[str, Any], where: str) -> int:
+    """§30 step 2: the record's `schema_version` must be the one this contract defines.
+
+    Shared by the caller parser and the stored loader. Both refuse an
+    unsupported version and both refuse it identically, because a vocabulary
+    the two disagreed about would be two contracts in one package.
+    """
+    version = data.get("schema_version")
+    if version != SUPPORTED_SCHEMA_VERSION:
+        raise UnsupportedVocabulary(
+            f"{where}.schema_version {version!r} is not supported; this "
+            f"contract defines {SUPPORTED_SCHEMA_VERSION}"
+        )
+    return version
+
+
+def _parse_payload(kind: EvidenceKind, raw: object, where: str = "payload"):
+    """§11: dispatch a payload to the class its kind declares.
+
+    `OBSERVATION` is a typed union whose arm the explicit `family` selects, so
+    it goes through `observation_payload`; `DECISION` and `EXECUTION` have one
+    payload class each. The kind is passed in rather than re-derived, so the
+    caller parser and the stored loader cannot dispatch differently — the
+    caller path reads `kind` from the envelope, the stored path from the
+    `identity` section, and both arrive here.
+    """
+    if kind is EvidenceKind.OBSERVATION:
+        _family, payload = observation_payload(raw, where)
+        return payload
+    return PAYLOAD_BY_KIND[kind].from_mapping(raw, where)
