@@ -29,12 +29,13 @@ boundary and T12/T13.
 **AI-05-B2-P2 is COMPLETE and MERGED** — merged to `main` as
 `b8692c181f646386430dccd419595ca88e0cc4db` (PR #42). P2 added the §17 stored-form round-trip.
 
-**AI-05-B2-P3 is IMPLEMENTATION COMPLETE, PR OPEN, NOT MERGED** — branch
-`feature/ai-05-b2-p3-admission-store-lifecycle`. P3 added the admission pipeline, the filesystem
-Store, uniqueness, staged discard and the §31 Layer 0 evidence check. Its merge SHA is recorded at
-closeout.
+**AI-05-B2-P3 is COMPLETE and MERGED** — merged to `main` as
+`67515ff96dbd95ee5a8f73923d5eadc3f097501a` (PR #44). P3 added the admission pipeline, the
+filesystem Store, uniqueness, staged discard and the §31 Layer 0 evidence check.
 
-AI-05 as a whole is **INCOMPLETE**: B2's P3 is not merged, so nothing is closed. See
+**AI-05-B2 is COMPLETE**: every stage of its frozen scope has been implemented and merged. **AI-05
+as a whole remains INCOMPLETE**, because C-1 is still DEFERRED — §30 step 7 is unimplemented,
+T22a/T22b/T22c remain unrunnable, and §32's C6 gate is therefore not closed. See
 [AI-05 status](#ai-05-status).
 
 The GitHub `main` branch protection requirement is **BLOCKED** by the current GitHub
@@ -47,8 +48,8 @@ This file is the single entry point for deciding what to do next.
 
 ### Current work item
 
-**AI-05-B2 — Evidence admission, Store and lifecycle — PARTIAL / NOT COMPLETE.**
-P1 and P2 are merged; P3 is implementation complete and its PR is open, not merged.
+**AI-05-B2 — Evidence admission, Store and lifecycle — COMPLETE / MERGED.**
+All three stages are merged. AI-05 itself is **not** closed: C-1 remains DEFERRED.
 
 ```text
 AI-05 contract      = frozen, docs/AI-05_EVIDENCE_EXECUTION_PLAN.md
@@ -67,11 +68,15 @@ AI-05-B2-P1 merge   = 844df7beb3ada381c71c945991c551403595885a  (PR #41, merged)
 AI-05-B2-P2         = COMPLETE / MERGED   §17 stored-form round-trip
 AI-05-B2-P2 merge   = b8692c181f646386430dccd419595ca88e0cc4db  (PR #42, merged)
 
-AI-05-B2-P3         = IMPLEMENTATION COMPLETE / PR OPEN, NOT MERGED
-                    = admission pipeline, Store, uniqueness, staged discard,
-                      §31 Layer 0 evidence check
-AI-05-B2            = INCOMPLETE          P3 not merged; nothing is closed
-AI-05 overall       = INCOMPLETE          not closed
+AI-05-B2-P3         = COMPLETE / MERGED   admission pipeline, filesystem Store,
+                                          uniqueness, staged discard,
+                                          §31 Layer 0 evidence check
+AI-05-B2-P3 merge   = 67515ff96dbd95ee5a8f73923d5eadc3f097501a  (PR #44, merged)
+
+AI-05-B2            = COMPLETE            its frozen scope is implemented and
+                                          merged; C-1 was never part of it
+AI-05 overall       = INCOMPLETE          C-1 is DEFERRED, so §30 step 7 is
+                                          unimplemented and §32 C6 is not closed
 
 B1 verification-time contract blob
                     = a1df976deea70daea754d89574c47165140d00d0
@@ -97,11 +102,11 @@ digests, the §14.9 named grammars, the §6.5 registry and the §6.6 cross-field
 nothing else. It added **no storage, no admission pipeline and no Store**. Full evidence is in
 [AI-05-B1_EVIDENCE_2026-10-01.md](AI-05-B1_EVIDENCE_2026-10-01.md).
 
-> **AI-05-B2 is partially delivered and is not closed.** P1 (workspace agreement) and P2
-> (stored-form round-trip) are merged. P3 — the admission pipeline, the filesystem Store,
-> uniqueness, staged discard and the §31 Layer 0 check — is implementation complete with its PR
-> open and **not merged**, so nothing in it is closed. There is still no `rules.py`: C-1 remains
-> DEFERRED and §30 step 7 is unimplemented.
+> **AI-05-B2 is complete and merged.** P1 (workspace agreement), P2 (stored-form round-trip) and
+> P3 (admission pipeline, filesystem Store, uniqueness, staged discard, §31 Layer 0 check) are all
+> on `main`. There is still no `rules.py`, and that is not an omission: C-1 remains DEFERRED, so
+> §30 step 7 is unimplemented and no document should read an `ACCEPTED` from `admit()` or
+> `admit_to_store()` as a full §30 admission.
 
 The merged AI-03, AI-04, AI-05-B1 and both merged AI-05-B2 branches
 (`feature/ai-03-context-plugin`, `feature/ai-04-guard-implementation`,
@@ -453,9 +458,8 @@ main           = contains AI-04
 
 ## AI-05 status
 
-**AI-05 — Evidence / Audit Plugin: INCOMPLETE.** B1 is complete and merged. B2 is partially
-delivered: P1 and P2 are merged and P3 is implementation complete with its PR open, not merged.
-AI-05 is not closed.
+**AI-05 — Evidence / Audit Plugin: INCOMPLETE.** B1 and the whole of B2 are complete and merged.
+AI-05 is not closed, and the reason is C-1 rather than anything B2 left undone.
 Full evidence in [AI-05-B1_EVIDENCE_2026-10-01.md](AI-05-B1_EVIDENCE_2026-10-01.md),
 [AI-05-B2-P2_EVIDENCE_2026-10-01.md](AI-05-B2-P2_EVIDENCE_2026-10-01.md) and
 [AI-05-B2-P3_EVIDENCE_2026-10-01.md](AI-05-B2-P3_EVIDENCE_2026-10-01.md).
@@ -465,11 +469,12 @@ AI-05-A     = COMPLETE / MERGED   contract frozen, 2 amendments
 AI-05-B1    = COMPLETE / MERGED   offline logical core
 AI-05-B2-P1 = COMPLETE / MERGED   §18.1 workspace agreement, T12/T13
 AI-05-B2-P2 = COMPLETE / MERGED   §17 stored-form round-trip
-AI-05-B2-P3 = IMPLEMENTATION COMPLETE / PR OPEN, NOT MERGED
-                    admission pipeline, filesystem Store, uniqueness,
-                    staged discard, §31 Layer 0 evidence check
-AI-05-B2    = INCOMPLETE          P3 not merged; nothing is closed
-AI-05       = INCOMPLETE          not closed
+AI-05-B2-P3 = COMPLETE / MERGED   admission pipeline, filesystem Store,
+                                  uniqueness, staged discard,
+                                  §31 Layer 0 evidence check
+AI-05-B2    = COMPLETE            its frozen scope is implemented and merged
+AI-05       = INCOMPLETE          C-1 is DEFERRED, so §30 step 7 is
+                                  unimplemented and §32 C6 is not closed
 
 B1 merge SHA    = 0403fcd83b740f0603af7204e77f6e6905a84cf0   (PR #34)
 B1 merged head  = de63631ad88b42ad8a4bc1dbbc3997b25ab93d53
@@ -484,7 +489,8 @@ P2 base         = 844df7beb3ada381c71c945991c551403595885a
 
 P3 branch       = feature/ai-05-b2-p3-admission-store-lifecycle
 P3 base         = bf0790ac0ba1de2b79d4835c70b8a50fb12502c8
-P3 merge SHA    = not yet merged; recorded at closeout
+P3 head         = 6b3f3a0909b7f0542d9581afa4fb3689ea2ac968
+P3 merge SHA    = 67515ff96dbd95ee5a8f73923d5eadc3f097501a   (PR #44)
 P3 evidence     = docs/AI-05-B2-P3_EVIDENCE_2026-10-01.md
 
 contract blob   = dd062148938f902109b49a496bb6051c3331a349
@@ -498,7 +504,7 @@ B1 verification-time contract blob
                   the blob B1 was built, verified and merged against
 ```
 
-### What B2 has delivered so far
+### What B2 has delivered
 
 ```text
 P1   §18.1 workspace agreement — the one admission condition B1 did not hold.
@@ -516,8 +522,7 @@ P2   §17 stored-form round-trip: to_stored_mapping, load_stored and
      No Store, no filesystem persistence, no uniqueness, no lifecycle.
 
 P3   the admission pipeline, the filesystem Store, uniqueness, staged discard
-     and §31's Layer 0 structural check — implementation complete, PR open,
-     NOT merged.
+     and §31's Layer 0 structural check — merged as 67515ff9 (PR #44).
      admit_to_store() runs §30 steps 1-6 and 8-14 and persists. The Store
      writes UTF-8 JSON, one record per file, atomically and without overwrite;
      it computes no digest and canonicalizes nothing. Duplicate evidence_id is
@@ -529,10 +534,15 @@ P3   the admission pipeline, the filesystem Store, uniqueness, staged discard
      Layer 0 is now 14 checks.
 ```
 
+`AI-05-B2 = COMPLETE` means exactly this: **the frozen implementation scope of B2 is
+implemented and merged.** It does not mean §30 is complete. C-1 was never part of B2's declared
+scope, and its absence is a residual of the AI-05 contract rather than something B2 quietly left
+undone — or something this closeout may quietly implement.
+
 ### What B2 has not delivered
 
 ```text
-P3   is not merged, so nothing in it is closed.
+nothing from its own frozen scope. B2's declared work is complete and merged.
 
 D11  four items remain undefined and were deliberately not frozen: the
      retrieval return shape, the superseded_by query shape, the promotion API,
