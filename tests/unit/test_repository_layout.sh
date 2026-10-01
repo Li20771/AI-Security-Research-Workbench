@@ -50,7 +50,7 @@ required_dirs=(
   plugins/context
   plugins/guard
   plugins/evidence
-  plugins/security-tools
+  plugins/security_tools
   providers/deepseek
   providers/mimo
   providers/openai-compatible
@@ -68,9 +68,9 @@ required_dirs=(
   tools/terminal
   tools/mcp
   tools/tests
-  tools/vehicle-network
+  tools/vehicle_network
   tools/firmware
-  tools/reverse-engineering
+  tools/reverse_engineering
   workflows/definitions
   workflows/checkpoints
   workflows/policies
