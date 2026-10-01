@@ -1,7 +1,7 @@
-"""AI-05 vocabulary, the two AI-05-owned closed sets, and the role constraint.
+"""AI-05 vocabulary, its AI-05-owned closed sets, and the role constraint.
 
-Covers T4, T4b and T4c, and the Amendment 1 additions `ProducerType` and
-`ObservationFamily`.
+Covers T4, T4b and T4c, and the Amendment 1 additions `ProducerType`,
+`ObservationFamily` and the §14.9 grammar-name set.
 
 Three layers are asserted separately, because they answer different questions and
 conflating them is how a vocabulary member gets mistaken for an admitted value:
@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import pytest
 
+from plugins.evidence import GRAMMAR_NAMES
 from plugins.evidence import errors as ev_errors
 from plugins.evidence.vocabulary import (
     PERMITTED_ACTOR_TYPES,
@@ -211,3 +212,59 @@ class TestObservationFamily:
         raw["payload"]["family"] = "SOURCE_WRITE"
         with pytest.raises(ev_errors.UnsupportedVocabulary):
             EvidenceRecord.from_mapping(raw, clock=lambda: "t")
+
+
+class TestGrammarNames:
+    """§14.9 — the grammar table is a closed set of exactly thirteen names.
+
+    "Each name is defined exactly once and is used by the §15.2 leaf table. No
+    alias exists." Nothing in the suite read `GRAMMAR_NAMES` before this class,
+    so the set could gain or lose a member without a single test changing colour.
+    """
+
+    #: §14.9's table, transcribed in its frozen row order. Held here rather than
+    #: read from the package, because a test that reads the value it is checking
+    #: asserts nothing: this tuple IS the contract side of the comparison.
+    FROZEN_GRAMMARS = (
+        "G-EVIDENCE-ID",
+        "G-DIGEST",
+        "G-IDENT",
+        "G-SUBJECT",
+        "G-OPAQUE-ID",
+        "G-HOST",
+        "G-MODELREF",
+        "G-REVISION",
+        "G-TIMESTAMP",
+        "G-LOCATOR",
+        "G-TEXT",
+        "G-REGISTERED",
+        "G-ORDINAL",
+    )
+
+    def test_the_set_is_exactly_the_frozen_thirteen(self):
+        """The count, the membership AND the order, as one exact tuple.
+
+        Asserted as a tuple rather than a length on purpose. A length alone
+        cannot tell a renamed grammar from a substituted one, and would pass a
+        set of thirteen names where two were swapped for invented ones. Compared
+        element by element, a fourteenth grammar and a missing grammar both fail
+        and both say which name is wrong.
+        """
+        assert GRAMMAR_NAMES == self.FROZEN_GRAMMARS
+        assert len(GRAMMAR_NAMES) == 13
+
+    def test_every_named_grammar_has_an_implementation(self):
+        """A declared name with nothing behind it is not a grammar.
+
+        §14.9 defines each name as a pattern or a rule. This is what keeps the
+        tuple above from being thirteen strings that no code reads: every name
+        must have its own validator, named for it.
+        """
+        from plugins.evidence import grammar
+
+        for name in GRAMMAR_NAMES:
+            function = "g_" + name.removeprefix("G-").lower().replace("-", "_")
+            assert callable(getattr(grammar, function, None)), (
+                f"{name} is declared in GRAMMAR_NAMES but {function}() does not "
+                "exist, so the name is declared and unimplemented"
+            )

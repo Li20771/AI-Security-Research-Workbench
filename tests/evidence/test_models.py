@@ -42,7 +42,7 @@ from __future__ import annotations
 import pytest
 
 from plugins.evidence import errors as ev_errors
-from plugins.evidence import EvidenceRecord, assign_digests
+from plugins.evidence import ADMITTED_EVENTS, EvidenceRecord, assign_digests
 from tests.evidence.conftest import (
     SHA256,
     make_artifact,
@@ -302,6 +302,17 @@ class TestT22dCallerSuppliedGeneratedFields:
 class TestRegistry:
     """§6.5 — the admitted-producer registry, keyed by event and family."""
 
+    def test_the_registry_has_exactly_six_rows(self):
+        """§6.5 — "Exactly six admitted events. No seventh event exists in v1."
+
+        The row-by-row test below proves each of the six mappings. This one
+        proves the **count**, and the two are not the same claim: a seventh row
+        added to `ADMITTED_EVENTS` would be admitted by every test in this class
+        without any of them failing. Adding an event is an amendment (§6.5), so
+        a seventh row is a contract change and has to be a red test.
+        """
+        assert len(ADMITTED_EVENTS) == 6
+
     def test_all_six_admitted_events_are_accepted(self, build):
         """T54. One case per registry row, with its exact registered producer."""
         cases = [
@@ -479,6 +490,26 @@ class TestModelStrictness:
         with pytest.raises(ev_errors.UnknownField):
             _parse(record_factory(artifacts={"items": [item]}))
 
+    def test_a_present_result_classification_is_rejected(self, execution_factory):
+        """§11 — `result_classification` MUST BE ABSENT in v1, and REJECTED.
+
+        The §15.2 row says the leaf is `DEFERRED` and excluded from both digests.
+        That is a statement about classification, not about admission, and the
+        two are different claims: a table row can say `not present in v1` while
+        the parser quietly admits the field. This asserts the admission side, on
+        a record that is otherwise admitted, so the field is the only reason for
+        the refusal.
+
+        The field sits inside a `tool_calls[]` entry, which is why it is added
+        there rather than on the payload: `ToolCall` declares its keys closed, so
+        an entry-level field is refused by the entry's own schema and not by a
+        rule about the payload envelope.
+        """
+        raw = execution_factory()
+        raw["payload"]["tool_calls[]"][0]["result_classification"] = "READ_ONLY"
+        with pytest.raises(ev_errors.UnknownField):
+            _parse(raw)
+
     def test_a_missing_required_field_is_rejected(self, record_factory):
         raw = record_factory()
         del raw["payload"]["observed"]
@@ -509,6 +540,28 @@ class TestModelStrictness:
         ref = make_context_ref()
         with pytest.raises(ev_errors.DuplicateElement):
             _parse(record_factory(references={"context": [ref, dict(ref)]}))
+
+    def test_a_duplicate_decision_reference_is_rejected(self, record_factory):
+        """§15.4 — `references.decisions[]` is SET-semantic on `record_ref`."""
+        ref = {"record_ref": "ev-0000000000000001"}
+        with pytest.raises(ev_errors.DuplicateElement):
+            _parse(record_factory(references={"decisions": [ref, dict(ref)]}))
+
+    @pytest.mark.parametrize("correction_reason", ["superseded", "a different reason"])
+    def test_a_duplicate_supersede_reference_is_rejected(
+        self, record_factory, correction_reason
+    ):
+        """§15.4 — `references.supersedes[]` is SET-semantic on `record_ref`.
+
+        The second case gives the two entries **different** `correction_reason`
+        values, so the key under test is shown to be the §15.4 canonical key
+        rather than the whole element: two supersede entries naming one record
+        are duplicates whatever reason each of them gives.
+        """
+        ref = {"record_ref": "ev-0000000000000002", "correction_reason": "superseded"}
+        with pytest.raises(ev_errors.DuplicateElement):
+            _parse(record_factory(references={
+                "supersedes": [ref, {**ref, "correction_reason": correction_reason}]}))
 
 
 class TestDecisionPayload:
