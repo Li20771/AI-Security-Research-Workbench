@@ -2,10 +2,10 @@
 > Baseline: 2026-09-26
 
 ## Current stage
-**AI-09 — Codex Provider Integration — AI-09-A CONTRACT FROZEN; IMPLEMENTATION NOT STARTED.**
+**AI-09 — Codex Provider Integration — AI-09-B IMPLEMENTED ON BRANCH; AWAITING REVIEW.**
 AI-08 — Codex Second Agent is **COMPLETE and MERGED** as
 `edb7dfc82ce51123482ac357fb9319dca2fa0d9a` (PR #52). AI-07 — Model Router v1 is
-**COMPLETE / CLOSED**. The next work item is AI-09-B.
+**COMPLETE / CLOSED**. The next work item is the AI-09-B merge checkpoint.
 
 AI-00 architecture and repository baseline is complete. **AI-01 DSH Baseline is COMPLETE** — see
 [AI-01 final gate status](#ai-01-final-gate-status). **AI-02 Model Layer is COMPLETE** — see
@@ -63,7 +63,7 @@ This file is the single entry point for deciding what to do next.
 
 ### Current work item
 
-**AI-09 — Codex Provider Integration — AI-09-A CONTRACT FROZEN; AI-09-B NOT STARTED.**
+**AI-09 — Codex Provider Integration — AI-09-B IMPLEMENTED ON BRANCH; AWAITING REVIEW.**
 
 AI-09 is the phase that wires Codex's already-frozen `CodexBackend` seam to a real, already
 registered provider through AI-02's already-frozen normalized invocation boundary. It builds no
@@ -71,23 +71,24 @@ transport, no protocol, no credential mechanism and no invocation API.
 
 ```text
 AI-09-A     = CONTRACT FROZEN      (2026-10-02)
-AI-09-B     = NOT STARTED          implementation
-AI-09       = NOT CLOSED
+AI-09-B     = IMPLEMENTED ON BRANCH, NOT MERGED      feature/ai-09-codex-integration
+AI-09       = NOT CLOSED           awaiting required CI and the merge checkpoint
 
-base        = main @ edb7dfc82ce51123482ac357fb9319dca2fa0d9a
-branch      = feature/ai-09-provider-codex-contract
+base        = main @ 4614a2ccb1a90ccf9c9e81bbe2bca87d44a47ae1
+branch      = feature/ai-09-codex-integration
 contract    = docs/AI-09_CODEX_PROVIDER_EXECUTION_PLAN.md
 contract blob = e9728b184740074e5c8f718db6b45f859c3802bf
-                     Amendment 2 applied 2026-10-02
-previous blob = d974c7b62d44210be36c41a105800697a96620ec
-                     after Amendment 1
-earlier blob  = 66978cbd685f408ea37dd70e9f0b1e364e2e2955
-                     the AI-09-A freeze, before any amendment
+                     UNCHANGED by AI-09-B
+evidence    = docs/AI-09_EVIDENCE_2026-10-02.md
 
 provider    = mimo — the existing profile; NO third provider identity
 models      = mimo/mimo-v2.6-pro, mimo/mimo-v2.6-flash   (no default, no fallback)
-backend     = integrations/codex/   AI-09-B creates it; a namespace package
+backend     = integrations/codex/   a namespace package
 reserved    = providers/openai-compatible/ stays RESERVED / DISABLED / UNIMPLEMENTED
+
+live        = NOT_RUN     no provider call has been made by this phase
+capability  = UNKNOWN     every capability, every shipped model profile
+connectivity= NOT VERIFIED
 
 FROZEN here   the target provider, the supported model refs, the invocation path,
               the Router boundary, the integration layer's physical boundary and
@@ -247,10 +248,10 @@ PROJECT_STATUS.md
 
 ### Not yet started
 
-- AI-09 Codex Provider Integration — **AI-09-A contract frozen; implementation NOT STARTED.**
-  AI-08 is complete and merged. AI-09-B implements against
-  [AI-09_CODEX_PROVIDER_EXECUTION_PLAN.md](AI-09_CODEX_PROVIDER_EXECUTION_PLAN.md), which is
-  frozen and awaiting its implementation phase.
+- AI-10 Codex second-opinion closure, AI-11 benchmark, AI-12 routing v2, AI-13 long-running
+  workflows — none started. AI-09-B is implemented on `feature/ai-09-codex-integration` against
+  [AI-09_CODEX_PROVIDER_EXECUTION_PLAN.md](AI-09_CODEX_PROVIDER_EXECUTION_PLAN.md) and awaits
+  its merge checkpoint. AI-09 itself remains **INCOMPLETE**.
 
 ## Completed
 
@@ -1092,7 +1093,7 @@ runs when an execution does.
 
 ## AI-09 status
 
-**AI-09 — Codex Provider Integration: AI-09-A CONTRACT FROZEN. Implementation NOT STARTED.**
+**AI-09 — Codex Provider Integration: AI-09-B IMPLEMENTED ON BRANCH. AI-09 NOT CLOSED.**
 
 AI-09 wires Codex's already-frozen `CodexBackend` seam to a real, already-registered provider
 (`mimo`) through AI-02's already-frozen normalized invocation boundary. It is a composition, not
@@ -1100,18 +1101,50 @@ a new provider layer.
 
 ```text
 AI-09-A     = CONTRACT FROZEN      (2026-10-02)
-AI-09-B     = NOT STARTED          implementation
-AI-09       = NOT CLOSED
+AI-09-B     = IMPLEMENTED ON BRANCH, NOT MERGED      feature/ai-09-codex-integration
+AI-09       = NOT CLOSED           awaiting required CI and the merge checkpoint
 
-base        = main @ edb7dfc82ce51123482ac357fb9319dca2fa0d9a
-branch      = feature/ai-09-provider-codex-contract
+base        = main @ 4614a2ccb1a90ccf9c9e81bbe2bca87d44a47ae1
+branch      = feature/ai-09-codex-integration
 contract    = docs/AI-09_CODEX_PROVIDER_EXECUTION_PLAN.md
 contract blob = e9728b184740074e5c8f718db6b45f859c3802bf
-                     Amendment 2 applied 2026-10-02
-previous blob = d974c7b62d44210be36c41a105800697a96620ec
-                     after Amendment 1
-earlier blob  = 66978cbd685f408ea37dd70e9f0b1e364e2e2955
-                     the AI-09-A freeze, before any amendment
+                     UNCHANGED by AI-09-B
+evidence    = docs/AI-09_EVIDENCE_2026-10-02.md
+```
+
+### What AI-09-B built
+
+```text
+integrations/codex/     binding.py, backend.py, reference.py, errors.py, README.md
+                        a new core namespace layer; no __init__.py
+tests/integrations/     122 tests, layers 1 and 2, all offline
+Layer 0                 check_ai09_integration_layer(), 18 checks total
+verification            Layer 0 PASS; providers.validate PASS; plugins.context.validate PASS;
+                        pytest collected 2612 / 5 deselected / 2607 selected,
+                        2605 passed, 2 skipped, 0 failed
+```
+
+### What AI-09-B does not claim
+
+```text
+live provider call      NOT_RUN — none has been made by this phase
+Mimo connectivity       NOT VERIFIED
+capability              UNKNOWN on every capability of every shipped model profile
+offline fixtures        prove normalization and serialization only; they are not
+                        provider evidence and they promote nothing
+```
+
+### Recorded during AI-09-B
+
+```text
+AI-02's live-transport confinement guard scans providers/, tests/ and scripts/ by
+substring, so any file under those roots that NAMES the live transport trips it,
+including prose. AI-02's guard was NOT modified: the AI-09 files avoid naming it, and
+the property is asserted by the Layer 0 allowlist, which excludes by omission. The cost
+is recorded in the evidence document.
+
+`integrations/` remains outside AI-02's guard roots, exactly as AI-09 contract §10.4
+recorded; AI-09's own Layer 0 check closes it.
 ```
 
 ### What AI-09-A froze
