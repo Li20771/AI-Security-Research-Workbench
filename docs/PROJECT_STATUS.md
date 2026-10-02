@@ -77,10 +77,12 @@ AI-09       = NOT CLOSED
 base        = main @ edb7dfc82ce51123482ac357fb9319dca2fa0d9a
 branch      = feature/ai-09-provider-codex-contract
 contract    = docs/AI-09_CODEX_PROVIDER_EXECUTION_PLAN.md
-contract blob = d974c7b62d44210be36c41a105800697a96620ec
-                     Amendment 1 applied 2026-10-02
-previous blob = 66978cbd685f408ea37dd70e9f0b1e364e2e2955
-                     the AI-09-A freeze, before Amendment 1
+contract blob = e9728b184740074e5c8f718db6b45f859c3802bf
+                     Amendment 2 applied 2026-10-02
+previous blob = d974c7b62d44210be36c41a105800697a96620ec
+                     after Amendment 1
+earlier blob  = 66978cbd685f408ea37dd70e9f0b1e364e2e2955
+                     the AI-09-A freeze, before any amendment
 
 provider    = mimo — the existing profile; NO third provider identity
 models      = mimo/mimo-v2.6-pro, mimo/mimo-v2.6-flash   (no default, no fallback)
@@ -1104,10 +1106,12 @@ AI-09       = NOT CLOSED
 base        = main @ edb7dfc82ce51123482ac357fb9319dca2fa0d9a
 branch      = feature/ai-09-provider-codex-contract
 contract    = docs/AI-09_CODEX_PROVIDER_EXECUTION_PLAN.md
-contract blob = d974c7b62d44210be36c41a105800697a96620ec
-                     Amendment 1 applied 2026-10-02
-previous blob = 66978cbd685f408ea37dd70e9f0b1e364e2e2955
-                     the AI-09-A freeze, before Amendment 1
+contract blob = e9728b184740074e5c8f718db6b45f859c3802bf
+                     Amendment 2 applied 2026-10-02
+previous blob = d974c7b62d44210be36c41a105800697a96620ec
+                     after Amendment 1
+earlier blob  = 66978cbd685f408ea37dd70e9f0b1e364e2e2955
+                     the AI-09-A freeze, before any amendment
 ```
 
 ### What AI-09-A froze
@@ -1119,27 +1123,36 @@ models          mimo/mimo-v2.6-pro, mimo/mimo-v2.6-flash — no default, no fall
                 no derivation from AgentId, display_name or free-form string
 enablement      runtime `providers.mimo.enabled == true` is REQUIRED, checked at construction
                 from AI-02's ProviderConfig; profile existence != runtime enablement; a
-                reserved provider is never enabled; the example config is a template
+                reserved provider is never enabled; the example config is a template.
+                Enablement is ADDED, not substituted — it never replaces or relaxes
+                Invoker's provider/model/capability checks, and `CodexBackend -> direct
+                HttpTransport` is forbidden
 protocol        openai_compatible_chat — no second protocol, no second adapter
 invocation      providers.invocation.Invoker is the ONLY path; no second invocation API
 backend         integrations/codex/ — a new core namespace layer; AI-09-B creates it
 router          AI-07 unchanged; no execution coupling; `selected` is not auto-injected;
                 `agent_hint` stays a hint
-context         NO context egress. The full ContextResponse and every context item stay
-                in-process. The whole projection is `request.task` -> exactly one provider
-                user message; no workspace or execution metadata, no generated system prompt
+context         NO context egress, in TWO governed layers. Layer A (content) admits exactly
+                one thing: `request.task` as one provider user message. Layer B admits the
+                protocol's own structural control fields (`model`, messages envelope,
+                `tools`, `response_format`, `stream`, generation controls, fixed headers).
+                Neither layer admits workbench execution or context state
 credential      env: only, via the existing resolver; no new scheme, no literal, ever
 capability      UNKNOWN != AVAILABLE; no promotion, no bypass, no new probe. Three test
                 layers (adapter / offline normalization / live observation) never merge, and
                 an offline tool-call test goes at the adapter boundary — it never fabricates
                 a VERIFIED model to get through the gate
-tool calling    compatibility only (schema in, normalized call out); NO model-driven tool loop
-structured      json_object at minimum; never equated with json_schema
+tool calling    compatibility only (schema in, normalized call out); the probe never executes
+                the returned call, triggers no AI-06 invocation, and has no continuation
+                loop; NO model-driven tool loop
+structured      json_object at minimum; `response_format` is a Layer B protocol field,
+                never context; never equated with json_schema
 timeout         always bounded; request deadline tightens, never widens
 retry           max_retries = 0; attempts == 1; retry stays AI-13's
 output          AgentResult unchanged; no raw output; NO durable model-output store.
                 The reference is one form — `sha256:<64 lowercase hex>` over a canonical
-                digest input — and it locates no artifact
+                digest input (UTF-8; ensure_ascii=false; sort_keys=true;
+                separators=(",", ":")) — and it locates no artifact
 evidence        "AI-09 evidence record" means a `docs/AI-09_*` phase record, NOT an AI-05
                 `plugins/evidence` EvidenceRecord; plugins/evidence/** is not modified
 ```
