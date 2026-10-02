@@ -1792,6 +1792,374 @@ def check_ai09_integration_layer() -> list[str]:
     return problems
 
 
+# --------------------------------------------------------------------------
+# AI-10 — the review layer (contract §16, §17, §18)
+# --------------------------------------------------------------------------
+
+#: AI-10 §16: review/ reads agents/ and AI-06's public surface, and reaches
+#: nothing else. `providers` is first for the second half of the claim — a
+#: review layer with a model path could generate the content it is supposed to
+#: compare — and `routing`, `tools`, `plugins.guard` and `plugins.evidence` are
+#: excluded by the same rule. The filesystem modules are here because review/
+#: persists nothing: no store, no archive, no log of material content.
+AI10_FORBIDDEN_IMPORTS = (
+    "providers",
+    "routing",
+    "tools",
+    "socket",
+    "http",
+    "urllib",
+    "urllib3",
+    "requests",
+    "httpx",
+    "aiohttp",
+    "ftplib",
+    "smtplib",
+    "telnetlib",
+    "ssl",
+    "asyncio",
+    "multiprocessing",
+    "subprocess",
+    "shutil",
+    "os",
+    "pathlib",
+    "io",
+    "tempfile",
+    "sqlite3",
+    "random",
+)
+
+#: The only plugin packages review/ may reach — an **allowlist**, not a denylist.
+#: `plugins.guard` and `plugins.evidence` are unreachable by omission, which is
+#: stronger than naming them: a module nobody thought to list cannot be reached
+#: either. AI-06's public vocabulary is what a review observation is allowed to
+#: name; the invocation itself belongs to the controlled verification caller.
+AI10_ALLOWED_PLUGIN_IMPORTS = (
+    "plugins.security_tools",
+    "plugins.context",
+)
+
+#: Names that would mean the layer had taken over a job that is not its own:
+#: resolving a credential, authorizing, composing a tool request.
+AI10_FORBIDDEN_NAMES = (
+    "CredentialRef",
+    "SecretValue",
+    "environ",
+    "getenv",
+    "evaluator",
+    "policy",
+    "registry",
+    "ToolRequest",
+)
+
+AI10_FORBIDDEN_BUILTINS = ("eval", "exec", "compile", "__import__", "open")
+
+AI10_FORBIDDEN_LITERALS = (
+    "SecurityLab/",
+    "Li20771/SecurityLab",
+    "/mnt/d/SecurityLab",
+)
+
+#: Verdict tokens that must never appear as an identifier or a literal in
+#: review/. A review layer that can spell one can eventually be asked to
+#: produce one, and AI-00 §13 forbids exactly that.
+AI10_FORBIDDEN_TOKENS = (
+    "PASS",
+    "FAIL",
+    "CORRECT",
+    "INCORRECT",
+    "VERIFIED",
+    "WINNER",
+    "BEST_AGENT",
+    "HIGHER_CONFIDENCE",
+    "CONFIDENCE",
+    "PROBABILITY",
+    "SCORE",
+    "RANK",
+)
+
+
+def check_ai10_review_layer() -> list[str]:
+    """AI-10 §16, §17, §18: the review layer, as a gate.
+
+    ```text
+    identity     what review/ is -- a core layer, not a plugin, not a fifth one
+    structural   what review/ may reach -- no provider, no router, no tool
+                 adapter, no Guard, no Evidence, no network, no process, no
+                 filesystem, no credential, and no verdict vocabulary
+    one-way      neither agents/ nor providers/ nor routing/ nor integrations/
+                 may depend on it
+    behavioural  the three frozen vocabularies are exactly their frozen sizes,
+                 and no record type carries a forbidden field
+    ```
+
+    What it must never become is a check that passes because there is nothing to
+    check: the non-vacuity is proven by the test suite, which runs this function
+    against a scratch tree carrying each violation in turn.
+    """
+    import ast
+
+    problems: list[str] = []
+
+    review = ROOT / "review"
+    if not review.is_dir():
+        return [
+            "review/ is absent; AI-10's declared home does not exist (contract §17)"
+        ]
+
+    # (1) Identity: a core layer, and not a fifth plugin (§17).
+    for forbidden in (
+        "plugins/review",
+        "agents/review",
+        "routing/review",
+        "integrations/review",
+    ):
+        if (ROOT / forbidden).exists():
+            problems.append(
+                f"{forbidden} exists; AI-10 is a Workbench core service under "
+                "review/, not a plugin layer and not a subpackage of another "
+                "layer (contract §17)"
+            )
+    if (review / "__init__.py").exists():
+        problems.append(
+            "review/__init__.py exists; review/ is a core-layer directory reached "
+            "as a namespace package, exactly as routing/, agents/ and "
+            "integrations/ are (contract §17)"
+        )
+
+    # (2) Structural: what review/ may reach, and what it may say.
+    for path in sorted(review.rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        except SyntaxError as exc:  # pragma: no cover - surfaced as a failure
+            problems.append(f"{_display(path)} does not parse: {exc}")
+            continue
+
+        imported: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imported.add(node.module)
+
+        for name in sorted(imported):
+            root = name.split(".")[0]
+            if root in AI10_FORBIDDEN_IMPORTS:
+                problems.append(
+                    f"{_display(path)} imports {name!r}; AI-10 reaches the "
+                    "Agent layer read-only and executes nothing of its own "
+                    "(contract §16)"
+                )
+            elif root == "plugins" and not _matches_prefix(
+                name, AI10_ALLOWED_PLUGIN_IMPORTS
+            ):
+                problems.append(
+                    f"{_display(path)} imports {name!r}; only AI-06's public "
+                    "surface and AI-03's read-only context layer are reachable "
+                    "from review/, and Guard is not (contract §16)"
+                )
+
+        names: set[str] = set()
+        literals: list[str] = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Name):
+                names.add(node.id)
+            elif isinstance(node, ast.Attribute):
+                names.add(node.attr)
+            elif isinstance(node, ast.arg):
+                names.add(node.arg)
+            elif isinstance(node, (ast.ClassDef, ast.FunctionDef)):
+                names.add(node.name)
+            elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+                literals.append(node.value)
+            elif isinstance(node, ast.Call):
+                for keyword in node.keywords:
+                    if keyword.arg == "shell":
+                        problems.append(
+                            f"{_display(path)}:{node.lineno} passes a `shell` "
+                            "keyword; the review layer starts no process (§15)"
+                        )
+                if (
+                    isinstance(node.func, ast.Name)
+                    and node.func.id in AI10_FORBIDDEN_BUILTINS
+                ):
+                    problems.append(
+                        f"{_display(path)}:{node.lineno} calls {node.func.id}()"
+                    )
+
+        for name in AI10_FORBIDDEN_NAMES:
+            if name in names:
+                problems.append(
+                    f"{_display(path)} names {name!r}; AI-10 holds no policy, no "
+                    "evaluator, no registry and no credential, and composes no "
+                    "ToolRequest (contract §11.2, §16)"
+                )
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef) and node.name.endswith(
+                ("Adapter", "Transport")
+            ):
+                problems.append(
+                    f"{_display(path)}:{node.lineno} defines {node.name}; AI-10 "
+                    "implements no adapter and no transport (contract §16)"
+                )
+
+        source = path.read_text(encoding="utf-8")
+        for needle in AI10_FORBIDDEN_LITERALS:
+            if needle in source:
+                problems.append(f"{_display(path)} names {needle!r}")
+
+        for token in AI10_FORBIDDEN_TOKENS:
+            if any(token in name for name in names) or any(
+                token in literal for literal in literals
+            ):
+                problems.append(
+                    f"{_display(path)} spells {token!r}; a finding is a structural "
+                    "observation and the review layer produces no verdict "
+                    "(contract §9.5)"
+                )
+
+    # (3) One-way: the dependency runs into review/, never out of it.
+    for owner, label in (
+        (ROOT / "agents", "Agent"),
+        (ROOT / "providers", "provider"),
+        (ROOT / "routing", "routing"),
+        (ROOT / "integrations", "integration"),
+    ):
+        if not owner.is_dir():
+            continue
+        for path in sorted(owner.rglob("*.py")):
+            if "__pycache__" in path.parts:
+                continue
+            try:
+                tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            except SyntaxError:  # pragma: no cover - other checks report this
+                continue
+            for node in ast.walk(tree):
+                module = None
+                if isinstance(node, ast.ImportFrom) and node.module:
+                    module = node.module
+                elif isinstance(node, ast.Import):
+                    for alias in node.names:
+                        if alias.name == "review" or alias.name.startswith("review."):
+                            module = alias.name
+                if module and (module == "review" or module.startswith("review.")):
+                    problems.append(
+                        f"{_display(path)} imports {module!r}; the {label} layer "
+                        "must not depend on the review layer (contract §16)"
+                    )
+
+    # (4) Behavioural: the frozen vocabularies, and the fields that must not exist.
+    try:
+        import dataclasses as _dataclasses
+
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+
+        from review.case import ReviewCase
+        from review.claim import ReviewClaim
+        from review.decision import HumanDecision
+        from review.finding import ReviewFinding
+        from review.material import ReviewMaterial
+        from review.vocabulary import (
+            FORBIDDEN_CLAIM_FIELDS,
+            FORBIDDEN_MATERIAL_FIELDS,
+            HumanDecisionKind,
+            IndependenceObservationStatus,
+            ReviewCaseState,
+            ReviewFindingKind,
+        )
+
+        expected_states = [
+            "BLOCKED",
+            "CLOSED",
+            "COMPARISON_RECORDED",
+            "CREATED",
+            "HUMAN_DECISION_RECORDED",
+            "INDEPENDENCE_OBSERVED",
+            "MATERIALS_SUPPLIED",
+            "NOT_RUN",
+            "UNRESOLVED",
+            "VERIFICATION_OBSERVED",
+            "VERIFICATION_REQUESTED",
+        ]
+        if sorted(member.value for member in ReviewCaseState) != expected_states:
+            problems.append(
+                "ReviewCaseState is "
+                f"{sorted(member.value for member in ReviewCaseState)}; contract "
+                "§5.2 closes it at exactly eleven members"
+            )
+
+        expected_findings = [
+            "CLAIM_OVERLAP",
+            "CLAIM_UNIQUE_TO_LEFT",
+            "CLAIM_UNIQUE_TO_RIGHT",
+            "EVIDENCE_REFERENCE_DIFFERENCE",
+            "IDENTICAL_MATERIAL",
+            "MATERIAL_DIFFERENCE",
+            "UNRESOLVED",
+            "VERIFICATION_REQUIRED",
+        ]
+        if sorted(member.value for member in ReviewFindingKind) != expected_findings:
+            problems.append(
+                "ReviewFindingKind is "
+                f"{sorted(member.value for member in ReviewFindingKind)}; contract "
+                "§9.2 closes it at exactly eight structural observations"
+            )
+
+        expected_decisions = ["ACCEPTED", "DEFERRED", "REJECTED"]
+        if sorted(member.value for member in HumanDecisionKind) != expected_decisions:
+            problems.append(
+                "HumanDecisionKind is "
+                f"{sorted(member.value for member in HumanDecisionKind)}; contract "
+                "§12.2 closes it at exactly three members"
+            )
+
+        expected_status = ["NOT_APPLICABLE", "OBSERVED", "UNCHECKED"]
+        if sorted(member.value for member in IndependenceObservationStatus) != expected_status:
+            problems.append(
+                "IndependenceObservationStatus is "
+                f"{sorted(member.value for member in IndependenceObservationStatus)}; "
+                "contract §5.4 closes it at exactly three members, and no member may "
+                "describe a pair as independent, non-independent or failed"
+            )
+        if {member.value for member in IndependenceObservationStatus} & {
+            member.value for member in ReviewCaseState
+        }:
+            problems.append(
+                "IndependenceObservationStatus and ReviewCaseState share a member; "
+                "§5.4 makes them two orthogonal axes, and neither may absorb the other"
+            )
+
+        case_fields = {field.name for field in _dataclasses.fields(ReviewCase)}
+        if "independence_status" not in case_fields:
+            problems.append(
+                "ReviewCase has no `independence_status`; §5.1 requires it, and §6.4 "
+                "requires the case to record UNCHECKED when no ExecutionRecord is "
+                "supplied"
+            )
+
+        forbidden_fields = FORBIDDEN_CLAIM_FIELDS | FORBIDDEN_MATERIAL_FIELDS
+        for record in (ReviewMaterial, ReviewClaim, ReviewFinding, HumanDecision):
+            fields = {field.name for field in _dataclasses.fields(record)}
+            hits = sorted(
+                name
+                for name in fields
+                if name in forbidden_fields or name.startswith("recommended")
+            )
+            if hits:
+                problems.append(
+                    f"{record.__name__} carries {hits}; a review record has no "
+                    "confidence, no rank and no recommendation (contract §7.3)"
+                )
+    except Exception as exc:  # noqa: BLE001 - surfaced as a failure
+        problems.append(f"review/ could not be imported: {exc}")
+
+    return problems
+
+
 def _matches_prefix(name: str, allowed: tuple[str, ...]) -> bool:
     """Whether `name` is one of `allowed`, or a submodule of one."""
     return any(name == entry or name.startswith(entry + ".") for entry in allowed)
@@ -1888,6 +2256,10 @@ def main() -> int:
     report.check(
         "integration layer composition boundary",
         check_ai09_integration_layer(),
+    )
+    report.check(
+        "review layer core-service boundary",
+        check_ai10_review_layer(),
     )
 
     if report.failures:
