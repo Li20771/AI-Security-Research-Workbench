@@ -664,33 +664,57 @@ def test_R2_the_generated_artifacts_that_need_builders_have_them() -> None:
             assert key in GENERATED_BUILDERS, f"{key} has no builder"
 
 
-def test_R3_the_yara_task_declares_held_out_names_with_no_material() -> None:
-    """RECORDED GAP, not a passing property.
+def test_R3_the_yara_held_out_corpus_exists_and_is_independent() -> None:
+    """The A.3 gap is CLOSED, and closed with genuinely independent material.
 
-    §A.3 requires the rule to be judged against held-out samples. The task's truth
-    names four of them. **No held-out material exists anywhere**: the corpus ships
-    `known_good.json` / `known_bad.json` describing the expected MATCH RESULTS, but
-    nothing that could produce those results.
+    An earlier revision declared four held-out names and shipped no material for them,
+    so A.3's held-out judgement could not execute. The corpus now carries the files.
 
-    This is asserted rather than described so that the gap cannot be closed silently —
-    in particular it MUST NOT be closed by renaming the visible SecurityLab samples as
-    held-out, which would be redefining the control to make the task pass.
-
-    Resolution is an authoring task for AI-11-C or an amendment; it is NOT a change to
-    this test.
+    The second half is the part that matters: the negatives must be DECOYS, not blank
+    files. Each carries exactly one ECU indicator, so a rule matching a single weak
+    string false-positives and is caught. And none of the four is a rename of a visible
+    SecurityLab sample — a held-out sample that is a copy of a visible one measures
+    nothing.
     """
     import json
 
-    truth = json.loads(
-        (CORPUS_ROOT / "ai11-v1-yara-rule-author" / "control" / "truth.json").read_text("utf-8")
-    )
-    held_out = [name for name in truth["expected"] if name.startswith("holdout_")]
-    assert held_out, "the truth no longer names held-out samples; A.3 requires them"
-
     task_dir = CORPUS_ROOT / "ai11-v1-yara-rule-author"
-    present = {p.name for p in task_dir.rglob("*") if p.is_file()}
-    missing = [name for name in held_out if f"{name}.txt" not in present]
-    assert missing == held_out, (
-        "held-out material now exists in the corpus; if that is deliberate, this test "
-        "and the A.3 gap note must be updated together"
-    )
+    truth = json.loads((task_dir / "control" / "truth.json").read_text("utf-8"))
+    samples = truth["samples"]
+    assert sorted(samples) == [
+        "holdout_negative_benign", "holdout_negative_clean",
+        "holdout_positive_beacon", "holdout_positive_ecu",
+    ]
+
+    contents = {}
+    for key, spec in samples.items():
+        path = task_dir / "control" / spec["file"]
+        assert path.is_file(), f"{key} declares {spec['file']} and it does not exist"
+        contents[key] = path.read_text("utf-8")
+
+    # Not renames of the visible samples.
+    visible = {
+        "beacon": "SYNMALWARE_C2_BEACON callback=60 user=admin",
+        "clean": "nothing malicious here, just benign text",
+    }
+    for key, text in contents.items():
+        for name, marker in visible.items():
+            assert marker not in text, (
+                f"{key} contains verbatim content from the visible {name} sample; "
+                "held-out material must be independent, not a rename"
+            )
+
+    # The negatives are decoys: exactly one ECU indicator each, so "2 of them" holds.
+    ecu_indicators = ("AFL", "SYN-ECU", "UDS 0x10/0x11/0x22/0x27")
+    for key in ("holdout_negative_benign", "holdout_negative_clean"):
+        hits = sum(1 for indicator in ecu_indicators if indicator in contents[key])
+        assert hits == 1, (
+            f"{key} carries {hits} ECU indicators; a negative must carry exactly one so "
+            "that a rule matching a single weak string is caught"
+        )
+        assert "SYNMALWARE_C2_BEACON" not in contents[key]
+        assert "syn-c2.invalid" not in contents[key]
+
+    # The positives carry enough to match.
+    assert "SYNMALWARE_C2_BEACON" in contents["holdout_positive_beacon"]
+    assert sum(1 for i in ecu_indicators if i in contents["holdout_positive_ecu"]) >= 2

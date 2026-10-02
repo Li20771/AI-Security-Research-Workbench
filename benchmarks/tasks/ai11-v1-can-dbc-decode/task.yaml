@@ -72,7 +72,7 @@ oracle:
   # The command a person runs to re-derive this oracle's verdict. It is the same
   # entry point the harness uses, so a recorded command is a runnable one.
   reproduce_command: >-
-    python3 -m benchmarks.replay ai11-v1-can-dbc-decode --variant known_good
+    python3 -m benchmarks.replay ai11-v1-can-dbc-decode --variant known_good --source "$AI11_SOURCE_ROOT"
   expected_negative:
     known_good: control/known_good.json
     known_bad: control/known_bad.json
@@ -87,7 +87,7 @@ regression_conditions:
   - condition_id: factor-offset-transposition
     kind: FROZEN_DEFINITION
     reproduce_command: >-
-      python3 -m benchmarks.replay ai11-v1-can-dbc-decode --variant known_bad
+      python3 -m benchmarks.replay ai11-v1-can-dbc-decode --variant known_bad --source "$AI11_SOURCE_ROOT"
     required: true
 
 security_constraints:

@@ -1,25 +1,32 @@
-"""AI-11 §7.3, §15 — the reproduction entry point for the in-process oracles.
+"""AI-11 §7.3, §15, §20.4 — the reproduction entry point.
 
 ```text
-python3 -m benchmarks.replay <task_id> [--variant known_good|known_bad] [--corpus DIR]
+python3 -m benchmarks.replay <task_id> --source <securitylab-root> [--variant ...]
 ```
 
 Every task's `oracle.reproduce_command` names this module, so the command recorded in
-the corpus is the command a person actually runs. A `reproduce_command` that no one can
-run is a comment.
+the corpus is the command a person actually runs.
 
-### Why it speaks the process protocol
+### It runs the WHOLE lifecycle
 
-It prints the same `AI11-ORACLE:` line an out-of-process oracle prints, and it exits 0
-when it produced a record. That is not decoration: it means the in-process judges and
-the process judges travel through one protocol, and a test can drive either through
-`run_oracle_command` without a second parser existing for the second kind.
+```text
+source_sha check -> derive_source_tree -> prepare_workspace -> executor -> oracle
+```
+
+An earlier revision stopped at the executor and read the control fixtures directly. That
+made the workspace layer a component with no caller: `prepare_workspace()` could have
+been deleted and nothing would have noticed. Now a run that does not derive a workspace
+does not happen, and `--source` is what makes the derivation possible.
+
+`--source` is REQUIRED. Without a source repository there is no pinned revision to
+derive from, and the honest answer is a `BLOCKED` record — not a shortcut that reads the
+answer from the corpus.
 
 ### It is the REFERENCE path, and it says so
 
-`--variant` selects the declared control submission, and the run is a REFERENCE run.
-It measures no model. Its purpose is the one §20.4 states: prove the task is solvable,
-prove the oracle discriminates, and show the harness is deterministic.
+The run it produces is `executor_kind = REFERENCE` with `agent_id = null`. It measures
+no model. Its purpose is the one §20.4 states: prove the task is solvable, prove the
+oracle discriminates, and show the harness is deterministic.
 """
 
 from __future__ import annotations
@@ -27,68 +34,78 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import tempfile
 from pathlib import Path
 from typing import Sequence
 
 from benchmarks.errors import BenchmarkError
-from benchmarks.executor import ReferenceExecutor, ReferenceVariant
-from benchmarks.oracle import ORACLE_RECORD_SENTINEL, judge_observation, OracleProcessOutcome
-from benchmarks.oracles import judge_submission
+from benchmarks.executor import ReferenceVariant
+from benchmarks.oracle import ORACLE_RECORD_SENTINEL
+from benchmarks.runner import execute_task
 from benchmarks.task import load_task
 
-__all__ = ["DEFAULT_CORPUS", "build_record", "main"]
+__all__ = ["DEFAULT_CORPUS", "main", "run_task_record"]
 
 #: The tracked corpus. Relative to this file, so the entry point works from any cwd.
 DEFAULT_CORPUS = Path(__file__).resolve().parent / "tasks"
 
 
-def build_record(task_id: str, variant: ReferenceVariant, corpus_root: Path) -> dict:
-    """Run one reference task and return the oracle record as a mapping.
+def run_task_record(
+    task_id: str,
+    *,
+    source_root: str | Path,
+    corpus_root: Path,
+    variant: ReferenceVariant,
+    scratch_root: str | Path | None = None,
+    run_id: str | None = None,
+) -> dict:
+    """Run one reference task through the lifecycle and return its oracle record."""
+    task = load_task(corpus_root / task_id / "task.yaml")
+    scratch = Path(scratch_root) if scratch_root is not None else Path(tempfile.gettempdir()) / "ai11-bench"
 
-    The record is built by `judge_observation` rather than assembled here, so the
-    in-process path is judged by the SAME skip-aware rule as the process path. A second
-    assembly site is a second place for the rule to be forgotten.
-    """
-    task_dir = corpus_root / task_id
-    task = load_task(task_dir / "task.yaml")
+    outcome = execute_task(
+        task=task,
+        corpus_root=corpus_root,
+        source_root=source_root,
+        scratch_root=scratch,
+        run_id=run_id,
+        variant=variant,
+    )
 
-    executor = ReferenceExecutor(task, corpus_root)
-    submission = executor.produce(variant)
-    truth = executor.truth()
-
-    judgement = judge_submission(task.oracle.oracle_id, submission.payload, truth)
-
-    # Through the rule, not around it: the judgement's counts and verdict are re-entered
-    # as if they had arrived from a process, so §11 is applied exactly once and in one
-    # place for both paths.
+    run = outcome.run
+    first = run.oracle_results[0] if run.oracle_results else {}
     record = {
-        "oracle_id": task.oracle.oracle_id,
-        "verdict": str(judgement.verdict),
-        "reason_code": judgement.reason_code,
-        "skip_class": "NONE",
-        **judgement.tests.to_mapping(),
-    }
-
-    verdict, counts, reason = judge_observation(record, OracleProcessOutcome(exit_code=0))
-    return {
-        "oracle_id": task.oracle.oracle_id,
         "task_id": task.task_id,
-        "variant": str(variant.value),
-        "verdict": str(verdict),
-        "reason_code": reason,
-        **counts.to_mapping(),
+        "variant": variant.value,
+        "oracle_id": task.oracle.oracle_id,
+        "verdict": str(run.task_status),
+        "reason_code": first.get("reason_code", ""),
+        "executor_kind": str(run.executor_kind),
+        "agent_id": run.agent_id,
+        "manifest_digest": run.workspace_identity.get("manifest_digest", ""),
+        "limitations": list(run.limitations),
+        **run.tests.to_mapping(),
     }
+    return record
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="python3 -m benchmarks.replay",
         description=(
-            "Run one corpus task against the REFERENCE executor and report the oracle "
-            "verdict. Not a model measurement."
+            "Run one corpus task through the full benchmark lifecycle against the "
+            "REFERENCE executor and report the oracle verdict. Not a model measurement."
         ),
     )
     parser.add_argument("task_id", help="a corpus task id, e.g. ai11-v1-can-dbc-decode")
+    parser.add_argument(
+        "--source",
+        required=True,
+        help=(
+            "path to the pinned source repository (SecurityLab). Required: without it "
+            "there is no revision to derive a workspace from, and the run is BLOCKED"
+        ),
+    )
     parser.add_argument(
         "--variant",
         choices=[v.value for v in ReferenceVariant],
@@ -96,13 +113,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="which declared control submission to run",
     )
     parser.add_argument("--corpus", default=str(DEFAULT_CORPUS), help="the corpus root")
+    parser.add_argument("--scratch", default=None, help="scratch root for the derivation")
     args = parser.parse_args(argv)
 
     try:
-        record = build_record(args.task_id, ReferenceVariant(args.variant), Path(args.corpus))
+        record = run_task_record(
+            args.task_id,
+            source_root=args.source,
+            corpus_root=Path(args.corpus),
+            variant=ReferenceVariant(args.variant),
+            scratch_root=args.scratch,
+        )
     except BenchmarkError as exc:
-        # A refusal is reported as a refusal, with its reason code, and the exit status
-        # is non-zero so a caller cannot mistake it for a verdict.
         print(f"{type(exc).__name__}: {exc}", file=sys.stderr)
         return 1
 

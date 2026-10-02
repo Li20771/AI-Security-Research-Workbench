@@ -73,6 +73,11 @@ from pathlib import Path
 from typing import Callable, Mapping, Protocol, Sequence
 
 from benchmarks.errors import WorkspaceDerivationError
+from benchmarks.paths import (
+    has_glob,
+    resolve_within,
+    validate_exclude_pattern,
+)
 
 __all__ = [
     "GENERATED_BUILDERS",
@@ -396,13 +401,22 @@ def verify_exclusions(root: str | Path, exclude: Sequence[str]) -> None:
     the agent-visible tree has produced a measurement that means nothing, and it has
     already spent whatever it cost to produce it.
     """
-    base = Path(root)
+    base = Path(root).resolve()
     present: list[str] = []
-    for pattern in exclude:
-        matches = list(base.glob(pattern)) if any(ch in pattern for ch in "*?[") else []
-        if not matches and (base / pattern).exists():
-            matches = [base / pattern]
-        present.extend(str(match.relative_to(base)) for match in matches)
+    for raw in exclude:
+        pattern = validate_exclude_pattern(raw, where="exclude entry")
+        matches = list(base.glob(pattern)) if has_glob(pattern) else []
+        if not matches:
+            # Resolved, so a literal entry that leaves the tree is refused here rather
+            # than compared as a string. `..` is already refused by the validator; this
+            # catches a symlinked intermediate directory.
+            candidate = resolve_within(base, pattern, where="exclude entry")
+            if candidate.exists():
+                matches = [candidate]
+        present.extend(
+            str(match.relative_to(base)) if match.is_relative_to(base) else str(match)
+            for match in matches
+        )
 
     if present:
         raise WorkspaceDerivationError(
@@ -445,7 +459,7 @@ def export_path(source: Path, workspace: Path, relative: str) -> list[str]:
         )
 
     if source.is_file():
-        _copy_file(source, workspace / relative)
+        _copy_file(source, resolve_within(workspace, relative, where=f"export {relative!r}"))
         return [relative]
 
     if not source.is_dir():
@@ -457,7 +471,11 @@ def export_path(source: Path, workspace: Path, relative: str) -> list[str]:
         for name in sorted(filenames):
             child = Path(dirpath) / name
             child_rel = child.relative_to(source).as_posix()
-            export_path(child, workspace / relative, child_rel)
+            export_path(
+                child,
+                resolve_within(workspace, relative, where=f"export {relative!r}"),
+                child_rel,
+            )
             exported.append(f"{relative}/{child_rel}")
     return exported
 
@@ -483,8 +501,10 @@ def _resolve_include(
                 f"include entry {relative!r} is task material and no task material root "
                 "was supplied"
             )
-        return task_material_root / relative
-    return source_root / relative
+        return resolve_within(
+            task_material_root, relative, where=f"include entry {relative!r}"
+        )
+    return resolve_within(source_root, relative, where=f"include entry {relative!r}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -575,7 +595,10 @@ def prepare_workspace(
                 f"the builder for {task_id}:{relative} returned {built}, which does not "
                 "exist; a declared generated artifact that nothing produced is refused"
             )
-        _copy_file(built, workspace / relative)
+        destination = resolve_within(
+            workspace, relative, where=f"generated artifact {relative!r}"
+        )
+        _copy_file(built, destination)
         generated.append(relative)
 
     # (3) VERIFY. Before the Agent reads anything.

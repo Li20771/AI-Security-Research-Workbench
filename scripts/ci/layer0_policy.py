@@ -2298,10 +2298,14 @@ def check_ai11_benchmark_layer(root: "Path | None" = None) -> list[str]:
                     "(contract 21.2)"
                 )
 
-        if "subprocess" in imports and rel != "benchmarks/workspace.py":
+        if "subprocess" in imports and rel not in (
+            "benchmarks/workspace.py",
+            "benchmarks/runner.py",
+        ):
             problems.append(
-                f"{rel} imports subprocess; only benchmarks/workspace.py may spawn a "
-                "process, and it does so for git only (contract 19)"
+                f"{rel} imports subprocess; only benchmarks/workspace.py (git) and "
+                "benchmarks/runner.py (declared oracle tools) may spawn a process "
+                "(contract 19)"
             )
 
     # (3) The corpus (7.4, 17, 19). Validated through the REAL loader, in a subprocess

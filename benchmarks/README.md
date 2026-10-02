@@ -51,7 +51,9 @@ benchmarks/results/    run data. GITIGNORED and disposable by default
 | `task.py` | `TaskDefinition` — what a task IS. It never holds a result |
 | `run.py` | `BenchmarkRun`, `TestCounts`, `ToolTraceEntry`, `HostRecord` |
 | `oracle.py` | the oracle protocol, the §11 skip-aware PASS rule, the aggregates |
-| `oracles.py` | the corpus judges. Pure decisions, so §7.4 is testable without tools |
+| `oracles.py` | the corpus oracles: COLLECT (may run a tool, may be BLOCKED) then JUDGE |
+| `paths.py` | declared-path validation. Resolved containment, never string prefixes |
+| `runner.py` | the lifecycle: derive → prepare → execute → oracle → BenchmarkRun |
 | `workspace.py` | source derivation, the FILTERED agent-visible tree, the manifest digest, and the read-only rule |
 | `executor.py` | the deterministic **non-model** reference executor |
 | `replay.py` | `python3 -m benchmarks.replay <task_id>` — the reproduction entry point |
@@ -94,6 +96,29 @@ Only `workspace/` is handed to an executor, and it holds exactly: declared inclu
 material, declared task material (`task/...`), and declared generated artifacts.
 `control/`, the oracle's truth, the withheld sources and the rest of the source tree are
 not in it.
+
+Every path in `include`, `exclude` and `generated` is validated before it is used:
+absolute paths, drive letters, UNC paths and `..` segments are refused, and containment
+is decided by `Path.resolve()` + `relative_to` rather than by a string prefix —
+`/scratch/ws-evil` shares a prefix with `/scratch/ws` and is not inside it.
+
+## Collection, and why the oracle is not a JSON comparison
+
+```text
+submission -> COLLECT -> observation -> JUDGE -> counts -> apply_pass_rule
+                |                                        |
+          may need a tool                          §11 decides
+          may be BLOCKED
+```
+
+For `ai11-v1-yara-rule-author` the oracle really executes: the submitted rule is run
+against the held-out samples under `control/` by the `yara` binary, and the matches the
+SCANNER reported are the observation. `truth.json` says what they should be; it is never
+itself the observation. A `yara` that is absent is BLOCKED, never FAIL.
+
+`benchmarks.replay` runs the whole lifecycle and `--source` is required: without a source
+repository there is no revision to derive from, so the run is BLOCKED rather than a
+shortcut that reads the answer out of the corpus.
 
 ## What it does not do, and will not
 

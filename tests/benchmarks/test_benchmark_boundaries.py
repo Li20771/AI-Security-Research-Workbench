@@ -140,17 +140,18 @@ def test_T8_the_only_ai08_import_is_the_identity_boundary() -> None:
 
 
 def test_T9_subprocess_is_confined_to_the_workspace_module() -> None:
-    """Five benchmark modules must not be able to start a process.
+    """Two modules may start a process, and the list is closed.
 
-    `workspace.py` spawns git, and that is the whole list. If a second module grows a
-    subprocess, the AI-06 adapter path has been bypassed and the Guard boundary with it.
+    `workspace.py` spawns git; `runner.py` spawns the oracle's declared tool. Nothing
+    else may. A third module growing a subprocess means the AI-06 adapter path has been
+    bypassed for tool execution, and the Guard boundary with it.
     """
     importers = {
         path.relative_to(REPO_ROOT).as_posix()
         for path in _package_files()
         if "subprocess" in _imported_modules(path)
     }
-    assert importers == {"benchmarks/workspace.py"}, (
+    assert importers == {"benchmarks/workspace.py", "benchmarks/runner.py"}, (
         f"these modules import subprocess: {sorted(importers)}"
     )
 
@@ -366,7 +367,8 @@ def _scratch_layer(tmp_path: Path, *, init_file: bool = False,
         (tmp_path / "plugins" / "benchmark").mkdir(parents=True)
     if stray_subprocess:
         source = "import subprocess\n\n\ndef go():\n    return subprocess.run(['true'])\n"
-        (layer / "runner.py").write_text(source, encoding="utf-8")
+        # A module that is NOT one of the two permitted seams.
+        (layer / "stray_process.py").write_text(source, encoding="utf-8")
     return tmp_path
 
 

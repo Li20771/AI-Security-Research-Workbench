@@ -15,9 +15,10 @@ from pathlib import Path
 import pytest
 
 from benchmarks.executor import ReferenceExecutor, ReferenceVariant
-from benchmarks.oracles import JUDGES, judge_submission
+from benchmarks.oracles import JUDGES, evaluate_submission, judge_submission
 from benchmarks.task import load_corpus
 from benchmarks.vocabulary import OracleVerdict, TaskFamily
+from tests.benchmarks.conftest import StubYara
 
 pytestmark = pytest.mark.layer2
 
@@ -79,30 +80,39 @@ def test_T5_no_task_carries_a_result(tasks) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _evaluate(task, variant, runner=None):
+    """Run one task's oracle over a declared control submission."""
+    executor = ReferenceExecutor(task, CORPUS_ROOT)
+    return evaluate_submission(
+        oracle_id=task.oracle.oracle_id,
+        required=task.oracle.required,
+        submission=executor.produce(variant).payload,
+        truth=executor.truth(),
+        control_dir=executor.control,
+        runner=runner,
+    )
+
+
 def test_T6_every_known_good_submission_is_judged_pass(tasks) -> None:
+    """§20.2. Every task's correct answer passes, through the COLLECTION path.
+
+    The scanner double stands in for `yara`, which is absent on some hosts. It is a
+    double and the module says so; the real-scanner test in test_yara_oracle.py is the
+    one that settles whether the fixtures and the reference rule actually agree.
+    """
     for task in tasks:
-        executor = ReferenceExecutor(task, CORPUS_ROOT)
-        judgement = judge_submission(
-            task.oracle.oracle_id,
-            executor.produce(ReferenceVariant.KNOWN_GOOD).payload,
-            executor.truth(),
-        )
-        assert judgement.verdict is OracleVerdict.PASS, (
+        result = _evaluate(task, ReferenceVariant.KNOWN_GOOD, StubYara())
+        assert result.verdict is OracleVerdict.PASS, (
             f"{task.task_id}: the known-good submission was judged "
-            f"{judgement.verdict} ({judgement.reason_code}); an oracle that cannot pass "
-            "its own correct answer is not an oracle"
+            f"{result.verdict} ({result.reason_code}); an oracle that cannot pass its "
+            "own correct answer is not an oracle"
         )
 
 
 def test_T7_every_known_bad_submission_is_judged_non_pass(tasks) -> None:
     for task in tasks:
-        executor = ReferenceExecutor(task, CORPUS_ROOT)
-        judgement = judge_submission(
-            task.oracle.oracle_id,
-            executor.produce(ReferenceVariant.KNOWN_BAD).payload,
-            executor.truth(),
-        )
-        assert judgement.verdict is not OracleVerdict.PASS, (
+        result = _evaluate(task, ReferenceVariant.KNOWN_BAD, StubYara())
+        assert result.verdict is not OracleVerdict.PASS, (
             f"{task.task_id}: the known-bad submission was judged PASS; this oracle "
             "cannot fail and is therefore not an oracle (§7.4)"
         )
