@@ -314,8 +314,8 @@ def test_T23_run_projection_is_an_explicit_allowlist() -> None:
         "agent_id", "execution_id", "provider", "model", "model_ref", "workbench_sha",
         "source_sha", "workspace_identity", "host", "started_at", "finished_at",
         "duration_ms", "tool_trace", "tests", "git_before", "git_after", "diff_digest",
-        "oracle_results", "task_status", "regression_status", "security_boundary_status",
-        "token_usage", "cost", "limitations",
+        "oracle_results", "task_status", "regression_status", "regression_results",
+        "security_boundary_status", "token_usage", "cost", "limitations",
     }
 
 

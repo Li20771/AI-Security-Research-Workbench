@@ -153,6 +153,7 @@ def test_T9_subprocess_is_confined_to_the_workspace_module() -> None:
     }
     assert importers == {
         "benchmarks/workspace.py", "benchmarks/runner.py", "benchmarks/decoders.py",
+        "benchmarks/campaign.py",
     }, (
         f"these modules import subprocess: {sorted(importers)}"
     )
