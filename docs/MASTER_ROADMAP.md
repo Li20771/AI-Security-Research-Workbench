@@ -515,25 +515,24 @@ producer claim.
 
 ## AI-09 — Domestic Models for Codex
 
-**Status: AI-09-A CONTRACT FROZEN.** The contract is
+**Status: AI-09-B IMPLEMENTED ON BRANCH; MERGE CHECKPOINT NOT YET TAKEN.** The contract is
 [AI-09_CODEX_PROVIDER_EXECUTION_PLAN.md](AI-09_CODEX_PROVIDER_EXECUTION_PLAN.md), frozen at
-AI-09-A on `feature/ai-09-provider-codex-contract`. No implementation exists: AI-09-B has not
-started, and no provider call has been made by this phase.
+AI-09-A and unchanged by the implementation. The Codex integration layer is on
+`feature/ai-09-codex-integration`. No provider call has been made by this phase, and no
+capability is VERIFIED.
 
 ```text
 AI-09-A     = CONTRACT FROZEN      (2026-10-02)
-AI-09-B     = NOT STARTED
-AI-09       = NOT CLOSED
+AI-09-B     = IMPLEMENTED ON BRANCH, NOT MERGED
+AI-09       = NOT CLOSED           awaiting required CI and the merge checkpoint
 contract    = blob e9728b184740074e5c8f718db6b45f859c3802bf
-                     Amendment 2 applied 2026-10-02
-previous    = d974c7b62d44210be36c41a105800697a96620ec
-                     after Amendment 1
-earlier     = 66978cbd685f408ea37dd70e9f0b1e364e2e2955
-                     the AI-09-A freeze, before any amendment
+                     unchanged by AI-09-B
 provider    = mimo — the existing profile; NO third provider identity
 models      = mimo/mimo-v2.6-pro, mimo/mimo-v2.6-flash
-backend     = integrations/codex/   (AI-09-B creates it; a namespace package)
+backend     = integrations/codex/   a namespace package
 reserved    = providers/openai-compatible/ stays RESERVED / DISABLED / UNIMPLEMENTED
+evidence    = docs/AI-09_EVIDENCE_2026-10-02.md
+live        = NOT_RUN    capability = UNKNOWN    connectivity = NOT VERIFIED
 ```
 
 目标：利用 Codex 的 provider abstraction 接入其他 OpenAI-compatible API。
@@ -780,7 +779,7 @@ SecurityLab
 | AI-06 | **COMPLETE** — merged as `3b1917ab` (PR #47); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-07 | **COMPLETE** — contract `963c181c` (PR #48), implementation `e57541f9` (PR #49) merged; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-08 | **COMPLETE** — merged as `edb7dfc82ce51123482ac357fb9319dca2fa0d9a` (PR #52); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
-| AI-09 | **AI-09-A CONTRACT FROZEN** — implementation not started; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
+| AI-09 | **AI-09-A CONTRACT FROZEN**; **AI-09-B IMPLEMENTED ON BRANCH** — awaiting review; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-10 | NOT STARTED |
 | AI-11 | NOT STARTED |
 | AI-12 | NOT STARTED |
