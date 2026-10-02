@@ -592,6 +592,12 @@ def run_fuzz_smoke(
     if process.exit_code is None:
         raise ReproductionUnavailable("FUZZ_GENERATOR_UNAVAILABLE")
 
+    # §27.2 defines the authoritative case set as the cases the generator CONSTRUCTS in
+    # its own order. The run's artifacts are one file per case and carry no ordering
+    # record — the summary holds counts, not identifiers — so the set is what this
+    # oracle compares, and the files are sorted by identifier for a deterministic
+    # iteration. Nothing here depends on an order the run did not write down, and
+    # nothing is renumbered: the identifiers are read out of the files themselves.
     case_files = sorted(
         path for path in out_dir.glob("*.json") if path.name != FUZZ_SUMMARY_FILE
     )
