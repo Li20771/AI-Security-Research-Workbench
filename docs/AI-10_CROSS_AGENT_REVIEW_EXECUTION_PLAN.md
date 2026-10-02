@@ -668,8 +668,8 @@ MATERIAL_DIFFERENCE           the two materials' `claims_digest` differ
 CLAIM_OVERLAP                 a claim content digest appears on BOTH sides
 CLAIM_UNIQUE_TO_LEFT          a claim content digest appears on the LEFT side only
 CLAIM_UNIQUE_TO_RIGHT         a claim content digest appears on the RIGHT side only
-EVIDENCE_REFERENCE_DIFFERENCE for a claim content digest present on both sides, the two
-                              claims' `evidence_refs` sets are not equal
+EVIDENCE_REFERENCE_DIFFERENCE for a claim STATEMENT declared on both sides, the two sides'
+                              `evidence_refs` sets are not equal (§9.3.1)
 VERIFICATION_REQUIRED         a claim on either side declares at least one
                               verification_target and has no VerificationObservation yet
 UNRESOLVED                    the comparison could not be completed
@@ -684,14 +684,52 @@ FROZEN: IDENTICAL_MATERIAL and MATERIAL_DIFFERENCE are mutually exclusive: exact
 ### 9.3 Claim identity, for comparison — FROZEN
 
 ```text
-FROZEN: two claims are "the same claim" for comparison when their CLAIM CONTENT DIGESTS are
-        equal. The claim content digest covers:
+FROZEN: two claims are "the same claim" for OVERLAP AND UNIQUENESS when their CLAIM CONTENT
+        DIGESTS are equal. The claim content digest covers:
             schema_version, statement, sorted(evidence_refs), sorted(verification_targets)
         It EXCLUDES `claim_id`, because `claim_id` is a submitter-chosen identifier and not
         content (the AI-08 §9.1.1 rule that a digest is not an identity, applied in reverse:
         an identifier is not content).
 FROZEN: structural identity of a declared claim is NOT agreement, NOT truth, and NOT
         correctness.
+```
+
+### 9.3.1 Two identities, and which rule uses which — FROZEN (Amendment 1)
+
+```text
+claim content digest        schema_version, statement, sorted(evidence_refs),
+                            sorted(verification_targets)
+                            excludes claim_id
+    used by                 CLAIM_OVERLAP
+                            CLAIM_UNIQUE_TO_LEFT
+                            CLAIM_UNIQUE_TO_RIGHT
+                            the claim-set comparison behind `claims_digest`, and therefore
+                            IDENTICAL_MATERIAL and MATERIAL_DIFFERENCE
+
+claim statement digest      schema_version, statement, sorted(verification_targets)
+                            excludes claim_id AND evidence_refs
+    used by                 EVIDENCE_REFERENCE_DIFFERENCE alone
+```
+
+```text
+FROZEN: a claim's STATEMENT IDENTITY is what it says — the statement and the checks it
+        declares — and not what it cites. Two claims that say the same thing and cite
+        different references are statement-equivalent and content-different, and that is
+        exactly the fact EVIDENCE_REFERENCE_DIFFERENCE exists to observe.
+FROZEN: EVIDENCE_REFERENCE_DIFFERENCE compares the two sides' `evidence_refs` sets for a
+        statement declared on both sides. Equal sets produce no observation; unequal sets
+        produce one, naming every claim that carries the statement on either side.
+FROZEN: the two identities are the only two. A third would be an amendment.
+```
+
+```text
+RECORDED (Amendment 1): as originally frozen, §9.3 defined one identity — the content
+        digest, which covers `evidence_refs` — and §9.2 asked
+        EVIDENCE_REFERENCE_DIFFERENCE to fire for a content digest present on both sides
+        whose `evidence_refs` differ. Those two cannot both hold: claims whose references
+        differ do not share a content digest, and claims that share one have equal
+        references by construction. The member was unreachable. Amendment 1 records the
+        problem and fixes it here rather than leaving an implementation to choose.
 ```
 
 ### 9.4 What each finding does NOT mean — FROZEN
@@ -1277,8 +1315,8 @@ T10  comparison             unequal claims_digest yields MATERIAL_DIFFERENCE and
                             IDENTICAL_MATERIAL
 T11  comparison             CLAIM_OVERLAP / CLAIM_UNIQUE_TO_LEFT / CLAIM_UNIQUE_TO_RIGHT
                             fire exactly on the constructed cases
-T12  comparison             EVIDENCE_REFERENCE_DIFFERENCE fires only on an overlapping
-                            claim whose ref sets differ
+T12  comparison             EVIDENCE_REFERENCE_DIFFERENCE fires only on a claim STATEMENT
+                            declared on both sides whose ref sets differ (§9.3.1)
 T13  finding vocabulary     no finding value outside the eight exists
 T14  no verdict             no PASS / VERIFIED / CORRECT / WINNER / BEST_AGENT token is
                             producible by any review/ module
@@ -1458,7 +1496,7 @@ FROZEN: AI-10 owns this document. It does NOT own AI-05, AI-08 or AI-09. An amen
 ```
 
 An amendment records: what changed, why, its security and authority impact, and the date. It is
-committed before the code that depends on it.
+committed before the code that depends on it. Applied amendments are recorded in §26.
 
 ---
 
@@ -1471,7 +1509,8 @@ Status           FROZEN
 Date             2026-10-02
 Base             main @ 2e55b5a1e0c13d559ceb08fd5ca8094410634f11
 Contract         docs/AI-10_CROSS_AGENT_REVIEW_EXECUTION_PLAN.md
-Amendments       none
+Amendments       1   Amendment 1 — the identity EVIDENCE_REFERENCE_DIFFERENCE is
+                       evaluated over (§9.2, §9.3.1, §19 T12; log at §26)
 ```
 
 ```text
@@ -1519,3 +1558,79 @@ NOT DECIDED here
 
 **AI-10-A freezes a contract. No `review/` layer exists, no review type exists, no verification
 has been requested, and no provider call has been made by this phase.**
+
+---
+
+## 26. Amendment log
+
+### Amendment 1 — 2026-10-02 — the identity EVIDENCE_REFERENCE_DIFFERENCE is evaluated over
+
+**What changed.**
+
+```text
+§9.2   the EVIDENCE_REFERENCE_DIFFERENCE row now reads: "for a claim STATEMENT
+       declared on both sides, the two sides' `evidence_refs` sets are not equal"
+
+§9.3   the content digest is now stated as the identity for OVERLAP AND UNIQUENESS,
+       rather than as the identity for comparison in general
+
+§9.3.1 NEW. It names the two identities and which rule uses each:
+           claim content digest       statement + evidence_refs + targets
+                                      -> CLAIM_OVERLAP, CLAIM_UNIQUE_TO_LEFT,
+                                         CLAIM_UNIQUE_TO_RIGHT, and the claim-set
+                                         comparison behind IDENTICAL_MATERIAL and
+                                         MATERIAL_DIFFERENCE
+           claim statement digest     statement + targets, and NOT evidence_refs
+                                      -> EVIDENCE_REFERENCE_DIFFERENCE alone
+
+§19    T12 is restated against the statement identity
+§25    the freeze record records this amendment
+```
+
+**Why.**
+
+As frozen, the rule could not fire, and the reason is arithmetic rather than
+editorial. §9.3 defined the claim content digest as covering `evidence_refs`; §9.2
+asked EVIDENCE_REFERENCE_DIFFERENCE to fire for a claim content digest present on
+both sides whose `evidence_refs` sets are not equal. Two claims whose references
+differ do not share a content digest, and two claims that share one have equal
+references by construction. The member was therefore unreachable — and a closed
+vocabulary with an unreachable member is not the vocabulary the contract says it
+is.
+
+The contradiction was found by AI-10-B's implementation, which recorded it in
+`review/claim.py`, did not change this contract, and reported it. This amendment
+is the contract's own answer.
+
+**What did NOT change.**
+
+```text
+the eight-member ReviewFindingKind vocabulary — no member added, removed or renamed
+CLAIM_OVERLAP, CLAIM_UNIQUE_TO_LEFT and CLAIM_UNIQUE_TO_RIGHT keep the content digest
+`claims_digest` and `material_digest` keep their inputs; a material's digest values
+    are unchanged by this amendment
+the four forbidden-verdict rules and every other §9.4 statement
+no ranking, no winner, no confidence, no correctness, no score, no probability
+the dependency direction (§16), the lifecycle (§5.3), the ingress boundary (§6.3),
+    the Evidence boundary (§13) and every non-goal (§21)
+```
+
+**Security and authority impact: none.**
+
+```text
+The amendment changes WHEN one observation fires. It grants no authority, opens no
+dependency, adds no field, stores nothing, and reaches no layer AI-10 could not
+already reach. It makes a frozen member reachable rather than adding a capability.
+
+It does not weaken a boundary: EVIDENCE_REFERENCE_DIFFERENCE remains an
+observation about DECLARED references. It is not a statement that either side's
+references are wrong, incomplete or better (§9.4), and it is not a verdict.
+```
+
+```text
+Applied   2026-10-02
+Owner     AI-10
+Effect    the contract AI-10-B is built against. The implementation correction that
+          follows replaces AI-10-B's recorded workaround with this semantics; the
+          workaround was never the frozen meaning.
+```
