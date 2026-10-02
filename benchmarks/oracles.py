@@ -38,8 +38,9 @@ import re
 import sys
 import tempfile
 from dataclasses import dataclass, field
+from enum import StrEnum
 from pathlib import Path
-from typing import Any, Callable, Mapping, Protocol, Sequence
+from typing import Any, Callable, Collection, Mapping, Protocol, Sequence
 
 from benchmarks.decoders import (
     InspectionUnavailable,
@@ -58,12 +59,15 @@ __all__ = [
     "COLLECTORS",
     "JUDGES",
     "Judgement",
-    "COLLECTORS",
     "Observation",
     "OracleContext",
+    "YaraMatchRecord",
+    "YaraReading",
     "collect",
+    "declared_rule_names",
     "evaluate_submission",
     "judge_submission",
+    "parse_yara_matches",
 ]
 
 
@@ -256,11 +260,146 @@ def _collect_uds(
     )
 
 
-#: `yara` exits 0 when a rule matched and 1 when it did not; anything else is an error.
-#: SecurityLab's own adapter declares the same pair for the same reason
-#: (`tools/reverse_engineering/__init__.py`: a match is reported through the status).
-YARA_MATCH = 0
-YARA_NO_MATCH = 1
+# ---------------------------------------------------------------------------
+# the `yara` CLI: what stdout says, and what the exit code does NOT say
+# ---------------------------------------------------------------------------
+#
+# MEASURED against YARA 4.5.0. The CLI exits 0 BOTH when a rule matched and when it did
+# not; what separates the two is stdout, where one line per matching rule is printed as
+# `<rule identifier> <target>` and a non-match prints nothing at all.
+#
+# ```text
+# yara known_good.yar holdout_positive_beacon.txt
+#   -> exit 0, stdout "ai11_reference_answer holdout_positive_beacon.txt"
+# yara known_good.yar holdout_negative_clean.txt
+#   -> exit 0, stdout ""
+# yara <rule with a syntax error> <sample>
+#   -> exit 1, stdout "", stderr "error: rule ...: syntax error, ..."
+# ```
+#
+# The exit code therefore carries NO match information. A collector that read `0` as
+# "matched" reports every scanned sample as a hit — which is what happened here: the
+# correct reference rule was recorded as four hits and two failures, and the two samples
+# it "failed" are exactly the two it correctly does not match.
+
+#: One match record. The CLI prints one line per rule that matched, `<identifier>
+#: <target>`; under `-g` it appends the rule's tags to the identifier as `:tag[,tag]`,
+#: so tags are parsed OFF rather than mistaken for part of the name.
+_YARA_MATCH_LINE = re.compile(
+    r"^(?P<rule>[A-Za-z_]\w*)(?::[A-Za-z_]\w*(?:,[A-Za-z_]\w*)*)?\s+(?P<target>\S.*)$"
+)
+
+#: A rule declaration. `private` and `global` may precede it, tags may follow the name.
+#: Anchored at the start of a line, which is also what excludes a `//`-commented-out
+#: declaration without having to tokenise string literals (a rule file may legitimately
+#: contain `//` inside a literal, as `known_good.yar` does in a URL).
+_YARA_RULE_DECLARATION = re.compile(
+    r"^[ \t]*(?:(?:private|global)[ \t]+)*rule[ \t]+([A-Za-z_]\w*)", re.MULTILINE
+)
+
+#: A `/* ... */` comment. Removed before declarations are read, so a rule commented out
+#: across several lines is not counted as declared.
+_YARA_BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
+
+
+class YaraReading(StrEnum):
+    """What ONE completed `yara` invocation says about the SUBMITTED rule.
+
+    Three values, and the third is the point: output this parser cannot attribute to the
+    submitted rule is AMBIGUOUS rather than rounded to the nearer of the other two.
+    """
+
+    MATCHED = "MATCHED"
+    NOT_MATCHED = "NOT_MATCHED"
+    AMBIGUOUS = "AMBIGUOUS"
+
+
+@dataclass(frozen=True, slots=True)
+class YaraMatchRecord:
+    """One `<rule identifier> <target>` line the scanner printed."""
+
+    rule: str
+    target: str
+
+
+def declared_rule_names(rule_text: str) -> tuple[str, ...]:
+    """The identifiers a submitted rule file DECLARES, in file order.
+
+    The identity a match record has to name comes from the SUBMITTED rule, never from a
+    constant in this module: a collector that looked for the reference rule's name would
+    recognise the reference answer and nothing else, which is a discrimination control
+    that cannot discriminate.
+    """
+    return tuple(_YARA_RULE_DECLARATION.findall(_YARA_BLOCK_COMMENT.sub(" ", rule_text)))
+
+
+def _same_target(reported: str, scanned: Path) -> bool:
+    """Whether a match record's target is the file this invocation scanned.
+
+    One invocation scans exactly one target, so the echoed path is compared whole, with
+    the basename accepted as the weaker form: the CLI echoes back the path it was given,
+    and a host that spells the same file differently (a normalised separator, a resolved
+    symlink) has still reported THIS invocation's target. Rejecting the weaker form would
+    turn a formatting difference into AMBIGUOUS — the safe direction, but not a correct
+    one.
+    """
+    try:
+        if Path(reported) == scanned:
+            return True
+    except (OSError, ValueError):  # pragma: no cover - a path the platform refuses
+        return False
+    return Path(reported).name == scanned.name and scanned.name != ""
+
+
+def parse_yara_matches(
+    stdout: str,
+    submitted_rule_names: Collection[str],
+    *,
+    target: str | Path | None = None,
+) -> YaraReading:
+    """Read ONE completed invocation's stdout as an observation about the SUBMITTED rule.
+
+    Its only inputs are the scanner's own output and the identity of what was submitted.
+    It does NOT read truth, does NOT decide a benchmark verdict, and does NOT guess: it
+    reports what the scanner said, or that it cannot tell.
+
+    ```text
+    empty stdout                                  NOT_MATCHED
+    a record naming a declared rule (and target)  MATCHED
+    a line that is not a match record             AMBIGUOUS
+    a record naming a rule nobody submitted       AMBIGUOUS
+    a record about a different target             AMBIGUOUS
+    ```
+
+    AMBIGUOUS is not "no match" and not "match". Warning text, a diagnostic, or a record
+    about something else is output the scanner produced that this collector cannot
+    attribute, and both of the other answers would be a claim the scanner did not make.
+    """
+    declared = {str(name) for name in submitted_rule_names}
+
+    records: list[YaraMatchRecord] = []
+    for line in stdout.splitlines():
+        if not line.strip():
+            continue
+        parsed = _YARA_MATCH_LINE.match(line.strip())
+        if parsed is None:
+            return YaraReading.AMBIGUOUS
+        records.append(
+            YaraMatchRecord(rule=parsed.group("rule"), target=parsed.group("target"))
+        )
+
+    if target is not None:
+        scanned = Path(target)
+        attributable = [record for record in records if _same_target(record.target, scanned)]
+        if len(attributable) != len(records):
+            return YaraReading.AMBIGUOUS
+        records = attributable
+
+    if any(record.rule not in declared for record in records):
+        return YaraReading.AMBIGUOUS
+
+    return YaraReading.MATCHED if records else YaraReading.NOT_MATCHED
+
 
 #: A.6's tracked generator, relative to the pinned source root.
 FUZZ_GENERATOR = "labs/vehicle/can-tools/fuzz/isotp_fuzz.py"
@@ -276,6 +415,13 @@ def _collect_yara(
     EXECUTED three checks, and reporting `executed = 0` would be a false record of what
     the harness did -- in the safe direction, but still false. Either every sample is
     scanned or none is.
+
+    THE EXIT CODE IS NOT THE OBSERVATION. A completed `yara` invocation exits 0 whether
+    or not the rule matched; the match is reported on stdout as `<rule identifier>
+    <target>` and a non-match is reported as nothing. See the measurement record above
+    `parse_yara_matches`. Reading `exit_code == 0` as "matched" is the defect this
+    collector was corrected for: it reported all four held-out samples as hits and
+    turned a correct reference rule into two failures.
     """
     samples = _require_mapping(truth.get("samples"), "truth.samples")
     planned = len(samples)
@@ -305,6 +451,17 @@ def _collect_yara(
         # A refused or missing sample path. NO scanner invocation has happened.
         return _blocked("YARA_HELD_OUT_MATERIAL_MISSING", skip_class="ENVIRONMENT", planned=planned)
 
+    # The identity the scanner's output must name. Read from the SUBMITTED rule file, so
+    # that any rule is recognised by its own declared name rather than by a name baked
+    # into this module.
+    try:
+        rule_text = rule_path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        return _blocked(
+            f"YARA_RULE_UNREADABLE:{type(exc).__name__}", skip_class="ENVIRONMENT", planned=planned
+        )
+    declared = declared_rule_names(rule_text)
+
     # Only now, with every path established, does anything run.
     matches: dict[str, bool] = {}
     for key, sample in resolved.items():
@@ -313,30 +470,39 @@ def _collect_yara(
             cwd=None,
             timeout_seconds=context.timeout_seconds,
         )
+        # The process states are settled first, and in this order, because they are four
+        # different facts (§8.2):
+        #   an expired budget            the check did not conclude      -> BLOCKED
+        #   no exit code                 the program was not there       -> BLOCKED
+        #   a non-zero exit              the program RAN and refused     -> the submission
+        #   exit 0                       the program completed           -> read stdout
         if process.timed_out:
             return _blocked("YARA_SCAN_TIMEOUT", skip_class="ENVIRONMENT", planned=planned)
         if process.exit_code is None:
             return _blocked("YARA_PROGRAM_UNAVAILABLE", skip_class="ENVIRONMENT", planned=planned)
-        if process.exit_code == YARA_MATCH:
-            matches[key] = True
-        elif process.exit_code == YARA_NO_MATCH:
-            matches[key] = False
-        else:
+        if process.exit_code != 0:
             # The scanner ran and refused the rule: a bad SUBMISSION, not a bad
-            # environment. The required check executed and its assertion failed.
-            # The scanner RAN and refused the rule. That is a bad submission, not a bad
-            # environment -- and one invocation is not N. The counts say how much
-            # actually executed: this invocation ran and failed, the remaining samples
-            # were never attempted.
+            # environment. The required check executed and its assertion failed -- and
+            # one invocation is not N. The counts say how much actually executed: this
+            # invocation ran and failed, the remaining samples were never attempted.
             return Observation(
                 values={
                     "matches": matches,
-                    "compile_error": (process.stderr or "").strip()[:200],
+                    "scanner_error": (process.stderr or "").strip()[:200],
+                    "exit_code": process.exit_code,
                     "invocations": len(matches) + 1,
                 },
                 complete=True,
                 planned=planned,
             )
+
+        reading = parse_yara_matches(process.stdout or "", declared, target=sample)
+        if reading is YaraReading.AMBIGUOUS:
+            # Exit 0, and output this collector cannot attribute to the submitted rule.
+            # Nothing was observed about THIS sample, and neither of the other two
+            # readings is a claim the scanner made. UNKNOWN, never a guess.
+            return _blocked("YARA_SCANNER_OUTPUT_UNREADABLE", skip_class="UNKNOWN", planned=planned)
+        matches[key] = reading is YaraReading.MATCHED
 
     return Observation(values={"matches": matches}, complete=True, planned=planned)
 
@@ -687,15 +853,18 @@ def _judge_uds_triples(observation: Mapping[str, Any], truth: Mapping[str, Any])
 def _judge_yara_detection(observation: Mapping[str, Any], truth: Mapping[str, Any]) -> Judgement:
     """The OBSERVED matches against the expected ones.
 
-    A rule that failed to compile observed no matches at all and is FAIL: the scan ran
-    and the submission was refused, which is an assertion failure rather than an
-    environment problem (§8.2).
+    A rule the scanner refused observed no matches at all and is FAIL: the scan ran and
+    the submission was refused, which is an assertion failure rather than an environment
+    problem (§8.2). The scanner's own message is carried in the observation, so the
+    reason code can stay a statement about what happened rather than a guess at which
+    failure it was: `yara` exits non-zero both for a rule that does not compile and for a
+    target it cannot open, and the exit code does not separate them.
 
     A false positive is not traded against a true positive. Every sample is a required
     check, so §11 requires all of them.
     """
     samples = _require_mapping(truth.get("samples"), "truth.samples")
-    if observation.get("compile_error") is not None:
+    if observation.get("scanner_error") is not None:
         # Factually correct counts. A rule the scanner refused on the first invocation
         # produced ONE executed check that failed, not N; the rest were never attempted.
         # Reporting `executed = N` would be a false record of what the harness did.
@@ -712,7 +881,7 @@ def _judge_yara_detection(observation: Mapping[str, Any], truth: Mapping[str, An
         return Judgement(
             verdict=OracleVerdict.FAIL,
             tests=counts,
-            reason_code="YARA_RULE_DID_NOT_COMPILE",
+            reason_code="YARA_SCANNER_REFUSED_SUBMISSION",
         )
 
     matches = _require_mapping(observation.get("matches"), "observation.matches")

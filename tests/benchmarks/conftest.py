@@ -7,6 +7,7 @@ one assertion is a test whose failure is hard to read.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -93,73 +94,125 @@ class StubYara:
     collection path would be untestable there — the oracle would be BLOCKED everywhere
     and nothing about the machinery would be exercised.
 
-    What it does implement is the CLI CONTRACT the collector depends on:
+    What it implements is the CLI CONTRACT, and the contract is the one the real YARA
+    4.5.0 binary was MEASURED to have:
 
     ```text
-        0   the rule matched
-        1   the rule did not match
-        2   the invocation failed (bad arguments, unreadable rule)
+        0 + "<rule identifier> <target>" on stdout   the rule MATCHED
+        0 + an empty stdout                          the rule did NOT match
+        non-zero + a diagnostic on stderr            the invocation failed
     ```
 
-    and the small subset of rule syntax the corpus declares: `$name = "literal" ascii`,
-    `$name = /regex/`, and a condition built from `any of (...)`, `N of (...)`, a bare
-    `$name`, joined by `or`.
+    The exit code does NOT separate a match from a non-match: the real CLI exits 0 for
+    both, and returns 1 for a rule it cannot compile, a target it cannot open, or bad
+    arguments.
 
-    What it does NOT implement is YARA. A rule outside that subset is not evaluated
+    An earlier version of this double encoded `0 = match, 1 = no match`. That is not a
+    contract yara has ever had, and because the double was the only scanner most hosts
+    had, it made the collector's misreading of the exit code look correct — the tests
+    agreed with the defect instead of catching it. A double that disagrees with the tool
+    it stands in for is worse than no double at all.
+
+    What it does NOT implement is YARA. A rule outside the subset below is not evaluated
     faithfully, and any test relying on one would be testing this class rather than the
-    scanner. The real-scanner test is marked `skipif` on the binary being absent, and it
-    is the one that says whether the corpus's fixtures and rules actually agree.
+    scanner. The subset is `$name = "literal" ascii`, `$name = /regex/`, and a condition
+    built from `any of (...)`, `N of (...)`, a bare `$name`, joined by `or`. The
+    real-scanner test is marked `skipif` on the binary being absent, and it is the one
+    that says whether the corpus's fixtures and rules actually agree.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, failure: str = "") -> None:
+        """`failure` makes every invocation fail the way a refused rule does: a non-zero
+        exit, a diagnostic on stderr, and nothing on stdout."""
         self.calls: list[list[str]] = []
+        self._failure = failure
 
     def run(self, argv, *, cwd=None, timeout_seconds=0):  # noqa: ANN001, ANN201
         from benchmarks.oracle import ProcessResult
 
         args = list(argv)
         self.calls.append(args)
+        if self._failure:
+            return ProcessResult(exit_code=1, stderr=self._failure)
         if args[0] != "yara" or len(args) != 3:
-            return ProcessResult(exit_code=2, stderr="usage: yara <rules> <target>")
+            return ProcessResult(
+                exit_code=1, stderr="usage: yara [OPTION]... [NAMESPACE:]RULES_FILE... FILE"
+            )
         try:
             rule_text = Path(args[1]).read_text(encoding="utf-8")
             sample_text = Path(args[2]).read_text(encoding="utf-8")
         except OSError as exc:
-            return ProcessResult(exit_code=2, stderr=str(exc))
-        return ProcessResult(exit_code=_stub_yara_match(rule_text, sample_text))
+            # The real CLI's wording for this case, on the stream it uses for it.
+            return ProcessResult(exit_code=1, stderr=f"error scanning {args[2]}: {exc}")
+        # One line per MATCHING rule, naming the rule and echoing the target path the
+        # invocation was given. A rule that did not match prints nothing at all.
+        try:
+            names = _stub_yara_matching_rules(rule_text, sample_text)
+        except ValueError as exc:
+            return ProcessResult(exit_code=1, stderr=f"error: {exc}")
+        return ProcessResult(exit_code=0, stdout="".join(f"{name} {args[2]}\n" for name in names))
 
 
-def _stub_yara_match(rule_text: str, sample_text: str) -> int:
-    import re as _re
+#: A rule declaration, anchored at the start of a line so that the word "rule" in a
+#: comment is not read as one. Deliberately NOT imported from `benchmarks.oracles`: the
+#: double parses the fixtures itself, so a defect in the collector's own declaration
+#: parser cannot be hidden by both sides making the same mistake.
+_STUB_RULE_DECLARATION = re.compile(
+    r"^[ \t]*(?:(?:private|global)[ \t]+)*rule[ \t]+([A-Za-z_]\w*)", re.MULTILINE
+)
 
-    literals = dict(_re.findall(r'(\$\w+)\s*=\s*"([^"]*)"\s*ascii', rule_text))
-    patterns = dict(_re.findall(r"(\$\w+)\s*=\s*/([^/]+)/", rule_text))
+_STUB_BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
+
+
+def _stub_yara_matching_rules(rule_text: str, sample_text: str) -> list[str]:
+    """The identifiers of the rules whose `condition` the sample satisfies.
+
+    Raises `ValueError` when a declaration has no body, which every YARA would refuse to
+    compile — `StubYara.run` turns that into the non-zero exit the real CLI gives.
+    """
+    source = _STUB_BLOCK_COMMENT.sub(" ", rule_text)
+    declarations = list(_STUB_RULE_DECLARATION.finditer(source))
+    matching: list[str] = []
+    for index, declaration in enumerate(declarations):
+        end = declarations[index + 1].start() if index + 1 < len(declarations) else len(source)
+        try:
+            body_start = source.index("{", declaration.end(), end)
+        except ValueError as exc:
+            raise ValueError(f"rule {declaration.group(1)!r} has no body") from exc
+        # The rule's own closing brace ends its body. `rsplit` takes the LAST one, so a
+        # quantifier inside a regex (`/a{2,3}/`) does not truncate the body early.
+        body = source[body_start + 1 : end].rsplit("}", 1)[0]
+        if _stub_condition_holds(body, sample_text):
+            matching.append(declaration.group(1))
+    return matching
+
+
+def _stub_condition_holds(body: str, sample_text: str) -> bool:
+    literals = dict(re.findall(r'(\$\w+)\s*=\s*"([^"]*)"\s*ascii', body))
+    patterns = dict(re.findall(r"(\$\w+)\s*=\s*/([^/]+)/", body))
 
     def hits(name: str) -> bool:
         if name in literals:
             return literals[name] in sample_text
         if name in patterns:
-            return _re.search(patterns[name], sample_text) is not None
+            return re.search(patterns[name], sample_text) is not None
         return False
 
-    _, _, condition = rule_text.partition("condition:")
-    # Stop at the rule's closing brace: without this the last clause carries a trailing
-    # `}` and matches no clause form, so the condition silently becomes "no match".
-    condition = condition.split("}", 1)[0]
-    for clause in _re.split(r"\bor\b", condition):
+    _, _, condition = body.partition("condition:")
+    for clause in re.split(r"\bor\b", condition):
         clause = clause.strip()
-        match = _re.match(r"any of \(([^)]*)\)", clause)
+        match = re.match(r"any of \(([^)]*)\)", clause)
         if match and any(hits(n.strip()) for n in match.group(1).split(",")):
-            return 0
-        match = _re.match(r"(\d+) of \(([^)]*)\)", clause)
+            return True
+        match = re.match(r"(\d+) of \(([^)]*)\)", clause)
         if match and sum(hits(n.strip()) for n in match.group(2).split(",")) >= int(
             match.group(1)
         ):
-            return 0
-        match = _re.match(r"(\$\w+)\s*$", clause)
+            return True
+        match = re.match(r"(\$\w+)\s*$", clause)
         if match and hits(match.group(1)):
-            return 0
-    return 1
+            return True
+    return False
 
 
 def cantools_available() -> bool:
