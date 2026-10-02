@@ -6,10 +6,10 @@
 AI-09 — Codex Provider Integration is **COMPLETE / MERGED / CLOSED** as
 `b8b815b181e69f7651efdde97dd9473a3e619c7f` (PR #54). AI-08 — Codex Second Agent is
 **COMPLETE and MERGED** as `edb7dfc82ce51123482ac357fb9319dca2fa0d9a` (PR #52).
-AI-07 — Model Router v1 is **COMPLETE / CLOSED**. The next work item is
-**AI-11 — AI Security Benchmark**. The contract is **FROZEN** as
-`08aea86cf82e7476dee442b33dc81c8f9a9873a3` (PR #62), and **AI-11-B — Benchmark Core** is
-**IN PROGRESS** on `feature/ai-11-b-benchmark-core`. AI-11-C, the measured campaign, is
+AI-07 — Model Router v1 is **COMPLETE / CLOSED**. **AI-11 — AI Security Benchmark** is
+**COMPLETE / MERGED** through AI-11-B, with its contract **FROZEN** as
+`08aea86cf82e7476dee442b33dc81c8f9a9873a3` (PR #62) and the benchmark core merged as
+`ce880282d0ed1a3e3e3b5054347a81db876dab62` (PR #63). AI-11-C, the measured campaign, is
 **NOT STARTED**.
 
 AI-00 architecture and repository baseline is complete. **AI-01 DSH Baseline is COMPLETE** — see
@@ -70,19 +70,26 @@ This file is the single entry point for deciding what to do next.
 
 **AI-10 — Cross-Agent Review — COMPLETE / CLOSED.**
 
-**AI-11 — AI Security Benchmark — contract FROZEN; AI-11-B IN PROGRESS.**
+**AI-11 — AI Security Benchmark — contract FROZEN; benchmark core COMPLETE / MERGED.**
 
 ```text
-AI-11-A     = COMPLETE / MERGED    contract frozen           (PR #62, c1118551)
+AI-11-A     = COMPLETE / MERGED / FROZEN   contract frozen   (PR #62, c1118551)
 contract blob = 08aea86cf82e7476dee442b33dc81c8f9a9873a3
-AI-11-B     = IN PROGRESS          benchmark core            (branch
-                                      feature/ai-11-b-benchmark-core)
-AI-11-C     = NOT STARTED          measured campaign
+AI-11-B     = COMPLETE / MERGED            benchmark core    (PR #63, ce880282)
+branch        feature/ai-11-b-benchmark-core   (merged; retained)
+AI-11-C     = NOT STARTED                  measured campaign
 ```
 
-No measured campaign has run and no model has been measured. The benchmark core, its
-oracle protocol and the first tracked corpus exist; `AI-11-C` is what would produce
-results, and it has not begun.
+**No measured campaign has run and no model has been measured.** What exists is the
+contract, the layer, the oracle protocol with its derived observations, and the first
+tracked corpus. `AI-11-C` is what would produce results, and it has not begun.
+
+```text
+AI-11 produces no universal ranking, no winner and no best-model claim. There is no
+composite score, and no per-model aggregate a reader could take as one.
+AI-05 §28 remains OPEN: no AI-11-admissible Evidence producer token exists.
+             Resolution owner = AI-05. AI-11-B did not resolve it.
+```
 
 ```text
 AI-10-A     = COMPLETE / MERGED    contract frozen           (PR #56, 3613896d)
@@ -290,20 +297,20 @@ PROJECT_STATUS.md
 ### Not yet started
 
 ```text
-AI-11   AI Security Benchmark                 ACTIVE    CONTRACT FROZEN
-                                                        AI-11-B IN PROGRESS
+AI-11   AI Security Benchmark                 NEXT      AI-11-A FROZEN
+                                                        AI-11-B MERGED
 AI-12   routing v2 fallback / escalation      queued    NOT STARTED
 AI-13   retry / timeout / cancellation /
         checkpoint / resume /
         failure classification                queued    NOT STARTED
 ```
 
-- **AI-11 — AI Security Benchmark — contract FROZEN; benchmark core IN PROGRESS.**
-  The contract is frozen as `08aea86cf82e7476dee442b33dc81c8f9a9873a3` (PR #62). The
-  benchmark core, the oracle protocol and the first tracked corpus are being implemented
-  on `feature/ai-11-b-benchmark-core`. No measured campaign has run, no model has been
-  measured, and `AI-11-C` is NOT STARTED. It consumes AI-08's result data read-only and
-  modifies no other phase.
+- **AI-11 — AI Security Benchmark — contract FROZEN; benchmark core COMPLETE / MERGED.**
+  The contract is frozen as `08aea86cf82e7476dee442b33dc81c8f9a9873a3` (PR #62) and the
+  benchmark core is merged as `ce880282d0ed1a3e3e3b5054347a81db876dab62` (PR #63). No
+  measured campaign has run, no model has been measured, and `AI-11-C` is NOT STARTED.
+  It consumes AI-08's result data read-only and modifies no other phase. AI-05 §28
+  remains OPEN and is not resolved by AI-11-B.
 
 ## Completed
 
