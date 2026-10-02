@@ -7,7 +7,10 @@ AI-09 — Codex Provider Integration is **COMPLETE / MERGED / CLOSED** as
 `b8b815b181e69f7651efdde97dd9473a3e619c7f` (PR #54). AI-08 — Codex Second Agent is
 **COMPLETE and MERGED** as `edb7dfc82ce51123482ac357fb9319dca2fa0d9a` (PR #52).
 AI-07 — Model Router v1 is **COMPLETE / CLOSED**. The next work item is
-**AI-11 — AI Security Benchmark**, which is **NOT STARTED**.
+**AI-11 — AI Security Benchmark**. Its contract freeze is **PROPOSED** at
+[docs/AI-11_SECURITY_BENCHMARK_EXECUTION_PLAN.md](AI-11_SECURITY_BENCHMARK_EXECUTION_PLAN.md)
+(branch `chore/ai-11-a-contract-freeze`, awaiting human merge); **implementation is NOT
+STARTED**.
 
 AI-00 architecture and repository baseline is complete. **AI-01 DSH Baseline is COMPLETE** — see
 [AI-01 final gate status](#ai-01-final-gate-status). **AI-02 Model Layer is COMPLETE** — see
@@ -67,8 +70,17 @@ This file is the single entry point for deciding what to do next.
 
 **AI-10 — Cross-Agent Review — COMPLETE / CLOSED.**
 
-**AI-11 — AI Security Benchmark — NEXT; NOT STARTED.** No contract, no implementation and
-no result exists for it.
+**AI-11 — AI Security Benchmark — contract freeze PROPOSED; implementation NOT STARTED.**
+The AI-11-A contract is proposed at
+[docs/AI-11_SECURITY_BENCHMARK_EXECUTION_PLAN.md](AI-11_SECURITY_BENCHMARK_EXECUTION_PLAN.md)
+and freezes on human merge. No benchmark implementation, no task, no oracle and no result
+exists for it.
+
+```text
+AI-11-A     = PROPOSED             contract freeze           (branch
+                                      chore/ai-11-a-contract-freeze)
+AI-11       = NOT STARTED          implementation
+```
 
 ```text
 AI-10-A     = COMPLETE / MERGED    contract frozen           (PR #56, 3613896d)
@@ -276,16 +288,19 @@ PROJECT_STATUS.md
 ### Not yet started
 
 ```text
-AI-11   AI Security Benchmark                 NEXT      NOT STARTED
+AI-11   AI Security Benchmark                 NEXT      CONTRACT PROPOSED
+                                                        IMPL NOT STARTED
 AI-12   routing v2 fallback / escalation      queued    NOT STARTED
 AI-13   retry / timeout / cancellation /
         checkpoint / resume /
         failure classification                queued    NOT STARTED
 ```
 
-- **AI-11 — AI Security Benchmark — NEXT, NOT STARTED.** No contract, no implementation,
-  no test and no result exists for it. It consumes per-Agent result data; it is not started
-  by AI-10's closeout, and nothing in AI-10 depends on it.
+- **AI-11 — AI Security Benchmark — contract freeze proposed; implementation NOT STARTED.**
+  The AI-11-A contract is proposed and freezes on human merge. No benchmark implementation,
+  no test and no result exists for it. It consumes per-Agent result data read-only and
+  modifies no other phase; it is not started by AI-10's closeout, and nothing in AI-10
+  depends on it.
 
 ## Completed
 
