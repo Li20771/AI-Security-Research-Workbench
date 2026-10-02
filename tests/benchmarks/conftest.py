@@ -162,6 +162,13 @@ def _stub_yara_match(rule_text: str, sample_text: str) -> int:
     return 1
 
 
+def cantools_available() -> bool:
+    """Whether A.1's declared decoder is importable on this host."""
+    import importlib.util
+
+    return importlib.util.find_spec("cantools") is not None
+
+
 def yara_available() -> bool:
     """Whether the real scanner is on this host."""
     import shutil

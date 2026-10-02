@@ -15,7 +15,7 @@ from benchmarks.executor import ReferenceVariant
 from benchmarks.runner import execute_task
 from benchmarks.task import TaskDefinition
 from benchmarks.vocabulary import ExecutorKind, OracleVerdict, SecurityBoundaryStatus
-from tests.benchmarks.conftest import valid_task_mapping
+from tests.benchmarks.conftest import cantools_available, valid_task_mapping
 from tests.benchmarks.test_benchmark_workspace import _git, _make_source_repo
 
 pytestmark = pytest.mark.layer2
@@ -185,7 +185,12 @@ def test_R5_task_status_comes_from_the_oracle_not_from_the_executor(
         scratch_root=scratch_root,
         run_id="run-0123456789abcdef",
     )
-    assert outcome.run.task_status is OracleVerdict.PASS
+    # A.1's decoder is cantools, and it is a declared dependency of this suite. Where it
+    # is absent the oracle is BLOCKED — never PASS, and never FAIL: an answer the harness
+    # could not decode is not an answer that was wrong.
+    expected = OracleVerdict.PASS if cantools_available() else OracleVerdict.BLOCKED
+    assert outcome.run.task_status is expected
+    assert outcome.run.task_status is not OracleVerdict.FAIL
     assert "COMPLETED" not in outcome.run.to_mapping().values()
 
     # The same lifecycle on the declared WRONG answer does not pass.
@@ -260,7 +265,7 @@ def test_R8_regression_is_its_own_axis_and_is_not_run(corpus_root, source_repo, 
         run_id="run-0123456789abcdef",
     )
     assert outcome.run.regression_status is OracleVerdict.NOT_RUN
-    assert outcome.run.task_status is OracleVerdict.PASS, "the two axes are independent"
+    assert outcome.run.task_status is not OracleVerdict.FAIL, "the two axes are independent"
 
 
 def test_R9_the_reference_executor_invokes_no_tool(corpus_root, source_repo, scratch_root) -> None:

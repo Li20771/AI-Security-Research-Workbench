@@ -22,7 +22,7 @@ from benchmarks.oracles import COLLECTORS, evaluate_submission
 from benchmarks.runner import execute_task, resolve_workbench_sha, utc_now
 from benchmarks.task import TaskDefinition, load_corpus
 from benchmarks.vocabulary import OracleVerdict
-from tests.benchmarks.conftest import valid_task_mapping
+from tests.benchmarks.conftest import cantools_available, valid_task_mapping
 from tests.benchmarks.test_benchmark_workspace import _make_source_repo
 
 pytestmark = pytest.mark.layer2
@@ -118,9 +118,12 @@ def test_C5_can_decodes_independently_and_compares_the_submission(tmp_path: Path
         scratch_root=tmp_path / "scratch",
         run_id="run-0123456789abcdef",
     )
-    assert outcome.run.task_status is OracleVerdict.PASS, outcome.run.limitations
-    # 8721 rpm and 174.59 km/h, derived from the pinned DBC and the frozen frame.
-    assert outcome.run.tests.planned == 2
+    expected = OracleVerdict.PASS if cantools_available() else OracleVerdict.BLOCKED
+    assert outcome.run.task_status is expected, outcome.run.limitations
+    assert outcome.run.task_status is not OracleVerdict.FAIL
+    if cantools_available():
+        # 8721 rpm and 174.59 km/h, decoded from the pinned DBC and the frozen frame.
+        assert outcome.run.tests.planned == 2
 
     bad = execute_task(
         task=_can_task(sha),
@@ -130,7 +133,9 @@ def test_C5_can_decodes_independently_and_compares_the_submission(tmp_path: Path
         run_id="run-fedcba9876543210",
         variant=ReferenceVariant.KNOWN_BAD,
     )
-    assert bad.run.task_status is OracleVerdict.FAIL
+    assert bad.run.task_status is not OracleVerdict.PASS
+    if cantools_available():
+        assert bad.run.task_status is OracleVerdict.FAIL
 
 
 def test_C6_a_can_oracle_that_disagrees_with_the_tracked_truth_is_unknown() -> None:
