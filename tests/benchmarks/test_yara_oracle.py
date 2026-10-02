@@ -5,13 +5,37 @@ submission supplied. It takes a RULE, runs it against the held-out samples with 
 `yara` binary, and judges the matches the SCANNER reported. `truth.json` says what those
 matches should be; it is never itself the observation.
 
-`yara` is not installed on every host — including the one this was developed on. The
-tests below therefore come in two kinds, and the difference is stated rather than
-blurred:
+### The exit code is not the observation
+
+MEASURED, YARA 4.5.0:
 
 ```text
-StubYara            a declared test double implementing the CLI contract and the small
-                    subset of rule syntax the corpus uses. It exercises the MACHINERY.
+match       exit 0, stdout "<rule identifier> <target>"
+no match    exit 0, stdout ""
+failure     non-zero, stderr diagnostic, stdout empty
+```
+
+The CLI exits 0 for BOTH readings. The collector once treated `0` as "matched" and `1`
+as "did not match", which is a contract yara has never had; against the real corpus that
+turned the correct reference rule into four hits and two failures, and the samples it
+wrongly failed were exactly the two the rule correctly does not match. The reading now
+comes from stdout, attributed to a rule identifier taken from the SUBMITTED rule — and
+output that cannot be attributed is UNKNOWN rather than either answer.
+
+### The two kinds of scanner in this file
+
+`yara` is not installed on every host. The tests below therefore come in two kinds, and
+the difference is stated rather than blurred:
+
+```text
+StubYara            a declared test double implementing the CLI contract ABOVE and the
+                    small subset of rule syntax the corpus uses. It exercises the
+                    MACHINERY. It does not encode a contract of its own invention: an
+                    earlier version of it implemented `0 = match, 1 = no match`, agreed
+                    with the defect, and let every test here pass.
+ScriptedYara        a scanner that returns the record a test declares, without
+                    evaluating anything. For tests about how an OBSERVATION is read,
+                    which the evaluator must not be able to satisfy.
 real yara           the test marked `skipif`. It is the one that settles whether the
                     fixtures and the reference rule actually agree.
 ```
@@ -22,13 +46,21 @@ from __future__ import annotations
 import json
 import shutil
 from pathlib import Path
+from typing import Any, Mapping
 
 import pytest
 
 from benchmarks.errors import OracleProtocolError
 from benchmarks.executor import ReferenceExecutor, ReferenceVariant
 from benchmarks.oracle import ProcessResult
-from benchmarks.oracles import collect, evaluate_submission, judge_submission
+from benchmarks.oracles import (
+    YaraReading,
+    collect,
+    declared_rule_names,
+    evaluate_submission,
+    judge_submission,
+    parse_yara_matches,
+)
 from benchmarks.task import load_task
 from benchmarks.vocabulary import OracleVerdict
 from tests.benchmarks.conftest import StubYara, yara_available
@@ -70,10 +102,83 @@ class NoYara:
 
 
 class BrokenRuleYara:
-    """A scanner that refuses the rule — the compile-error path."""
+    """A scanner that refuses the rule — the compile-error path.
+
+    The exit code and the message are the ones YARA 4.5.0 was measured to produce for a
+    rule with a syntax error: **1**, not 2. That matters, because `1` is the code the old
+    collector read as "the rule did not match" — so this runner doubles as the case that
+    says a refused rule is not a non-match.
+    """
 
     def run(self, argv, *, cwd=None, timeout_seconds=0):  # noqa: ANN001, ANN201
-        return ProcessResult(exit_code=2, stderr="error: syntax error, unexpected '}'")
+        return ProcessResult(
+            exit_code=1,
+            stderr='error: rule "ai11_reference_answer" in known_good.yar(9): '
+            "syntax error, unexpected '}'",
+        )
+
+
+#: "this sample matched the submitted rule" — expanded into the CLI's actual output.
+_MATCH = object()
+
+#: "this sample did not match" — exit 0 with an empty stdout.
+_NO_MATCH = object()
+
+
+class ScriptedYara:
+    """A scanner that answers with exactly the record the test declares.
+
+    It evaluates no rule at all. `_MATCH` and `_NO_MATCH` are expanded into the
+    byte-for-byte output the real CLI produces — naming the submitted rule and echoing
+    the target path this invocation was given — and any other value is returned as the
+    test wrote it. A test about how an OBSERVATION is read must not be satisfiable by an
+    evaluator that already knows the answer.
+    """
+
+    def __init__(
+        self, records: Mapping[str, Any], *, rule_name: str = "ai11_reference_answer"
+    ) -> None:
+        self.records = records
+        self.rule_name = rule_name
+        self.calls: list[list[str]] = []
+        self.responses: list[ProcessResult] = []
+
+    def run(self, argv, *, cwd=None, timeout_seconds=0):  # noqa: ANN001, ANN201
+        args = list(argv)
+        self.calls.append(args)
+        record = self.records[Path(args[2]).name]
+        if record is _MATCH:
+            record = ProcessResult(exit_code=0, stdout=f"{self.rule_name} {args[2]}\n")
+        elif record is _NO_MATCH:
+            record = ProcessResult(exit_code=0, stdout="")
+        self.responses.append(record)
+        return record
+
+
+def _collect_with(task, control, runner, rule_file: str = "known_good.yar"):
+    return collect(
+        ORACLE_ID,
+        {"rule_file": rule_file},
+        ReferenceExecutor(task, CORPUS_ROOT).truth(),
+        control_dir=control,
+        runner=runner,
+    )
+
+
+def _assert_the_reference_rule_is_observed_correctly(task, control, runner) -> None:
+    """The focused semantic assertion for the corrected collector.
+
+    Y30 reinstates the old exit-code reading and requires THIS to fail. If it still
+    passed, it would be a test that cannot detect the defect it was written for.
+    """
+    observation = _collect_with(task, control, runner)
+    assert observation.complete, observation.reason_code
+    assert observation.values["matches"] == {
+        "holdout_positive_beacon": True,
+        "holdout_positive_ecu": True,
+        "holdout_negative_benign": False,
+        "holdout_negative_clean": False,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -168,12 +273,15 @@ def test_Y5_an_absent_scanner_is_blocked_not_failed(task) -> None:
 def test_Y6_a_rule_that_does_not_compile_is_fail_not_blocked(task) -> None:
     """The scanner ran and refused the SUBMISSION. That is an assertion failure.
 
-    It is not an environment problem: the program was present and answered.
+    It is not an environment problem: the program was present and answered. The reason
+    code names what happened rather than guessing which failure it was — `yara` exits
+    non-zero both for a rule it cannot compile and for a target it cannot open, and the
+    exit code does not separate them. The scanner's own message is in the observation.
     """
     result = _evaluate(task, ReferenceVariant.KNOWN_GOOD, BrokenRuleYara())
     assert result.verdict is OracleVerdict.FAIL
     assert result.verdict is not OracleVerdict.BLOCKED
-    assert result.reason_code == "YARA_RULE_DID_NOT_COMPILE"
+    assert result.reason_code == "YARA_SCANNER_REFUSED_SUBMISSION"
 
 
 def test_Y7_a_missing_held_out_sample_makes_the_check_incomplete(task, control,
@@ -286,6 +394,31 @@ def test_Y13_the_truth_names_the_exact_files_on_disk(task, control) -> None:
 # ---------------------------------------------------------------------------
 
 
+class RealYara:
+    """The real scanner, through the same process seam every other runner uses."""
+
+    def __init__(self) -> None:
+        self.exits: list[int | None] = []
+
+    def run(self, argv, *, cwd=None, timeout_seconds=0):  # noqa: ANN001, ANN201
+        import subprocess
+
+        try:
+            completed = subprocess.run(
+                list(argv), capture_output=True, text=True,
+                timeout=timeout_seconds or 60, shell=False, check=False,
+            )
+        except FileNotFoundError:
+            self.exits.append(None)
+            return ProcessResult(exit_code=None)
+        self.exits.append(completed.returncode)
+        return ProcessResult(
+            exit_code=completed.returncode,
+            stdout=completed.stdout or "",
+            stderr=completed.stderr or "",
+        )
+
+
 @pytest.mark.skipif(
     not yara_available(),
     reason=(
@@ -295,30 +428,26 @@ def test_Y13_the_truth_names_the_exact_files_on_disk(task, control) -> None:
     ),
 )
 def test_Y14_the_real_scanner_agrees_with_the_corpus(task, control) -> None:
-    """The only test that proves the fixtures and the reference rule actually agree."""
+    """The only test that proves the fixtures and the reference rule actually agree.
 
-    class RealYara:
-        def run(self, argv, *, cwd=None, timeout_seconds=0):  # noqa: ANN001, ANN201
-            import subprocess
-
-            try:
-                completed = subprocess.run(
-                    list(argv), capture_output=True, text=True,
-                    timeout=timeout_seconds or 60, shell=False, check=False,
-                )
-            except FileNotFoundError:
-                return ProcessResult(exit_code=None)
-            return ProcessResult(
-                exit_code=completed.returncode,
-                stdout=completed.stdout or "",
-                stderr=completed.stderr or "",
-            )
+    Every reading is asserted SAMPLE BY SAMPLE, because the verdict alone would not show
+    the defect this exists to catch: under the old exit-code reading the scanner still
+    ran and still produced four readings, it just produced the wrong four. The two
+    samples the rule does not match are the ones that expose it, so they are named.
+    """
+    reader = RealYara()
+    _assert_the_reference_rule_is_observed_correctly(task, control, reader)
+    # All four readings came from exit code 0 — two matches and two non-matches. The
+    # exit code carries none of that information.
+    assert set(reader.exits) == {0}, reader.exits
 
     good = _evaluate(task, ReferenceVariant.KNOWN_GOOD, RealYara())
     assert good.verdict is OracleVerdict.PASS, good.reason_code
 
     bad = _evaluate(task, ReferenceVariant.KNOWN_BAD, RealYara())
     assert bad.verdict is not OracleVerdict.PASS
+    assert bad.verdict is OracleVerdict.FAIL, bad.reason_code
+    assert bad.reason_code.startswith("YARA_DETECTION_MISMATCH")
 
 
 # ---------------------------------------------------------------------------
@@ -454,3 +583,399 @@ def test_Y19_a_truth_sample_that_is_not_a_file_is_refused(task, control) -> None
     )
     assert not observation2.complete
     assert scanner2.calls == []
+
+
+# ---------------------------------------------------------------------------
+# Y20–Y32 — the REAL CLI semantics: exit code 0 is not a match
+# ---------------------------------------------------------------------------
+#
+# MEASURED, YARA 4.5.0:
+#
+#     match      exit 0, stdout "<rule identifier> <target>"
+#     no match   exit 0, stdout ""
+#     failure    non-zero, stderr diagnostic, stdout empty
+#
+# These tests are written against that behaviour rather than against the collector, and
+# Y31 reinstates the old reading to prove they fail under it. The stub could not catch
+# this defect because it encoded the defect: it answered `0 = match, 1 = no match`, so
+# every test in this file agreed with the misreading and the suite stayed green.
+
+
+def _all_four(**by_sample: Any) -> dict[str, Any]:
+    """A per-sample record map, with the samples a test did not name defaulted."""
+    records = {
+        "holdout_positive_beacon.txt": _NO_MATCH,
+        "holdout_positive_ecu.txt": _NO_MATCH,
+        "holdout_negative_benign.txt": _NO_MATCH,
+        "holdout_negative_clean.txt": _NO_MATCH,
+    }
+    records.update(by_sample)
+    return records
+
+
+def test_Y20_a_match_is_read_from_stdout_and_the_exit_code_is_zero(task, control) -> None:
+    """Requirement Y1/Y3. A matching sample: exit 0, and stdout NAMES the submitted rule."""
+    scanner = ScriptedYara(
+        _all_four(
+            **{
+                "holdout_positive_beacon.txt": _MATCH,
+                "holdout_positive_ecu.txt": _MATCH,
+            }
+        )
+    )
+    observation = _collect_with(task, control, scanner)
+
+    assert observation.complete, observation.reason_code
+    assert observation.values["matches"]["holdout_positive_beacon"] is True
+    assert observation.values["matches"]["holdout_positive_ecu"] is True
+    # The reading is a MATCH, and it arrived on a zero exit — but so does the reading
+    # below, which is the point of the next test.
+    assert {response.exit_code for response in scanner.responses} == {0}
+    assert all(
+        response.stdout.startswith("ai11_reference_answer ")
+        for response in scanner.responses
+        if response.stdout
+    )
+
+
+def test_Y21_the_exit_code_cannot_distinguish_a_match_from_a_non_match(task, control) -> None:
+    """Requirement Y2/Y3. Two opposite readings, ONE exit code.
+
+    This is the assertion that says the collector reads stdout rather than the exit
+    code. A collector reading the exit code cannot produce both of these from the same
+    input, so if either assertion below is dropped, the other stops proving anything.
+    """
+    scanner = ScriptedYara(
+        _all_four(
+            **{
+                "holdout_positive_beacon.txt": _MATCH,
+                "holdout_negative_clean.txt": _NO_MATCH,
+            }
+        )
+    )
+    observation = _collect_with(task, control, scanner)
+
+    assert observation.complete, observation.reason_code
+    assert observation.values["matches"]["holdout_positive_beacon"] is True
+    assert observation.values["matches"]["holdout_negative_clean"] is False
+    # Both readings came back on exit code 0. Nothing else about the two invocations
+    # differs except stdout.
+    assert {response.exit_code for response in scanner.responses} == {0}
+    stdout = {
+        Path(call[2]).name: response.stdout
+        for call, response in zip(scanner.calls, scanner.responses)
+    }
+    assert stdout["holdout_positive_beacon.txt"].strip() != ""
+    assert stdout["holdout_negative_clean.txt"] == ""
+
+
+def test_Y22_output_that_is_not_a_match_record_is_not_a_match(task, control) -> None:
+    """Requirement Y4. Non-empty stdout is not evidence of anything.
+
+    Diagnostic text is not a match record, and a collector that answered "matched"
+    because stdout had content in it would turn every warning into a detection.
+    """
+    noisy = ProcessResult(exit_code=0, stdout="warning: rule may slow down scanning\n")
+    scanner = ScriptedYara({name: noisy for name in _all_four()})
+    result = _evaluate(task, ReferenceVariant.KNOWN_GOOD, scanner)
+
+    assert result.verdict is not OracleVerdict.PASS
+    assert result.verdict is OracleVerdict.UNKNOWN
+    assert result.reason_code == "YARA_SCANNER_OUTPUT_UNREADABLE"
+
+
+def test_Y23_a_refused_rule_is_fail_with_the_counts_of_what_actually_ran(task, control) -> None:
+    """Requirement Y5. The real CLI's compile-failure exit code is 1, not 2.
+
+    Under the old reading, exit 1 meant "no match" — so a rule that does not compile was
+    recorded as a rule that matched nothing, with all four samples marked executed. Both
+    halves of that are false: the scanner refused the submission, and it was invoked
+    once.
+    """
+    scanner = StubYara(
+        failure='error: rule "ai11_reference_answer" in known_good.yar(9): '
+        "syntax error, unexpected '}'"
+    )
+    result = _evaluate(task, ReferenceVariant.KNOWN_GOOD, scanner)
+
+    assert result.verdict is OracleVerdict.FAIL
+    assert result.verdict is not OracleVerdict.BLOCKED
+    assert len(scanner.calls) == 1
+    assert result.tests.planned == 4
+    assert result.tests.executed == 1, "one invocation is one executed check"
+    assert result.tests.failed == 1
+    assert result.tests.skipped == 3
+
+
+def test_Y24_an_environment_that_cannot_scan_observed_nothing(task, control) -> None:
+    """Requirements Y6/Y7. An absent program and an expired budget are not non-matches.
+
+    Both are BLOCKED with no observation at all, and neither may be reported as a match
+    or a non-match: a host without `yara` would otherwise fail every correct rule it was
+    given, which is the same class of error as the one this section corrects.
+    """
+
+    class SlowYara:
+        def run(self, argv, *, cwd=None, timeout_seconds=0):  # noqa: ANN001, ANN201
+            return ProcessResult(exit_code=None, timed_out=True)
+
+    absent = _collect_with(task, control, NoYara())
+    assert not absent.complete
+    assert absent.reason_code == "YARA_PROGRAM_UNAVAILABLE"
+    assert absent.values == {}, "nothing was observed, so there is no reading to report"
+
+    expired = _collect_with(task, control, SlowYara())
+    assert not expired.complete
+    assert expired.reason_code == "YARA_SCAN_TIMEOUT"
+    assert expired.values == {}
+
+    assert _evaluate(task, ReferenceVariant.KNOWN_GOOD, NoYara()).verdict is OracleVerdict.BLOCKED
+    assert _evaluate(task, ReferenceVariant.KNOWN_GOOD, SlowYara()).verdict is OracleVerdict.BLOCKED
+
+
+@pytest.mark.parametrize(
+    ("stdout", "why"),
+    [
+        ("!! not a match record !!\n", "a line that is not a record at all"),
+        ("ai11_reference_answer\n", "a record with no target"),
+        ("someone_elses_rule sample.txt\n", "a record naming a rule nobody submitted"),
+        (
+            "ai11_reference_answer /elsewhere/other_sample.txt\n",
+            "a record about a different target",
+        ),
+        (
+            "ai11_reference_answer /elsewhere/holdout_positive_beacon.txt\n",
+            "a record about a DIFFERENT file with the SAME basename (see Y26b)",
+        ),
+    ],
+)
+def test_Y25_unattributable_output_is_unknown_never_a_guess(control, stdout, why) -> None:
+    """Requirement Y8. Output the collector cannot attribute produces UNKNOWN.
+
+    Neither "matched" nor "did not match" is a claim this output supports, and the two
+    wrong answers are wrong in opposite directions — one invents a detection, the other
+    invents a miss.
+    """
+    record = ProcessResult(exit_code=0, stdout=stdout)
+    scanner = ScriptedYara({name: record for name in _all_four()})
+    truth = {
+        "samples": {
+            "holdout_positive_beacon": {
+                "file": "holdout_positive_beacon.txt",
+                "expected": True,
+            }
+        }
+    }
+    observation = collect(
+        ORACLE_ID, {"rule_file": "known_good.yar"}, truth, control_dir=control, runner=scanner
+    )
+
+    assert not observation.complete, why
+    assert observation.reason_code == "YARA_SCANNER_OUTPUT_UNREADABLE"
+    assert observation.values == {}
+
+
+# ---------------------------------------------------------------------------
+# Y26–Y28 — the parser itself: records, not merely non-empty text
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("stdout", "expected"),
+    [
+        ("", YaraReading.NOT_MATCHED),
+        ("\n   \n", YaraReading.NOT_MATCHED),
+        ("ai11_reference_answer sample.txt\n", YaraReading.MATCHED),
+        (
+            "ai11_reference_answer sample.txt\nai11_reference_answer sample.txt\n",
+            YaraReading.MATCHED,
+        ),
+        ("ai11_reference_answer:tagged,tagged2 sample.txt\n", YaraReading.MATCHED),
+        ("other_rule sample.txt\n", YaraReading.AMBIGUOUS),
+        ("warning: rule may slow down scanning\n", YaraReading.AMBIGUOUS),
+        ("ai11_reference_answer\n", YaraReading.AMBIGUOUS),
+        ("ai11_reference_answer /elsewhere/other.txt\n", YaraReading.AMBIGUOUS),
+        # Same basename, different directory: a DIFFERENT file. See Y26b.
+        ("ai11_reference_answer /elsewhere/sample.txt\n", YaraReading.AMBIGUOUS),
+        ("some prose that is not a record at all\n", YaraReading.AMBIGUOUS),
+    ],
+)
+def test_Y26_the_parser_reports_what_the_scanner_said(stdout, expected) -> None:
+    """The parser's whole job: scanner stdout -> matched / not matched / ambiguous.
+
+    It compares nothing against truth and decides no verdict. A record is bound to the
+    submitted rule AND to the scanned target, so neither a stray line nor a record about
+    something else can become a detection.
+    """
+    assert parse_yara_matches(stdout, ("ai11_reference_answer",), target="sample.txt") is expected
+
+
+def test_Y26b_the_same_basename_in_another_directory_is_not_the_scanned_target() -> None:
+    """A record is attributed by PATH, never by name.
+
+    `A/clean.txt` and `B/clean.txt` are two different files. An attribution rule that
+    accepted the second because it shares a name with the first would report a detection
+    for a file this invocation never opened — and it would do it silently, because the
+    scanner really did print a record.
+
+    The strict reading is the only one that is provable: the collector invoked the
+    scanner against exactly one target, so the only record it can attribute is the one
+    naming that target.
+    """
+    scanned = Path("/scan/A/clean.txt")
+    stdout = "ai11_reference_answer /scan/B/clean.txt\n"
+
+    assert parse_yara_matches(stdout, ("ai11_reference_answer",), target=scanned) is (
+        YaraReading.AMBIGUOUS
+    ), "a record about a different file must not be attributed to the scanned one"
+    assert parse_yara_matches(
+        stdout, ("ai11_reference_answer",), target="/scan/B/clean.txt"
+    ) is YaraReading.MATCHED, "and the same record IS attributable to the file it names"
+
+    # The same statement end to end: the collector scanning one held-out sample must not
+    # read a record about another file of the same name as a detection.
+    assert parse_yara_matches(
+        "ai11_reference_answer holdout_clean.txt\n",
+        ("ai11_reference_answer",),
+        target="/held/out/holdout_clean.txt",
+    ) is YaraReading.AMBIGUOUS
+
+
+def test_Y27_a_record_is_matched_by_identity_not_by_being_present() -> None:
+    """One submitted rule matching is a match; one it did not submit is not attributable."""
+    stdout = "second_rule sample.txt\n"
+    assert parse_yara_matches(stdout, ["first_rule", "second_rule"], target="sample.txt") is (
+        YaraReading.MATCHED
+    )
+    assert parse_yara_matches(stdout, ["first_rule"], target="sample.txt") is YaraReading.AMBIGUOUS
+    # No declaration at all: nothing this output can be attributed to.
+    assert parse_yara_matches(stdout, [], target="sample.txt") is YaraReading.AMBIGUOUS
+
+
+def test_Y28_the_identity_comes_from_the_submitted_rule_not_from_this_repository(control) -> None:
+    """The identifier is read out of the submitted file, so ANY rule is recognised.
+
+    A collector that looked for a name written into itself would recognise the reference
+    answer and nothing else — a discrimination control that cannot discriminate.
+    """
+    assert declared_rule_names((control / "known_good.yar").read_text(encoding="utf-8")) == (
+        "ai11_reference_answer",
+    )
+    assert declared_rule_names((control / "known_bad.yar").read_text(encoding="utf-8")) == (
+        "ai11_reference_false_positive",
+    )
+    # Comments are not declarations, and `private`/`global` are modifiers, not names.
+    assert declared_rule_names(
+        "/*\nrule commented_out {\n}\n*/\nprivate rule real_one : tag { condition: true }\n"
+    ) == ("real_one",)
+
+
+def test_Y29_a_rule_the_collector_has_never_seen_is_still_observed(task, control, tmp_path) -> None:
+    """The same point, end to end: a rule name this repository has never heard of."""
+    import shutil as _shutil
+
+    custom = tmp_path / "control"
+    _shutil.copytree(control, custom)
+    (custom / "custom.yar").write_text(
+        "rule a_rule_this_repository_never_declared { condition: true }\n", encoding="utf-8"
+    )
+
+    scanner = ScriptedYara(
+        _all_four(**{name: _MATCH for name in _all_four()}),
+        rule_name="a_rule_this_repository_never_declared",
+    )
+    observation = _collect_with(task, custom, scanner, rule_file="custom.yar")
+
+    assert observation.complete, observation.reason_code
+    assert set(observation.values["matches"].values()) == {True}
+
+
+# ---------------------------------------------------------------------------
+# Y30 — the reference fixtures, and the falsifiability of everything above
+# ---------------------------------------------------------------------------
+
+
+def test_Y30_the_reference_fixtures_agree_with_the_held_out_corpus(task, control) -> None:
+    """Requirements Y9/Y10, on the corrected double.
+
+    The declared CORRECT rule matches both positives and neither negative; the declared
+    INCORRECT one false-positives on `holdout_negative_clean`, which is why it is the
+    discrimination control. Both readings are asserted exactly, because a verdict alone
+    would not show which samples produced it.
+    """
+    good = _collect_with(task, control, StubYara())
+    assert good.complete, good.reason_code
+    assert good.values["matches"] == {
+        "holdout_positive_beacon": True,
+        "holdout_positive_ecu": True,
+        "holdout_negative_benign": False,
+        "holdout_negative_clean": False,
+    }
+    assert _evaluate(task, ReferenceVariant.KNOWN_GOOD, StubYara()).verdict is OracleVerdict.PASS
+
+    bad = _collect_with(task, control, StubYara(), rule_file="known_bad.yar")
+    assert bad.complete, bad.reason_code
+    assert bad.values["matches"]["holdout_negative_clean"] is True, "the declared false positive"
+    assert bad.values["matches"]["holdout_negative_benign"] is False
+    result = _evaluate(task, ReferenceVariant.KNOWN_BAD, StubYara())
+    assert result.verdict is not OracleVerdict.PASS
+    assert result.verdict is OracleVerdict.FAIL
+
+
+def test_Y31_the_old_exit_code_reading_makes_these_tests_fail(task, control, monkeypatch) -> None:
+    """Requirement Y11. Falsifiability, not coverage.
+
+    The collector calls the parser only after a completed invocation, so a parser that
+    answers MATCHED without reading stdout IS the old `exit_code == 0 -> matched`
+    reading, reinstated. Under it the focused assertion must FAIL: it reports every
+    sample as a hit, and the two held-out negatives become failures of a rule that
+    correctly does not match them.
+
+    This is the test that says the tests above can detect the defect. If this passes,
+    one of them is not testing what it claims.
+    """
+    import benchmarks.oracles as oracles
+
+    def exit_code_era(stdout, submitted_rule_names, *, target=None):  # noqa: ANN001, ANN202
+        return YaraReading.MATCHED
+
+    monkeypatch.setattr(oracles, "parse_yara_matches", exit_code_era)
+
+    with pytest.raises(AssertionError):
+        _assert_the_reference_rule_is_observed_correctly(task, control, StubYara())
+
+    # And the end-to-end consequence, which is what the campaign record showed: a
+    # correct rule, four executed checks, two failures.
+    result = _evaluate(task, ReferenceVariant.KNOWN_GOOD, StubYara())
+    assert result.verdict is OracleVerdict.FAIL
+    assert result.tests.executed == 4
+    assert result.tests.failed == 2
+
+
+def test_Y32_the_double_speaks_the_contract_the_real_cli_was_measured_to_have(control) -> None:
+    """A double that disagrees with its tool is worse than no double.
+
+    The stub is asserted directly, because its OUTPUT is what the collector reads. When
+    the stub encoded `0 = match, 1 = no match` this test would have failed, and the
+    defect would have been caught at its source instead of in a campaign record.
+    """
+    rule = control / "known_good.yar"
+    beacon = (control / "holdout_positive_beacon.txt").resolve()
+    clean = (control / "holdout_negative_clean.txt").resolve()
+
+    matched = StubYara().run(["yara", str(rule), str(beacon)], cwd=None, timeout_seconds=5)
+    assert matched.exit_code == 0
+    assert matched.stdout == f"ai11_reference_answer {beacon}\n"
+    assert matched.stderr == ""
+
+    missed = StubYara().run(["yara", str(rule), str(clean)], cwd=None, timeout_seconds=5)
+    assert missed.exit_code == 0, "a non-match is NOT a non-zero exit — the CLI exits 0"
+    assert missed.stdout == ""
+    assert missed.stderr == ""
+
+    refused = StubYara(failure='error: rule "x" in y.yar(1): syntax error').run(
+        ["yara", str(rule), str(beacon)], cwd=None, timeout_seconds=5
+    )
+    assert refused.exit_code != 0
+    assert refused.stdout == ""
+    assert refused.stderr

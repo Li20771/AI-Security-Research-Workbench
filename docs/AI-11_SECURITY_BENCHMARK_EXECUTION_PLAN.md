@@ -1657,8 +1657,325 @@ It is committed before the code that depends on it. Applied amendments are logge
 
 ## 26. Amendment Log
 
+| # | date | scope | summary |
+| --- | --- | --- | --- |
+| 1 | 2026-10-03 | A.6 `ai11-v1-fuzzing-recovery-triage` | **§27** — A.6's controlled-reproduction semantics are frozen: the generator's real interface, the authoritative case set and its identity, the provenance of expected truth, the kernel-oracle representation, exit-code semantics, the output files the oracle reads, the `vcan0-exclusive` boundary, the recovery/regression split, count semantics, and what a deliberately incorrect A.6 answer is |
+
+### Amendment 1 — A.6 controlled-reproduction semantics (2026-10-03)
+
 ```text
-(none yet — this document is a freeze proposal and no amendment has been applied)
+WHAT CHANGED     A.6 said "the harness re-runs the generator at a fixed seed and
+                 compares classification" and stopped there. Every load-bearing
+                 detail was left to the implementation, and the implementation chose
+                 four that the pinned generator does not support. §27 fixes: the
+                 generator's actual CLI; the authoritative case set and where case
+                 identity comes from; the split between tracked task configuration and
+                 controlled runtime observation; the kernel-oracle representation; what
+                 exit codes 0, 1 and 2 mean; which output file the oracle reads; the
+                 `vcan0-exclusive` boundary; where the ECU's recovery/survival is
+                 measured and where it is not; what the five counts count; and what
+                 makes an A.6 answer deliberately wrong.
+
+WHY              The AI-11-C forensic of 2026-10-03 measured that the A.6 oracle could
+                 not produce a truthful observation on any host. It invoked `--json`,
+                 an argument the generator does not have (exit 2, argparse usage
+                 error); it read a JSON record from stdout, which carries none (the
+                 last line is `summary written: <path>`; 0 of 48 lines parse as JSON);
+                 it compared against case identifiers the generator never emits (the
+                 string `smoke-case` occurs nowhere in SecurityLab @ `efa836f`, and the
+                 intersection with the generator's 30 case IDs is empty); and it mapped
+                 any non-zero exit to BLOCKED, which would record a completed run that
+                 found a crash as an unavailable environment. On the authoritative host
+                 the task recorded BLOCKED/FUZZ_RERUN_FAILED:2 while vcan0 was UP and
+                 every declared tool was present.
+
+SECURITY IMPACT  Tightened, not relaxed. `vcan0-exclusive` is reclassified from
+                 "checked by `ip link show`" to "not demonstrable by any mechanism in
+                 either repository": existence is declared insufficient, "no obvious
+                 process found" is refused as proof, no pseudo-lock is admitted, and
+                 A.6 stays Tier B until exclusivity is measurable. No forbidden tool,
+                 interface or corpus is admitted, and the two gitignored `fuzz-out`
+                 corpora remain barred as sources (§7.5).
+
+AUTHORITY        AI-11's own annex only. The OracleVerdict vocabulary and the PASS
+IMPACT           invariant (§8.1, §11.1), the regression and recovery rules (§12, §13),
+                 the SecurityLab boundary (§16), the corpus tier rule (§17.2), the
+                 result schema and forbidden-content list (§18) and every relation to
+                 AI-05 .. AI-10 (§21) are unchanged. No other phase is amended. This
+                 amendment is committed before the A.6 code that depends on it (§25).
+
+DATE             2026-10-03
+```
+
+```text
+FROZEN: this amendment binds A.6 only. An A.6 implementation that does not follow §27
+        is not an implementation of this contract, and a run it produces is not a
+        benchmark result — including a run that happens to record PASS.
+```
+
+---
+
+## 27. Amendment 1 — A.6 controlled-reproduction semantics — FROZEN
+
+Every clause below was MEASURED against SecurityLab @
+`efa836ff9225f6226ca8a76615f3f45c31110d58` on 2026-10-03, on a host where vcan0 was UP,
+`can_isotp` was loaded, `candump`/`cansend` were present and dmesg was readable. The
+measurements are the reason each clause exists; they are cited so that a later reader
+can re-run them rather than trust the conclusion.
+
+### 27.1 The pinned generator's interface — FROZEN
+
+```text
+FROZEN: the A.6 generator is `labs/vehicle/can-tools/fuzz/isotp_fuzz.py` at the pinned
+        source_sha. Its interface is the one the file declares, and nothing else:
+            --list  --smoke  --categories  --dimensions  --seeds
+            --limit-per-seed  --seed  --out  --max-cases  --no-artifacts
+FROZEN: `--json` is NOT part of A.6. The generator has no such argument: passing it is
+        an argparse usage error, exit 2, with no case executed. An oracle invocation
+        MUST NOT contain it.
+FROZEN: the controlled rerun is exactly
+            <python> labs/vehicle/can-tools/fuzz/isotp_fuzz.py \
+                --smoke --seed 12345 --out <scratch>/fuzz-cases
+        where <scratch> is outside the source repository and outside the agent-visible
+        tree (§15.2, §15.3).
+FROZEN: `--out` is REQUIRED of the oracle. The generator's default output directory is
+        `labs/vehicle/can-tools/fuzz-out`, INSIDE the source tree: §16 forbids writing
+        there and §7.5 forbids treating what is written there as truth.
+FROZEN: `labs/vehicle/can-tools/fuzz-out/` and `labs/vehicle/fuzz-out/` MUST NOT be
+        read, written or used as a comparison source by any A.6 code path (§7.5).
+FROZEN: the generator's interpreter dependency is `python-can` and `can-isotp`, both
+        imported at module import time. Their absence is an ENVIRONMENT fact and is
+        reported as one (§27.5) — it is never inferred from the generator's exit code
+        alone.
+```
+
+### 27.2 The authoritative case set — FROZEN
+
+```text
+FROZEN: the A.6 authoritative case set is EXACTLY the cases the pinned generator
+        constructs for `--smoke --seed 12345`, in the order it constructs them. At
+        `efa836f` that is 30 cases.
+FROZEN: case identity is the generator's own. `case_schema.make_case_id()` produces
+        `<seed_id.lower()>__<dimension>__<label>`. The Workbench MUST NOT invent,
+        rename, renumber or alias a case identifier, and MUST NOT map one onto another.
+FROZEN: `--max-cases` truncates the case set and therefore changes what A.6 measures.
+        The oracle MUST NOT pass it. SecurityLab's own minimal entry point
+        `scripts/repro/verify_fuzz_smoke.sh` runs `--smoke --max-cases 3`; that is a
+        valid SecurityLab smoke and it is NOT the A.6 authoritative case set.
+FROZEN: `smoke-case-01`, `smoke-case-02` and `smoke-case-03` are NOT case identities.
+        MEASURED: the string `smoke-case` occurs nowhere in SecurityLab @ `efa836f`;
+        the intersection of those three names with the generator's 30 case IDs is
+        EMPTY; and no tracked deterministic mapping from them to generated cases
+        exists. A.6 material MUST NOT carry them, and MUST NOT carry a renamed
+        equivalent invented to preserve them.
+```
+
+### 27.3 Where expected truth comes from — FROZEN
+
+```text
+FROZEN: A.6 separates two things the previous material ran together:
+            tracked task configuration    what the task IS — task.yaml, this annex,
+                                          the frozen CLASS_PRIORITY, the seed, the
+                                          case-set definition, the control answers
+            controlled runtime            what THIS run's own generator invocation
+            observation                   measured, per authoritative case
+FROZEN: for A.6, `truth.json` MAY contain: the frozen CLASS_PRIORITY; the rerun
+        arguments and the pinned SHA they were run at; and, per authoritative case,
+        the expected class and kernel-oracle reading AS A CONTROLLED RERUN MEASURED
+        THEM.
+FROZEN: `truth.json` MUST NOT contain any per-run capture — `timestamp`,
+        `duration_ms`, `errno`, `process_returncode`, `ecu_log_tail`, raw kernel log
+        lines, or anything else §18.2 forbids. §7.5 already bars the gitignored
+        captures from becoming expected values; this clause names what may replace
+        them.
+FROZEN: an expected value MUST be one a conforming rerun reproduces. A value the
+        pinned generator no longer produces is NOT truth: it MUST be corrected or
+        removed, never kept as a stale record and never accommodated by weakening the
+        oracle.
+FROZEN: the key set of `truth.expected` MUST equal the authoritative case set. A truth
+        whose keys are not generator case IDs is not usable for A.6 and MUST be refused
+        rather than compared against.
+```
+
+### 27.4 Kernel-oracle representation — FROZEN
+
+```text
+MEASURED, `isotp_fuzz.py::kernel_oracle_result()`:
+    AVAILABLE    -> the LIST of matching dmesg lines; an EMPTY list means "the oracle
+                    ran and found no anomaly"
+    UNAVAILABLE  -> None
+    ERROR        -> None
+```
+
+```text
+FROZEN: AI-11 inherits that tri-state unchanged, and fixes the RECORD representation of
+        it as a COUNT:
+            AVAILABLE    -> kernel_events = the NUMBER of matching kernel-anomaly lines
+                            (0 means: the oracle ran and found nothing)
+            UNAVAILABLE  -> kernel_events = null
+            ERROR        -> kernel_events = null
+FROZEN: the count is AI-11's STRUCTURED MEASUREMENT of SecurityLab's list. It is not a
+        raw event capture, and it is the only representation a record may carry: §18.2
+        forbids tool stdout and free text in a BenchmarkRun, and a dmesg line is both.
+        The list MAY exist inside the oracle process; it MUST NOT be recorded.
+FROZEN: the normalisation happens in exactly ONE place — the collector — and MUST NOT
+        be applied to a value the generator did not produce under an AVAILABLE oracle.
+        An empty list MUST NOT become 0 for a run whose oracle was not AVAILABLE.
+FROZEN: the count MUST be derived from the rerun in the same run. It is never copied
+        from a truth file, and a truth file's number never substitutes for a reading
+        the oracle did not take.
+```
+
+### 27.5 Exit-code semantics — FROZEN
+
+```text
+MEASURED, `isotp_fuzz.py::main()`:
+    0   the generator completed its whole case set
+    1   the generator COMPLETED a controlled run and stopped early, because a
+        HIGH_PRIORITY class (KERNEL_ANOMALY, ECU_CRASH, STATE_CORRUPTION) or a new
+        errno occurred — `return 1 if high_priority else 0`
+    2   usage failure: no `--smoke`/`--list`, or argparse rejecting an argument
+```
+
+```text
+FROZEN: `exit != 0 -> BLOCKED` is FORBIDDEN as a rule for A.6.
+FROZEN: exit 0  -> a complete candidate observation. It is still not a verdict (§11.1).
+FROZEN: exit 1  -> NOT an environment failure, and NOT automatically BLOCKED. It is a
+        COMPLETED controlled run whose case set is INCOMPLETE: the observation covers
+        the cases that produced files, `skipped > 0`, and PASS is unreachable (§11.1,
+        §27.9). The high-priority finding is recorded as the run's own result.
+FROZEN: exit 2  -> a HARNESS INVOCATION DEFECT. It MUST NOT become a benchmark result
+        of any kind. The run is BLOCKED with a reason code that names the invocation,
+        and the defect is fixed in the harness rather than filed as an environment
+        limitation.
+FROZEN: a non-zero exit MUST NOT be attributed to the environment without POSITIVE
+        evidence that the environment caused it. MEASURED: the same exit 1 arises both
+        from a high-priority finding and from an interpreter that cannot import the
+        generator's dependencies, so the exit code alone does not identify the cause.
+        The presence or absence of the run's own output files is what distinguishes
+        them, and that is what the oracle must read.
+```
+
+### 27.6 Output-file semantics — FROZEN
+
+```text
+MEASURED at `efa836f`:
+    stdout                     48 lines of human-readable operational log; the last
+                               line is `summary written: <path>`; ZERO lines parse as
+                               a JSON object
+    <out>/smoke-summary.json   the run aggregate: master_seed, total, per-class
+                               counts, kernel-oracle counts, high-priority case IDs
+    <out>/<case_id>.json       one file per EXECUTED case — the controlled observation:
+                               case identity, frames, the declared probe, and the
+                               result block the oracle judges
+```
+
+```text
+FROZEN: the oracle reads the PER-CASE result files from the run's own `--out`
+        directory. `json.loads(<last stdout line>)` is FORBIDDEN: stdout is an
+        operational log and carries no record.
+FROZEN: a case file the run did not write is a case that did not execute. The oracle
+        MUST NOT invent a result for it, and MUST NOT fill it from a previous run, a
+        truth file or a cached capture.
+FROZEN: `smoke-summary.json` is an aggregate and MUST NOT be used as the per-case
+        observation. It carries counts, not results.
+```
+
+### 27.7 The `vcan0-exclusive` boundary — FROZEN
+
+```text
+FROZEN: `vcan0 exists` is NOT `vcan0 is exclusively held`. Existence and UP-ness are
+        necessary and NOT sufficient.
+FROZEN: `ip link show vcan0` proves the interface exists. It MUST NOT be recorded,
+        summarised or relied on as evidence of exclusivity.
+FROZEN: "no obvious process was found" is NOT a proof of exclusivity and MUST NOT be
+        used as one. Nor is an operator convention — SecurityLab's
+        `scripts/repro/verify_fuzz_smoke.sh` and `scripts/qa_extended.sh` warn the
+        human not to run concurrent CAN work; a warning to a human is not a measured
+        fact about the machine.
+FROZEN: A.6 remains TIER B (§17.2) until an explicit, auditable exclusivity mechanism
+        exists AND is measured. Tier is a property of the task; it does not rise
+        because a host happens to be idle.
+FROZEN: where exclusive use cannot be demonstrated, the run is BLOCKED with the
+        declared precondition named — `PRECONDITION_UNMET:environment:vcan0-exclusive`
+        (§5.7) — and MUST NOT be reported as PASS, FAIL or NOT_RUN.
+FROZEN: this amendment admits NO lockfile, flock, network namespace, socket-ownership
+        probe or other scheme. A pseudo-lock that has not been measured against the
+        real failure it claims to exclude is worse than the honest BLOCKED, because it
+        converts an unverified assumption into a recorded fact.
+```
+
+### 27.8 Recovery, and the regression axis — FROZEN
+
+```text
+FROZEN: the two axes stay separate (§12). This clause says WHERE each question is
+        measured and does not merge the answers.
+FROZEN: the TASK ORACLE's derived observation is the per-case classification, the
+        kernel-oracle tri-state, and the recovery probe result as the pinned generator
+        performed it.
+FROZEN: the REGRESSION condition `ecu-survives-and-recovers` (BEHAVIOURAL_PIN)
+        measures the SUBJECT side, on the post-execution state: the ECU process
+        survived the case run, no residual process remains, and the declared probe was
+        answered —
+            request  `10 01`
+            expected `50 01 00 32 00 64`   (`case_schema.py:272-273`, tracked)
+FROZEN: the recovery observation MUST come from the pinned generator's controlled
+        execution. It MUST NOT be read from the submission, and a submission that
+        asserts its own recovery is not evidence of it.
+FROZEN: `regression_status = PASS` because the negative-control ANSWER was rejected is
+        FORBIDDEN as a substitute for the recovery observation. §7.4's non-vacuity
+        control and §12's post-execution regression are different questions, and an
+        answer-shaped control does not measure a process.
+FROZEN: §13 is NOT amended. §13 measures AGENT recovery under a declared controlled
+        fault and remains BLOCKED/DEFERRED for v1. The A.6 probe is a SUBJECT-side
+        observation inside a controlled reproduction: it enters no recovery rate and no
+        §13 denominator, and it does not unblock §13.
+```
+
+### 27.9 Count semantics — FROZEN
+
+```text
+FROZEN: the counts describe the CASES. One generator invocation is ONE process
+        execution, not N checks, and N cases are N checks, not one.
+            planned    the number of cases in the authoritative case set
+            executed   the number of per-case result files the run completed
+            skipped    planned - executed
+            passed     cases whose observation matched the submission
+            failed     cases whose observation did not
+FROZEN: `len(truth.expected)` MUST NOT be used as `executed`, and MUST NOT be used as
+        `planned` unless `truth.expected` IS the authoritative case set (§27.2,
+        §27.3). A run that executed nothing reports `executed = 0`; it MUST NOT report
+        a count borrowed from a truth file as though the harness had run it.
+FROZEN: an early stop (§27.5, exit 1) yields `executed < planned` and `skipped > 0`,
+        and PASS is unreachable under §11.1.
+FROZEN: an invocation that produced no cases (exit 2) reports `executed = 0`,
+        `skipped = planned`, and is BLOCKED. Reporting `planned` as the authoritative
+        case set is what lets a reader see how much did not run.
+```
+
+### 27.10 Non-vacuity: known_good and known_bad — FROZEN
+
+```text
+FROZEN: §7.4 holds unchanged. A.6 MUST carry a discrimination control whose known_good
+        answer is not rejected and whose known_bad answer IS.
+FROZEN: both control answers MUST name the authoritative case set's IDs (§27.2). A
+        control whose keys are not generator case IDs is not an answer to this task.
+FROZEN: `known_good` is the per-case classification a controlled rerun produces at the
+        pinned SHA and seed, with `kernel_events` in §27.4's count representation. Like
+        A.4's, it is a DECLARED CORRECT ANSWER held outside the agent-visible tree, and
+        it is produced by a different execution than the one that judges it.
+FROZEN: `known_bad` MUST differ from `known_good` in at least one case whose `class` is
+        replaced by a DIFFERENT member of the frozen CLASS_PRIORITY. A classification
+        error is detectable on every host, whatever the kernel oracle reports.
+FROZEN: a SECOND negative control MAY instead violate the kernel rule — a non-null
+        `kernel_events` under a non-AVAILABLE oracle — but it MUST NOT be the only
+        control: its applicability depends on the host's dmesg availability, and a
+        control that is unreachable on some hosts cannot carry §7.4's requirement
+        alone.
+FROZEN: a negative control that differs only in a field the oracle does not judge is
+        NOT a control. Copying the rerun's output and changing something unrelated
+        yields an oracle that cannot say no while appearing to have a control — which
+        is the state A.6 was measured in.
 ```
 
 ---
@@ -1838,6 +2155,37 @@ FROZEN: kernel_events is meaningful ONLY when the kernel oracle is AVAILABLE. Wh
         UNAVAILABLE or ERROR, kernel_events is recorded null, never 0. This is
         SecurityLab's own rule and AI-11 inherits it verbatim rather than restating a
         weaker one.
+```
+
+```text
+AMENDMENT 1 (2026-10-03, §27) — the fields above say what the task IS; §27 fixes HOW
+the controlled reproduction is performed, because the implementation that read this
+card chose four things the pinned generator does not support. Binding on any A.6
+implementation:
+
+    the generator   `isotp_fuzz.py --smoke --seed 12345 --out <scratch>`; `--json` is
+                    NOT part of A.6 (the generator has no such argument); the two
+                    gitignored `fuzz-out` corpora are never read or written
+    the case set    whatever that invocation constructs, identified by the generator's
+                    own `make_case_id()`; `smoke-case-*` are not case identities, occur
+                    nowhere in SecurityLab, and MUST NOT appear in A.6 material
+    the truth       per-case expected class and kernel reading, as a controlled rerun
+                    at the pinned SHA reproduces them; never a per-run capture
+                    (timestamp, duration, errno, ecu_log_tail, raw kernel lines)
+    kernel_events   a COUNT when the oracle was AVAILABLE (0 = ran, nothing found),
+                    null otherwise; the dmesg lines themselves never enter a record
+    exit 0 / 1 / 2  a complete observation / a COMPLETED run that stopped on a
+                    high-priority finding (counts incomplete, never PASS, never an
+                    environment failure) / a harness invocation defect that MUST NOT
+                    become a result
+    the output      the per-case JSON files under the run's own `--out`; stdout is an
+                    operational log and carries no record
+    vcan0           existence is not exclusivity; A.6 stays Tier B until exclusivity is
+                    demonstrable by an explicit auditable mechanism; otherwise BLOCKED
+                    with `PRECONDITION_UNMET:environment:vcan0-exclusive`
+    counts          planned/executed/skipped describe the CASES, not the invocation
+    controls        known_good = the measured classification; known_bad = a different
+                    frozen class on at least one case
 ```
 
 ```text

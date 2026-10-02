@@ -294,6 +294,7 @@ class BenchmarkRun:
     model_ref: str | None = None
     token_usage: Mapping[str, Any] | None = None
     cost: Mapping[str, Any] | None = None
+    regression_results: tuple[Mapping[str, Any], ...] = ()
     limitations: tuple[str, ...] = ()
     schema_version: int = 1
 
@@ -387,6 +388,7 @@ class BenchmarkRun:
             "oracle_results": [dict(entry) for entry in self.oracle_results],
             "task_status": str(self.task_status),
             "regression_status": str(self.regression_status),
+            "regression_results": [dict(entry) for entry in self.regression_results],
             "security_boundary_status": str(self.security_boundary_status),
             "token_usage": dict(self.token_usage) if self.token_usage is not None else None,
             "cost": dict(self.cost) if self.cost is not None else None,

@@ -53,7 +53,7 @@ from benchmarks.oracle import (
     aggregate_oracle_verdicts,
     aggregate_security_status,
 )
-from benchmarks.oracles import evaluate_submission
+from benchmarks.oracles import SUBJECT_SIDE_REGRESSIONS, evaluate_submission
 from benchmarks.run import BenchmarkRun, HostRecord, TestCounts, new_run_id
 from benchmarks.task import TaskDefinition
 from benchmarks.vocabulary import (
@@ -70,6 +70,7 @@ from benchmarks.workspace import (
     derive_source_tree,
     prepare_workspace,
     resolve_source_sha,
+    validate_source_root,
 )
 
 __all__ = [
@@ -95,6 +96,7 @@ class LocalProcessRunner:
                 cwd=cwd,
                 capture_output=True,
                 text=True,
+                errors="replace",
                 timeout=timeout_seconds,
                 shell=False,
                 check=False,
@@ -228,7 +230,9 @@ def _record(
     tests: TestCounts,
     oracle_results: tuple[Mapping[str, Any], ...],
     task_status: OracleVerdict,
-    limitations: tuple[str, ...],
+    regression_status: OracleVerdict = OracleVerdict.NOT_RUN,
+    regression_results: tuple[Mapping[str, Any], ...] = (),
+    limitations: tuple[str, ...] = (),
 ) -> BenchmarkRun:
     """One construction site, so every path produces the same shape of record."""
     return BenchmarkRun(
@@ -249,13 +253,144 @@ def _record(
         tests=tests,
         oracle_results=oracle_results,
         task_status=task_status,
-        # §12: regression is its own axis, and the reference path does not execute the
-        # declared regression conditions. NOT_RUN is the honest value; it is not a pass
-        # and it is not a failure.
-        regression_status=OracleVerdict.NOT_RUN,
+        # §12: regression is its own axis. These are the MEASURED values — the
+        # parameters, not a literal.
+        #
+        # This line previously read `regression_status=OracleVerdict.NOT_RUN`, and the
+        # constructor took no `regression_results` at all. `evaluate_regression()`
+        # therefore ran, returned a real verdict, was passed here, and was discarded:
+        # every run recorded NOT_RUN regardless of what the harness had measured. The
+        # default on the parameter above is the value a caller that measured nothing
+        # gets, which is the only place NOT_RUN is allowed to come from.
+        regression_status=regression_status,
+        regression_results=regression_results,
         security_boundary_status=aggregate_security_status([]),
         limitations=limitations,
     )
+
+
+#: How long a subject-side regression observation may take. A controlled reproduction
+#: that executes a whole case set is not a single tool invocation; see
+#: `benchmarks.oracles.FUZZ_RERUN_TIMEOUT_SECONDS`.
+REGRESSION_OBSERVATION_TIMEOUT_SECONDS = 600
+
+
+def evaluate_regression(
+    *,
+    task: TaskDefinition,
+    corpus_root: Path,
+    source_root: Path | None,
+    setup_dir: Path | None,
+    workspace_root: Path | None,
+    oracle_runner: Any,
+) -> tuple[OracleVerdict, str, tuple[Mapping[str, Any], ...]]:
+    """§12. The regression axis, measured on its own.
+
+    ```text
+    FROZEN: regression is its OWN axis. regression_status is an OracleVerdict and is
+            never merged into task_status.
+    ```
+
+    v1's regression conditions are the declared NEGATIVE CONTROLS: each names the
+    `known_bad` variant, and the condition holds when the oracle judges that declared
+    wrong answer non-PASS. That is what makes the oracle falsifiable, and it is the
+    only regression check the frozen corpus declares.
+
+    It is deliberately NOT "the task failed". A negative control that is correctly
+    rejected is a regression check that PASSED, and §12 keeps that judgement on its own
+    axis precisely so the two cannot be confused.
+    """
+    conditions = tuple(c for c in task.regression_conditions if c.required)
+    if not conditions:
+        return (OracleVerdict.NOT_RUN, "", ())
+
+    executor = ReferenceExecutor(task, corpus_root)
+    results: list[Mapping[str, Any]] = []
+    outcomes: list[OracleVerdict] = []
+    subject_side_used = False
+
+    for condition in conditions:
+        # §27.8. A condition whose question is about the SUBJECT — did the ECU survive
+        # and recover — cannot be answered by judging an answer. Those conditions name
+        # their own evaluator; every other condition keeps the negative-control path
+        # below, unchanged.
+        subject_side = SUBJECT_SIDE_REGRESSIONS.get((task.task_id, condition.condition_id))
+        if subject_side is not None:
+            subject_side_used = True
+            verdict, reason = subject_side(
+                source_root=source_root, setup_dir=setup_dir, runner=oracle_runner,
+                timeout_seconds=REGRESSION_OBSERVATION_TIMEOUT_SECONDS,
+            )
+            results.append({"condition_id": condition.condition_id,
+                            "verdict": str(verdict), "reason_code": reason})
+            outcomes.append(verdict)
+            continue
+
+        if condition.kind not in ("FROZEN_DEFINITION", "BEHAVIOURAL_PIN"):
+            # A tracked suite would be run here; v1 declares none, and inventing a
+            # runner for one would be a mechanism nobody asked for.
+            results.append({"condition_id": condition.condition_id,
+                            "verdict": str(OracleVerdict.UNAVAILABLE),
+                            "reason_code": "REGRESSION_KIND_UNSUPPORTED"})
+            outcomes.append(OracleVerdict.UNAVAILABLE)
+            continue
+
+        negative = executor.produce(ReferenceVariant.KNOWN_BAD)
+        try:
+            result = evaluate_submission(
+                oracle_id=task.oracle.oracle_id,
+                required=task.oracle.required,
+                submission=negative.payload,
+                truth=executor.truth(),
+                control_dir=executor.control,
+                source_root=source_root,
+                setup_dir=setup_dir,
+                workspace_root=workspace_root,
+                runner=oracle_runner,
+            )
+        except BenchmarkError as exc:
+            results.append({"condition_id": condition.condition_id,
+                            "verdict": str(OracleVerdict.BLOCKED),
+                            "reason_code": type(exc).__name__})
+            outcomes.append(OracleVerdict.BLOCKED)
+            continue
+
+        if result.verdict is OracleVerdict.PASS:
+            # The oracle accepted a declared WRONG answer. The control failed.
+            verdict = OracleVerdict.FAIL
+            reason = "NEGATIVE_CONTROL_WAS_ACCEPTED"
+        elif result.verdict in (OracleVerdict.BLOCKED, OracleVerdict.NOT_RUN,
+                                OracleVerdict.UNKNOWN, OracleVerdict.UNAVAILABLE):
+            # The oracle could not reach a verdict. That is not a failed control, and
+            # §8.2 forbids recording it as one.
+            verdict = result.verdict
+            reason = result.reason_code
+        else:
+            verdict = OracleVerdict.PASS
+            reason = "NEGATIVE_CONTROL_REJECTED"
+
+        results.append({"condition_id": condition.condition_id,
+                        "verdict": str(verdict), "reason_code": reason})
+        outcomes.append(verdict)
+
+    if all(v is OracleVerdict.PASS for v in outcomes):
+        # The aggregate reason names what was actually measured. A subject-side
+        # condition never looked at a negative control, so reporting
+        # "NEGATIVE_CONTROLS_REJECTED" for one would be a true verdict with a false
+        # explanation attached (§27.8).
+        reason = (
+            "REGRESSION_CONDITIONS_SATISFIED"
+            if subject_side_used
+            else "NEGATIVE_CONTROLS_REJECTED"
+        )
+        return (OracleVerdict.PASS, reason, tuple(results))
+
+    from benchmarks.vocabulary import ORACLE_VERDICT_PRECEDENCE
+
+    for verdict in ORACLE_VERDICT_PRECEDENCE:
+        if any(v is verdict for v in outcomes):
+            return (verdict, "REGRESSION_NOT_SATISFIED", tuple(results))
+    return (OracleVerdict.UNKNOWN, "REGRESSION_INDETERMINATE", tuple(results))
 
 
 def execute_task(
@@ -317,6 +452,16 @@ def execute_task(
             submission=None,
         )
 
+    # (0) The source root must be readable at all. Without this, an unusable path
+    #     reaches subprocess as a cwd and escapes as a bare NotADirectoryError rather
+    #     than a refusal a caller can catch.
+    try:
+        source_root = validate_source_root(source_root)
+    except BenchmarkError as exc:
+        return blocked(
+            f"{LimitationCode.PRECONDITION_UNMET.value}:source_root", str(exc)[:200]
+        )
+
     # (1) §5.3. Existence is a PRECONDITION, checked before anything is derived. A sha
     #     that does not resolve is BLOCKED, and there is no fallback to the working tree.
     if not resolve_source_sha(source_root, task.source_sha, git=git):
@@ -365,6 +510,15 @@ def execute_task(
         runner=oracle_runner,
     )
 
+    regression_status, regression_reason, regression_results = evaluate_regression(
+        task=task,
+        corpus_root=corpus_root,
+        source_root=source_tree.root,
+        setup_dir=source_tree.setup_dir,
+        workspace_root=workspace.root,
+        oracle_runner=oracle_runner,
+    )
+
     finished_at = utc_now()
     duration_ms = max(0, int((time.monotonic() - started_monotonic) * 1000))
 
@@ -380,6 +534,8 @@ def execute_task(
         tests=result.tests,
         oracle_results=(result.to_mapping(),),
         task_status=aggregate_oracle_verdicts([result]),
+        regression_status=regression_status,
+        regression_results=regression_results,
         limitations=tuple(
             dict.fromkeys(
                 [LimitationCode.NO_PROVIDER_CALL_IN_PATH.value, *result.limitations]

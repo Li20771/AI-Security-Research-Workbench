@@ -42,6 +42,7 @@ than raising or guessing. §8.2: nothing ran, so nothing is known about the thin
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -210,14 +211,86 @@ def run_binary(
     }
 
 
+#: A program version as a compiled program carries it: a product name, a space, and
+#: `v<major>.<minor>[.<patch>]`. MEASURED against the pinned lab's statically linked
+#: AArch64 binary, where it matches the injected `-DFW_VERSION_STR` literal and nothing
+#: else in 635 KB of glibc, DWARF and source-path strings.
+_PROGRAM_VERSION_TOKEN = re.compile(rb"\b[A-Za-z][A-Za-z0-9_.+-]*[ \t]+v\d+(?:\.\d+)+\b")
+
+#: Every ELF file starts with these four bytes. A file that does not is not a program.
+_ELF_MAGIC = b"\x7fELF"
+
+
+def _elf_program_versions(rootfs: Path) -> set[str]:
+    """Every version string carried by an ELF executable under `rootfs`."""
+    versions: set[str] = set()
+    for path in sorted(rootfs.rglob("*")):
+        if path.is_symlink() or not path.is_file():
+            continue
+        try:
+            data = path.read_bytes()
+        except OSError:  # pragma: no cover - an unreadable file is not a program
+            continue
+        if not data.startswith(_ELF_MAGIC):
+            continue
+        for match in _PROGRAM_VERSION_TOKEN.finditer(data):
+            versions.add(match.group(0).decode("ascii", "replace"))
+    return versions
+
+
+def _program_version(rootfs: Path) -> str:
+    """§A.4. The PROGRAM version, read from the program IN THE EXTRACTED IMAGE.
+
+    ```text
+    NOT /etc/banner   a boot banner is not a program version. On the pinned v1 image the
+                      banner reads "SYNTHETIC ECU boot banner - revision 1" while the
+                      program reports "SYN-ECU v1.0". An oracle that answered with the
+                      banner was answering a different question, and it made every
+                      firmware run UNKNOWN against its own tracked truth.
+    NOT config.ini    the pinned v1 config has no `version` key at all, so a config-first
+                      read has nothing to read and MUST NOT invent one.
+    NOT truth         the observation is what the image contains, never what the corpus
+                      says it should contain.
+    ```
+
+    The version lives where the build put it: `build_fw.sh` compiles the program with
+    `-DFW_VERSION_STR`, so the string is in the executable and nowhere else.
+
+    Failure is `InspectionUnavailable`, never a value. An image whose programs carry no
+    version has not been observed, and an empty string would be a value nobody measured;
+    two programs that disagree are not a fact to round to one of them. §8.2 makes both
+    BLOCKED — "we could not look" is not "we looked and it was wrong", and it is
+    certainly not a pass.
+    """
+    versions = _elf_program_versions(rootfs)
+    if not versions:
+        raise InspectionUnavailable(
+            "PROGRAM_VERSION_ABSENT",
+            f"no ELF executable under {rootfs} carries a '<name> v<major>.<minor>' "
+            "version string. The program version is not in the image; the boot banner "
+            "and the config are not substitutes for it",
+        )
+    if len(versions) > 1:
+        raise InspectionUnavailable(
+            "PROGRAM_VERSION_AMBIGUOUS",
+            f"the image's executables carry more than one program version: "
+            f"{sorted(versions)}. An ambiguous version is never guessed",
+        )
+    return versions.pop()
+
+
 def inspect_firmware(image: str | Path, *, extract_to: str | Path) -> Mapping[str, Any]:
-    """§A.4. Filesystem, compression and config, derived from the IMAGE.
+    """§A.4. Filesystem, compression, program version and admin_password, from the IMAGE.
 
     `binwalk` identifies the filesystem and its compression; `unsquashfs` extracts it so
-    the config values can be read out of the rootfs. The expected values are never read
-    from a fixture and the image digest is never asserted — `build_fw.sh` calls
-    `mksquashfs` without a reproducible-time flag, so the digest is not stable and is
-    recorded as a measured fact only.
+    the program and the config can be read out of the rootfs. The expected values are
+    never read from a fixture and the image digest is never asserted — `build_fw.sh`
+    calls `mksquashfs` without a reproducible-time flag, so the digest is not stable and
+    is recorded as a measured fact only.
+
+    Every value comes from the image: two from `binwalk`'s report of the image, one from
+    a program the image contains, and one from the config file the image contains. None
+    of them comes from a name, a fixture, or the truth the answer is judged against.
     """
     image = Path(image)
     if not image.is_file():
@@ -260,14 +333,12 @@ def inspect_firmware(image: str | Path, *, extract_to: str | Path) -> Mapping[st
             key, _, value = line.partition("=")
             values[key.strip()] = value.strip()
 
-    version = values.get("version", "")
-    if not version:
-        banner = extract_to / "etc/banner"
-        version = banner.read_text(encoding="utf-8").strip() if banner.is_file() else ""
-
     return {
         "filesystem": filesystem,
         "compression": compression or "unknown",
-        "version": version,
+        # From the executable in the extracted rootfs. The image's boot banner and its
+        # config are NOT sources for it, and there is no fallback to either: a fallback
+        # is what turned a boot banner into a program version.
+        "version": _program_version(extract_to),
         "admin_password": values.get("admin_password", ""),
     }

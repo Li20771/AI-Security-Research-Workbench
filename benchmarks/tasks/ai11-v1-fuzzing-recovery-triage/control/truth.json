@@ -1,4 +1,15 @@
 {
+  "note": "Rebuilt under AI-11 Section 27 (Amendment 1, 2026-10-03). Every expected value below is what a CONTROLLED RERUN of the pinned generator produced, and nothing else: the case identifiers are the generator's own `case_schema.make_case_id()` values, and `kernel_events` is Section 27.4's count when the kernel oracle was AVAILABLE and null when it was not. No timestamp, duration, errno, process state, ECU log line or raw dmesg line is recorded here: Section 18.2 forbids them in a record and Section 7.5 forbids the gitignored fuzz-out captures from becoming expected truth. The placeholder identifiers the previous material carried were never produced by this generator, and no identifier of that shape appears anywhere in this corpus.",
+  "rerun": {
+    "generator": "labs/vehicle/can-tools/fuzz/isotp_fuzz.py",
+    "arguments": [
+      "--smoke",
+      "--seed",
+      "12345"
+    ],
+    "source_sha": "efa836ff9225f6226ca8a76615f3f45c31110d58",
+    "case_set": "every case the pinned generator constructs for those arguments"
+  },
   "class_priority": [
     "KERNEL_ANOMALY",
     "ECU_CRASH",
@@ -9,22 +20,156 @@
     "DISCARD",
     "NORMAL"
   ],
-  "note": "class names are the frozen CLASS_PRIORITY from labs/vehicle/can-tools/fuzz/case_schema.py:61-70 at the pinned SHA; expected values come from a controlled re-run at a fixed seed, never from the gitignored fuzz-out captures",
   "expected": {
-    "smoke-case-01": {
+    "baseline_mf_22b__sn__sn-15": {
       "class": "TRANSPORT_ERROR",
       "kernel_oracle": "AVAILABLE",
       "kernel_events": 0
     },
-    "smoke-case-02": {
+    "baseline_mf_response_20b__padding__dlc-2-pad-0x00": {
       "class": "DISCARD",
       "kernel_oracle": "AVAILABLE",
       "kernel_events": 0
     },
-    "smoke-case-03": {
+    "baseline_sf_1001__pci__pci-0x4x": {
+      "class": "DISCARD",
+      "kernel_oracle": "AVAILABLE",
+      "kernel_events": 0
+    },
+    "cf_without_ff_sequence__sn__sn-1": {
+      "class": "DISCARD",
+      "kernel_oracle": "AVAILABLE",
+      "kernel_events": 0
+    },
+    "cf_without_ff_single__padding__dlc-3-pad-0x00": {
+      "class": "DISCARD",
+      "kernel_oracle": "AVAILABLE",
+      "kernel_events": 0
+    },
+    "cf_without_ff_single__pci__pci-0x4x": {
+      "class": "DISCARD",
+      "kernel_oracle": "AVAILABLE",
+      "kernel_events": 0
+    },
+    "fc_bs_1__bs__bs-0": {
+      "class": "TRANSPORT_ERROR",
+      "kernel_oracle": "AVAILABLE",
+      "kernel_events": 0
+    },
+    "fc_bs_255__bs__bs-0": {
+      "class": "TRANSPORT_ERROR",
+      "kernel_oracle": "AVAILABLE",
+      "kernel_events": 0
+    },
+    "fc_only_restricted_cts__bs__bs-0": {
       "class": "NORMAL",
-      "kernel_oracle": "UNAVAILABLE",
-      "kernel_events": null
+      "kernel_oracle": "AVAILABLE",
+      "kernel_events": 0
+    },
+    "fc_only_restricted_cts__stmin__stmin-0x00": {
+      "class": "TRANSPORT_ERROR",
+      "kernel_oracle": "AVAILABLE",
+      "kernel_events": 0
+    },
+    "fc_stmin_100us__sf_length__sf-len-7": {
+      "class": "DISCARD",
+      "kernel_oracle": "AVAILABLE",
+      "kernel_events": 0
+    },
+    "fc_stmin_100us__stmin__stmin-0x00": {
+      "class": "TRANSPORT_ERROR",
+      "kernel_oracle": "AVAILABLE",
+      "kernel_events": 0
+    },
+    "fc_stmin_reserved_80__stmin__stmin-0x00": {
+      "class": "TRANSPORT_ERROR",
+      "kernel_oracle": "AVAILABLE",
+      "kernel_events": 0
+    },
+    "fc_unsolicited_cts__pci__pci-0x4x": {
+      "class": "DISCARD",
+      "kernel_oracle": "AVAILABLE",
+      "kernel_events": 0
+    },
+    "fc_wait_during_send__stmin__stmin-0x01": {
+      "class": "TRANSPORT_ERROR",
+      "kernel_oracle": "AVAILABLE",
+      "kernel_events": 0
+    },
+    "ff_declares_large_short_cf__pci__pci-0x5x": {
+      "class": "DISCARD",
+      "kernel_oracle": "AVAILABLE",
+      "kernel_events": 0
+    },
+    "ff_declares_small_extra_cf__pci__pci-0x6x": {
+      "class": "DISCARD",
+      "kernel_oracle": "AVAILABLE",
+      "kernel_events": 0
+    },
+    "ff_incomplete_no_cf__pci__pci-0x4x": {
+      "class": "DISCARD",
+      "kernel_oracle": "AVAILABLE",
+      "kernel_events": 0
+    },
+    "pad_mf_cf_padded__pci__pci-0x4x": {
+      "class": "DISCARD",
+      "kernel_oracle": "AVAILABLE",
+      "kernel_events": 0
+    },
+    "pad_sf_aa_padding__pci__pci-0x4x": {
+      "class": "DISCARD",
+      "kernel_oracle": "AVAILABLE",
+      "kernel_events": 0
+    },
+    "pad_sf_zero_padding__pci__pci-0x4x": {
+      "class": "DISCARD",
+      "kernel_oracle": "AVAILABLE",
+      "kernel_events": 0
+    },
+    "pci_invalid_4x__pci__pci-0x5x": {
+      "class": "DISCARD",
+      "kernel_oracle": "AVAILABLE",
+      "kernel_events": 0
+    },
+    "pci_invalid_5x__padding__dlc-5-pad-0x00": {
+      "class": "DISCARD",
+      "kernel_oracle": "AVAILABLE",
+      "kernel_events": 0
+    },
+    "pci_invalid_7x__padding__dlc-2-pad-0xaa": {
+      "class": "DISCARD",
+      "kernel_oracle": "AVAILABLE",
+      "kernel_events": 0
+    },
+    "sf_declares_less_than_provided__sf_length__sf-len-5": {
+      "class": "DISCARD",
+      "kernel_oracle": "AVAILABLE",
+      "kernel_events": 0
+    },
+    "sf_declares_more_than_provided__pci__pci-0x4x": {
+      "class": "DISCARD",
+      "kernel_oracle": "AVAILABLE",
+      "kernel_events": 0
+    },
+    "sf_declares_zero__padding__dlc-3-pad-0x00": {
+      "class": "DISCARD",
+      "kernel_oracle": "AVAILABLE",
+      "kernel_events": 0
+    },
+    "sn_jump_1_f__ff_length__ff-len-3": {
+      "class": "DISCARD",
+      "kernel_oracle": "AVAILABLE",
+      "kernel_events": 0
+    },
+    "sn_repeat_1_1__padding__dlc-2-pad-0xaa": {
+      "class": "DISCARD",
+      "kernel_oracle": "AVAILABLE",
+      "kernel_events": 0
+    },
+    "sn_skip_1_3__pci__pci-0x4x": {
+      "class": "DISCARD",
+      "kernel_oracle": "AVAILABLE",
+      "kernel_events": 0
     }
   }
 }

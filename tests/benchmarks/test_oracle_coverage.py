@@ -526,24 +526,35 @@ def test_C20_the_reverse_oracle_runs_the_binary_through_qemu(tmp_path: Path) -> 
 # ---------------------------------------------------------------------------
 # C21 — A.6 runs the tracked generator at a fixed seed
 # ---------------------------------------------------------------------------
+#
+# Rewritten for §27 (Amendment 1). The previous version of these three tests handed
+# the collector a JSON document on stdout and a truth keyed `c1`: both are shapes the
+# pinned generator does not have, and they are exactly the assumptions the amendment
+# removed. The double below writes what the generator writes — per-case files, a run
+# summary, an operational log on stdout — and the tests assert §27's semantics.
+
+FUZZ_CASE = "sn_skip_1_3__pci__pci-0x4x"
 
 
-def _fuzz_truth() -> dict:
+def _fuzz_truth(klass: str = "DISCARD", kernel: str = "AVAILABLE",
+                events: int | None = 0) -> dict:
     return {
         "class_priority": ["KERNEL_ANOMALY", "ECU_CRASH", "STATE_CORRUPTION", "HANG",
                            "TRANSPORT_ERROR", "UDS_RESPONSE", "DISCARD", "NORMAL"],
-        "rerun_seed": 12345,
-        "expected": {"c1": {"class": "DISCARD", "kernel_oracle": "AVAILABLE", "kernel_events": 0}},
+        "expected": {FUZZ_CASE: {"class": klass, "kernel_oracle": kernel,
+                                 "kernel_events": events}},
     }
 
 
-class RerunRunner:
-    """vcan0 answers; the generator answers with a declared classification."""
+class FuzzRerun:
+    """vcan0 answers; the generator writes the case set the test declares."""
 
-    def __init__(self, classification: str, kernel: str = "AVAILABLE", events=0) -> None:
+    def __init__(self, classification: str, kernel: str = "AVAILABLE",
+                 events: list | None = None, ip_exit: int = 0) -> None:
         self.classification = classification
         self.kernel = kernel
-        self.events = events
+        self.events = [] if events is None else events
+        self.ip_exit = ip_exit
         self.calls: list[list[str]] = []
 
     def run(self, argv, *, cwd=None, timeout_seconds=0):  # noqa: ANN001, ANN201
@@ -551,17 +562,44 @@ class RerunRunner:
 
         from benchmarks.oracle import ProcessResult
 
-        self.calls.append(list(argv))
-        if argv[0] == "ip":
-            return ProcessResult(exit_code=0, stdout="vcan0: <UP>")
-        return ProcessResult(
-            exit_code=0,
-            stdout=_json.dumps({"cases": {"c1": {
-                "class": self.classification,
-                "kernel_oracle": self.kernel,
-                "kernel_events": self.events,
-            }}}),
+        args = list(argv)
+        self.calls.append(args)
+        if args[0] == "ip":
+            return ProcessResult(exit_code=self.ip_exit, stdout="vcan0: <UP>")
+        out_dir = Path(args[args.index("--out") + 1])
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / f"{FUZZ_CASE}.json").write_text(
+            _json.dumps({
+                "case_id": FUZZ_CASE,
+                "expected": {"recovery_request": "10 01",
+                             "recovery_expected": "50 01 00 32 00 64"},
+                "result": {
+                    "class": self.classification,
+                    "kernel_oracle": self.kernel,
+                    "kernel_events": self.events if self.kernel == "AVAILABLE" else None,
+                    "process_alive": True,
+                    "recovery": "PASS",
+                    "recovery_response": "50 01 00 32 00 64",
+                },
+            }),
+            encoding="utf-8",
         )
+        (out_dir / "smoke-summary.json").write_text(
+            _json.dumps({"master_seed": 12345, "total": 1}), encoding="utf-8"
+        )
+        return ProcessResult(exit_code=0, stdout=f"summary written: {out_dir}\n")
+
+
+def _expect_exclusive_vcan(monkeypatch) -> None:  # noqa: ANN001
+    """Open §27.7's seam so the tests below are about everything EXCEPT it.
+
+    §27.7 closes it on every host by design: no exclusivity mechanism is admitted, so
+    the honest answer is BLOCKED. That gate is asserted on its own in
+    `test_fuzz_oracle.py::test_F17`.
+    """
+    import benchmarks.oracles as oracles
+
+    monkeypatch.setattr(oracles, "vcan0_exclusivity_reason", lambda runner, timeout: "")
 
 
 def _fuzz_source(tmp_path: Path):
@@ -573,18 +611,22 @@ def _fuzz_source(tmp_path: Path):
     return source
 
 
-def test_C21_the_fuzz_collector_runs_the_tracked_generator(tmp_path: Path) -> None:
+def test_C21_the_fuzz_collector_runs_the_tracked_generator(
+    tmp_path: Path, monkeypatch
+) -> None:
     """A.6 requires a controlled RE-RUN, not `derived = expected`."""
     import benchmarks.oracles as oracles
 
+    _expect_exclusive_vcan(monkeypatch)
     source = _fuzz_source(tmp_path)
-    runner = RerunRunner(classification="TRANSPORT_ERROR")
+    runner = FuzzRerun(classification="TRANSPORT_ERROR")
     observation = oracles.collect(
         "ai11-v1-fuzzing-recovery-triage.oracle",
-        {"answer": {"c1": {"class": "DISCARD", "kernel_events": 0}}},
+        {"answer": {FUZZ_CASE: {"class": "DISCARD", "kernel_events": 0}}},
         _fuzz_truth(),
         control_dir=Path("."),
         source_root=source,
+        setup_dir=tmp_path / "setup",
         runner=runner,
     )
 
@@ -593,13 +635,14 @@ def test_C21_the_fuzz_collector_runs_the_tracked_generator(tmp_path: Path) -> No
     argv = generator_calls[0]
     assert any(a.endswith("isotp_fuzz.py") for a in argv), f"the generator is not in {argv}"
     assert "--seed" in argv and "12345" in argv, f"the re-run is not fixed-seed: {argv}"
+    assert "--json" not in argv, "§27.1: the generator has no such argument"
 
     # THE assertion that fails if someone reverts to `derived = expected`: the generator
     # reported TRANSPORT_ERROR, the truth says DISCARD, and derived follows the GENERATOR.
-    assert observation.values["derived"]["c1"]["class"] == "TRANSPORT_ERROR"
+    assert observation.values["derived"][FUZZ_CASE]["class"] == "TRANSPORT_ERROR"
     assert (
-        observation.values["derived"]["c1"]["class"]
-        != _fuzz_truth()["expected"]["c1"]["class"]
+        observation.values["derived"][FUZZ_CASE]["class"]
+        != _fuzz_truth()["expected"][FUZZ_CASE]["class"]
     )
 
 
@@ -619,29 +662,37 @@ def test_C22_a_missing_vcan_is_blocked_not_a_pass(tmp_path: Path) -> None:
         _fuzz_truth(),
         control_dir=Path("."),
         source_root=source,
+        setup_dir=tmp_path / "setup",
         runner=NoVcan(),
     )
     assert not observation.complete
-    assert observation.reason_code == "FUZZ_VCAN0_UNAVAILABLE"
+    # §27.7: the precondition is named, and it is the one the task declares. Whether
+    # vcan0 is absent or merely unprovable-as-exclusive, the run is BLOCKED.
+    assert observation.reason_code == "PRECONDITION_UNMET:environment:vcan0-exclusive"
 
 
-def test_C23_kernel_events_are_null_under_a_non_available_oracle(tmp_path: Path) -> None:
+def test_C23_kernel_events_are_null_under_a_non_available_oracle(
+    tmp_path: Path, monkeypatch
+) -> None:
     """SecurityLab's own rule: null, never 0 and never an empty list."""
     import benchmarks.oracles as oracles
 
+    _expect_exclusive_vcan(monkeypatch)
     source = _fuzz_source(tmp_path)
-    # The generator reports 0 under an unavailable oracle; the collector must not pass
-    # that through as if it were an observation.
-    runner = RerunRunner(classification="DISCARD", kernel="UNAVAILABLE", events=0)
+    # The generator reports no list under an unavailable oracle, and the truth records
+    # null. §27.4 makes the RECORD a count when AVAILABLE and null when it is not.
+    runner = FuzzRerun(classification="DISCARD", kernel="UNAVAILABLE")
     observation = oracles.collect(
         "ai11-v1-fuzzing-recovery-triage.oracle",
         {"answer": {}},
-        _fuzz_truth(),
+        _fuzz_truth(kernel="UNAVAILABLE", events=None),
         control_dir=Path("."),
         source_root=source,
+        setup_dir=tmp_path / "setup",
         runner=runner,
     )
-    assert observation.values["derived"]["c1"]["kernel_events"] is None
+    assert observation.values["derived"][FUZZ_CASE]["kernel_events"] is None
+    assert observation.values["derived"][FUZZ_CASE]["kernel_oracle"] == "UNAVAILABLE"
 
 
 # ---------------------------------------------------------------------------

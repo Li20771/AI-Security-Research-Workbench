@@ -93,6 +93,7 @@ __all__ = [
     "manifest_digest",
     "prepare_workspace",
     "resolve_source_sha",
+    "validate_source_root",
     "verify_exclusions",
 ]
 
@@ -147,6 +148,11 @@ class ScratchGit:
             cwd=cwd,
             capture_output=True,
             text=True,
+            # A child that emits a byte outside UTF-8 kills the reader THREAD, and the
+            # exception never reaches the caller: `subprocess.run` returns normally and
+            # the output is silently truncated. `errors="replace"` keeps the text and
+            # keeps the failure visible instead of losing it in a dead thread.
+            errors="replace",
             timeout=GIT_TIMEOUT_SECONDS,
             shell=False,
             check=False,
@@ -197,6 +203,36 @@ class SourceTree:
     def workspace_dir(self) -> Path:
         """Where the filtered, agent-visible tree will be constructed."""
         return self.scratch / "workspace"
+
+
+def validate_source_root(source_root: str | Path) -> Path:
+    """Refuse a source root that cannot be read, BEFORE anything is attempted.
+
+    ```text
+    FROZEN: an invalid source MUST NOT produce a successful campaign.
+    ```
+
+    Without this, an unusable path reaches `subprocess` as a `cwd` and raises
+    `NotADirectoryError`, which is neither a `BenchmarkError` nor a `CampaignError` and
+    therefore escapes the runner's and the campaign's handlers as a bare traceback. The
+    process still exits non-zero — so it was never a fake success — but a refusal a
+    caller cannot catch and a reader cannot classify is not the honest answer this
+    repository gives anywhere else.
+
+    A path that a SHELL converted (`/d/SecurityLab` reaching Python as `D:/SecurityLab`
+    from Git Bash) is a normal directory by the time it arrives, and passes here.
+    """
+    root = Path(source_root)
+    if not root.exists():
+        raise WorkspaceDerivationError(
+            f"the source root {str(source_root)!r} does not exist on this host. On "
+            "Windows a POSIX-style path such as /d/SecurityLab is converted by the "
+            "shell that launches Python; a path that reaches Python unconverted "
+            r"resolves to \d\SecurityLab and is not the repository"
+        )
+    if not root.is_dir():
+        raise WorkspaceDerivationError(f"the source root {str(source_root)!r} is not a directory")
+    return root
 
 
 def derive_source_tree(
