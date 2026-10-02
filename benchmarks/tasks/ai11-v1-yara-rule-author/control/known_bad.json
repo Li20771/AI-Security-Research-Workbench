@@ -1,0 +1,8 @@
+{
+  "matches": {
+    "holdout_positive_beacon": true,
+    "holdout_positive_ecu": true,
+    "holdout_negative_benign": true,
+    "holdout_negative_clean": false
+  }
+}

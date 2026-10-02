@@ -1,0 +1,30 @@
+{
+  "class_priority": [
+    "KERNEL_ANOMALY",
+    "ECU_CRASH",
+    "STATE_CORRUPTION",
+    "HANG",
+    "TRANSPORT_ERROR",
+    "UDS_RESPONSE",
+    "DISCARD",
+    "NORMAL"
+  ],
+  "note": "class names are the frozen CLASS_PRIORITY from labs/vehicle/can-tools/fuzz/case_schema.py:61-70 at the pinned SHA; expected values come from a controlled re-run at a fixed seed, never from the gitignored fuzz-out captures",
+  "expected": {
+    "smoke-case-01": {
+      "class": "TRANSPORT_ERROR",
+      "kernel_oracle": "AVAILABLE",
+      "kernel_events": 0
+    },
+    "smoke-case-02": {
+      "class": "DISCARD",
+      "kernel_oracle": "AVAILABLE",
+      "kernel_events": 0
+    },
+    "smoke-case-03": {
+      "class": "NORMAL",
+      "kernel_oracle": "UNAVAILABLE",
+      "kernel_events": null
+    }
+  }
+}

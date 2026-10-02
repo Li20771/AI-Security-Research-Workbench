@@ -1,0 +1,9 @@
+{
+  "note": "held-out sample names are declared here and are absent from the agent-visible tree",
+  "expected": {
+    "holdout_positive_beacon": true,
+    "holdout_positive_ecu": true,
+    "holdout_negative_benign": false,
+    "holdout_negative_clean": false
+  }
+}

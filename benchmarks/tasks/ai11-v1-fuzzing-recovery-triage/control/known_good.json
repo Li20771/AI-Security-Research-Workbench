@@ -1,0 +1,16 @@
+{
+  "answer": {
+    "smoke-case-01": {
+      "class": "TRANSPORT_ERROR",
+      "kernel_events": 0
+    },
+    "smoke-case-02": {
+      "class": "DISCARD",
+      "kernel_events": 0
+    },
+    "smoke-case-03": {
+      "class": "NORMAL",
+      "kernel_events": null
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "note": "the harness compiles labs/reverse/arm64/hello_arm64.c with -static; the source is withheld from the workspace",
+  "expected": {
+    "architecture": "AArch64",
+    "linkage": "static",
+    "stdout": "ARM64 result = 42",
+    "exit_code": 0
+  }
+}

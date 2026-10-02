@@ -1,0 +1,8 @@
+{
+  "answer": {
+    "architecture": "AArch64",
+    "linkage": "static",
+    "stdout": "ARM64 result = 42",
+    "exit_code": 0
+  }
+}

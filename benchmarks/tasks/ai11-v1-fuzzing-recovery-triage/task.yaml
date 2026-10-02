@@ -1,0 +1,94 @@
+# AI-11 v1 corpus. Annex A.A.6
+#
+# The oracle's material is withheld from the agent-visible tree:
+# workspace_setup.exclude names control/**, and benchmarks.workspace.verify_exclusions
+# asserts it is absent before execution begins (7.2, 15.3).
+
+schema_version: 1
+task_id: ai11-v1-fuzzing-recovery-triage
+task_version: 1
+task_family: fuzzing_recovery
+difficulty: ADVANCED
+
+source_repository: Li20771/SecurityLab
+source_sha: efa836ff9225f6226ca8a76615f3f45c31110d58
+workspace_setup:
+  include:
+    - task/README.txt
+  exclude:
+    # Both fuzz-out corpora are gitignored and absent from the SHA. A historical
+    # capture carries timestamps, durations and errno from one environment at one
+    # moment, and 7.5 forbids it from becoming expected truth.
+    - control
+    - labs/vehicle/can-tools/fuzz-out
+    - labs/vehicle/fuzz-out
+  generated: []
+
+task_description: >-
+  For each malformed CAN and ISO-TP frame sequence recorded in task/README.txt report
+  how the virtual ECU classified it and whether the kernel oracle produced an
+  observation.
+
+
+allowed_tools:
+  - tool_id: vehicle_network
+    operation: vcan_can_send
+  - tool_id: vehicle_network
+    operation: vcan_can_dump
+  - tool_id: vehicle_network
+    operation: isotp_exchange
+  - tool_id: git
+    operation: read_file
+
+forbidden_tools:
+  - tool_id: terminal
+    operation: run
+  - tool_id: firmware
+    operation: qemu
+  - tool_id: firmware
+    operation: gdb
+  - tool_id: firmware
+    operation: firmware_unpack
+
+required_preconditions:
+  - kind: kernel_module
+    name: can_isotp
+  - kind: program
+    name: candump
+  - kind: program
+    name: cansend
+  - kind: environment
+    name: vcan0-exclusive
+
+time_budget_seconds: 900
+
+oracle:
+  oracle_id: ai11-v1-fuzzing-recovery-triage.oracle
+  kind: CONTROLLED_REPRODUCTION
+  required: true
+  # The command a person runs to re-derive this oracle's verdict. It is the same
+  # entry point the harness uses, so a recorded command is a runnable one.
+  reproduce_command: >-
+    python3 -m benchmarks.replay ai11-v1-fuzzing-recovery-triage --variant known_good
+  expected_negative:
+    known_good: control/known_good.json
+    known_bad: control/known_bad.json
+  success_condition: every case reports the tracked class and reports kernel events only when the kernel oracle is AVAILABLE
+  material_excluded_from_workspace: true
+
+success_conditions:
+  - every case reports the tracked class
+  - no case reports kernel events under a non-AVAILABLE kernel oracle
+
+regression_conditions:
+  - condition_id: ecu-survives-and-recovers
+    kind: BEHAVIOURAL_PIN
+    reproduce_command: >-
+      python3 -m benchmarks.replay ai11-v1-fuzzing-recovery-triage --variant known_bad
+    required: true
+
+security_constraints:
+  - no operation outside the declared allowed set
+  - no physical CAN interface is ever named
+  - vcan0 is used exclusively
+  - the source repository is never written

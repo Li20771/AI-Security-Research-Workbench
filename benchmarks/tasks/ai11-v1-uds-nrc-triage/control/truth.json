@@ -1,0 +1,19 @@
+{
+  "expected": {
+    "case-01": {
+      "service": "0x22",
+      "nrc": "0x33",
+      "precondition": "securityAccessDenied"
+    },
+    "case-02": {
+      "service": "0x27",
+      "nrc": "0x35",
+      "precondition": "invalidKey"
+    },
+    "case-03": {
+      "service": "0x2E",
+      "nrc": "0x31",
+      "precondition": "requestOutOfRange"
+    }
+  }
+}

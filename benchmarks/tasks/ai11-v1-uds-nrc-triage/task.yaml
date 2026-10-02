@@ -1,0 +1,89 @@
+# AI-11 v1 corpus. Annex A.A.2
+#
+# The oracle's material is withheld from the agent-visible tree: workspace_setup.exclude
+# names control/**, and benchmarks.workspace.verify_exclusions asserts it is absent
+# before execution begins (§7.2, §15.3).
+#
+# This file declares what the task IS. It holds no result, and §5.1 forbids it from
+# holding one.
+
+schema_version: 1
+task_id: ai11-v1-uds-nrc-triage
+task_version: 1
+task_family: uds
+difficulty: INTERMEDIATE
+
+source_repository: Li20771/SecurityLab
+source_sha: efa836ff9225f6226ca8a76615f3f45c31110d58
+
+workspace_setup:
+  include:
+    - labs/vehicle/uds-basic/README.md
+    - task/exchange.txt
+  exclude:
+    - control
+  generated: []
+
+task_description: >-
+  For each UDS request/response exchange recorded in task/exchange.txt report the
+  service identifier the request used the negative response code the ECU returned and
+  the precondition the request violated.
+
+
+allowed_tools:
+  - tool_id: git
+    operation: read_file
+
+forbidden_tools:
+  - tool_id: terminal
+    operation: run
+  - tool_id: vehicle_network
+    operation: vcan_can_send
+  - tool_id: vehicle_network
+    operation: vcan_can_dump
+  - tool_id: vehicle_network
+    operation: isotp_exchange
+  - tool_id: vehicle_network
+    operation: uds_request
+  - tool_id: vehicle_network
+    operation: capture_start
+  - tool_id: vehicle_network
+    operation: capture_stop
+  - tool_id: vehicle_network
+    operation: replay
+
+required_preconditions: []
+
+
+time_budget_seconds: 180
+
+oracle:
+  oracle_id: ai11-v1-uds-nrc-triage.oracle
+  kind: TRACKED_DEFINITION
+  required: true
+  # The command a person runs to re-derive this oracle's verdict. It is the same
+  # entry point the harness uses, so a recorded command is a runnable one.
+  reproduce_command: >-
+    python3 -m benchmarks.replay ai11-v1-uds-nrc-triage --variant known_good
+  expected_negative:
+    known_good: control/known_good.json
+    known_bad: control/known_bad.json
+  success_condition: every declared case reports the tracked service and NRC and precondition
+  material_excluded_from_workspace: true
+
+success_conditions:
+  - every case reports the tracked service
+  - every case reports the tracked NRC
+  - every case reports the tracked violated precondition
+
+regression_conditions:
+  - condition_id: nrc-precedence
+    kind: FROZEN_DEFINITION
+    reproduce_command: >-
+      python3 -m benchmarks.replay ai11-v1-uds-nrc-triage --variant known_bad
+    required: true
+
+security_constraints:
+  - no operation outside the declared allowed set
+  - no request is transmitted to any interface
+  - the source repository is never written
