@@ -1,16 +1,124 @@
 {
   "answer": {
-    "smoke-case-01": {
+    "baseline_mf_22b__sn__sn-15": {
       "class": "TRANSPORT_ERROR",
       "kernel_events": 0
     },
-    "smoke-case-02": {
+    "baseline_mf_response_20b__padding__dlc-2-pad-0x00": {
       "class": "DISCARD",
       "kernel_events": 0
     },
-    "smoke-case-03": {
+    "baseline_sf_1001__pci__pci-0x4x": {
+      "class": "DISCARD",
+      "kernel_events": 0
+    },
+    "cf_without_ff_sequence__sn__sn-1": {
+      "class": "DISCARD",
+      "kernel_events": 0
+    },
+    "cf_without_ff_single__padding__dlc-3-pad-0x00": {
+      "class": "DISCARD",
+      "kernel_events": 0
+    },
+    "cf_without_ff_single__pci__pci-0x4x": {
+      "class": "DISCARD",
+      "kernel_events": 0
+    },
+    "fc_bs_1__bs__bs-0": {
+      "class": "TRANSPORT_ERROR",
+      "kernel_events": 0
+    },
+    "fc_bs_255__bs__bs-0": {
+      "class": "TRANSPORT_ERROR",
+      "kernel_events": 0
+    },
+    "fc_only_restricted_cts__bs__bs-0": {
       "class": "NORMAL",
-      "kernel_events": null
+      "kernel_events": 0
+    },
+    "fc_only_restricted_cts__stmin__stmin-0x00": {
+      "class": "TRANSPORT_ERROR",
+      "kernel_events": 0
+    },
+    "fc_stmin_100us__sf_length__sf-len-7": {
+      "class": "DISCARD",
+      "kernel_events": 0
+    },
+    "fc_stmin_100us__stmin__stmin-0x00": {
+      "class": "TRANSPORT_ERROR",
+      "kernel_events": 0
+    },
+    "fc_stmin_reserved_80__stmin__stmin-0x00": {
+      "class": "TRANSPORT_ERROR",
+      "kernel_events": 0
+    },
+    "fc_unsolicited_cts__pci__pci-0x4x": {
+      "class": "DISCARD",
+      "kernel_events": 0
+    },
+    "fc_wait_during_send__stmin__stmin-0x01": {
+      "class": "TRANSPORT_ERROR",
+      "kernel_events": 0
+    },
+    "ff_declares_large_short_cf__pci__pci-0x5x": {
+      "class": "DISCARD",
+      "kernel_events": 0
+    },
+    "ff_declares_small_extra_cf__pci__pci-0x6x": {
+      "class": "DISCARD",
+      "kernel_events": 0
+    },
+    "ff_incomplete_no_cf__pci__pci-0x4x": {
+      "class": "DISCARD",
+      "kernel_events": 0
+    },
+    "pad_mf_cf_padded__pci__pci-0x4x": {
+      "class": "DISCARD",
+      "kernel_events": 0
+    },
+    "pad_sf_aa_padding__pci__pci-0x4x": {
+      "class": "DISCARD",
+      "kernel_events": 0
+    },
+    "pad_sf_zero_padding__pci__pci-0x4x": {
+      "class": "DISCARD",
+      "kernel_events": 0
+    },
+    "pci_invalid_4x__pci__pci-0x5x": {
+      "class": "DISCARD",
+      "kernel_events": 0
+    },
+    "pci_invalid_5x__padding__dlc-5-pad-0x00": {
+      "class": "DISCARD",
+      "kernel_events": 0
+    },
+    "pci_invalid_7x__padding__dlc-2-pad-0xaa": {
+      "class": "DISCARD",
+      "kernel_events": 0
+    },
+    "sf_declares_less_than_provided__sf_length__sf-len-5": {
+      "class": "DISCARD",
+      "kernel_events": 0
+    },
+    "sf_declares_more_than_provided__pci__pci-0x4x": {
+      "class": "DISCARD",
+      "kernel_events": 0
+    },
+    "sf_declares_zero__padding__dlc-3-pad-0x00": {
+      "class": "DISCARD",
+      "kernel_events": 0
+    },
+    "sn_jump_1_f__ff_length__ff-len-3": {
+      "class": "DISCARD",
+      "kernel_events": 0
+    },
+    "sn_repeat_1_1__padding__dlc-2-pad-0xaa": {
+      "class": "DISCARD",
+      "kernel_events": 0
+    },
+    "sn_skip_1_3__pci__pci-0x4x": {
+      "class": "DISCARD",
+      "kernel_events": 0
     }
   }
 }
