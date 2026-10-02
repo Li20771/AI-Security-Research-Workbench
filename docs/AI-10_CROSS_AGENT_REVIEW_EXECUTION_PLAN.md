@@ -267,12 +267,13 @@ How can a review remain unresolved? UNRESOLVED / NOT_RUN / BLOCKED closure state
 
 ```yaml
 ReviewCase:
-  review_case_id:     "rc-<opaque>"     # AI-10-generated, opaque
-  workspace_id:       <AI-03 workspace identity>
-  left_material_id:   <material_id | null>    # null until supplied
-  right_material_id:  <material_id | null>
-  state:              ReviewCaseState
-  schema_version:     1
+  review_case_id:      "rc-<opaque>"     # AI-10-generated, opaque
+  workspace_id:        <AI-03 workspace identity>
+  left_material_id:    <material_id | null>    # null until supplied
+  right_material_id:   <material_id | null>
+  state:               ReviewCaseState
+  independence_status: IndependenceObservationStatus   # §5.4 — orthogonal to `state`
+  schema_version:      1
 ```
 
 ```text
@@ -285,6 +286,11 @@ FROZEN: one case has exactly two sides, LEFT and RIGHT, and each side holds exac
         supplied ReviewMaterial.
 FROZEN: a case is scoped to ONE workspace. Materials whose workspace_id disagrees with the
         case's workspace_id are REFUSED rather than accepted and re-scoped.
+FROZEN (Amendment 2): `state` and `independence_status` answer two different questions and
+        MUST NOT be merged. `state` is where the review is in its lifecycle; it is the
+        closed vocabulary of §5.2. `independence_status` is whether an independence
+        observation has been obtained; it is the closed vocabulary of §5.4. Neither field
+        is derived from the other, and every combination §5.4 permits is a legal case.
 ```
 
 ### 5.2 ReviewCaseState — FROZEN, closed
@@ -342,6 +348,100 @@ FROZEN: verification is OPTIONAL. A case MAY reach COMPARISON_RECORDED and be cl
 FROZEN: a case MAY NOT be forced to produce a decision, a finding, or a verification.
 FROZEN: resume of a closed case is not a transition; it is AI-13's boundary and does not
         exist in v1.
+FROZEN (Amendment 2): every transition also fixes `independence_status`, and §5.4 is the
+        table that says how. A transition that is legal here but leaves the two fields in a
+        combination §5.4 does not permit is not a legal transition.
+```
+
+### 5.4 Independence observation status — FROZEN (Amendment 2)
+
+`state` records where a review is in its lifecycle. It does not record whether an
+independence observation was obtained — and both §6.4 and §8.2 require the case to record
+that fact. Amendment 2 adds the missing representation: a second, orthogonal value.
+
+```text
+IndependenceObservationStatus — closed, exactly three. AI-10 owns it.
+
+    NOT_APPLICABLE   the case does not yet hold two materials, so an independence
+                     observation has no subject
+    UNCHECKED        the case holds two materials, and no qualifying pair of
+                     ExecutionRecords has been supplied; the observation has not
+                     been obtained
+    OBSERVED         two ExecutionRecords were supplied, every declared attribution
+                     field agreed with them, and AI-08's structural_independence ran
+```
+
+```text
+FROZEN: exactly these three members. A fourth is an amendment.
+FROZEN: the members INDEPENDENT, NON_INDEPENDENT, FAILED_INDEPENDENCE and
+        INDEPENDENCE_PASS MUST NOT exist. A status that could say "this pair is
+        independent" or "this pair failed" would be a verdict, and §8.1 gives that
+        question to AI-08's finding, which is a finding and not a verdict either.
+```
+
+The act, the lifecycle state, and the status:
+
+```text
+the act                      lifecycle state            independence_status
+create_case                  CREATED                    NOT_APPLICABLE
+supply_materials             MATERIALS_SUPPLIED         UNCHECKED
+observe_independence         INDEPENDENCE_OBSERVED      OBSERVED
+record_comparison            COMPARISON_RECORDED        unchanged
+request_verification         VERIFICATION_REQUESTED     unchanged
+observe_verification         VERIFICATION_OBSERVED      unchanged
+record_decision              HUMAN_DECISION_RECORDED    unchanged
+close / close_with_decision  CLOSED or a closure state  unchanged
+```
+
+```text
+FROZEN: `UNCHECKED` is the state §6.4 requires the case to record when no ExecutionRecord
+        has been supplied. A case in MATERIALS_SUPPLIED or COMPARISON_RECORDED that was
+        never observed holds it.
+FROZEN: a comparison does NOT change `independence_status`. A case compared after an
+        observation keeps OBSERVED; a case compared without one keeps UNCHECKED.
+FROZEN: a closure act does NOT change `independence_status`. It records what was true when
+        the case closed.
+FROZEN: `state = COMPARISON_RECORDED` with `independence_status = UNCHECKED` is a legal and
+        expected combination, and so is `state = COMPARISON_RECORDED` with
+        `independence_status = OBSERVED`.
+FROZEN: `UNCHECKED` is NOT a lifecycle state. It is not a twelfth member of §5.2, MUST NOT
+        be added to `ReviewCaseState`, and describes an observation that was not made
+        rather than a phase a review is in.
+```
+
+```text
+UNCHECKED means exactly one thing: the independence observation has not been obtained.
+It does not mean, and MUST NOT be recorded or read as:
+
+    non-independent
+    a failure
+    a violation
+    a negative finding
+    NOT_RUN
+    BLOCKED
+    a refusal of the materials
+
+"No ExecutionRecord" and "the pair is not independent" are two different facts, and only
+the first is true here.
+```
+
+```text
+OBSERVED means AI-08's predicate ran over a supplied, aligned pair. It does NOT mean:
+
+    correct
+    agreement between the two sides
+    verified material provenance
+    truth
+    that the material's content came from the execution it is attributed to
+
+§8.1 and §9.4 stand unchanged, and a material's CONTENT remains unchecked in every case
+(§6.4).
+```
+
+```text
+FROZEN: the status is run-scoped case data, on the same terms as every other value in this
+        contract. It is not persisted, not logged, not admitted to Evidence, and not a
+        second store (§13, §15).
 ```
 
 ---
@@ -466,8 +566,8 @@ CANNOT be checked, ever, in v1:
 FROZEN: a mismatch between a declared field and a supplied ExecutionRecord is a REFUSAL,
         not a warning (the AI-09 §12.4 alignment rule, applied here).
 FROZEN: when no ExecutionRecord is supplied, the declaration stands UNCHECKED, and the case
-        MUST record that state. Unchecked is not verified, and it is not a defect to be
-        repaired by assumption.
+        MUST record that state as `independence_status = UNCHECKED` (§5.4). Unchecked is
+        not verified, and it is not a defect to be repaired by assumption.
 ```
 
 ### 6.5 Lifetime and persistence — FROZEN
@@ -613,9 +713,20 @@ FROZEN: the INDEPENDENCE_OBSERVED state is reachable ONLY when the caller suppli
         ExecutionRecords and every declared attribution field agrees with them (§6.4).
 FROZEN: when the records are not supplied, or do not agree, the case MUST NOT record an
         independence observation, MUST NOT fabricate an IndependenceFinding, and MUST NOT
-        describe the case as independent or non-independent.
+        describe the case as independent or non-independent. It records
+        `independence_status = UNCHECKED` while it holds two materials, and
+        `NOT_APPLICABLE` before that (§5.4).
 FROZEN: "independence was not observed" is NOT a violation and NOT a negative finding.
         It is the absence of an observation, and it is recorded as such.
+FROZEN (Amendment 2): the absence of records is one fact and it carries exactly one meaning.
+
+            No ExecutionRecord  !=  non-independent
+            No ExecutionRecord  !=  failure
+            No ExecutionRecord  !=  negative finding
+            No ExecutionRecord  !=  NOT_RUN
+FROZEN (Amendment 2): OBSERVED records that AI-08's predicate ran over a supplied, aligned
+        pair. It does not mean the pair is correct, does not mean the two sides agree, does
+        not mean the material provenance is verified, and does not mean anything is true.
 FROZEN: even a fully satisfied finding says nothing about the two materials' provenance or
         quality. The finding is about the two EXECUTIONS, not about the material.
 ```
@@ -1079,6 +1190,13 @@ Terminal alternatives, reachable from any non-terminal state by an explicit clos
     NOT_RUN
 ```
 
+```text
+FROZEN (Amendment 2): the lifecycle is not the whole of a case. `independence_status`
+        (§5.4) advances with three of these acts and is orthogonal to the state, so a case
+        in COMPARISON_RECORDED may hold either UNCHECKED or OBSERVED, and both are complete
+        and honest records of what happened.
+```
+
 ### 14.2 Status discipline — FROZEN
 
 ```text
@@ -1269,7 +1387,10 @@ one-way
 behavioural
     the frozen vocabularies are present and closed: ReviewCaseState has eleven members,
       ReviewFindingKind has exactly the eight members of §9.2, HumanDecisionKind has
-      exactly the three members of §12.2
+      exactly the three members of §12.2, and IndependenceObservationStatus has exactly
+      the three members of §5.4
+    no status member outside §5.4 exists that could describe a pair as independent,
+      non-independent or failed
     no forbidden verdict token appears as an identifier or a literal in review/
       (PASS, FAIL, CORRECT, VERIFIED, WINNER, BEST_AGENT, HIGHER_CONFIDENCE)
     ReviewMaterial has no unbounded field and no forbidden field (§7.3)
@@ -1346,6 +1467,22 @@ T27  secrecy                material content appears in no log, no file and no w
                             artifact (asserted, not assumed)
 T28  Layer 0                check_ai10_review_layer() fails when each prohibited import is
                             injected, and passes on the real tree
+
+T29  independence status    a new case holds NOT_APPLICABLE
+T30  independence status    supplying two materials makes it UNCHECKED
+T31  independence status    a comparison recorded with no ExecutionRecords leaves
+                            independence_status UNCHECKED while the lifecycle state is
+                            COMPARISON_RECORDED — §6.4's required record
+T32  independence status    supplying both aligned ExecutionRecords makes it OBSERVED and
+                            the lifecycle state INDEPENDENCE_OBSERVED
+T33  independence status    a comparison recorded after an observation keeps OBSERVED
+T34  independence absence   no ExecutionRecord pair ever produces an IndependenceFinding
+T35  independence absence   UNCHECKED is not a negative finding: no case projection
+                            describes it as non-independent, failed or refused
+T36  independence absence   UNCHECKED never becomes NOT_RUN or BLOCKED
+T37  independence status    the status and the lifecycle state are orthogonal: the four
+                            legal combinations are constructible, and no §5.4 member is a
+                            member of ReviewCaseState
 ```
 
 ```text
@@ -1511,6 +1648,9 @@ Base             main @ 2e55b5a1e0c13d559ceb08fd5ca8094410634f11
 Contract         docs/AI-10_CROSS_AGENT_REVIEW_EXECUTION_PLAN.md
 Amendments       1   Amendment 1 — the identity EVIDENCE_REFERENCE_DIFFERENCE is
                        evaluated over (§9.2, §9.3.1, §19 T12; log at §26)
+                 2   Amendment 2 — the independence observation status: the
+                       representation §6.4 and §8.2 require (§5.1, §5.3, §5.4, §6.4,
+                       §8.2, §14.1, §18, §19 T29–T37; log at §26)
 ```
 
 ```text
@@ -1633,4 +1773,85 @@ Owner     AI-10
 Effect    the contract AI-10-B is built against. The implementation correction that
           follows replaces AI-10-B's recorded workaround with this semantics; the
           workaround was never the frozen meaning.
+```
+
+---
+
+### Amendment 2 — 2026-10-02 — the independence observation status
+
+**What changed.**
+
+```text
+§5.1   ReviewCase gains `independence_status: IndependenceObservationStatus`, orthogonal
+       to `state`
+§5.3   every transition also fixes `independence_status`
+§5.4   NEW. The closed three-member vocabulary, and the act/state/status table:
+
+           NOT_APPLICABLE   no two materials yet, so an observation has no subject
+           UNCHECKED        two materials, no qualifying ExecutionRecord pair supplied
+           OBSERVED         two aligned ExecutionRecords supplied, AI-08's predicate ran
+
+§6.4   "the case MUST record that state" now names its representation
+§8.2   the same, plus what an absent record does NOT mean and what OBSERVED does NOT mean
+§14.1  the lifecycle is stated not to be the whole of a case
+§18    the Layer 0 gate now asserts the third vocabulary is closed
+§19    T29–T37 state the test model for the status
+§25    the freeze record records this amendment
+```
+
+**Why.**
+
+The contract already required something it had no way to represent. §6.4 froze that
+when no ExecutionRecord is supplied "the declaration stands UNCHECKED, and the case
+MUST record that state"; §8.2 froze that the absence of an observation "is recorded as
+such". Neither §5.1's case shape nor §5.2's lifecycle vocabulary had anywhere to put
+it:
+
+```text
+INDEPENDENCE_OBSERVED   records that an observation HAPPENED — the opposite fact
+UNRESOLVED              records that the review reached no determination
+BLOCKED                 records that a precondition prevented the review
+NOT_RUN                 records that the review was intentionally not executed
+```
+
+Each of those means something else. Adding a twelfth lifecycle member would have
+recorded "no observation was obtained" as a PHASE OF A REVIEW rather than as a fact
+about one observation — and would have made `UNCHECKED` look like a state a review
+progresses out of, which it is not. Amendment 2 adds the missing representation, on a
+second axis, and nothing else.
+
+```text
+contract requirement  !=  representable ReviewCase value     — before this amendment
+contract requirement  ==  representable ReviewCase value     — after it
+```
+
+**What did NOT change.**
+
+```text
+ReviewCaseState — still exactly eleven members; UNCHECKED is NOT a twelfth
+ReviewFindingKind — still exactly eight; no negative, no "independence" finding
+AI-08's I1-I8 and IndependenceFinding — untouched
+ReviewMaterial, claims_digest, material_digest — untouched
+comparison semantics (§9) and verification semantics (§10, §11) — untouched
+HumanDecision (§12) and the Evidence boundary (§13) — untouched
+the dependency direction (§16), the ingress boundary (§6.3) and persistence (§6.5) —
+  untouched
+the AI-06 / Guard boundary — untouched
+automatic acquisition of Agent output (§13.4) — still BLOCKED / PREREQUISITE
+```
+
+**Security and authority impact: none.**
+
+```text
+The amendment adds a value the case was already required to record. It opens no
+dependency, grants no authority, executes nothing, persists nothing, and adds no field
+to any record outside ReviewCase. It introduces no member that could describe a pair as
+independent, non-independent or failed, so no judgement moves into AI-10.
+```
+
+```text
+Applied   2026-10-02
+Owner     AI-10
+Effect    the representation §6.4 and §8.2 already required. The implementation
+          correction adds the field and its transitions; the tests are T29–T37.
 ```
