@@ -20,6 +20,7 @@ from __future__ import annotations
 from typing import Any
 
 __all__ = [
+    "CodexAgentMismatch",
     "CodexBindingError",
     "CodexIntegrationError",
     "CodexInvocationError",
@@ -37,6 +38,17 @@ class CodexBindingError(CodexIntegrationError):
     A construction-time refusal: malformed ref, unsupported ref, a provider that
     runtime config does not enable, a model the enabled provider does not permit,
     or a reserved provider. The backend is not built, so no invocation can occur.
+    """
+
+
+class CodexAgentMismatch(CodexIntegrationError):
+    """This backend was asked to produce for an Agent it does not serve.
+
+    `CodexBody` already refuses a mismatched request upstream, so reaching this is
+    a caller defect rather than an expected path. It is checked here anyway: a
+    concrete backend that quietly served whichever AgentId it was handed would
+    let attribution drift, and the refusal must happen before any provider
+    activity rather than after one.
     """
 
 

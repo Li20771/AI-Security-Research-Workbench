@@ -197,15 +197,18 @@ class TestTheLayerZeroGate:
         (scratch / "agents").mkdir()
         (scratch / "providers").mkdir()
         # A forbidden network import, a provider module outside the allowlist, a
-        # Router import, a forbidden literal, a reimplemented transport, and a
-        # reverse dependency.
+        # Router import, a forbidden literal, a reimplemented transport, a
+        # credential source held outside the composition root, and a reverse
+        # dependency.
         (scratch / "integrations" / "codex" / "leaky.py").write_text(
             "import urllib.request\n"
             "from providers.metrics import MetricAggregator\n"
             "from routing.router import evaluate\n"
             "X = 'SecurityLab/'\n"
             "class MyTransport:\n"
-            "    pass\n",
+            "    pass\n"
+            "def hold(environ=None):\n"
+            "    return environ\n",
             encoding="utf-8",
         )
         (scratch / "agents" / "reverse.py").write_text(
@@ -227,6 +230,7 @@ class TestTheLayerZeroGate:
         assert "routing.router" in joined
         assert "SecurityLab/" in joined
         assert "MyTransport" in joined
+        assert "environ" in joined
         assert "reverse.py" in joined
 
     def test_the_gate_reports_a_missing_layer(self, tmp_path):

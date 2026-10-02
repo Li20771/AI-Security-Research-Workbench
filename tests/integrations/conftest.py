@@ -142,6 +142,32 @@ def sentinel_context(context):
 
 
 @pytest.fixture
+def invoker_factory(providers, models, runtime_transport_settings, credentials_env):
+    """Build an AI-02 `Invoker` over a supplied transport.
+
+    This is the credential-bearing side of the boundary. It lives in the test's
+    composition fixtures, never in the integration layer, which is what lets a
+    test drive the missing-credential path without the backend ever seeing an
+    environment mapping.
+    """
+    from providers.invocation import InvocationContext, Invoker
+
+    def build(transport, *, environ=credentials_env, clock=None):
+        context = InvocationContext(
+            providers=providers,
+            models=models,
+            transport=transport,
+            transport_settings_for=lambda _provider_id: runtime_transport_settings,
+            environ=environ,
+        )
+        if clock is None:
+            return Invoker(context)
+        return Invoker(context, clock=clock)
+
+    return build
+
+
+@pytest.fixture
 def backend_factory(
     providers,
     models,
@@ -149,13 +175,14 @@ def backend_factory(
     runtime_transport_settings,
     credentials_env,
 ):
-    """Build a `MimoCodexBackend` over a supplied transport.
+    """Build a `MimoCodexBackend` the way the composition root does.
 
     Defaults mirror production wiring: a config that enables `mimo`, an
     environment where the credential reference resolves, and an injected
-    transport.
+    transport. The `environ` argument stops at the composition root — the
+    returned backend has no reference to it and no parameter for it.
     """
-    from integrations.codex.backend import MimoCodexBackend
+    from integrations.codex.composition import build_mimo_codex_backend
 
     def build(
         transport,
@@ -165,7 +192,7 @@ def backend_factory(
         environ=credentials_env,
         **kwargs,
     ):
-        return MimoCodexBackend(
+        return build_mimo_codex_backend(
             model_ref=model_ref,
             config=enabled_config if config is None else config,
             providers=providers,

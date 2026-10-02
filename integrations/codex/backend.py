@@ -1,16 +1,25 @@
 """The concrete Codex backend: Codex -> `mimo` through AI-02's invocation boundary.
 
-Construction **is** the composition point. Everything this backend needs is
-supplied by its caller and nothing is discovered by this module:
+The backend holds a **constructed `Invoker`** and nothing that could resolve a
+credential. That split is the point of this module's shape:
 
 ```text
-model_ref            one of the two supported refs, explicitly
-config               runtime ProviderConfig — the enablement authority
-providers / models   AI-02's registries
-transport            INJECTED. This layer never constructs or selects one
-transport_settings   runtime config (AI-02 §5.11)
-environ              injected mapping for credential resolution, or None
+composition root   builds the credential-bearing InvocationContext, and the Invoker
+                   over it. It is the only place a credential source is assembled.
+MimoCodexBackend   receives that Invoker and issues InvocationRequests through it.
+                   It never sees, holds or passes a credential, and it has no
+                   argument through which one could reach it.
 ```
+
+Contract §13 says the integration layer never sees, holds or passes the
+credential. Accepting the credential environment mapping and forwarding it into
+an `InvocationContext` would violate that even though nothing here reads a key,
+logs it or puts it in a body — holding the mapping *is* holding the credential
+source. So the mapping lives on the composition side and this class only receives
+the boundary that already owns it.
+
+This module does not mention that mapping by name anywhere, prose included, so
+`grep` over it is a valid audit as well as an AST scan.
 
 ```text
 FROZEN: the only path to a provider is `providers.invocation.Invoker.invoke`.
@@ -23,15 +32,14 @@ The seam is AI-08's, and its signature is used verbatim::
 
     produce(*, agent_id, request, context) -> str
 
-`context` is read for exactly two things — workspace alignment, which is a
-refusal, and nothing else. It is never serialised, never summarised, and never
-turned into prompt text. The full `ContextResponse` stays in this process.
+`context` is read for exactly one thing — workspace alignment, which is a
+refusal. It is never serialised, never summarised, and never turned into prompt
+text. The full `ContextResponse` stays in this process.
 """
 
 from __future__ import annotations
 
-import time
-from typing import Any, Callable, Mapping
+from typing import Mapping
 
 from plugins.context import ContextResponse
 from plugins.context.errors import WorkspaceError
@@ -39,7 +47,6 @@ from plugins.context.workspace import canonical_root
 
 from providers.config import ProviderConfig
 from providers.invocation import (
-    InvocationContext,
     InvocationRequest,
     Invoker,
     Message,
@@ -48,14 +55,16 @@ from providers.invocation import (
 )
 from providers.model_profile import ModelProfile
 from providers.profile import ProviderProfile
-from providers.protocol import Transport
-from providers.transport import TransportSettings
 
 from agents.request import AgentExecutionRequest
 from agents.vocabulary import AgentId
 
 from integrations.codex.binding import CodexBinding, bind_codex_model
-from integrations.codex.errors import CodexBindingError, CodexWorkspaceMismatch
+from integrations.codex.errors import (
+    CodexAgentMismatch,
+    CodexBindingError,
+    CodexWorkspaceMismatch,
+)
 from integrations.codex.reference import reference_for
 
 __all__ = [
@@ -84,7 +93,7 @@ def _require_positive_ms(value: object, name: str) -> int:
 
 
 class MimoCodexBackend:
-    """AI-08's `CodexBackend`, served by `mimo` through AI-02.
+    """AI-08's `CodexBackend`, served by `mimo` through an injected `Invoker`.
 
     Satisfies `agents.codex.body.CodexBackend` structurally: `backend_id` plus a
     `produce` of exactly the frozen shape. AI-08 is not modified to accept it,
@@ -98,10 +107,7 @@ class MimoCodexBackend:
         config: ProviderConfig,
         providers: Mapping[str, ProviderProfile],
         models: Mapping[str, ModelProfile],
-        transport: Transport,
-        transport_settings: TransportSettings,
-        environ: Mapping[str, str] | None = None,
-        clock: Callable[[], float] | None = None,
+        invoker: Invoker,
         timeout_ms: int = CODEX_INVOCATION_TIMEOUT_MS,
     ) -> None:
         # Binding first: a backend that cannot show runtime enablement is not
@@ -111,28 +117,13 @@ class MimoCodexBackend:
         )
         self._timeout_ms = _require_positive_ms(timeout_ms, "timeout_ms")
 
-        if not isinstance(transport, Transport):
+        if not isinstance(invoker, Invoker):
             raise CodexBindingError(
-                "transport must be an AI-02 Transport; it is injected by the "
-                "composition root and never constructed here"
+                "invoker must be AI-02's Invoker, built by the composition root; "
+                "this layer does not assemble an invocation context and holds no "
+                "credential source"
             )
-        if not isinstance(transport_settings, TransportSettings):
-            raise CodexBindingError(
-                "transport_settings must be AI-02's TransportSettings"
-            )
-
-        self._context = InvocationContext(
-            providers=providers,
-            models=models,
-            transport=transport,
-            # One provider, one ceiling. The invocation deadline is folded into
-            # it by `effective_transport_settings`, so a request can tighten the
-            # budget but never widen it.
-            transport_settings_for=lambda _provider_id: transport_settings,
-            environ=environ,
-        )
-        kwargs: dict[str, Any] = {} if clock is None else {"clock": clock}
-        self._invoker = Invoker(self._context, **kwargs)
+        self._invoker = invoker
 
     # -- CodexBackend -----------------------------------------------------
 
@@ -158,6 +149,10 @@ class MimoCodexBackend:
         unconditionally, which is why every non-success outcome raises instead of
         returning something that could be read as an answer.
         """
+        # Identity first. A concrete Codex backend must not generate a provider
+        # invocation for another Agent, whatever the upstream body already
+        # checks — attribution must not be able to drift here.
+        self._require_codex_agent(agent_id)
         self._require_aligned_workspace(request, context)
 
         invocation = self._build_invocation(agent_id, request)
@@ -169,6 +164,27 @@ class MimoCodexBackend:
         return reference_for(result)
 
     # -- internals --------------------------------------------------------
+
+    @staticmethod
+    def _require_codex_agent(agent_id: object) -> None:
+        """Refuse any Agent this backend does not serve.
+
+        A refusal, before any provider activity. This is an identity check, not a
+        model or provider inference: the AgentId never influences which model
+        answers, and the bound ref is the only thing that does.
+        """
+        try:
+            resolved = AgentId(agent_id)
+        except ValueError as exc:
+            raise CodexAgentMismatch(
+                f"agent_id is not a registered Agent identity: {exc}"
+            ) from exc
+
+        if resolved is not AgentId.CODEX:
+            raise CodexAgentMismatch(
+                f"this backend serves {AgentId.CODEX.value!r}; "
+                f"it was asked to produce for {resolved.value!r}"
+            )
 
     @staticmethod
     def _require_aligned_workspace(

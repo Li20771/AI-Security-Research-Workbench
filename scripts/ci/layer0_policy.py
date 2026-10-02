@@ -224,6 +224,15 @@ AI09_ALLOWED_PLUGIN_IMPORTS = ("plugins.context",)
 #: resolving a credential, or reading the environment.
 AI09_FORBIDDEN_NAMES = ("CredentialRef", "SecretValue", "getenv", "environ.get")
 
+#: AI-09 §13: the credential is resolved by the provider layer, and the
+#: integration layer never sees it, holds it, or passes it.
+#:
+#: The credential *environment mapping* is the credential source, so holding it
+#: is holding the credential even if nothing here reads a key. Exactly one module
+#: -- the composition root -- may assemble the `InvocationContext` that carries
+#: it, and every other module in the layer is checked for naming it at all.
+AI09_CREDENTIAL_CONTEXT_MODULE = "composition.py"
+
 AI09_FORBIDDEN_BUILTINS = ("eval", "exec", "compile", "__import__")
 
 #: AI-09 §17: the other workspace is not reachable from the integration layer.
@@ -1702,6 +1711,8 @@ def check_ai09_integration_layer() -> list[str]:
                 names.add(node.id)
             elif isinstance(node, ast.Attribute):
                 names.add(node.attr)
+            elif isinstance(node, ast.arg):
+                names.add(node.arg)
             elif isinstance(node, ast.ClassDef):
                 names.add(node.name)
             elif isinstance(node, ast.Call):
@@ -1724,6 +1735,16 @@ def check_ai09_integration_layer() -> list[str]:
                     "the provider layer and the environment is not read here "
                     "(contract §5.3, §13)"
                 )
+
+        # The credential source lives in exactly one module. Holding the mapping
+        # is holding the credential, even if no key is ever read here.
+        if path.name != AI09_CREDENTIAL_CONTEXT_MODULE and "environ" in names:
+            problems.append(
+                f"{_display(path)} names 'environ'; the credential-bearing "
+                "invocation context belongs to the composition root "
+                f"({AI09_CREDENTIAL_CONTEXT_MODULE}), and no other module in this "
+                "layer may hold or pass a credential source (contract §13)"
+            )
 
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef) and node.name.endswith(

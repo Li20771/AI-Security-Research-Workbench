@@ -40,6 +40,8 @@ it, and `tests/integrations/test_boundaries.py` proves the gate is not vacuous.
 ```text
 binding.py     model binding and runtime enablement (§5.3, §6, §11)
 backend.py     MimoCodexBackend — the concrete CodexBackend (§8, §12, §17, §19)
+composition.py the composition root: builds the credential-bearing InvocationContext
+               and the Invoker, then hands the backend only that
 reference.py   the sha256 provenance digest and its canonical inputs (§19.2.1)
 errors.py      the integration-layer error taxonomy
 ```
@@ -76,23 +78,39 @@ no artifact store         the reference is a digest, and it locates nothing
 no capability promotion   every shipped capability stays UNKNOWN
 ```
 
-## Construction is the composition point
+## Construction: two sides of one boundary
 
-Everything is supplied by the caller; nothing is discovered here:
+`composition.py` is the composition root. It assembles the credential-bearing
+`InvocationContext` and the `Invoker` over it, and hands the backend only that:
 
 ```python
-MimoCodexBackend(
-    model_ref="mimo/mimo-v2.6-pro",     # explicit, validated, immutable
-    config=provider_config,             # runtime enablement authority
-    providers=providers, models=models, # AI-02's registries
-    transport=transport,                # INJECTED
-    transport_settings=settings,
-    environ=environ,                    # for the provider layer's resolver
+# composition.py — the only place a credential source is assembled
+context = InvocationContext(
+    providers=..., models=...,
+    transport=transport,            # INJECTED by the caller
+    transport_settings_for=...,
+    environ=environ,                # the credential environment, stays here
+)
+backend = MimoCodexBackend(
+    model_ref="mimo/mimo-v2.6-pro", # explicit, validated, immutable
+    config=provider_config,         # runtime enablement authority
+    providers=..., models=...,      # AI-02's registries, for binding validation
+    invoker=Invoker(context),
 )
 ```
 
-A provider that runtime config does not explicitly enable is refused here, and
-the backend is not built. **Profile existence is not runtime enablement.**
+The backend's constructor has **no** `environ`, `transport` or
+`transport_settings` parameter, and its source names `environ` nowhere.
+`check_ai09_integration_layer()` asserts that: only `composition.py` may bind an
+environment mapping, and every other module in the layer is refused if it does.
+
+Holding the mapping *is* holding the credential — even if no key is ever read —
+so the boundary is drawn at the module that assembles the provider-side context,
+not at the call that reads a variable.
+
+A provider that runtime config does not explicitly enable is refused at
+construction, and the backend is not built. **Profile existence is not runtime
+enablement.**
 
 ## Live
 

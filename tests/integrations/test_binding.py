@@ -202,19 +202,18 @@ class TestRuntimeEnablement:
 
 
 class TestConstructionRefusesBeforeAnyCall:
-    def test_a_bad_transport_is_refused(
-        self, providers, models, enabled_config, runtime_transport_settings
+    def test_a_bad_invoker_is_refused(
+        self, providers, models, enabled_config
     ):
         from integrations.codex.backend import MimoCodexBackend
 
-        with pytest.raises(CodexBindingError, match="transport must be"):
+        with pytest.raises(CodexBindingError, match="invoker must be"):
             MimoCodexBackend(
                 model_ref=MIMO_MODEL_REFS[0],
                 config=enabled_config,
                 providers=providers,
                 models=models,
-                transport=object(),
-                transport_settings=runtime_transport_settings,
+                invoker=object(),
             )
 
     def test_a_non_positive_timeout_is_refused(
@@ -236,11 +235,11 @@ class TestConstructionRefusesBeforeAnyCall:
         default = inspect.signature(MimoCodexBackend.__init__).parameters["timeout_ms"]
         assert default.default == CODEX_INVOCATION_TIMEOUT_MS
 
-    def test_transport_is_required_and_has_no_default(self):
+    def test_the_invoker_is_required_and_has_no_default(self):
         import inspect
 
         from integrations.codex.backend import MimoCodexBackend
 
-        parameter = inspect.signature(MimoCodexBackend.__init__).parameters["transport"]
+        parameter = inspect.signature(MimoCodexBackend.__init__).parameters["invoker"]
         assert parameter.default is inspect.Parameter.empty
         assert parameter.kind is inspect.Parameter.KEYWORD_ONLY

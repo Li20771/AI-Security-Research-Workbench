@@ -11,7 +11,11 @@ import json
 
 import pytest
 
-from integrations.codex.errors import CodexInvocationError, CodexWorkspaceMismatch
+from integrations.codex.errors import (
+    CodexAgentMismatch,
+    CodexInvocationError,
+    CodexWorkspaceMismatch,
+)
 from integrations.codex.reference import REFERENCE_RE
 
 from tests.integrations.support import (
@@ -35,6 +39,94 @@ def _produce(backend, request, context):
     from agents.vocabulary import AgentId
 
     return backend.produce(agent_id=AgentId.CODEX, request=request, context=context)
+
+
+class TestAgentIdentity:
+    """A Codex backend serves one Agent, and refuses the others.
+
+    `CodexBody` already refuses a mismatched request upstream. This is the
+    concrete backend's own invariant: it must not generate a provider invocation
+    for an Agent it does not serve, whatever the caller already checked.
+    """
+
+    def test_a_dsh_request_is_refused(
+        self,
+        backend_factory,
+        fake_transport_factory,
+        completion_payload,
+        execution_request,
+        context,
+    ):
+        from agents.vocabulary import AgentId
+
+        transport = fake_transport_factory.success(payload=completion_payload())
+        backend = backend_factory(transport)
+
+        with pytest.raises(CodexAgentMismatch):
+            backend.produce(
+                agent_id=AgentId.DSH, request=execution_request, context=context
+            )
+
+        assert transport.requests == []
+
+    def test_the_refusal_happens_before_any_provider_activity(
+        self,
+        backend_factory,
+        fake_transport_factory,
+        completion_payload,
+        execution_request,
+        sentinel_context,
+    ):
+        from agents.vocabulary import AgentId
+
+        transport = fake_transport_factory.success(payload=completion_payload())
+        backend = backend_factory(transport)
+
+        with pytest.raises(CodexAgentMismatch):
+            backend.produce(
+                agent_id=AgentId.DSH, request=execution_request, context=sentinel_context
+            )
+
+        assert transport.requests == []
+
+    def test_an_unregistered_identity_is_refused(
+        self,
+        backend_factory,
+        fake_transport_factory,
+        completion_payload,
+        execution_request,
+        context,
+    ):
+        transport = fake_transport_factory.success(payload=completion_payload())
+        backend = backend_factory(transport)
+
+        with pytest.raises(CodexAgentMismatch):
+            backend.produce(
+                agent_id="not-registered", request=execution_request, context=context
+            )
+
+        assert transport.requests == []
+
+    def test_the_identity_check_is_not_a_model_inference(
+        self,
+        backend_factory,
+        fake_transport_factory,
+        completion_payload,
+        execution_request,
+        context,
+    ):
+        """The AgentId never influences which model answers."""
+        from agents.vocabulary import AgentId
+
+        transport = fake_transport_factory.success(payload=completion_payload())
+        backend = backend_factory(transport, model_ref="mimo/mimo-v2.6-flash")
+
+        backend.produce(
+            agent_id=AgentId.CODEX, request=execution_request, context=context
+        )
+
+        assert json.loads(transport.requests[0].body)["model"] == "mimo-v2.6-flash"
+        assert backend.binding.model_ref == "mimo/mimo-v2.6-flash"
 
 
 class TestOneInvocation:
