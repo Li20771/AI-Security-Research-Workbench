@@ -2301,6 +2301,7 @@ def check_ai11_benchmark_layer(root: "Path | None" = None) -> list[str]:
         if "subprocess" in imports and rel not in (
             "benchmarks/workspace.py",
             "benchmarks/runner.py",
+            "benchmarks/decoders.py",
         ):
             problems.append(
                 f"{rel} imports subprocess; only benchmarks/workspace.py (git) and "

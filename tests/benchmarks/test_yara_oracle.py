@@ -319,3 +319,138 @@ def test_Y14_the_real_scanner_agrees_with_the_corpus(task, control) -> None:
 
     bad = _evaluate(task, ReferenceVariant.KNOWN_BAD, RealYara())
     assert bad.verdict is not OracleVerdict.PASS
+
+
+# ---------------------------------------------------------------------------
+# Y15 — PREFLIGHT: either every sample is scanned or none is
+# ---------------------------------------------------------------------------
+
+
+class CountingYara(StubYara):
+    """The stub, but the call list is the assertion."""
+
+
+@pytest.mark.parametrize("missing", [
+    "holdout_positive_beacon.txt",   # first
+    "holdout_negative_benign.txt",   # middle
+    "holdout_negative_clean.txt",    # last
+])
+def test_Y15_a_missing_sample_stops_before_any_scan(task, control, tmp_path, missing) -> None:
+    """PREFLIGHT. A partially executed run must not be recorded as fully skipped.
+
+    Scanning three samples and then finding the fourth missing has EXECUTED three checks.
+    Reporting `executed = 0` would be a false record of what the harness did — in the
+    safe direction, but still false. Either every sample is scanned or none is.
+    """
+    import shutil as _shutil
+
+    damaged = tmp_path / "control"
+    _shutil.copytree(control, damaged)
+    (damaged / missing).unlink()
+
+    scanner = CountingYara()
+    truth = ReferenceExecutor(task, CORPUS_ROOT).truth()
+    observation = collect(
+        ORACLE_ID,
+        {"rule_file": "known_good.yar"},
+        truth,
+        control_dir=damaged,
+        runner=scanner,
+    )
+
+    assert scanner.calls == [], (
+        f"the scanner was invoked {len(scanner.calls)} time(s) before the missing "
+        f"{missing} was noticed; preflight must establish every path first"
+    )
+    assert not observation.complete
+    assert observation.reason_code == "YARA_HELD_OUT_MATERIAL_MISSING"
+
+
+def test_Y16_the_incomplete_counts_are_planned_n_skipped_n(task, control, tmp_path) -> None:
+    """N planned, 0 executed, N skipped — and never a partial count."""
+    import shutil as _shutil
+
+    damaged = tmp_path / "control"
+    _shutil.copytree(control, damaged)
+    (damaged / "holdout_negative_clean.txt").unlink()
+
+    executor = ReferenceExecutor(task, CORPUS_ROOT)
+    result = evaluate_submission(
+        oracle_id=ORACLE_ID,
+        required=task.oracle.required,
+        submission=executor.produce(ReferenceVariant.KNOWN_GOOD).payload,
+        truth=executor.truth(),
+        control_dir=damaged,
+        runner=CountingYara(),
+    )
+    assert result.tests.planned == 4
+    assert result.tests.executed == 0
+    assert result.tests.skipped == 4
+    assert result.verdict is OracleVerdict.BLOCKED
+    assert result.verdict is not OracleVerdict.PASS
+
+
+def test_Y17_a_complete_run_reports_full_execution(task, control) -> None:
+    """The other side of the same rule: no skips when nothing is missing."""
+    executor = ReferenceExecutor(task, CORPUS_ROOT)
+    result = evaluate_submission(
+        oracle_id=ORACLE_ID,
+        required=task.oracle.required,
+        submission=executor.produce(ReferenceVariant.KNOWN_GOOD).payload,
+        truth=executor.truth(),
+        control_dir=control,
+        runner=StubYara(),
+    )
+    assert result.tests.planned == 4
+    assert result.tests.executed == 4
+    assert result.tests.skipped == 0
+
+
+# ---------------------------------------------------------------------------
+# Y18 — truth sample paths are contained
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("bad_name", [
+    "../../outside.txt",
+    "/etc/passwd",
+    "C:/outside.txt",
+    r"..\..\outside.txt",
+    "sub/../../outside.txt",
+])
+def test_Y18_a_truth_sample_outside_control_is_refused(task, control, bad_name) -> None:
+    """The truth file is DATA. Data that names a location can name the wrong one.
+
+    The corpus is tracked and trusted, and the boundary is closed structurally anyway:
+    the scanner is never invoked against a path outside the control directory.
+    """
+    scanner = CountingYara()
+    truth = {"samples": {"s": {"file": bad_name, "expected": True}}}
+    observation = collect(
+        ORACLE_ID,
+        {"rule_file": "known_good.yar"},
+        truth,
+        control_dir=control,
+        runner=scanner,
+    )
+    assert scanner.calls == [], "the scanner was invoked against a refused path"
+    assert not observation.complete
+    assert observation.reason_code == "YARA_HELD_OUT_MATERIAL_MISSING"
+
+
+def test_Y19_a_truth_sample_that_is_not_a_file_is_refused(task, control) -> None:
+    scanner = CountingYara()
+    truth = {"samples": {"s": {"file": "known_good.yar", "expected": True}}}
+    observation = collect(
+        ORACLE_ID, {"rule_file": "known_good.yar"}, truth, control_dir=control, runner=scanner
+    )
+    assert observation.complete, "a file inside control/ is legitimate material"
+    assert scanner.calls, "and the scanner runs against it"
+
+    scanner2 = CountingYara()
+    truth2 = {"samples": {"s": {"file": "../", "expected": True}}}
+    observation2 = collect(
+        ORACLE_ID, {"rule_file": "known_good.yar"}, truth2, control_dir=control, runner=scanner2
+    )
+    assert not observation2.complete
+    assert scanner2.calls == []

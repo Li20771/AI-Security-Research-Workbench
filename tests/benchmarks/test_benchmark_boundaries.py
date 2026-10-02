@@ -151,7 +151,9 @@ def test_T9_subprocess_is_confined_to_the_workspace_module() -> None:
         for path in _package_files()
         if "subprocess" in _imported_modules(path)
     }
-    assert importers == {"benchmarks/workspace.py", "benchmarks/runner.py"}, (
+    assert importers == {
+        "benchmarks/workspace.py", "benchmarks/runner.py", "benchmarks/decoders.py",
+    }, (
         f"these modules import subprocess: {sorted(importers)}"
     )
 

@@ -69,8 +69,15 @@ def _make_source_repo(tmp_path: Path) -> tuple[Path, str]:
     (repo / "labs/yara-basic/samples/sample_hit.txt").write_text("SYNMALWARE_C2_BEACON\n",
                                                                  encoding="utf-8")
     (repo / "labs/yara-basic/samples/sample_clean.txt").write_text("benign\n", encoding="utf-8")
-    (repo / "labs/vehicle/can-basic/demo.dbc").write_text('BO_ 291 EngineData: 8 ECU_TEST\n',
-                                                          encoding="utf-8")
+    # The real signal declarations. A DBC with no SG_ lines decodes nothing, and the
+    # collector refuses rather than comparing zero values — so a one-line fixture would
+    # make the CAN oracle BLOCKED for a reason that has nothing to do with CAN.
+    (repo / "labs/vehicle/can-basic/demo.dbc").write_text(
+        'BO_ 291 EngineData: 8 ECU_TEST\n'
+        ' SG_ EngineSpeed : 0|16@1+ (1,0) [0|65535] "rpm" ECU_TEST\n'
+        ' SG_ VehicleSpeed : 16|16@1+ (0.01,0) [0|655.35] "km/h" ECU_TEST\n',
+        encoding="utf-8",
+    )
     # Must never reach the workspace, and is not declared anywhere as excluded:
     # it is simply not included, and "not included" has to mean "not present".
     (repo / "UNDECLARED_SECRET.md").write_text("must not be exported\n", encoding="utf-8")
@@ -432,7 +439,7 @@ def test_S1_the_workspace_shares_no_inode_with_the_source(tmp_path: Path) -> Non
 
     # The behavioural form of the same assertion.
     exported.write_text("mutated\n", encoding="utf-8")
-    assert original.read_text(encoding="utf-8") == "BO_ 291 EngineData: 8 ECU_TEST\n"
+    assert original.read_text(encoding="utf-8").startswith("BO_ 291 EngineData: 8 ECU_TEST")
 
 
 def test_S2_the_source_repository_is_byte_identical_after_setup(tmp_path: Path) -> None:

@@ -93,19 +93,51 @@ def _evaluate(task, variant, runner=None):
     )
 
 
-def test_T6_every_known_good_submission_is_judged_pass(tasks) -> None:
-    """§20.2. Every task's correct answer passes, through the COLLECTION path.
+def test_T6_every_known_good_submission_is_never_a_false_failure(tasks) -> None:
+    """§20.2. A CORRECT answer is never judged FAIL, and a PASS always means it ran.
 
-    The scanner double stands in for `yara`, which is absent on some hosts. It is a
-    double and the module says so; the real-scanner test in test_yara_oracle.py is the
-    one that settles whether the fixtures and the reference rule actually agree.
+    Without a source repository the independent collectors have nothing to derive from,
+    so most oracles are `BLOCKED` here — the honest state, not a defect. What the
+    assertion pins is what must hold everywhere:
+
+    ```text
+    a correct answer is never FAIL      the harness failing to judge is not the run
+                                        answering wrongly
+    a PASS means the checks EXECUTED    no PASS without execution
+    ```
+
+    The tasks whose material IS reachable prove real PASS elsewhere: CAN and UDS in
+    test_runner.py and test_oracle_coverage.py, YARA in test_yara_oracle.py.
     """
     for task in tasks:
         result = _evaluate(task, ReferenceVariant.KNOWN_GOOD, StubYara())
-        assert result.verdict is OracleVerdict.PASS, (
-            f"{task.task_id}: the known-good submission was judged "
-            f"{result.verdict} ({result.reason_code}); an oracle that cannot pass its "
-            "own correct answer is not an oracle"
+        assert result.verdict is not OracleVerdict.FAIL, (
+            f"{task.task_id}: the known-good submission was judged FAIL "
+            f"({result.reason_code}); an answer the harness could not judge is not an "
+            "answer that was wrong"
+        )
+        assert result.verdict in (OracleVerdict.PASS, OracleVerdict.BLOCKED), (
+            f"{task.task_id}: {result.verdict} ({result.reason_code})"
+        )
+        if result.verdict is OracleVerdict.PASS:
+            assert result.tests.executed == result.tests.planned > 0
+            assert result.tests.skipped == 0
+        else:
+            assert result.tests.executed == 0
+            assert result.tests.skipped == result.tests.planned
+
+
+def test_T6b_every_corpus_oracle_has_a_collector(tasks) -> None:
+    """Every corpus oracle is registered, and there is no identity fallback.
+
+    A task whose oracle had no collector would silently acquire "the submission is the
+    observation", which is the exact defect this test exists to prevent.
+    """
+    from benchmarks.oracles import COLLECTORS
+
+    for task in tasks:
+        assert task.oracle.oracle_id in COLLECTORS, (
+            f"{task.task_id} names {task.oracle.oracle_id!r}, which has no collector"
         )
 
 
@@ -232,12 +264,16 @@ def test_T18_a_kernel_observation_under_an_unavailable_oracle_is_refused() -> No
         },
     }
     from benchmarks.errors import OracleProtocolError
+    from benchmarks.oracles import collect
 
+    # The rule lives at COLLECTION, which is where the truth is read. A truth carrying
+    # kernel events under an unavailable oracle is refused before anything is compared.
     with pytest.raises(OracleProtocolError):
-        judge_submission(
+        collect(
             "ai11-v1-fuzzing-recovery-triage.oracle",
             {"answer": {"c": {"class": "DISCARD", "kernel_events": None}}},
             bad_truth,
+            control_dir=CORPUS_ROOT / "ai11-v1-fuzzing-recovery-triage" / "control",
         )
 
 
@@ -253,11 +289,17 @@ def test_T19_a_submission_claiming_events_under_an_unavailable_oracle_fails() ->
     # case-03 has kernel_oracle UNAVAILABLE; the known-bad fixture reports events for it.
     judgement = judge_submission(
         "ai11-v1-fuzzing-recovery-triage.oracle",
-        {"answer": {
-            "smoke-case-01": {"class": "TRANSPORT_ERROR", "kernel_events": 0},
-            "smoke-case-02": {"class": "DISCARD", "kernel_events": 0},
-            "smoke-case-03": {"class": "NORMAL", "kernel_events": 0},
-        }},
+        {
+            # DERIVED is the independently established classification; SUBMITTED is the
+            # run's claim. The judge compares the two, and case-03's kernel oracle is
+            # UNAVAILABLE, so claiming events for it is wrong.
+            "derived": truth["expected"],
+            "submitted": {
+                "smoke-case-01": {"class": "TRANSPORT_ERROR", "kernel_events": 0},
+                "smoke-case-02": {"class": "DISCARD", "kernel_events": 0},
+                "smoke-case-03": {"class": "NORMAL", "kernel_events": 0},
+            },
+        },
         truth,
     )
     assert judgement.verdict is not OracleVerdict.PASS
