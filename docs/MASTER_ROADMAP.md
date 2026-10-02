@@ -524,7 +524,10 @@ started, and no provider call has been made by this phase.
 AI-09-A     = CONTRACT FROZEN      (2026-10-02)
 AI-09-B     = NOT STARTED
 AI-09       = NOT CLOSED
-contract    = blob 66978cbd685f408ea37dd70e9f0b1e364e2e2955
+contract    = blob d974c7b62d44210be36c41a105800697a96620ec
+                     Amendment 1 applied 2026-10-02
+previous    = 66978cbd685f408ea37dd70e9f0b1e364e2e2955
+                     the AI-09-A freeze, before Amendment 1
 provider    = mimo — the existing profile; NO third provider identity
 models      = mimo/mimo-v2.6-pro, mimo/mimo-v2.6-flash
 backend     = integrations/codex/   (AI-09-B creates it; a namespace package)

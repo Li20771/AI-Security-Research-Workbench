@@ -77,7 +77,10 @@ AI-09       = NOT CLOSED
 base        = main @ edb7dfc82ce51123482ac357fb9319dca2fa0d9a
 branch      = feature/ai-09-provider-codex-contract
 contract    = docs/AI-09_CODEX_PROVIDER_EXECUTION_PLAN.md
-contract blob = 66978cbd685f408ea37dd70e9f0b1e364e2e2955
+contract blob = d974c7b62d44210be36c41a105800697a96620ec
+                     Amendment 1 applied 2026-10-02
+previous blob = 66978cbd685f408ea37dd70e9f0b1e364e2e2955
+                     the AI-09-A freeze, before Amendment 1
 
 provider    = mimo — the existing profile; NO third provider identity
 models      = mimo/mimo-v2.6-pro, mimo/mimo-v2.6-flash   (no default, no fallback)
@@ -1101,7 +1104,10 @@ AI-09       = NOT CLOSED
 base        = main @ edb7dfc82ce51123482ac357fb9319dca2fa0d9a
 branch      = feature/ai-09-provider-codex-contract
 contract    = docs/AI-09_CODEX_PROVIDER_EXECUTION_PLAN.md
-contract blob = 66978cbd685f408ea37dd70e9f0b1e364e2e2955
+contract blob = d974c7b62d44210be36c41a105800697a96620ec
+                     Amendment 1 applied 2026-10-02
+previous blob = 66978cbd685f408ea37dd70e9f0b1e364e2e2955
+                     the AI-09-A freeze, before Amendment 1
 ```
 
 ### What AI-09-A froze
@@ -1111,34 +1117,53 @@ provider        mimo — the existing profile; NO third provider identity
 reserved        providers/openai-compatible/ stays RESERVED / DISABLED / UNIMPLEMENTED
 models          mimo/mimo-v2.6-pro, mimo/mimo-v2.6-flash — no default, no fallback,
                 no derivation from AgentId, display_name or free-form string
+enablement      runtime `providers.mimo.enabled == true` is REQUIRED, checked at construction
+                from AI-02's ProviderConfig; profile existence != runtime enablement; a
+                reserved provider is never enabled; the example config is a template
 protocol        openai_compatible_chat — no second protocol, no second adapter
 invocation      providers.invocation.Invoker is the ONLY path; no second invocation API
 backend         integrations/codex/ — a new core namespace layer; AI-09-B creates it
 router          AI-07 unchanged; no execution coupling; `selected` is not auto-injected;
                 `agent_hint` stays a hint
 context         NO context egress. The full ContextResponse and every context item stay
-                in-process; only the declared task text may be sent
+                in-process. The whole projection is `request.task` -> exactly one provider
+                user message; no workspace or execution metadata, no generated system prompt
 credential      env: only, via the existing resolver; no new scheme, no literal, ever
-capability      UNKNOWN != AVAILABLE; no promotion, no bypass, no new probe
+capability      UNKNOWN != AVAILABLE; no promotion, no bypass, no new probe. Three test
+                layers (adapter / offline normalization / live observation) never merge, and
+                an offline tool-call test goes at the adapter boundary — it never fabricates
+                a VERIFIED model to get through the gate
 tool calling    compatibility only (schema in, normalized call out); NO model-driven tool loop
 structured      json_object at minimum; never equated with json_schema
 timeout         always bounded; request deadline tightens, never widens
 retry           max_retries = 0; attempts == 1; retry stays AI-13's
-output          AgentResult unchanged; no raw output; NO durable model-output store
+output          AgentResult unchanged; no raw output; NO durable model-output store.
+                The reference is one form — `sha256:<64 lowercase hex>` over a canonical
+                digest input — and it locates no artifact
+evidence        "AI-09 evidence record" means a `docs/AI-09_*` phase record, NOT an AI-05
+                `plugins/evidence` EvidenceRecord; plugins/evidence/** is not modified
 ```
 
 ### Contract self-review
 
 ```text
 touches the AI-08 frozen contract?     NO   AI-08 contract blob unchanged
+touches the AI-07 frozen contract?     NO   AI-07 contract blob unchanged
+touches the AI-02 frozen contract?     NO   AI-02 contract unchanged
+changes Router semantics?              NO   §9 restates the boundary, alters nothing
+changes the Context plugin?            NO   §12.5 forbids modifying AI-03
+changes the credential grammar?        NO   §13 freezes env: only
+changes the provider identity count?   NO   §5.2 forbids a third identity
+openai-compatible reserved/disabled?   YES  §5.2 requires it stay reserved and disabled
 creates a third provider?              NO   §5.2 forbids it explicitly
 connects the Router?                   NO   §9 forbids it explicitly
-sends context wholesale?               NO   §12 forbids it explicitly
+sends context wholesale?               NO   §12.2 permits only `request.task`
 turns UNKNOWN into AVAILABLE?          NO   §14 forbids it explicitly
 adds retry?                            NO   §18 freezes max_retries = 0
 adds a second invocation path?         NO   §8 names Invoker as the only path
 adds a credential scheme?              NO   §13 freezes env: only
 pulls tool execution into AI-09?       NO   §15.2 puts it out of scope
+changes implementation code?           NO   no implementation path is touched
 needs a new Layer 0 boundary?          YES  §10.4 requires check_ai09_integration_layer()
                                             in AI-09-B
 ```
