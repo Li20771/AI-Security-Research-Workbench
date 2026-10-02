@@ -646,15 +646,18 @@ FROZEN: where a MEASURED number and a DOCUMENTED number describe the same thing,
 SecurityLab @ efa836f, uds-basic test counts:
 
     DOCUMENTED   907   (unit 673 + e2e 234)     docs/TEST_MATRIX.md
-    DOCUMENTED   789   (unit 581 + e2e 208)     SecurityLab root README.md
-    DOCUMENTED   stale                          docs/MAIN_CAPABILITY_INVENTORY_2026-09-24.md
-                                                flags the root README figure as stale
+    STALE        older test-count figures       SecurityLab root README.md
+                 carried by the root README, and marked stale by that repository's
+                 own capability inventory (docs/MAIN_CAPABILITY_INVENTORY_2026-09-24.md)
     STATIC       counts obtained by source inspection use a different collection
                  boundary from the runnable entry point and are NOT comparable
 
-FROZEN: AI-11 MUST NOT use 789 or 183 as a measured quantity.
+FROZEN: AI-11 MUST NOT cite, quote or use the superseded root-README figures. They are
+        named here so that their absence is auditable, and their VALUES are deliberately
+        not reproduced -- reproducing one would place it in an AI-11 document, which is
+        the thing this rule forbids.
 FROZEN: AI-11 MUST cite docs/TEST_MATRIX.md when a documented figure is wanted, and
-        MUST label it DOCUMENTED.
+        MUST label it DOCUMENTED, not MEASURED.
 FROZEN: a campaign records its OWN planned / executed / passed / failed / skipped (§11).
 ```
 
