@@ -417,17 +417,25 @@ second opinion -> independent Agent
 
 ## AI-08 — Codex Second Agent
 
-**Status: AI-08-A CONTRACT FROZEN — implementation NOT STARTED.** The contract is
+**Status: AI-08-A COMPLETE / MERGED; AI-08-B IMPLEMENTED ON BRANCH.** The contract is
 [AI-08_AGENT_EXECUTION_EXECUTION_PLAN.md](AI-08_AGENT_EXECUTION_EXECUTION_PLAN.md), frozen at
-AI-08-A on base `main @ a7c4a1e2`. AI-08-A implements nothing: no Agent runtime, no AgentResult,
-no Codex provider, no Agent code of any kind.
+AI-08-A and merged as `2117cdf4` (PR #51). AI-08-B implements the runtime against it on
+`feature/ai-08-agent-runtime` and is awaiting its merge checkpoint.
 
 ```text
-AI-08-A     = CONTRACT FROZEN      awaiting the human merge checkpoint
-AI-08-B     = NOT STARTED          implementation
-AI-08       = IMPLEMENTATION NOT STARTED
-amendments  = 2                    AI-08-A Amendment 1 (review corrections)
-                                   AI-08-A Amendment 2 (terminal-result invariant)
+AI-08-A     = COMPLETE / MERGED    contract frozen          (PR #51, 2117cdf4)
+AI-08-B     = IMPLEMENTED ON BRANCH, NOT MERGED
+AI-08       = NOT CLOSED           awaiting the human merge checkpoint
+contract    = blob a01e03f5306299a0a4442648eeb8fdcfce6bd8dd
+                     after Amendment 4
+previous    = 739ec29f37bfb8654f19ca088d6af57ffdd09e69
+                     after Amendment 3
+earlier     = 7fa9effde597c71f127c4e14dc31641a5ffe7589
+                     after Amendment 2; the blob AI-08-A merged
+amendments  = 4                    Amendment 1 (review corrections)
+                                   Amendment 2 (terminal-result invariant)
+                                   Amendment 3 (Guard-bound invocation boundary)
+                                   Amendment 4 (required CI configuration in scope)
 ```
 
 目标：把 Codex 建成独立的第二 Agent，而不是 DSH 子进程或 DSH 内部模型。
@@ -476,6 +484,26 @@ DEFERRED  a per-Agent permission ceiling      OUT OF SCOPE. AI-08 v1 does not en
                                               or claim one, and AI-08-B MUST NOT infer
                                               one from AgentId, AgentRole or ActorType.
 ```
+
+AI-08-B 实现要点：
+
+- `agents/` 是 core Agent layer（namespace package），不是 plugin layer
+- 一次 execution：一个 `AgentExecutionRequest` → 一个 `ExecutionId` → 一个 terminal `AgentResult`；
+  COMPLETED / FAILED / BLOCKED 三者皆然
+- Context 由 runtime 建立、归该 execution 所有；request 只携带 descriptor，绝不携带 `ContextResponse`
+- AI-08 不直接调用 Guard：它把 `actor = AgentId` 的 `ToolRequest` 交给 AI-06，
+  由 AI-06 为每次 **Guard-bound** invocation 新建 `GuardRequest` / `GuardDecision`；
+  不复用、不缓存
+- AI-06 会在 Guard 之前拒绝某些请求（unknown tool / operation / 参数 / v1 target /
+  workspace）。这类 **pre-Guard refusal 没有 GuardDecision**，不得伪造；
+  `decision_id` 为空表示「没有发生评价」，**不等于** UNKNOWN，也**不等于** BLOCKED
+- `AgentExecutionRequest` 构造时即经 `resolve_agent` 解析身份；
+  `AgentResult.agent_id` 是真正的 `AgentId`，未注册字符串无法构造
+- `AgentResult.result` 只接受 `sha256:<64 hex>` 或 `ref:<token>` 两种形状：
+  这是**结构性形状保证**，不是内容扫描器（完整答案属于 AI-05 的 C-1）
+- AI-08 不写任何 EvidenceRecord，也不 import `plugins.evidence`（Layer 0 会拦）
+- v1 的 body 不做推理、不联网、不绑模型；它产出的是 provenance reference，不是 task result
+- `COMPLETED != PASS`；`AgentRole.INDEPENDENT_SECOND` 不是 independence finding
 
 **AI-08 v1 has no provider binding** — every capability on every shipped model profile is
 `UNKNOWN` and no provider call has ever been made in this repository. Real Codex provider and model
@@ -730,7 +758,7 @@ SecurityLab
 | AI-05 | **B1 COMPLETE** (PR #34); **B2 COMPLETE** — P1 `844df7be` (PR #41), P2 `b8692c18` (PR #42) and P3 `67515ff9` (PR #44) merged; **AI-05 INCOMPLETE** — C-1 DEFERRED, §30 step 7 unimplemented; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-06 | **COMPLETE** — merged as `3b1917ab` (PR #47); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-07 | **COMPLETE** — contract `963c181c` (PR #48), implementation `e57541f9` (PR #49) merged; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
-| AI-08 | **AI-08-A CONTRACT FROZEN** — implementation NOT STARTED; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
+| AI-08 | **AI-08-A MERGED** (`2117cdf49940bb97f5f18a6447fbc2f0137b31e7`, PR #51); **AI-08-B IMPLEMENTED ON BRANCH** — awaiting review; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-09 | NOT STARTED |
 | AI-10 | NOT STARTED |
 | AI-11 | NOT STARTED |

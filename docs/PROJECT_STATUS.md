@@ -2,9 +2,9 @@
 > Baseline: 2026-09-26
 
 ## Current stage
-**AI-08 — Codex Second Agent — AI-08-A CONTRACT FROZEN; IMPLEMENTATION NOT STARTED.**
-AI-07 — Model Router v1 is **COMPLETE / CLOSED**. The next work item is the AI-08-A Contract
-Freeze review and merge checkpoint.
+**AI-08 — Codex Second Agent — AI-08-A CONTRACT FROZEN AND MERGED; AI-08-B IMPLEMENTED ON BRANCH.**
+AI-07 — Model Router v1 is **COMPLETE / CLOSED**. The next work item is the AI-08-B implementation
+review and merge checkpoint.
 
 AI-00 architecture and repository baseline is complete. **AI-01 DSH Baseline is COMPLETE** — see
 [AI-01 final gate status](#ai-01-final-gate-status). **AI-02 Model Layer is COMPLETE** — see
@@ -62,22 +62,30 @@ This file is the single entry point for deciding what to do next.
 
 ### Current work item
 
-**AI-08 — Codex Second Agent — AI-08-A CONTRACT FROZEN.**
+**AI-08 — Codex Second Agent — AI-08-B IMPLEMENTED ON BRANCH; AWAITING REVIEW.**
 
 AI-08 is the phase that makes Codex a second Agent with its own identity, its own execution
-instance, its own result and its own provenance. **AI-08-A freezes the contract only.** No Agent
-runtime exists, no Codex backend is wired, and no execution has run.
+instance, its own result and its own provenance.
 
 ```text
-AI-08-A     = CONTRACT FROZEN      this sub-phase; awaiting the human merge checkpoint
-AI-08-B     = NOT STARTED          implementation, against the frozen contract
-AI-08       = IMPLEMENTATION NOT STARTED
+AI-08-A     = COMPLETE / MERGED    contract frozen   (PR #51)
+AI-08-B     = IMPLEMENTED ON BRANCH, NOT MERGED      feature/ai-08-agent-runtime
+AI-08       = NOT CLOSED           awaiting the human merge checkpoint
 
-contract      = docs/AI-08_AGENT_EXECUTION_EXECUTION_PLAN.md
-contract blob = recorded when AI-08-A is merged
-base          = main @ a7c4a1e2536536940d96431883dadb592f7c151a
-amendments    = 2   AI-08-A Amendment 1 (review corrections, §22) and
-                      AI-08-A Amendment 2 (terminal-result invariant, §22)
+AI-08-A merge SHA  = 2117cdf49940bb97f5f18a6447fbc2f0137b31e7
+AI-08-A head       = 838e4617a5465367f5410be37d34c745054f86b9
+contract           = docs/AI-08_AGENT_EXECUTION_EXECUTION_PLAN.md
+contract blob      = a01e03f5306299a0a4442648eeb8fdcfce6bd8dd
+                     after Amendment 4, applied during AI-08-B
+previous blob      = 739ec29f37bfb8654f19ca088d6af57ffdd09e69
+                     (after Amendment 3)
+earlier blob       = 7fa9effde597c71f127c4e14dc31641a5ffe7589
+                     (after Amendment 2; unchanged by the AI-08-B implementation
+                      commits themselves)
+amendments         = 4   Amendment 1 (review corrections, §22)
+                         Amendment 2 (terminal-result invariant, §22)
+                         Amendment 3 (Guard-bound tool invocation boundary, §22)
+                         Amendment 4 (required CI configuration in scope, §22)
 
 FROZEN here   AgentId, AgentRole, the identity boundary, the execution contract,
               Context isolation, the independence definition I1-I8,
@@ -905,4 +913,156 @@ exactly one row, "AI-06 tool execution", whose producer token is "ai-06", and
 `g_registered` admits no other. An AI-08 record written under "ai-06" would be a false
 producer claim, which this repository refuses everywhere else. AI-08-B MUST NOT write
 Evidence; the token is DEFERRED pending an AI-05 amendment.
+```
+
+### AI-08-B — Agent runtime / execution layer
+
+**Implemented on `feature/ai-08-agent-runtime`; NOT MERGED.** The AI-08-A contract is not modified.
+
+```text
+AI-08-B branch  = feature/ai-08-agent-runtime
+AI-08-B base    = 2117cdf49940bb97f5f18a6447fbc2f0137b31e7   (the AI-08-A merge)
+AI-08-B         = IMPLEMENTED ON BRANCH, awaiting the human merge checkpoint
+AI-08           = NOT CLOSED
+```
+
+What exists now, under `agents/`:
+
+```text
+vocabulary.py    AgentId (dsh | codex), AgentRole (PRIMARY | INDEPENDENT_SECOND),
+                 the frozen registration, resolve_agent
+request.py       AgentExecutionRequest, and the opaque ExecutionId
+result.py        AgentResult, AgentExecutionOutcome, ToolCallRef
+toolcall.py      the tool path: one fresh GuardRequest and GuardDecision per invocation
+body.py          AgentBody, and v1's offline deterministic body
+runtime.py       execute() and run_execution() — the controller
+independence.py  the I1-I8 predicate
+dsh/body.py      the primary Agent's execution shape
+codex/body.py    the second Agent's shape, and the AI-09 CodexBackend seam
+```
+
+```text
+one AgentExecutionRequest -> one ExecutionId -> one terminal AgentResult
+    for COMPLETED, FAILED and BLOCKED alike
+
+Context      established by the runtime, one per execution, owned by it.
+             The request carries a descriptor and never a ContextResponse.
+Guard        AI-08 does not call Guard. AI-06 builds a fresh GuardRequest per
+             invocation from the ToolRequest AI-08 supplies, whose actor is the
+             AgentId. No decision is cached or reused.
+Evidence     no EvidenceRecord is written. AI-08 does not import plugins.evidence,
+             and its Layer 0 gate fails the build if it starts to.
+Router       no import in either direction.
+Provider     none. No network, no subprocess, no model binding, no credential.
+```
+
+Measured on the branch:
+
+```text
+tests/agents                 212 passed
+whole repository            2483 passed, 2 skipped, 5 deselected
+Layer 0                     PASS (17 checks)   the AI-08 gate is check #17
+compileall                  clean
+providers.validate          PASS
+```
+
+### AI-08-A Amendment 3 — Guard-bound tool invocation boundary
+
+Found by AI-08-B's implementation review, and the first amendment resolving a
+contradiction between AI-08's frozen text and **another phase's** frozen
+architecture.
+
+```text
+§12 / §9.1 I5 / §13.4 quantified over EVERY tool invocation:
+    a fresh GuardRequest and a fresh GuardDecision
+
+AI-06 refuses on five paths BEFORE `ask_guard`
+(dispatch.py:75 unknown tool, :79 unknown operation, :85 invalid arguments,
+ :92 v1 target boundary, :99 workspace resolution; `ask_guard` is at :109).
+No GuardRequest is built and no DecisionRecord exists. AI-06's own
+`unattributed_summary` documents it: `decision_id` "stays empty precisely
+because no evaluation produced one".
+
+The universal could not be met. Closing it would have required duplicating
+AI-06's gates in AI-08, fabricating a GuardDecision, or changing AI-06 — all
+three forbidden.
+```
+
+```text
+RESOLVED — GUARD-BOUND SEMANTICS. New §12.2 and §9.1.2 define:
+
+  Guard-bound invocation   passed AI-06's pre-Guard gates and reached the Guard
+                           authorization boundary. Carries a fresh GuardRequest
+                           and a fresh GuardDecision.
+  Pre-Guard refusal        refused before that boundary. Has NO GuardDecision,
+                           and none may be fabricated.
+
+An empty `guard_decision_id` now means exactly one thing: no evaluation
+happened. It is NOT UNKNOWN and NOT BLOCKED.
+
+Synchronised: §9.1 I5, §12, §12.2 (new), §9.1.2 (new), §13.4, §20 C9,
+§21, test matrix T20 and new T44.
+```
+
+### AI-08-A Amendment 4 — required CI configuration is part of phase scope
+
+A scope-statement correction. C17 listed the phase's diff as living inside
+`agents/`, `tests/agents/`, docs, tests and the Layer 0 gate, but AI-08-B also
+changed `.github/workflows/preflight.yml` so that CI syntax-checks the new
+`agents/` code — `tests` was compiled and `agents` was not.
+
+```text
+.github/workflows/preflight.yml   REQUIRED CI VALIDATION INFRASTRUCTURE
+NOT                               AI-08 application or runtime logic
+```
+
+New §17.2 names it with a narrow exception: a CI change is in scope only when
+STRICTLY NECESSARY to validate AI-08-owned code in the required CI path, and
+only when it adds or adjusts validation for `agents/` or `tests/agents/`, does
+not weaken a security gate, does not enable network/provider/live execution,
+does not change permissions or protected paths, and does not alter another
+phase's contract or implementation. `.github/` is not an AI-08 free-edit area
+and §17.2 says so. No implementation changed.
+
+Two implementation fixes landed with Amendment 3:
+
+```text
+identity boundary   AgentExecutionRequest.__post_init__ resolves through
+                    `resolve_agent`, and AgentResult.agent_id is a real AgentId.
+                    Before this, `agent_id="not-registered"` constructed happily:
+                    a BLOCKED result was attributed to no registered Agent, and
+                    a ValueError escaped execute() on the normal path.
+raw-content shape   AgentResult.result admits exactly two shapes —
+                    `sha256:<64 lowercase hex>` or `ref:<opaque token>` — so
+                    obvious raw-content forms cannot be stored at all. This is a
+                    STRUCTURAL SHAPE guarantee, not a content classifier; the
+                    full answer is AI-05's deferred C-1 and §10.2 says so.
+```
+
+```text
+required CI on this branch   run 36892373480 — Layer 0 pass, Layers 1-3 pass
+DEFERRED  AI-09  real Codex provider / model integration
+DEFERRED  AI-10  cross-agent review / second-opinion closure
+DEFERRED  AI-11  benchmark comparison
+DEFERRED  AI-12  routing v2 fallback / escalation
+DEFERRED  AI-13  retry / timeout / cancellation / checkpoint / resume /
+                 failure classification
+DEFERRED  the AI-08 producer token for Evidence   an AI-05 amendment is required
+DEFERRED  a per-Agent permission ceiling          OUT OF SCOPE, and not inferred
+UNCHANGED AI-05 C-1, AI-05 D11, AI-03 G-14
+```
+
+**AI-08-B is not a `PASS`.** It is implemented and locally verified; C1–C17 close only
+when the phase's own evidence record and required CI do, and AI-08-A closed C0 alone.
+
+Two facts a reader should not have to infer:
+
+```text
+The v1 bodies perform no inference. Every capability on every shipped model profile
+is UNKNOWN and no provider call has ever been made in this repository, so the bodies
+cannot call a model and do not pretend to. They produce a PROVENANCE REFERENCE, not a
+task result. §10.2's "task result" arm is AI-09's.
+
+AgentResult is run data. It is not an AI-05 EvidenceRecord, and no admission pipeline
+runs when an execution does.
 ```

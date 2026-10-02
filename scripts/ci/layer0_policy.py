@@ -138,6 +138,42 @@ SECURITY_TOOLS_GIT_WRITE_VERBS = (
     "fetch", "pull", "clean", "stash", "branch_create", "remote",
 )
 
+#: AI-08 §15: v1 reaches no network and starts no process of its own.
+#:
+#: `subprocess` and `shutil` are here for the second half of that claim. The
+#: Agent layer calls AI-03's `build_context`, which uses its own read-only git
+#: reader — that subprocess belongs to AI-03 and AI-03's gate already covers it.
+#: What this list forbids is `agents/` spawning anything itself.
+#:
+#: `routing`, `tools` and `plugins.evidence` are checked separately below,
+#: because each of them needs a different explanation than "no network".
+AGENTS_FORBIDDEN_IMPORTS = (
+    "socket",
+    "http",
+    "urllib",
+    "urllib3",
+    "requests",
+    "httpx",
+    "aiohttp",
+    "ftplib",
+    "smtplib",
+    "telnetlib",
+    "ssl",
+    "asyncio",
+    "multiprocessing",
+    "subprocess",
+    "shutil",
+)
+
+AGENTS_FORBIDDEN_BUILTINS = ("eval", "exec", "compile", "__import__")
+
+#: AI-08 §17: the other workspace is not reachable from the Agent layer.
+AGENTS_FORBIDDEN_LITERALS = (
+    "SecurityLab/",
+    "Li20771/SecurityLab",
+    "/mnt/d/SecurityLab",
+)
+
 EVIDENCE_FORBIDDEN_IMPORTS = (
     "socket",
     "http",
@@ -1356,6 +1392,155 @@ def check_ai07_router_contract() -> list[str]:
     return problems
 
 
+def check_ai08_agent_layer() -> list[str]:
+    """AI-08 §17, §12, §13.1, §15: the Agent layer, as a gate.
+
+    Two halves, and they catch different regressions:
+
+    ```text
+    structural   what agents/ can reach -- no network, no process, no Router,
+                 no tool adapter package, and no AI-05 Evidence import
+    identity     what agents/ is -- a core layer, not a plugin package
+    ```
+
+    What it must never become is a check that passes because there is nothing to
+    check. During AI-08-A `agents/` held three placeholder READMEs, and the
+    honest claim then was that a core layer existed; now it holds an execution
+    runtime, and the check asserts what that runtime may do.
+    """
+    import ast
+
+    problems: list[str] = []
+
+    agents = ROOT / "agents"
+    plugins = ROOT / "plugins"
+
+    if not agents.is_dir():
+        return ["agents/ is absent; AI-08's declared home does not exist"]
+
+    # (1) Identity: a core layer, not a plugin layer (§17).
+    for forbidden in ("agent", "codex", "dsh"):
+        if (plugins / forbidden).exists():
+            problems.append(
+                f"plugins/{forbidden}/ exists; AI-08 is a Workbench core Agent "
+                "layer and not a DSH plugin layer (§17). plugins/ holds exactly "
+                "four layers, owned by AI-03, AI-04, AI-05 and AI-06"
+            )
+    if (agents / "__init__.py").exists():
+        problems.append(
+            "agents/__init__.py exists; agents/ is a core-layer directory reached "
+            "as a namespace package, exactly as routing/ and tests/ are (§17)"
+        )
+
+    # (2) Structural: what agents/ may reach (§12, §13.1, §15).
+    for path in sorted(agents.rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        except SyntaxError as exc:  # pragma: no cover - surfaced as a failure
+            problems.append(f"{_display(path)} does not parse: {exc}")
+            continue
+
+        imported: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imported.add(node.module)
+
+        for name in sorted(imported):
+            root = name.split(".")[0]
+            if root in AGENTS_FORBIDDEN_IMPORTS:
+                problems.append(
+                    f"{_display(path)} imports {name!r}; AI-08 v1 makes no network "
+                    "call and starts no process of its own (§15)"
+                )
+            elif name == "routing" or name.startswith("routing."):
+                problems.append(
+                    f"{_display(path)} imports {name!r}; the Router selects and "
+                    "AI-08 executes, and the dependency does not run backwards "
+                    "(§6.3). An agent_hint stays a hint"
+                )
+            elif name == "tools" or name.startswith("tools."):
+                problems.append(
+                    f"{_display(path)} imports {name!r}; AI-08 reaches tools "
+                    "through AI-06's dispatch, which asks Guard, rather than "
+                    "through an adapter family directly (§12)"
+                )
+            elif name == "plugins.evidence" or name.startswith("plugins.evidence."):
+                problems.append(
+                    f"{_display(path)} imports {name!r}; AI-08 v1 writes no "
+                    "EvidenceRecord, and the only producer token admissible for "
+                    "an EXECUTION record is ai-06's (§13.1)"
+                )
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                for keyword in node.keywords:
+                    if keyword.arg == "shell":
+                        problems.append(
+                            f"{_display(path)}:{node.lineno} passes a `shell` "
+                            "keyword; AI-08 starts no process of its own (§15)"
+                        )
+                if isinstance(node.func, ast.Name) and node.func.id in AGENTS_FORBIDDEN_BUILTINS:
+                    problems.append(
+                        f"{_display(path)}:{node.lineno} calls {node.func.id}()"
+                    )
+
+        source = path.read_text(encoding="utf-8")
+        for needle in AGENTS_FORBIDDEN_LITERALS:
+            if needle in source:
+                problems.append(
+                    f"{_display(path)} names {needle!r}; the other workspace is "
+                    "not reachable from the Agent layer (§17)"
+                )
+
+    # (3) Behavioural: the vocabulary is closed and the registration is fixed.
+    try:
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        from agents.independence import INDEPENDENCE_CONDITIONS
+        from agents.result import AgentExecutionOutcome
+        from agents.vocabulary import ROLE_BY_AGENT, AgentId, AgentRole
+
+        if sorted(m.value for m in AgentId) != ["codex", "dsh"]:
+            problems.append(
+                f"AgentId is {sorted(m.value for m in AgentId)}; §5.1 closes it "
+                "at exactly dsh and codex"
+            )
+        if sorted(m.value for m in AgentRole) != ["INDEPENDENT_SECOND", "PRIMARY"]:
+            problems.append(
+                f"AgentRole is {sorted(m.value for m in AgentRole)}; §5.2 closes "
+                "it at exactly PRIMARY and INDEPENDENT_SECOND"
+            )
+        if sorted(m.value for m in AgentExecutionOutcome) != [
+            "BLOCKED",
+            "COMPLETED",
+            "FAILED",
+        ]:
+            problems.append(
+                f"AgentExecutionOutcome is "
+                f"{sorted(m.value for m in AgentExecutionOutcome)}; §11 closes it "
+                "at exactly three members, and TIMED_OUT / CANCELLED / RETRYING / "
+                "FALLBACK / ESCALATED belong to AI-12 and AI-13 (§11.4)"
+            )
+        if set(ROLE_BY_AGENT) != set(AgentId):
+            problems.append(
+                "the Agent registration is not total over AgentId; §5.2 fixes it "
+                "as dsh -> PRIMARY and codex -> INDEPENDENT_SECOND"
+            )
+        if len(INDEPENDENCE_CONDITIONS) != 8:
+            problems.append(
+                f"§9.1 defines eight independence conditions and "
+                f"{len(INDEPENDENCE_CONDITIONS)} are present"
+            )
+    except Exception as exc:  # noqa: BLE001 - surfaced as a failure
+        problems.append(f"agents/ could not be imported: {exc}")
+
+    return problems
+
+
 def check_layer_markers() -> list[str]:
     """Every test module belongs to exactly one layer.
 
@@ -1439,6 +1624,10 @@ def main() -> int:
     report.check(
         "model router identity and contract freeze",
         check_ai07_router_contract(),
+    )
+    report.check(
+        "agent layer identity and execution boundary",
+        check_ai08_agent_layer(),
     )
 
     if report.failures:

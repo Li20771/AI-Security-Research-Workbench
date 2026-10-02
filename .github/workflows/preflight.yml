@@ -48,7 +48,7 @@ jobs:
           pip install -r requirements-dev.txt
       - name: Check Python syntax
         run: |
-          python -m compileall -q providers plugins tests
+          python -m compileall -q providers plugins tests agents
 
       - name: "Layer 1 — contract and schema"
         run: |
