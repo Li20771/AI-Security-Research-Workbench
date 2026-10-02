@@ -10,19 +10,33 @@ run_binary            stdout and exit code, from executing it
 inspect_firmware      filesystem, compression and config, from the image itself
 ```
 
-### Why a decoder lives here rather than in a dependency
+### A.1's decoder is cantools, and there is no fallback
 
-§A.1's card names `cantools` as the harness's decoder. It is not obtainable in the
-benchmark environment, and a task whose oracle is permanently `BLOCKED` measures nothing
-at all. The decoder below therefore implements the DBC subset the corpus declares, in
-the harness, and the requirement §A.1 actually freezes — that the value comes from an
-INDEPENDENT decode of the declared material rather than from the submission — is met in
-full. The substitution is recorded in the PR as a reported deviation, not silently.
+```text
+FROZEN (A.1): the independent decoder is the harness's own cantools invocation.
+```
+
+`decode_dbc_frame` runs that invocation. There is **no native DBC decoder here** and
+none is planned: a second decoder would be a different oracle wearing A.1's name, and a
+reader comparing a run against the contract would have no way to tell which one produced
+the numbers.
+
+`cantools` is therefore a declared dependency of the benchmark suite
+(`requirements-dev.txt`), so CI exercises the real A.1 path rather than only ever being
+able to assert `BLOCKED`.
+
+```text
+cantools importable       the declared decoder runs
+cantools absent           BLOCKED, with reason code CANTOOLS_UNAVAILABLE
+```
+
+An absent decoder is `BLOCKED` and never `FAIL`, and it is never worked around by a
+substitute.
 
 ### Absent tools are BLOCKED
 
-Every function that needs a program returns a `ToolUnavailable` marker rather than
-raising or guessing. §8.2: nothing ran, so nothing is known about the thing checked.
+Every function that needs a program returns an `InspectionUnavailable` marker rather
+than raising or guessing. §8.2: nothing ran, so nothing is known about the thing checked.
 """
 
 from __future__ import annotations
@@ -30,7 +44,6 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
