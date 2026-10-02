@@ -2,11 +2,12 @@
 > Baseline: 2026-09-26
 
 ## Current stage
-**AI-09 — Codex Provider Integration — COMPLETE / MERGED / CLOSED.**
-AI-08 — Codex Second Agent is **COMPLETE and MERGED** as
-`edb7dfc82ce51123482ac357fb9319dca2fa0d9a` (PR #52). AI-07 — Model Router v1 is
-**COMPLETE / CLOSED**. The next work item is **AI-10 — Cross-Agent Review**, which is
-**NOT STARTED**.
+**AI-10 — Cross-Agent Review — COMPLETE / MERGED / CLOSED.**
+AI-09 — Codex Provider Integration is **COMPLETE / MERGED / CLOSED** as
+`b8b815b181e69f7651efdde97dd9473a3e619c7f` (PR #54). AI-08 — Codex Second Agent is
+**COMPLETE and MERGED** as `edb7dfc82ce51123482ac357fb9319dca2fa0d9a` (PR #52).
+AI-07 — Model Router v1 is **COMPLETE / CLOSED**. The next work item is
+**AI-11 — AI Security Benchmark**, which is **NOT STARTED**.
 
 AI-00 architecture and repository baseline is complete. **AI-01 DSH Baseline is COMPLETE** — see
 [AI-01 final gate status](#ai-01-final-gate-status). **AI-02 Model Layer is COMPLETE** — see
@@ -64,10 +65,43 @@ This file is the single entry point for deciding what to do next.
 
 ### Current work item
 
-**AI-10 — Cross-Agent Review — NEXT; NOT STARTED.**
+**AI-10 — Cross-Agent Review — COMPLETE / CLOSED.**
 
-AI-09 is **COMPLETE / MERGED / CLOSED**. Its implementation, evidence and merge checkpoint are
-recorded, and the next phase has not begun.
+**AI-11 — AI Security Benchmark — NEXT; NOT STARTED.** No contract, no implementation and
+no result exists for it.
+
+```text
+AI-10-A     = COMPLETE / MERGED    contract frozen           (PR #56, 3613896d)
+Amendment 1 = APPLIED / MERGED     §9.3.1 statement identity (PR #58, fbf1e1b0)
+Amendment 2 = APPLIED / MERGED     §5.4 independence_status  (PR #59, 32126416)
+AI-10-B     = COMPLETE / MERGED    the review core           (PR #60, d22fe25c)
+AI-10       = CLOSED
+
+merge       = d22fe25c5fe94ae697083fd9fbdfaf3976785703   (PR #60, true two-parent merge)
+base        = main @ 32126416aa719ff204a5a690f868ff98122f1e22
+branch      = feature/ai-10-review-core-correction   (merged; retained)
+contract    = docs/AI-10_CROSS_AGENT_REVIEW_EXECUTION_PLAN.md
+contract blob = fc6f709611fcf7a8fcf6845097bf130920445fdc
+                     UNCHANGED by AI-10-B
+evidence    = docs/AI-10_EVIDENCE_2026-10-02.md
+
+home        = review/ — a Workbench CORE service, not a plugin
+ingress     = EXTERNAL REVIEW MATERIAL INGRESS — explicitly supplied material only
+independence= AI-08's I1-I8 consumed read-only; `independence_status` is a second,
+              orthogonal axis (NOT_APPLICABLE / UNCHECKED / OBSERVED)
+verification= a request only; the controlled caller invokes AI-06, under AI-04
+evidence    = AI-10 writes NO EvidenceRecord in v1, under no producer token
+decision    = human-supplied run data; never model-generated, never pre-filled
+
+live        = NOT_RUN     no provider call has been made
+automatic acquisition of real Agent analysis material = BLOCKED / PREREQUISITE
+durable review evidence / durable HumanDecision       = DEFERRED to an AI-05 amendment
+```
+
+**AI-10 is closed as of the PR #60 merge.** The merge closed the implementation and its
+offline verification; it did not close the blocker above, and it produced no live run.
+
+**Retained record — AI-09: COMPLETE / MERGED / CLOSED.**
 
 ```text
 AI-09-A     = CONTRACT FROZEN      (2026-10-02)
@@ -90,14 +124,6 @@ reserved    = providers/openai-compatible/ stays RESERVED / DISABLED / UNIMPLEME
 live        = NOT_RUN     no provider call has been made by this phase
 capability  = UNKNOWN     every capability, every shipped model profile
 connectivity= NOT VERIFIED
-
-FROZEN here   the target provider, the supported model refs, the invocation path,
-              the Router boundary, the integration layer's physical boundary and
-              dependency direction, model binding, the context egress policy,
-              the credential policy, the capability truth boundary, tool-calling
-              and structured-output semantics, timeout and retry semantics,
-              the output/reference boundary, the test model, and the non-goals
-OPEN          every implementation detail; AI-09-B's checklist is §22 of the contract
 ```
 
 **AI-09-A closed contract gate C0; AI-09-B closed C1–C12.** The phase is complete as of the
@@ -250,17 +276,16 @@ PROJECT_STATUS.md
 ### Not yet started
 
 ```text
-AI-10   Cross-Agent Review                    NEXT      NOT STARTED
-AI-11   AI Security Benchmark                 queued    NOT STARTED
+AI-11   AI Security Benchmark                 NEXT      NOT STARTED
 AI-12   routing v2 fallback / escalation      queued    NOT STARTED
 AI-13   retry / timeout / cancellation /
         checkpoint / resume /
         failure classification                queued    NOT STARTED
 ```
 
-- **AI-10 Codex second-opinion closure — NEXT, NOT STARTED.** No contract, no implementation,
-  no test and no result exists for it. It builds on AI-09's merged integration, which is
-  itself a wiring phase: no provider call has been made, and every capability is `UNKNOWN`.
+- **AI-11 — AI Security Benchmark — NEXT, NOT STARTED.** No contract, no implementation,
+  no test and no result exists for it. It consumes per-Agent result data; it is not started
+  by AI-10's closeout, and nothing in AI-10 depends on it.
 
 ## Completed
 
@@ -291,7 +316,6 @@ AI-13   retry / timeout / cancellation /
 - Research tool adapters
 - Codex integration
 - Benchmark dataset
-- Cross-Agent Review implementation
 - Long-running workflow implementation
 
 ## AI-00 final gate status
@@ -1266,4 +1290,92 @@ no provider call made
 no live test run
 no AI-02, AI-03, AI-04, AI-05, AI-06, AI-07 or AI-08 contract or code modified
 no credential read or printed
+```
+
+---
+
+## AI-10 status
+
+**AI-10 — Cross-Agent Review: COMPLETE / MERGED / CLOSED.**
+
+```text
+AI-10-A     = COMPLETE / MERGED    contract frozen          (PR #56, 3613896d)
+Amendment 1 = APPLIED / MERGED     §9.3.1 statement identity (PR #58, fbf1e1b0)
+Amendment 2 = APPLIED / MERGED     §5.4 independence_status  (PR #59, 32126416)
+AI-10-B     = COMPLETE / MERGED    the review core          (PR #60, d22fe25c)
+AI-10       = CLOSED
+
+merge       = d22fe25c5fe94ae697083fd9fbdfaf3976785703
+                     true two-parent merge; not squashed, not rebased
+                     parent 1 = 32126416aa719ff204a5a690f868ff98122f1e22
+                     parent 2 = 2468f85ebe15a8196a0b06e39a9900323d3fa356
+base        = main @ 32126416aa719ff204a5a690f868ff98122f1e22
+branch      = feature/ai-10-review-core-correction   (merged; retained)
+contract    = docs/AI-10_CROSS_AGENT_REVIEW_EXECUTION_PLAN.md
+contract blob = fc6f709611fcf7a8fcf6845097bf130920445fdc
+                     UNCHANGED by AI-10-B
+evidence    = docs/AI-10_EVIDENCE_2026-10-02.md
+```
+
+### What AI-10-B built
+
+```text
+review/                    a Workbench CORE layer — a namespace package, no __init__.py
+                           12 modules: vocabulary, errors, digest, validation, claim,
+                           material, finding, comparison, case, independence,
+                           verification, decision
+tests/review/              10 modules + conftest
+Layer 0                    check_ai10_review_layer(), 19 checks in total
+CI                         compileall now covers review/
+```
+
+```text
+measured on the merged head
+    tests/review            327 passed
+    whole repository        2949 passed, 2 skipped, 5 deselected, 0 failed
+                            (two consecutive runs)
+    Layer 0                 PASS (19 checks)
+    compileall              PASS
+    providers.validate      PASS
+    plugins.context.validate PASS
+    required CI             run 36989026416 — Layer 0 SUCCESS, Layers 1-3 SUCCESS
+                            run 37000268681 on the merge commit — SUCCESS
+```
+
+### What AI-10 does not claim
+
+```text
+live provider call        NOT_RUN — none has been made by this phase
+live Agent execution      NOT_RUN
+durable review evidence   AI-10 writes NO EvidenceRecord, under no producer token
+durable HumanDecision     run data only
+```
+
+### Recorded, not resolved
+
+```text
+BLOCKED / PREREQUISITE
+    automatic acquisition of real Agent analysis material. AI-08's AgentResult
+    carries a reference or a digest and never content; AI-09 creates no durable
+    model-output store and its reference locates no artifact. AI-10 v1 therefore
+    accepts only explicitly supplied ReviewMaterial. Closing this needs an AI-09
+    amendment and/or a separately reviewed DSH seam — neither was made.
+
+DEFERRED
+    durable review evidence, and a durable HumanDecision. Both require an AI-05
+    amendment: the v1 §6.5 admitted-producer registry admits no AI-10 token, and
+    AI-10 borrows none.
+
+RECORDED — an AI-03 test, not AI-10's
+    tests/context/test_cache.py::test_a_warm_cache_does_not_change_the_items is
+    timing-sensitive: it compares item payloads across two build_context calls and
+    `retrieved_at` is second-resolution and not stripped. Observed once in an
+    earlier full-suite run, clean in 12/12 isolated runs and in later full runs.
+    Recorded as RECORDED / PRE-EXISTING / OUT OF SCOPE. Not fixed here.
+
+RECORDED — PR #57
+    feature/ai-10-review-core remains OPEN / NOT MERGED / NOT MODIFIED / NOT
+    REBASED / NOT FORCE-PUSHED. Its implementation content was carried onto the
+    amended main as 00e8b02 on the correction branch that PR #60 merged, so the
+    old branch is superseded. Closing it is a human housekeeping decision.
 ```

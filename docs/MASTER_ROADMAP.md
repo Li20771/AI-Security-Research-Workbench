@@ -556,6 +556,52 @@ live        = NOT_RUN    capability = UNKNOWN    connectivity = NOT VERIFIED
 
 ## AI-10 — Cross-Agent Review
 
+**Status: COMPLETE / MERGED / CLOSED.** The contract is
+[AI-10_CROSS_AGENT_REVIEW_EXECUTION_PLAN.md](AI-10_CROSS_AGENT_REVIEW_EXECUTION_PLAN.md),
+frozen at AI-10-A (PR #56, `3613896d`) and amended twice. The implementation was merged by
+PR #60. Evidence: [AI-10_EVIDENCE_2026-10-02.md](AI-10_EVIDENCE_2026-10-02.md).
+
+```text
+AI-10-A     = COMPLETE / MERGED    contract frozen          (PR #56, 3613896d)
+Amendment 1 = APPLIED / MERGED     §9.3.1 statement identity (PR #58, fbf1e1b0)
+Amendment 2 = APPLIED / MERGED     §5.4 independence_status  (PR #59, 32126416)
+AI-10-B     = COMPLETE / MERGED    the review core          (PR #60, d22fe25c)
+AI-10       = CLOSED
+
+merge       = d22fe25c5fe94ae697083fd9fbdfaf3976785703   (PR #60, true two-parent merge)
+contract blob = fc6f709611fcf7a8fcf6845097bf130920445fdc
+home        = review/ — a Workbench CORE service, not a plugin
+live        = NOT_RUN     no provider call has been made
+```
+
+Frozen boundaries this phase introduced:
+
+```text
+review/ is a CORE service; it is not a plugin, an Agent, a Router, a Guard, a
+  provider or a second Evidence subsystem
+EXTERNAL REVIEW MATERIAL INGRESS — v1 accepts only explicitly supplied material;
+  declared provenance is never verified provenance, and a digest is never read as
+  content
+the comparison produces exactly eight structural observations and never a verdict,
+  a ranking, a winner or a score
+verification is a REQUEST: the controlled caller invokes AI-06, under AI-04; AI-10
+  holds no authorization authority and composes no ToolRequest
+a human decision is human-supplied run data, never model-generated, never
+  pre-filled, and never a recommendation
+AI-10 writes NO EvidenceRecord in v1, under no producer token
+```
+
+Major unresolved dependencies, recorded and left standing:
+
+```text
+BLOCKED / PREREQUISITE   automatic acquisition of real Agent analysis material
+                         (AI-08 §10.2, AI-09 §19) — needs an AI-09 amendment and/or
+                         a separately reviewed DSH seam
+DEFERRED                 durable review evidence and a durable HumanDecision —
+                         both require an AI-05 amendment
+NOT_RUN                  live provider verification, live Agent execution
+```
+
 目标：建立真正的“第二意见”闭环。
 
 推荐流程：
@@ -786,7 +832,7 @@ SecurityLab
 | AI-07 | **COMPLETE** — contract `963c181c` (PR #48), implementation `e57541f9` (PR #49) merged; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-08 | **COMPLETE** — merged as `edb7dfc82ce51123482ac357fb9319dca2fa0d9a` (PR #52); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-09 | **COMPLETE** — merged as `b8b815b181e69f7651efdde97dd9473a3e619c7f` (PR #54); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
-| AI-10 | **NEXT** — NOT STARTED |
+| AI-10 | **COMPLETE** — contract `3613896d` (PR #56), Amendments 1 and 2 (`fbf1e1b0` PR #58, `32126416` PR #59), implementation `d22fe25c5fe94ae697083fd9fbdfaf3976785703` (PR #60) merged; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-11 | NOT STARTED |
 | AI-12 | NOT STARTED |
 | AI-13 | NOT STARTED |
