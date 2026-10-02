@@ -14,9 +14,18 @@ credential source. These tests pin the corrected shape so it cannot drift back.
 The corrected split:
 
 ```text
-composition root   builds InvocationContext(environ=...) and the Invoker over it
-MimoCodexBackend   receives the Invoker, and has no argument for a mapping
+external composition root   builds InvocationContext(environ=...) and the Invoker
+                            over it. OUTSIDE `integrations/` — contract §10.1 makes
+                            `integrations/codex/` the AI-09 boundary in full, so a
+                            composition root placed inside the package would still
+                            be the integration layer holding the credential source.
+MimoCodexBackend            receives the Invoker, and has no argument for a mapping
 ```
+
+The repository has no production application entry point that would own that
+wiring, so in this suite it is the `invoker_factory` / `backend_factory` fixtures
+that play the composition root. That is test wiring, not production
+architecture, and these tests keep the two apart.
 """
 
 from __future__ import annotations
@@ -159,7 +168,7 @@ class TestTheCredentialStaysProviderSide:
         assert isinstance(context, InvocationContext)
         assert context.environ is credentials_env
 
-    def test_the_composition_root_is_the_only_holder(
+    def test_only_the_test_composition_root_holds_the_mapping(
         self, backend_factory, fake_transport_factory, credentials_env
     ):
         """The backend it returns does not reference the mapping at all."""
@@ -169,6 +178,25 @@ class TestTheCredentialStaysProviderSide:
         for value in vars(backend).values():
             assert value is not credentials_env
         assert not hasattr(backend, "_context")
+
+    def test_no_production_module_of_this_layer_holds_the_mapping(self):
+        """Not in the backend, and not in a composition module either.
+
+        There is deliberately no `composition.py` here: §10.1 makes the whole
+        package the AI-09 boundary, so the credential-bearing context is
+        assembled outside it. This asserts the package contains no such module.
+        """
+        modules = sorted(
+            path.name
+            for path in pathlib.Path("integrations").rglob("*.py")
+            if "__pycache__" not in path.parts
+        )
+        assert "composition.py" not in modules
+
+        for path in sorted(pathlib.Path("integrations").rglob("*.py")):
+            if "__pycache__" in path.parts:
+                continue
+            assert not re.search(r"\benviron\b", path.read_text(encoding="utf-8")), path
 
     def test_a_missing_credential_is_refused_by_the_provider_layer(
         self, backend_factory, fake_transport_factory, execution_request, context

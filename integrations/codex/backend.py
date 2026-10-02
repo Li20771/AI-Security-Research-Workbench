@@ -4,19 +4,22 @@ The backend holds a **constructed `Invoker`** and nothing that could resolve a
 credential. That split is the point of this module's shape:
 
 ```text
-composition root   builds the credential-bearing InvocationContext, and the Invoker
-                   over it. It is the only place a credential source is assembled.
-MimoCodexBackend   receives that Invoker and issues InvocationRequests through it.
-                   It never sees, holds or passes a credential, and it has no
-                   argument through which one could reach it.
+external composition root   builds the credential-bearing InvocationContext, and the
+                            Invoker over it. It lives OUTSIDE this package: contract
+                            §10.1 makes `integrations/codex/` the AI-09 boundary in
+                            full, so a composition root placed inside it would still
+                            be the integration layer holding the credential source.
+MimoCodexBackend            receives that Invoker and issues InvocationRequests
+                            through it. It never sees, holds or passes a credential,
+                            and it has no argument through which one could reach it.
 ```
 
 Contract §13 says the integration layer never sees, holds or passes the
 credential. Accepting the credential environment mapping and forwarding it into
 an `InvocationContext` would violate that even though nothing here reads a key,
 logs it or puts it in a body — holding the mapping *is* holding the credential
-source. So the mapping lives on the composition side and this class only receives
-the boundary that already owns it.
+source. So the mapping is assembled outside this package and this class only
+receives the boundary that already owns it.
 
 This module does not mention that mapping by name anywhere, prose included, so
 `grep` over it is a valid audit as well as an AST scan.
@@ -119,9 +122,9 @@ class MimoCodexBackend:
 
         if not isinstance(invoker, Invoker):
             raise CodexBindingError(
-                "invoker must be AI-02's Invoker, built by the composition root; "
-                "this layer does not assemble an invocation context and holds no "
-                "credential source"
+                "invoker must be AI-02's Invoker, built by an external composition "
+                "root; this layer does not assemble an invocation context and holds "
+                "no credential source"
             )
         self._invoker = invoker
 

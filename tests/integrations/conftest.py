@@ -168,21 +168,21 @@ def invoker_factory(providers, models, runtime_transport_settings, credentials_e
 
 
 @pytest.fixture
-def backend_factory(
-    providers,
-    models,
-    enabled_config,
-    runtime_transport_settings,
-    credentials_env,
-):
-    """Build a `MimoCodexBackend` the way the composition root does.
+def backend_factory(providers, models, enabled_config, invoker_factory, credentials_env):
+    """The TEST composition root for a `MimoCodexBackend`.
 
-    Defaults mirror production wiring: a config that enables `mimo`, an
-    environment where the credential reference resolves, and an injected
-    transport. The `environ` argument stops at the composition root — the
-    returned backend has no reference to it and no parameter for it.
+    The credential-bearing `InvocationContext` is assembled here, in the test
+    suite, and handed to the backend as an already-built `Invoker`. That is not
+    an implementation shortcut: AI-09 contract §10.1 makes `integrations/codex/`
+    the AI-09 boundary in full, so a composition root placed inside the package
+    would still be the integration layer holding the credential source. The
+    repository has no production application entry point that would own this
+    wiring, so it lives here rather than in the layer under test.
+
+    The returned backend therefore has no reference to `environ`, `transport` or
+    `transport_settings`, and no parameter for any of them.
     """
-    from integrations.codex.composition import build_mimo_codex_backend
+    from integrations.codex.backend import MimoCodexBackend
 
     def build(
         transport,
@@ -190,16 +190,15 @@ def backend_factory(
         model_ref: str = MIMO_MODEL_REFS[0],
         config=None,
         environ=credentials_env,
+        clock=None,
         **kwargs,
     ):
-        return build_mimo_codex_backend(
+        return MimoCodexBackend(
             model_ref=model_ref,
             config=enabled_config if config is None else config,
             providers=providers,
             models=models,
-            transport=transport,
-            transport_settings=runtime_transport_settings,
-            environ=environ,
+            invoker=invoker_factory(transport, environ=environ, clock=clock),
             **kwargs,
         )
 

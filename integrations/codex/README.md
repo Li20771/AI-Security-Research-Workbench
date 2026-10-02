@@ -40,8 +40,6 @@ it, and `tests/integrations/test_boundaries.py` proves the gate is not vacuous.
 ```text
 binding.py     model binding and runtime enablement (§5.3, §6, §11)
 backend.py     MimoCodexBackend — the concrete CodexBackend (§8, §12, §17, §19)
-composition.py the composition root: builds the credential-bearing InvocationContext
-               and the Invoker, then hands the backend only that
 reference.py   the sha256 provenance digest and its canonical inputs (§19.2.1)
 errors.py      the integration-layer error taxonomy
 ```
@@ -78,35 +76,50 @@ no artifact store         the reference is a digest, and it locates nothing
 no capability promotion   every shipped capability stays UNKNOWN
 ```
 
-## Construction: two sides of one boundary
+## Construction happens OUTSIDE this package
 
-`composition.py` is the composition root. It assembles the credential-bearing
-`InvocationContext` and the `Invoker` over it, and hands the backend only that:
+The credential-bearing `InvocationContext` is assembled by an **external**
+composition root — outside `integrations/` — and handed in as an already-built
+`Invoker`:
 
 ```python
-# composition.py — the only place a credential source is assembled
+# an external composition root, NOT a module of this package
 context = InvocationContext(
     providers=..., models=...,
-    transport=transport,            # INJECTED by the caller
+    transport=transport,            # injected by whoever owns the wiring
     transport_settings_for=...,
-    environ=environ,                # the credential environment, stays here
+    environ=environ,                # the credential source, stays out there
 )
 backend = MimoCodexBackend(
     model_ref="mimo/mimo-v2.6-pro", # explicit, validated, immutable
     config=provider_config,         # runtime enablement authority
     providers=..., models=...,      # AI-02's registries, for binding validation
-    invoker=Invoker(context),
+    invoker=Invoker(context),       # the only thing this layer receives
 )
 ```
 
-The backend's constructor has **no** `environ`, `transport` or
-`transport_settings` parameter, and its source names `environ` nowhere.
-`check_ai09_integration_layer()` asserts that: only `composition.py` may bind an
-environment mapping, and every other module in the layer is refused if it does.
+```text
+WHY IT IS NOT A MODULE HERE
+    Contract §10.1 makes `integrations/codex/` the AI-09 boundary in full. A
+    composition root placed inside the package would still be the integration
+    layer holding the credential source, so §13 would still be violated — the
+    exception would be self-granted rather than contract-authorised.
+
+WHAT THAT BUYS
+    Every production module of this layer is refused if it binds `environ` at
+    all. There is no excepted file. `check_ai09_integration_layer()` enforces it
+    with no allowlist entry for a credential context, and the backend's
+    constructor has no `environ`, `transport` or `transport_settings`
+    parameter.
+```
 
 Holding the mapping *is* holding the credential — even if no key is ever read —
-so the boundary is drawn at the module that assembles the provider-side context,
-not at the call that reads a variable.
+so the boundary is drawn at the package edge, not at the call that reads a
+variable.
+
+The repository has no production application entry point that would own this
+wiring, so in the test suite the `invoker_factory` / `backend_factory` fixtures
+play the composition root. That is test wiring, not production architecture.
 
 A provider that runtime config does not explicitly enable is refused at
 construction, and the backend is not built. **Profile existence is not runtime

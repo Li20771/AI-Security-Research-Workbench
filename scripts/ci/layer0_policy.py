@@ -222,16 +222,26 @@ AI09_ALLOWED_PLUGIN_IMPORTS = ("plugins.context",)
 
 #: Names that would mean the layer had taken over a job that is not its own:
 #: resolving a credential, or reading the environment.
-AI09_FORBIDDEN_NAMES = ("CredentialRef", "SecretValue", "getenv", "environ.get")
-
+#:
 #: AI-09 §13: the credential is resolved by the provider layer, and the
 #: integration layer never sees it, holds it, or passes it.
 #:
 #: The credential *environment mapping* is the credential source, so holding it
-#: is holding the credential even if nothing here reads a key. Exactly one module
-#: -- the composition root -- may assemble the `InvocationContext` that carries
-#: it, and every other module in the layer is checked for naming it at all.
-AI09_CREDENTIAL_CONTEXT_MODULE = "composition.py"
+#: is holding the credential even if nothing here reads a key. There is therefore
+#: **no module of this layer that may bind it**: §10.1 makes `integrations/codex/`
+#: the AI-09 boundary in its entirety, so a composition root placed inside it
+#: would still be the integration layer holding the credential. The
+#: credential-bearing context is assembled OUTSIDE this package and handed in as
+#: an already-built `Invoker`, which is why `environ` is forbidden everywhere
+#: here rather than excepted somewhere.
+AI09_FORBIDDEN_NAMES = (
+    "CredentialRef",
+    "SecretValue",
+    "environ",
+    "environ.get",
+    "getenv",
+    "resolve",
+)
 
 AI09_FORBIDDEN_BUILTINS = ("eval", "exec", "compile", "__import__")
 
@@ -1731,20 +1741,11 @@ def check_ai09_integration_layer() -> list[str]:
         for name in AI09_FORBIDDEN_NAMES:
             if name in names:
                 problems.append(
-                    f"{_display(path)} names {name!r}; credentials are resolved by "
-                    "the provider layer and the environment is not read here "
+                    f"{_display(path)} names {name!r}; the credential source is "
+                    "assembled outside this package and the provider layer "
+                    "resolves it, so this layer never sees, holds or passes it "
                     "(contract §5.3, §13)"
                 )
-
-        # The credential source lives in exactly one module. Holding the mapping
-        # is holding the credential, even if no key is ever read here.
-        if path.name != AI09_CREDENTIAL_CONTEXT_MODULE and "environ" in names:
-            problems.append(
-                f"{_display(path)} names 'environ'; the credential-bearing "
-                "invocation context belongs to the composition root "
-                f"({AI09_CREDENTIAL_CONTEXT_MODULE}), and no other module in this "
-                "layer may hold or pass a credential source (contract §13)"
-            )
 
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef) and node.name.endswith(
