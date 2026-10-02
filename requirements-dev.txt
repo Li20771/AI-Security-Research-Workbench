@@ -3,3 +3,9 @@
 # Test tooling. The suite is fully offline: no test requires a network
 # connection, an API key, or a provider endpoint.
 pytest>=8.0
+
+# The CAN oracle's declared decoder (AI-11 contract A.1: "the harness's own cantools
+# invocation"). It is a TEST dependency because it is needed to exercise the real A.1
+# oracle, and a benchmark whose declared decoder is absent from CI can only ever be
+# asserted BLOCKED. Pure Python and offline, like the rest of this file.
+cantools>=39

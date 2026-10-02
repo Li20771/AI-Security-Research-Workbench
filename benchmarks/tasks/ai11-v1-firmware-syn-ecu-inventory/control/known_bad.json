@@ -1,0 +1,8 @@
+{
+  "answer": {
+    "filesystem": "squashfs",
+    "compression": "gzip",
+    "version": "SYN-ECU v2.0",
+    "admin_password": "DemoPass!2025"
+  }
+}

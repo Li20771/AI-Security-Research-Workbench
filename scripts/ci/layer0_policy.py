@@ -2206,6 +2206,198 @@ def check_pytest_excludes_layer4() -> list[str]:
     return problems
 
 
+def check_ai11_benchmark_layer(root: "Path | None" = None) -> list[str]:
+    """AI-11 §4, §7.4, §17, §19: the benchmark layer, as a gate.
+
+    ```text
+    identity     benchmarks/ is a core layer -- a namespace package, not a plugin,
+                 and not a fifth one
+    structural   what benchmarks/ may reach -- no network, no provider, no Evidence
+                 write, no adapter dispatch, and no subprocess outside workspace.py
+    corpus       every TaskDefinition validates through the REAL loader, declares a
+                 discrimination control, and withholds its oracle material
+    vocabulary   the frozen closed sets are exactly their frozen sizes
+    ```
+
+    `root` defaults to the repository. It is a parameter so the test suite can run this
+    check against a scratch tree carrying a violation: a check that cannot fail is a
+    check that proves nothing, and the only way to show this one CAN fail is to make it
+    fail on purpose.
+    """
+    import ast
+    import subprocess
+
+    base = ROOT if root is None else root
+    problems: list[str] = []
+
+    benchmarks = base / "benchmarks"
+    if not benchmarks.is_dir():
+        return ["benchmarks/ is absent; AI-11's declared home does not exist (contract 4.1)"]
+
+    # (1) Identity (4.1). A core layer, and not a fifth plugin.
+    for forbidden in (
+        "plugins/benchmark",
+        "plugins/ai11",
+        "agents/benchmark",
+        "review/benchmark",
+        "routing/benchmark",
+    ):
+        if (base / forbidden).exists():
+            problems.append(
+                f"{forbidden} exists; AI-11 is a Workbench core layer under benchmarks/, "
+                "not a plugin layer and not a subpackage of another layer (contract 4.1)"
+            )
+
+    # A namespace package, like routing/, agents/, integrations/ and review/.
+    if (benchmarks / "__init__.py").exists():
+        problems.append(
+            "benchmarks/__init__.py exists; benchmarks/ is a core-layer directory reached "
+            "as a namespace package, exactly as routing/, agents/, integrations/ and "
+            "review/ are (contract 4.1)"
+        )
+
+    package_files = sorted(p for p in benchmarks.rglob("*.py") if "__pycache__" not in p.parts)
+
+    # (2) Structural (19, 21).
+    network_modules = {
+        "http", "http.client", "urllib", "urllib.request", "socket", "requests", "httpx",
+    }
+    for path in package_files:
+        rel = path.relative_to(base).as_posix()
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        except SyntaxError as exc:
+            problems.append(f"{rel} does not parse: {exc}")
+            continue
+
+        imports: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imports.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+                imports.add(node.module)
+
+        for name in imports:
+            head = name.split(".")[0]
+            if head in network_modules:
+                problems.append(f"{rel} imports {name}; no AI-11 module may reach the network")
+            if head == "plugins" and name.startswith("plugins.evidence"):
+                problems.append(
+                    f"{rel} imports {name}; AI-11 v1 writes no AI-05 EvidenceRecord "
+                    "(contract 21.1)"
+                )
+            if head == "integrations":
+                problems.append(
+                    f"{rel} imports {name}; AI-11 makes no provider call (contract 21.5)"
+                )
+            if head == "providers":
+                problems.append(f"{rel} imports {name}; AI-11 makes no provider call")
+            if name in ("plugins.security_tools.dispatch", "plugins.security_tools.adapter"):
+                problems.append(
+                    f"{rel} imports {name}; tool execution belongs to an AI-08 execution "
+                    "(contract 21.2)"
+                )
+
+        if "subprocess" in imports and rel not in (
+            "benchmarks/workspace.py",
+            "benchmarks/runner.py",
+            "benchmarks/decoders.py",
+        ):
+            problems.append(
+                f"{rel} imports subprocess; only benchmarks/workspace.py (git) and "
+                "benchmarks/runner.py (declared oracle tools) may spawn a process "
+                "(contract 19)"
+            )
+
+    # (3) The corpus (7.4, 17, 19). Validated through the REAL loader, in a subprocess
+    # with the repository root as cwd, so the gate cannot drift from the schema by
+    # re-implementing it here.
+    tasks_dir = benchmarks / "tasks"
+    if not tasks_dir.is_dir():
+        problems.append("benchmarks/tasks/ is absent; the corpus has no home (contract 17.4)")
+    else:
+        probe = (
+            "import json\n"
+            "from benchmarks.task import load_corpus\n"
+            "tasks = load_corpus('benchmarks/tasks')\n"
+            "out = []\n"
+            "for t in tasks:\n"
+            "    control = t.oracle.expected_negative\n"
+            "    out.append({\n"
+            "        'task_id': t.task_id,\n"
+            "        'control': bool(control.known_good and control.known_bad),\n"
+            "        'excluded': bool(t.oracle.material_excluded_from_workspace),\n"
+            "        'withholds_control': 'control' in t.workspace_setup.exclude,\n"
+            "    })\n"
+            "print(json.dumps(out))\n"
+        )
+        completed = subprocess.run(
+            [sys.executable, "-c", probe],
+            cwd=str(base),
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+        if completed.returncode != 0:
+            detail = (completed.stderr or "").strip().splitlines()
+            problems.append(
+                "the corpus does not validate through benchmarks.task.load_corpus: "
+                f"{detail[-1] if detail else 'no output'}"
+            )
+        else:
+            import json as _json
+
+            try:
+                loaded = _json.loads(completed.stdout.strip().splitlines()[-1])
+            except (ValueError, IndexError):
+                problems.append("the corpus probe returned no readable result")
+                loaded = []
+            if not loaded:
+                problems.append("the corpus is empty; an empty corpus is not a corpus")
+            for entry in loaded:
+                if not entry["control"]:
+                    problems.append(
+                        f"{entry['task_id']} declares no discrimination control; an "
+                        "oracle that cannot fail is not an oracle (contract 7.4)"
+                    )
+                if not entry["excluded"]:
+                    problems.append(
+                        f"{entry['task_id']} does not declare "
+                        "material_excluded_from_workspace = true (contract 7.2)"
+                    )
+                if not entry["withholds_control"]:
+                    problems.append(
+                        f"{entry['task_id']} does not withhold control/ from the "
+                        "agent-visible tree (contract 15.3)"
+                    )
+
+    # (4) Vocabulary (8.1, 6.1, 14.2, 23).
+    vocab = benchmarks / "vocabulary.py"
+    if not vocab.is_file():
+        problems.append("benchmarks/vocabulary.py is absent")
+    else:
+        source = vocab.read_text(encoding="utf-8")
+        for member in ("PASS", "FAIL", "BLOCKED", "NOT_RUN", "UNKNOWN", "UNAVAILABLE"):
+            if f'{member} = "{member}"' not in source:
+                problems.append(
+                    f"benchmarks/vocabulary.py does not declare {member}; the six-member "
+                    "OracleVerdict is frozen (contract 8.1)"
+                )
+        for forbidden in ("RETRYING", "RETRIED", "CANCELLED", "FALLBACK", "ESCALATED"):
+            if f'{forbidden} = "' in source:
+                problems.append(
+                    f"benchmarks/vocabulary.py declares {forbidden}; those belong to "
+                    "AI-12 and AI-13 (contract 23)"
+                )
+
+    # (5) The results directory stays disposable (17.4).
+    if not (benchmarks / "results").is_dir():
+        problems.append("benchmarks/results/ is absent; run data needs a home (contract 4.2)")
+
+    return problems
+
+
 def main() -> int:
     print("Layer 0 - repository policy")
     report = Report()
@@ -2260,6 +2452,10 @@ def main() -> int:
     report.check(
         "review layer core-service boundary",
         check_ai10_review_layer(),
+    )
+    report.check(
+        "benchmark layer core-service boundary and corpus",
+        check_ai11_benchmark_layer(),
     )
 
     if report.failures:

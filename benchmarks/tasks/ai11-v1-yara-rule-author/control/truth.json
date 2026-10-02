@@ -1,0 +1,21 @@
+{
+  "note": "held-out control material. These files live under control/ and are excluded from the agent-visible tree; the oracle reads them from outside it. They are NOT renames of labs/yara-basic/samples -- the negatives each carry exactly one ECU indicator, so a rule matching a single string is caught.",
+  "samples": {
+    "holdout_positive_beacon": {
+      "file": "holdout_positive_beacon.txt",
+      "expected": true
+    },
+    "holdout_positive_ecu": {
+      "file": "holdout_positive_ecu.txt",
+      "expected": true
+    },
+    "holdout_negative_benign": {
+      "file": "holdout_negative_benign.txt",
+      "expected": false
+    },
+    "holdout_negative_clean": {
+      "file": "holdout_negative_clean.txt",
+      "expected": false
+    }
+  }
+}

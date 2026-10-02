@@ -1,0 +1,5 @@
+2026-10-02T04:11:07Z host=relay-07 svc=updater state=idle
+configuration refreshed from mirror
+SYNMALWARE_C2_BEACON period=60 jitter=8
+upstream https://syn-c2.invalid/beacon
+shutdown clean

@@ -1,0 +1,13 @@
+{
+  "frame": "123#1122334455667788",
+  "dbc": "labs/vehicle/can-basic/demo.dbc",
+  "note": "EngineSpeed 0|16@1+ (1,0); VehicleSpeed 16|16@1+ (0.01,0) -- both little-endian, unsigned",
+  "expected": {
+    "EngineSpeed": 8721.0,
+    "VehicleSpeed": 174.59
+  },
+  "tolerance": {
+    "EngineSpeed": 0.0,
+    "VehicleSpeed": 0.01
+  }
+}

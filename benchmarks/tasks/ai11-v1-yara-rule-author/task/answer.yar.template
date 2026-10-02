@@ -1,0 +1,5 @@
+// Author your rule here. It is judged on held-out samples.
+rule ai11_answer {
+    condition:
+        false
+}

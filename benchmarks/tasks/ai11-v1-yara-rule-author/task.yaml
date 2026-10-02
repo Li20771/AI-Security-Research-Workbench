@@ -1,0 +1,86 @@
+# AI-11 v1 corpus. Annex A.A.3
+#
+# The oracle's material is withheld from the agent-visible tree: workspace_setup.exclude
+# names control/**, and benchmarks.workspace.verify_exclusions asserts it is absent
+# before execution begins (§7.2, §15.3).
+#
+# This file declares what the task IS. It holds no result, and §5.1 forbids it from
+# holding one.
+
+schema_version: 1
+task_id: ai11-v1-yara-rule-author
+task_version: 1
+task_family: yara
+difficulty: INTERMEDIATE
+
+source_repository: Li20771/SecurityLab
+source_sha: efa836ff9225f6226ca8a76615f3f45c31110d58
+
+workspace_setup:
+  include:
+    - labs/yara-basic/rules
+    - labs/yara-basic/samples
+    - task/answer.yar.template
+  exclude:
+    - control
+  generated: []
+
+task_description: >-
+  Author a YARA rule at answer.yar that matches the synthetic beacon and ECU firmware
+  indicators present in the samples under labs/yara-basic/samples and does not match
+  the benign sample. The rule is judged against held-out samples that are not in this
+  workspace.
+
+
+allowed_tools:
+  - tool_id: reverse_engineering
+    operation: yara_scan
+  - tool_id: git
+    operation: read_file
+
+forbidden_tools:
+  - tool_id: terminal
+    operation: run
+  - tool_id: firmware
+    operation: qemu
+  - tool_id: firmware
+    operation: gdb
+  - tool_id: firmware
+    operation: firmware_unpack
+
+required_preconditions:
+  - kind: program
+    name: yara
+
+time_budget_seconds: 300
+
+oracle:
+  oracle_id: ai11-v1-yara-rule-author.oracle
+  kind: CONTROLLED_REPRODUCTION
+  required: true
+  # The command a person runs to re-derive this oracle's verdict. It is the same
+  # entry point the harness uses, so a recorded command is a runnable one.
+  reproduce_command: >-
+    python3 -m benchmarks.replay ai11-v1-yara-rule-author --variant known_good --source "$AI11_SOURCE_ROOT"
+  expected_negative:
+    known_good: control/known_good.json
+    known_bad: control/known_bad.json
+  success_condition: the rule matches every held-out positive and no held-out negative
+  material_excluded_from_workspace: true
+
+success_conditions:
+  - the rule compiles
+  - every held-out positive sample matches
+  - no held-out negative sample matches
+
+regression_conditions:
+  - condition_id: false-positive-zero-tolerance
+    kind: FROZEN_DEFINITION
+    reproduce_command: >-
+      python3 -m benchmarks.replay ai11-v1-yara-rule-author --variant known_bad --source "$AI11_SOURCE_ROOT"
+    required: true
+
+security_constraints:
+  - no operation outside the declared allowed set
+  - no match is traded against a false positive
+  - the source repository is never written

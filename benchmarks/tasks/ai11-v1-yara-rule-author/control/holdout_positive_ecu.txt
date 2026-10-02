@@ -1,0 +1,5 @@
+=== ecu diagnostics capture ===
+[SYN-ECU] boot banner: SYN-ECU v2.4
+[SYN-ECU] UDS 0x10/0x11/0x22/0x27 registered
+build tag: AFL-firmware-lab
+=== end capture ===

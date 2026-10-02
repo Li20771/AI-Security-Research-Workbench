@@ -1,0 +1,99 @@
+# AI-11 v1 corpus. Annex A.A.5
+#
+# The oracle's material is withheld from the agent-visible tree:
+# workspace_setup.exclude names control/**, and benchmarks.workspace.verify_exclusions
+# asserts it is absent before execution begins (7.2, 15.3).
+
+schema_version: 1
+task_id: ai11-v1-reverse-arm64-triage
+task_version: 1
+task_family: reverse
+difficulty: ADVANCED
+
+source_repository: Li20771/SecurityLab
+source_sha: efa836ff9225f6226ca8a76615f3f45c31110d58
+workspace_setup:
+  # CORRECTED AT AI-11-A: no binary exists in the tracked source SHA.
+  #
+  #     git ls-files labs/reverse
+  #       README.md
+  #       arm64/README.md
+  #       arm64/hello_arm64.c
+  #       hello/README.md
+  #       hello/hello.c
+  #
+  #     git check-ignore -v labs/reverse/arm64/hello_arm64
+  #       .gitignore:40:labs/reverse/**/hello_arm64
+  #
+  # So the harness COMPILES the binary, and the .c source is withheld: a task whose
+  # source sits beside its binary is a task whose answer is readable.
+  include:
+    - task/README.txt
+  exclude:
+    - control
+    - labs/reverse/arm64/hello_arm64.c
+    - labs/reverse/hello/hello.c
+  generated:
+    - work/hello_arm64
+
+task_description: >-
+  Determine the architecture and the linkage of the AArch64 binary at work/hello_arm64
+  and report what it prints and the status it exits with.
+
+
+allowed_tools:
+  - tool_id: firmware
+    operation: qemu
+  - tool_id: firmware
+    operation: gdb
+  - tool_id: git
+    operation: read_file
+
+forbidden_tools:
+  - tool_id: terminal
+    operation: run
+  - tool_id: firmware
+    operation: firmware_unpack
+
+required_preconditions:
+  - kind: program
+    name: aarch64-linux-gnu-gcc
+  - kind: program
+    name: qemu-aarch64
+
+time_budget_seconds: 300
+
+oracle:
+  oracle_id: ai11-v1-reverse-arm64-triage.oracle
+  kind: CONTROLLED_REPRODUCTION
+  required: true
+  # The command a person runs to re-derive this oracle's verdict. It is the same
+  # entry point the harness uses, so a recorded command is a runnable one.
+  reproduce_command: >-
+    python3 -m benchmarks.replay ai11-v1-reverse-arm64-triage --variant known_good --source "$AI11_SOURCE_ROOT"
+  expected_negative:
+    known_good: control/known_good.json
+    known_bad: control/known_bad.json
+  success_condition: architecture and linkage and stdout and exit_code all match the built binary
+  material_excluded_from_workspace: true
+
+success_conditions:
+  - the architecture is reported correctly
+  - the linkage is reported correctly
+  - the program output matches
+  - the exit code matches
+
+regression_conditions:
+  # The oracle MUST NOT depend on symbol addresses. labs/reverse/README.md records
+  # add: 0x1149 and main: 0x1161, and those are a property of one toolchain build
+  # rather than of the source.
+  - condition_id: no-symbol-address-dependency
+    kind: BEHAVIOURAL_PIN
+    reproduce_command: >-
+      python3 -m benchmarks.replay ai11-v1-reverse-arm64-triage --variant known_bad --source "$AI11_SOURCE_ROOT"
+    required: true
+
+security_constraints:
+  - no operation outside the declared allowed set
+  - the compiled binary is never modified
+  - the source repository is never written

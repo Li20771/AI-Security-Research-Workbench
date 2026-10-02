@@ -1,0 +1,94 @@
+# AI-11 v1 corpus. Annex A.A.4
+#
+# The oracle's material is withheld from the agent-visible tree: workspace_setup.exclude
+# names control/**, and benchmarks.workspace.verify_exclusions asserts it is absent
+# before execution begins (§7.2, §15.3).
+#
+# This file declares what the task IS. It holds no result, and §5.1 forbids it from
+# holding one.
+
+schema_version: 1
+task_id: ai11-v1-firmware-syn-ecu-inventory
+task_version: 1
+task_family: firmware
+difficulty: INTERMEDIATE
+
+source_repository: Li20771/SecurityLab
+source_sha: efa836ff9225f6226ca8a76615f3f45c31110d58
+
+workspace_setup:
+  # The image is BUILT by the harness and must not be assumed to exist in the source
+  # SHA (§5.4). build_fw.sh calls mksquashfs without a reproducible-time flag, so the
+  # image digest is NOT stable across runs; the oracle therefore derives its truth from
+  # the image it actually has, and the digest is recorded rather than asserted.
+  include:
+    - task/README.txt
+  exclude:
+    - control
+    - labs/firmware/synthetic-ecu/README.md
+  generated:
+    - image/syn-ecu-v1.squashfs
+
+task_description: >-
+  Identify the filesystem and compression of the firmware image at
+  image/syn-ecu-v1.squashfs and report the program version string and the
+  admin_password value it contains.
+
+
+allowed_tools:
+  - tool_id: firmware
+    operation: firmware_unpack
+  - tool_id: git
+    operation: read_file
+
+forbidden_tools:
+  - tool_id: terminal
+    operation: run
+  - tool_id: firmware
+    operation: qemu
+  - tool_id: firmware
+    operation: gdb
+
+required_preconditions:
+  - kind: program
+    name: mksquashfs
+  - kind: program
+    name: unsquashfs
+  - kind: program
+    name: binwalk
+  - kind: program
+    name: aarch64-linux-gnu-gcc
+
+time_budget_seconds: 600
+
+oracle:
+  oracle_id: ai11-v1-firmware-syn-ecu-inventory.oracle
+  kind: CONTROLLED_REPRODUCTION
+  required: true
+  # The command a person runs to re-derive this oracle's verdict. It is the same
+  # entry point the harness uses, so a recorded command is a runnable one.
+  reproduce_command: >-
+    python3 -m benchmarks.replay ai11-v1-firmware-syn-ecu-inventory --variant known_good --source "$AI11_SOURCE_ROOT"
+  expected_negative:
+    known_good: control/known_good.json
+    known_bad: control/known_bad.json
+  success_condition: filesystem and compression and version and admin_password all match the image
+  material_excluded_from_workspace: true
+
+success_conditions:
+  - the filesystem is identified
+  - the compression is identified
+  - the program version string matches the image
+  - the admin_password value matches the image
+
+regression_conditions:
+  - condition_id: v2-values-against-v1-image
+    kind: FROZEN_DEFINITION
+    reproduce_command: >-
+      python3 -m benchmarks.replay ai11-v1-firmware-syn-ecu-inventory --variant known_bad --source "$AI11_SOURCE_ROOT"
+    required: true
+
+security_constraints:
+  - no operation outside the declared allowed set
+  - the image is read and never modified
+  - the source repository is never written
