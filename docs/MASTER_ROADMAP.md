@@ -426,8 +426,12 @@ AI-08-A and merged as `2117cdf4` (PR #51). AI-08-B implements the runtime agains
 AI-08-A     = COMPLETE / MERGED    contract frozen          (PR #51, 2117cdf4)
 AI-08-B     = IMPLEMENTED ON BRANCH, NOT MERGED
 AI-08       = NOT CLOSED           awaiting the human merge checkpoint
-contract    = blob a01e03f5, after Amendment 4
-previous    = 739ec29f (after Amendment 3) · 7fa9effd (after Amendment 2)
+contract    = blob a01e03f5306299a0a4442648eeb8fdcfce6bd8dd
+                     after Amendment 4
+previous    = 739ec29f37bfb8654f19ca088d6af57ffdd09e69
+                     after Amendment 3
+earlier     = 7fa9effde597c71f127c4e14dc31641a5ffe7589
+                     after Amendment 2; the blob AI-08-A merged
 amendments  = 4                    Amendment 1 (review corrections)
                                    Amendment 2 (terminal-result invariant)
                                    Amendment 3 (Guard-bound invocation boundary)
@@ -754,7 +758,7 @@ SecurityLab
 | AI-05 | **B1 COMPLETE** (PR #34); **B2 COMPLETE** — P1 `844df7be` (PR #41), P2 `b8692c18` (PR #42) and P3 `67515ff9` (PR #44) merged; **AI-05 INCOMPLETE** — C-1 DEFERRED, §30 step 7 unimplemented; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-06 | **COMPLETE** — merged as `3b1917ab` (PR #47); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-07 | **COMPLETE** — contract `963c181c` (PR #48), implementation `e57541f9` (PR #49) merged; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
-| AI-08 | **AI-08-A MERGED** (`2117cdf4`, PR #51); **AI-08-B IMPLEMENTED ON BRANCH** — awaiting review; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
+| AI-08 | **AI-08-A MERGED** (`2117cdf49940bb97f5f18a6447fbc2f0137b31e7`, PR #51); **AI-08-B IMPLEMENTED ON BRANCH** — awaiting review; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-09 | NOT STARTED |
 | AI-10 | NOT STARTED |
 | AI-11 | NOT STARTED |
