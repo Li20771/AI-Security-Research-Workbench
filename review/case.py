@@ -1,0 +1,408 @@
+"""AI-10 §5, §14 — the case and its lifecycle.
+
+```text
+CREATED -> MATERIALS_SUPPLIED -> INDEPENDENCE_OBSERVED -> COMPARISON_RECORDED
+        -> VERIFICATION_REQUESTED -> VERIFICATION_OBSERVED -> HUMAN_DECISION_RECORDED
+        -> CLOSED
+
+any non-terminal state -> UNRESOLVED | BLOCKED | NOT_RUN      (explicit closure)
+```
+
+Every transition is an EXPLICIT act of a caller. None is automatic, none is
+time-based, and none is inferred from another record arriving. A case that ends
+UNRESOLVED, BLOCKED or NOT_RUN is a complete, honest outcome.
+
+### A case is a value
+
+Advancing a case produces a new value; the previous one is unchanged. The case
+holds the two material identifiers and the state, and nothing else — findings,
+observations and decisions are separate values the caller holds, because a case
+that accumulated content would be the durable store this contract refuses to
+create.
+
+### Two boundaries worth stating where a reader will find them
+
+```text
+v1 exercises at most ONE verification round. §5.3 has no transition from
+VERIFICATION_OBSERVED back to VERIFICATION_REQUESTED, so a second request after
+an observation is refused like any other illegal transition. A second round is
+an amendment, not an implementation choice.
+
+DEFERRED does not close a case. §12.2 leaves the case open, so a superseding
+decision may be recorded, and CLOSED requires an ACCEPTED or REJECTED decision
+to be supplied again at the closure act.
+```
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import uuid
+from dataclasses import dataclass
+
+from agents.independence import ExecutionRecord, IndependenceFinding
+
+from review import independence as independence_module
+from review.comparison import compare
+from review.decision import HumanDecision
+from review.errors import InvalidCase, InvalidTransition
+from review.finding import ReviewFinding
+from review.material import ReviewMaterial
+from review.validation import identifier, single_line
+from review.verification import VerificationObservation, VerificationRequest
+from review.vocabulary import (
+    CLOSURE_CASE_STATES,
+    MAX_WORKSPACE_ID_CHARS,
+    TERMINAL_CASE_STATES,
+    HumanDecisionKind,
+    ReviewCaseState,
+)
+
+__all__ = [
+    "ReviewCase",
+    "close",
+    "close_with_decision",
+    "create_case",
+    "new_review_case_id",
+    "observe_independence",
+    "observe_verification",
+    "record_comparison",
+    "record_decision",
+    "request_verification",
+    "supply_materials",
+]
+
+#: Every state from which a caller may still act.
+NON_TERMINAL_CASE_STATES: frozenset[ReviewCaseState] = (
+    frozenset(ReviewCaseState) - TERMINAL_CASE_STATES
+)
+
+#: The states that require both materials to be present. A closure state may or
+#: may not hold them: a case may be closed as NOT_RUN before anything was
+#: supplied.
+_STATES_REQUIRING_MATERIALS: frozenset[ReviewCaseState] = frozenset(
+    {
+        ReviewCaseState.MATERIALS_SUPPLIED,
+        ReviewCaseState.INDEPENDENCE_OBSERVED,
+        ReviewCaseState.COMPARISON_RECORDED,
+        ReviewCaseState.VERIFICATION_REQUESTED,
+        ReviewCaseState.VERIFICATION_OBSERVED,
+        ReviewCaseState.HUMAN_DECISION_RECORDED,
+        ReviewCaseState.CLOSED,
+    }
+)
+
+
+def new_review_case_id() -> str:
+    """§5.1. A new opaque case id.
+
+    Opaque by construction: it encodes no Agent, no task, no workspace content
+    and no outcome. The `rc-` prefix is a label, not a namespace that carries
+    meaning (the ExecutionId rule, AI-08 §7.2, applied here).
+    """
+    return f"rc-{uuid.uuid4().hex[:16]}"
+
+
+@dataclass(frozen=True, slots=True)
+class ReviewCase:
+    """§5.1. One review, at one point in its lifecycle."""
+
+    review_case_id: str
+    workspace_id: str
+    left_material_id: str | None = None
+    right_material_id: str | None = None
+    state: ReviewCaseState = ReviewCaseState.CREATED
+    schema_version: int = 1
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "review_case_id",
+            identifier(self.review_case_id, "case.review_case_id"),
+        )
+        object.__setattr__(
+            self,
+            "workspace_id",
+            single_line(
+                self.workspace_id,
+                "case.workspace_id",
+                maximum=MAX_WORKSPACE_ID_CHARS,
+                error=InvalidCase,
+            ),
+        )
+        for name in ("left_material_id", "right_material_id"):
+            value = getattr(self, name)
+            if value is not None:
+                object.__setattr__(self, name, identifier(value, f"case.{name}"))
+
+        try:
+            state = ReviewCaseState(self.state)
+        except ValueError as exc:
+            raise InvalidCase(
+                f"case.state must be one of "
+                f"{[member.value for member in ReviewCaseState]}; got {self.state!r}"
+            ) from exc
+        object.__setattr__(self, "state", state)
+
+        if self.schema_version != 1:
+            raise InvalidCase(
+                f"case.schema_version {self.schema_version!r} is not supported; "
+                "this contract defines 1"
+            )
+
+        has_materials = (
+            self.left_material_id is not None and self.right_material_id is not None
+        )
+        if state is ReviewCaseState.CREATED and has_materials:
+            raise InvalidCase(
+                "a case in CREATED holds no material; supplying one is the act "
+                "that advances it (§5.3)"
+            )
+        if state in _STATES_REQUIRING_MATERIALS and not has_materials:
+            raise InvalidCase(
+                f"a case in {state} holds two materials; it cannot be in that "
+                "state without them (§5.3)"
+            )
+
+    @property
+    def terminal(self) -> bool:
+        """Whether the case is finished. A terminal case takes no further acts."""
+        return self.state in TERMINAL_CASE_STATES
+
+    def to_mapping(self) -> dict[str, object]:
+        return {
+            "schema_version": self.schema_version,
+            "review_case_id": self.review_case_id,
+            "workspace_id": self.workspace_id,
+            "left_material_id": self.left_material_id,
+            "right_material_id": self.right_material_id,
+            "state": str(self.state),
+        }
+
+
+# --------------------------------------------------------------------------
+# transitions
+# --------------------------------------------------------------------------
+
+
+def _require_state(
+    case: ReviewCase, allowed: tuple[ReviewCaseState, ...], what: str
+) -> None:
+    if case.terminal:
+        raise InvalidTransition(
+            f"case {case.review_case_id!r} is {case.state}; a terminal case takes "
+            "no further acts"
+        )
+    if case.state not in allowed:
+        raise InvalidTransition(
+            f"{what} is not a transition §5.3 permits from {case.state}; "
+            f"legal here: {[str(state) for state in allowed]}"
+        )
+
+
+def _require_same_case(case: ReviewCase, other_case_id: str, what: str) -> None:
+    if other_case_id != case.review_case_id:
+        raise InvalidCase(
+            f"{what} belongs to review case {other_case_id!r}, not to "
+            f"{case.review_case_id!r}"
+        )
+
+
+def _require_case_materials(
+    case: ReviewCase, left: ReviewMaterial, right: ReviewMaterial
+) -> None:
+    if (left.material_id, right.material_id) != (
+        case.left_material_id,
+        case.right_material_id,
+    ):
+        raise InvalidCase(
+            "the materials supplied are not the ones this case holds; a case "
+            "compares the two sides it was given and does not substitute others"
+        )
+
+
+def _require_subject_of_case(case: ReviewCase, subject: str) -> None:
+    material_id = subject.split("#", 1)[0]
+    if material_id not in (case.left_material_id, case.right_material_id):
+        raise InvalidCase(
+            f"subject {subject!r} names material {material_id!r}, which is not "
+            "one of this case's two sides"
+        )
+
+
+def create_case(
+    *, workspace_id: str, review_case_id: str | None = None
+) -> ReviewCase:
+    """The first act. A case is scoped to ONE workspace (§5.1)."""
+    return ReviewCase(
+        review_case_id=review_case_id or new_review_case_id(),
+        workspace_id=workspace_id,
+    )
+
+
+def supply_materials(
+    case: ReviewCase, *, left: ReviewMaterial, right: ReviewMaterial
+) -> ReviewCase:
+    """§4.2. Two sides, two distinct registered AgentIds, one workspace."""
+    _require_state(case, (ReviewCaseState.CREATED,), "supplying materials")
+    if left.material_id == right.material_id:
+        raise InvalidCase(
+            "the two sides must be two materials; the same material_id on both "
+            "sides is not a comparison"
+        )
+    if left.agent_id == right.agent_id:
+        raise InvalidCase(
+            f"both sides are attributed to {left.agent_id}; cross-agent review "
+            "compares two DISTINCT registered AgentIds (§4.2)"
+        )
+    for material in (left, right):
+        if material.workspace_id != case.workspace_id:
+            raise InvalidCase(
+                f"material {material.material_id!r} is scoped to workspace "
+                f"{material.workspace_id!r}, but the case is scoped to "
+                f"{case.workspace_id!r}; materials are refused rather than "
+                "re-scoped (§5.1)"
+            )
+    return dataclasses.replace(
+        case,
+        left_material_id=left.material_id,
+        right_material_id=right.material_id,
+        state=ReviewCaseState.MATERIALS_SUPPLIED,
+    )
+
+
+def record_comparison(
+    case: ReviewCase,
+    *,
+    left: ReviewMaterial,
+    right: ReviewMaterial,
+    observed_subjects: frozenset[str] = frozenset(),
+) -> tuple[ReviewCase, tuple[ReviewFinding, ...]]:
+    """§9. The comparison runs here; the findings are returned, not stored."""
+    _require_state(
+        case,
+        (ReviewCaseState.MATERIALS_SUPPLIED, ReviewCaseState.INDEPENDENCE_OBSERVED),
+        "recording a comparison",
+    )
+    _require_case_materials(case, left, right)
+    findings = compare(
+        left,
+        right,
+        review_case_id=case.review_case_id,
+        observed_subjects=observed_subjects,
+    )
+    return (
+        dataclasses.replace(case, state=ReviewCaseState.COMPARISON_RECORDED),
+        findings,
+    )
+
+
+def observe_independence(
+    case: ReviewCase,
+    *,
+    left: ReviewMaterial,
+    right: ReviewMaterial,
+    left_record: ExecutionRecord,
+    right_record: ExecutionRecord,
+) -> tuple[ReviewCase, IndependenceFinding]:
+    """§8.2. Reachable only when both records are supplied AND both agree.
+
+    The finding is AI-08's own object, returned unchanged. Recording that an
+    observation did not happen is a different thing, and a case without it
+    records nothing negative.
+    """
+    _require_state(
+        case, (ReviewCaseState.MATERIALS_SUPPLIED,), "observing independence"
+    )
+    _require_case_materials(case, left, right)
+    independence_module.require_aligned_declaration(left, left_record)
+    independence_module.require_aligned_declaration(right, right_record)
+    finding = independence_module.observe_independence(left_record, right_record)
+    return (
+        dataclasses.replace(case, state=ReviewCaseState.INDEPENDENCE_OBSERVED),
+        finding,
+    )
+
+
+def request_verification(
+    case: ReviewCase, *, request: VerificationRequest
+) -> ReviewCase:
+    """§10.2. A request authorizes nothing and executes nothing."""
+    _require_state(
+        case, (ReviewCaseState.COMPARISON_RECORDED,), "requesting verification"
+    )
+    _require_same_case(case, request.review_case_id, "the verification request")
+    _require_subject_of_case(case, request.subject)
+    return dataclasses.replace(case, state=ReviewCaseState.VERIFICATION_REQUESTED)
+
+
+def observe_verification(
+    case: ReviewCase, *, observation: VerificationObservation
+) -> ReviewCase:
+    """§10.3. The observation is a projection of an AI-06 execution.
+
+    Nothing here fabricates one: an observation exists because a controlled
+    verification caller reported what an invocation did.
+    """
+    _require_state(
+        case, (ReviewCaseState.VERIFICATION_REQUESTED,), "observing a verification"
+    )
+    _require_same_case(case, observation.review_case_id, "the verification observation")
+    _require_subject_of_case(case, observation.subject)
+    return dataclasses.replace(case, state=ReviewCaseState.VERIFICATION_OBSERVED)
+
+
+def record_decision(case: ReviewCase, *, decision: HumanDecision) -> ReviewCase:
+    """§12. A human act. There is no path here that derives one."""
+    _require_state(
+        case,
+        (
+            ReviewCaseState.COMPARISON_RECORDED,
+            ReviewCaseState.VERIFICATION_OBSERVED,
+            ReviewCaseState.HUMAN_DECISION_RECORDED,
+        ),
+        "recording a human decision",
+    )
+    _require_same_case(case, decision.review_case_id, "the human decision")
+    return dataclasses.replace(case, state=ReviewCaseState.HUMAN_DECISION_RECORDED)
+
+
+def close(case: ReviewCase, *, state: ReviewCaseState) -> ReviewCase:
+    """§5.3. An explicit closure: UNRESOLVED, BLOCKED or NOT_RUN.
+
+    Reached from any non-terminal state, including CREATED. None of the three is
+    a pass, and none is upgraded into one.
+    """
+    try:
+        target = ReviewCaseState(state)
+    except ValueError as exc:
+        raise InvalidTransition(
+            f"close() takes one of {[str(s) for s in CLOSURE_CASE_STATES]}; "
+            f"got {state!r}"
+        ) from exc
+    if target not in CLOSURE_CASE_STATES:
+        raise InvalidTransition(
+            f"close() closes as {[str(s) for s in CLOSURE_CASE_STATES]}; "
+            f"{target} is reached by its own act, never by close()"
+        )
+    _require_state(case, tuple(sorted(NON_TERMINAL_CASE_STATES, key=str)), "closing")
+    return dataclasses.replace(case, state=target)
+
+
+def close_with_decision(case: ReviewCase, *, decision: HumanDecision) -> ReviewCase:
+    """§5.3. CLOSED, and only an ACCEPTED or REJECTED decision closes a case.
+
+    The decision is supplied at the closure act rather than remembered on the
+    case, so a closure cannot happen without one being in hand. A DEFERRED
+    decision leaves the case open (§12.2).
+    """
+    _require_state(
+        case, (ReviewCaseState.HUMAN_DECISION_RECORDED,), "closing a decided case"
+    )
+    _require_same_case(case, decision.review_case_id, "the human decision")
+    if decision.decision is HumanDecisionKind.DEFERRED:
+        raise InvalidTransition(
+            "a DEFERRED decision leaves the case open; only ACCEPTED or REJECTED "
+            "closes it (§12.2)"
+        )
+    return dataclasses.replace(case, state=ReviewCaseState.CLOSED)
