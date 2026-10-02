@@ -2,10 +2,11 @@
 > Baseline: 2026-09-26
 
 ## Current stage
-**AI-09 — Codex Provider Integration — AI-09-B IMPLEMENTED ON BRANCH; AWAITING REVIEW.**
+**AI-09 — Codex Provider Integration — COMPLETE / MERGED / CLOSED.**
 AI-08 — Codex Second Agent is **COMPLETE and MERGED** as
 `edb7dfc82ce51123482ac357fb9319dca2fa0d9a` (PR #52). AI-07 — Model Router v1 is
-**COMPLETE / CLOSED**. The next work item is the AI-09-B merge checkpoint.
+**COMPLETE / CLOSED**. The next work item is **AI-10 — Cross-Agent Review**, which is
+**NOT STARTED**.
 
 AI-00 architecture and repository baseline is complete. **AI-01 DSH Baseline is COMPLETE** — see
 [AI-01 final gate status](#ai-01-final-gate-status). **AI-02 Model Layer is COMPLETE** — see
@@ -63,19 +64,19 @@ This file is the single entry point for deciding what to do next.
 
 ### Current work item
 
-**AI-09 — Codex Provider Integration — AI-09-B IMPLEMENTED ON BRANCH; AWAITING REVIEW.**
+**AI-10 — Cross-Agent Review — NEXT; NOT STARTED.**
 
-AI-09 is the phase that wires Codex's already-frozen `CodexBackend` seam to a real, already
-registered provider through AI-02's already-frozen normalized invocation boundary. It builds no
-transport, no protocol, no credential mechanism and no invocation API.
+AI-09 is **COMPLETE / MERGED / CLOSED**. Its implementation, evidence and merge checkpoint are
+recorded, and the next phase has not begun.
 
 ```text
 AI-09-A     = CONTRACT FROZEN      (2026-10-02)
-AI-09-B     = IMPLEMENTED ON BRANCH, NOT MERGED      feature/ai-09-codex-integration
-AI-09       = NOT CLOSED           awaiting required CI and the merge checkpoint
+AI-09-B     = COMPLETE / MERGED    PR #54
+AI-09       = CLOSED
 
+merge       = b8b815b181e69f7651efdde97dd9473a3e619c7f   (PR #54, true two-parent merge)
 base        = main @ 4614a2ccb1a90ccf9c9e81bbe2bca87d44a47ae1
-branch      = feature/ai-09-codex-integration
+branch      = feature/ai-09-codex-integration   (merged; retained)
 contract    = docs/AI-09_CODEX_PROVIDER_EXECUTION_PLAN.md
 contract blob = e9728b184740074e5c8f718db6b45f859c3802bf
                      UNCHANGED by AI-09-B
@@ -99,9 +100,9 @@ FROZEN here   the target provider, the supported model refs, the invocation path
 OPEN          every implementation detail; AI-09-B's checklist is §22 of the contract
 ```
 
-**AI-09-A closes contract gate C0 only.** C1–C12 are AI-09-B's, and no part of AI-09 is a `PASS`
-yet. No backend exists, no integration layer exists, and no provider call has been made by this
-phase.
+**AI-09-A closed contract gate C0; AI-09-B closed C1–C12.** The phase is complete as of the
+PR #54 merge. No provider call has been made by this phase, no capability is VERIFIED, and
+connectivity is NOT VERIFIED — the merge closed the implementation, not the provider question.
 
 **Retained record — AI-08: COMPLETE / MERGED.**
 
@@ -248,10 +249,18 @@ PROJECT_STATUS.md
 
 ### Not yet started
 
-- AI-10 Codex second-opinion closure, AI-11 benchmark, AI-12 routing v2, AI-13 long-running
-  workflows — none started. AI-09-B is implemented on `feature/ai-09-codex-integration` against
-  [AI-09_CODEX_PROVIDER_EXECUTION_PLAN.md](AI-09_CODEX_PROVIDER_EXECUTION_PLAN.md) and awaits
-  its merge checkpoint. AI-09 itself remains **INCOMPLETE**.
+```text
+AI-10   Cross-Agent Review                    NEXT      NOT STARTED
+AI-11   AI Security Benchmark                 queued    NOT STARTED
+AI-12   routing v2 fallback / escalation      queued    NOT STARTED
+AI-13   retry / timeout / cancellation /
+        checkpoint / resume /
+        failure classification                queued    NOT STARTED
+```
+
+- **AI-10 Codex second-opinion closure — NEXT, NOT STARTED.** No contract, no implementation,
+  no test and no result exists for it. It builds on AI-09's merged integration, which is
+  itself a wiring phase: no provider call has been made, and every capability is `UNKNOWN`.
 
 ## Completed
 
@@ -939,14 +948,18 @@ Evidence; the token is DEFERRED pending an AI-05 amendment.
 
 ### AI-08-B — Agent runtime / execution layer
 
-**Implemented on `feature/ai-08-agent-runtime`; NOT MERGED.** The AI-08-A contract is not modified.
+**COMPLETE / MERGED.** Merged as `edb7dfc82ce51123482ac357fb9319dca2fa0d9a` (PR #52). The AI-08-A
+contract was not modified by the implementation.
 
 ```text
 AI-08-B branch  = feature/ai-08-agent-runtime
 AI-08-B base    = 2117cdf49940bb97f5f18a6447fbc2f0137b31e7   (the AI-08-A merge)
-AI-08-B         = IMPLEMENTED ON BRANCH, awaiting the human merge checkpoint
-AI-08           = NOT CLOSED
+AI-08-B merge   = edb7dfc82ce51123482ac357fb9319dca2fa0d9a   (PR #52)
+AI-08           = CLOSED
 ```
+
+The paragraph below is retained as the **historical record of what the branch contained at the
+time it was written**. It is not the current state.
 
 What exists now, under `agents/`:
 
@@ -1093,7 +1106,7 @@ runs when an execution does.
 
 ## AI-09 status
 
-**AI-09 — Codex Provider Integration: AI-09-B IMPLEMENTED ON BRANCH. AI-09 NOT CLOSED.**
+**AI-09 — Codex Provider Integration: COMPLETE / MERGED / CLOSED.**
 
 AI-09 wires Codex's already-frozen `CodexBackend` seam to a real, already-registered provider
 (`mimo`) through AI-02's already-frozen normalized invocation boundary. It is a composition, not
@@ -1101,15 +1114,27 @@ a new provider layer.
 
 ```text
 AI-09-A     = CONTRACT FROZEN      (2026-10-02)
-AI-09-B     = IMPLEMENTED ON BRANCH, NOT MERGED      feature/ai-09-codex-integration
-AI-09       = NOT CLOSED           awaiting required CI and the merge checkpoint
+AI-09-B     = COMPLETE / MERGED    PR #54
+AI-09       = CLOSED
 
+merge       = b8b815b181e69f7651efdde97dd9473a3e619c7f
+                     true two-parent merge; not squashed, not rebased
+                     parent 1 = 4614a2ccb1a90ccf9c9e81bbe2bca87d44a47ae1
+                     parent 2 = 3b83d245ac19dfeff4dc101188131e74330130c8
+merged at   = 2026-10-02T06:57:50Z
 base        = main @ 4614a2ccb1a90ccf9c9e81bbe2bca87d44a47ae1
-branch      = feature/ai-09-codex-integration
+branch      = feature/ai-09-codex-integration   (merged; retained)
 contract    = docs/AI-09_CODEX_PROVIDER_EXECUTION_PLAN.md
 contract blob = e9728b184740074e5c8f718db6b45f859c3802bf
                      UNCHANGED by AI-09-B
 evidence    = docs/AI-09_EVIDENCE_2026-10-02.md
+
+local post-merge verification
+            compileall            PASS
+            Layer 0               PASS (18 checks)
+            pytest -m "not layer4"
+                                  2622 passed, 2 skipped, 5 deselected, 0 failed
+            live provider call    NOT RUN
 ```
 
 ### What AI-09-B built

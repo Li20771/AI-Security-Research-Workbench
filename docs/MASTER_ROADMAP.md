@@ -515,16 +515,22 @@ producer claim.
 
 ## AI-09 — Domestic Models for Codex
 
-**Status: AI-09-B IMPLEMENTED ON BRANCH; MERGE CHECKPOINT NOT YET TAKEN.** The contract is
+**Status: COMPLETE / MERGED / CLOSED.** The contract is
 [AI-09_CODEX_PROVIDER_EXECUTION_PLAN.md](AI-09_CODEX_PROVIDER_EXECUTION_PLAN.md), frozen at
-AI-09-A and unchanged by the implementation. The Codex integration layer is on
-`feature/ai-09-codex-integration`. No provider call has been made by this phase, and no
-capability is VERIFIED.
+AI-09-A and unchanged by the implementation. The Codex integration layer was merged by PR #54.
+No provider call has been made by this phase, no capability is VERIFIED, and connectivity is NOT
+VERIFIED — the merge closed the implementation, not the provider question.
 
 ```text
 AI-09-A     = CONTRACT FROZEN      (2026-10-02)
-AI-09-B     = IMPLEMENTED ON BRANCH, NOT MERGED
-AI-09       = NOT CLOSED           awaiting required CI and the merge checkpoint
+AI-09-B     = COMPLETE / MERGED    PR #54
+AI-09       = CLOSED
+
+merge       = b8b815b181e69f7651efdde97dd9473a3e619c7f
+                     true two-parent merge; not squashed, not rebased
+                     parent 1 = 4614a2ccb1a90ccf9c9e81bbe2bca87d44a47ae1
+                     parent 2 = 3b83d245ac19dfeff4dc101188131e74330130c8
+merged at   = 2026-10-02T06:57:50Z
 contract    = blob e9728b184740074e5c8f718db6b45f859c3802bf
                      unchanged by AI-09-B
 provider    = mimo — the existing profile; NO third provider identity
@@ -779,8 +785,8 @@ SecurityLab
 | AI-06 | **COMPLETE** — merged as `3b1917ab` (PR #47); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-07 | **COMPLETE** — contract `963c181c` (PR #48), implementation `e57541f9` (PR #49) merged; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-08 | **COMPLETE** — merged as `edb7dfc82ce51123482ac357fb9319dca2fa0d9a` (PR #52); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
-| AI-09 | **AI-09-A CONTRACT FROZEN**; **AI-09-B IMPLEMENTED ON BRANCH** — awaiting review; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
-| AI-10 | NOT STARTED |
+| AI-09 | **COMPLETE** — merged as `b8b815b181e69f7651efdde97dd9473a3e619c7f` (PR #54); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
+| AI-10 | **NEXT** — NOT STARTED |
 | AI-11 | NOT STARTED |
 | AI-12 | NOT STARTED |
 | AI-13 | NOT STARTED |
