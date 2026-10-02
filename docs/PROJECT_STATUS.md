@@ -2,9 +2,10 @@
 > Baseline: 2026-09-26
 
 ## Current stage
-**AI-08 — Codex Second Agent — AI-08-A CONTRACT FROZEN AND MERGED; AI-08-B IMPLEMENTED ON BRANCH.**
-AI-07 — Model Router v1 is **COMPLETE / CLOSED**. The next work item is the AI-08-B implementation
-review and merge checkpoint.
+**AI-09 — Codex Provider Integration — AI-09-A CONTRACT FROZEN; IMPLEMENTATION NOT STARTED.**
+AI-08 — Codex Second Agent is **COMPLETE and MERGED** as
+`edb7dfc82ce51123482ac357fb9319dca2fa0d9a` (PR #52). AI-07 — Model Router v1 is
+**COMPLETE / CLOSED**. The next work item is AI-09-B.
 
 AI-00 architecture and repository baseline is complete. **AI-01 DSH Baseline is COMPLETE** — see
 [AI-01 final gate status](#ai-01-final-gate-status). **AI-02 Model Layer is COMPLETE** — see
@@ -62,41 +63,52 @@ This file is the single entry point for deciding what to do next.
 
 ### Current work item
 
-**AI-08 — Codex Second Agent — AI-08-B IMPLEMENTED ON BRANCH; AWAITING REVIEW.**
+**AI-09 — Codex Provider Integration — AI-09-A CONTRACT FROZEN; AI-09-B NOT STARTED.**
 
-AI-08 is the phase that makes Codex a second Agent with its own identity, its own execution
-instance, its own result and its own provenance.
+AI-09 is the phase that wires Codex's already-frozen `CodexBackend` seam to a real, already
+registered provider through AI-02's already-frozen normalized invocation boundary. It builds no
+transport, no protocol, no credential mechanism and no invocation API.
 
 ```text
-AI-08-A     = COMPLETE / MERGED    contract frozen   (PR #51)
-AI-08-B     = IMPLEMENTED ON BRANCH, NOT MERGED      feature/ai-08-agent-runtime
-AI-08       = NOT CLOSED           awaiting the human merge checkpoint
+AI-09-A     = CONTRACT FROZEN      (2026-10-02)
+AI-09-B     = NOT STARTED          implementation
+AI-09       = NOT CLOSED
 
-AI-08-A merge SHA  = 2117cdf49940bb97f5f18a6447fbc2f0137b31e7
-AI-08-A head       = 838e4617a5465367f5410be37d34c745054f86b9
+base        = main @ edb7dfc82ce51123482ac357fb9319dca2fa0d9a
+branch      = feature/ai-09-provider-codex-contract
+contract    = docs/AI-09_CODEX_PROVIDER_EXECUTION_PLAN.md
+contract blob = 66978cbd685f408ea37dd70e9f0b1e364e2e2955
+
+provider    = mimo — the existing profile; NO third provider identity
+models      = mimo/mimo-v2.6-pro, mimo/mimo-v2.6-flash   (no default, no fallback)
+backend     = integrations/codex/   AI-09-B creates it; a namespace package
+reserved    = providers/openai-compatible/ stays RESERVED / DISABLED / UNIMPLEMENTED
+
+FROZEN here   the target provider, the supported model refs, the invocation path,
+              the Router boundary, the integration layer's physical boundary and
+              dependency direction, model binding, the context egress policy,
+              the credential policy, the capability truth boundary, tool-calling
+              and structured-output semantics, timeout and retry semantics,
+              the output/reference boundary, the test model, and the non-goals
+OPEN          every implementation detail; AI-09-B's checklist is §22 of the contract
+```
+
+**AI-09-A closes contract gate C0 only.** C1–C12 are AI-09-B's, and no part of AI-09 is a `PASS`
+yet. No backend exists, no integration layer exists, and no provider call has been made by this
+phase.
+
+**Retained record — AI-08: COMPLETE / MERGED.**
+
+```text
+AI-08-A merge SHA  = 2117cdf49940bb97f5f18a6447fbc2f0137b31e7   (PR #51)
+AI-08-B merge SHA  = edb7dfc82ce51123482ac357fb9319dca2fa0d9a   (PR #52)
 contract           = docs/AI-08_AGENT_EXECUTION_EXECUTION_PLAN.md
-contract blob      = a01e03f5306299a0a4442648eeb8fdcfce6bd8dd
-                     after Amendment 4, applied during AI-08-B
-previous blob      = 739ec29f37bfb8654f19ca088d6af57ffdd09e69
-                     (after Amendment 3)
-earlier blob       = 7fa9effde597c71f127c4e14dc31641a5ffe7589
-                     (after Amendment 2; unchanged by the AI-08-B implementation
-                      commits themselves)
+contract blob      = a01e03f5306299a0a4442648eeb8fdcfce6bd8dd   UNCHANGED by AI-09-A
 amendments         = 4   Amendment 1 (review corrections, §22)
                          Amendment 2 (terminal-result invariant, §22)
                          Amendment 3 (Guard-bound tool invocation boundary, §22)
                          Amendment 4 (required CI configuration in scope, §22)
-
-FROZEN here   AgentId, AgentRole, the identity boundary, the execution contract,
-              Context isolation, the independence definition I1-I8,
-              AgentResult, AgentExecutionOutcome, the Guard boundary,
-              the Evidence boundary, the cross-agent sharing prohibition,
-              the Codex provider boundary, the repository layout
-NOT STARTED   the Agent runtime, AgentResult, the Codex provider, any Agent code
 ```
-
-**AI-08-A closes contract gate C0 only.** C1–C17 are AI-08-B's, and no part of AI-08 is a `PASS`
-yet.
 
 Two facts govern this phase and are recorded where a reader will find them rather than inferred:
 
@@ -230,10 +242,10 @@ PROJECT_STATUS.md
 
 ### Not yet started
 
-- AI-08 Codex Second Agent — **AI-08-A contract frozen; implementation NOT STARTED.**
-  AI-07 is complete and merged. AI-08-B implements against
-  [AI-08_AGENT_EXECUTION_EXECUTION_PLAN.md](AI-08_AGENT_EXECUTION_EXECUTION_PLAN.md), which is
-  frozen and awaiting its merge checkpoint.
+- AI-09 Codex Provider Integration — **AI-09-A contract frozen; implementation NOT STARTED.**
+  AI-08 is complete and merged. AI-09-B implements against
+  [AI-09_CODEX_PROVIDER_EXECUTION_PLAN.md](AI-09_CODEX_PROVIDER_EXECUTION_PLAN.md), which is
+  frozen and awaiting its implementation phase.
 
 ## Completed
 
@@ -815,17 +827,21 @@ candidate and the outcome is `NO_ELIGIBLE_MODEL`. That is the honest state, not 
 
 ## AI-08 status
 
-**AI-08 — Codex Second Agent: AI-08-A CONTRACT FROZEN / IMPLEMENTATION NOT STARTED.**
+**AI-08 — Codex Second Agent: COMPLETE / MERGED.** Contract frozen at AI-08-A, implemented by
+AI-08-B, merged as `edb7dfc82ce51123482ac357fb9319dca2fa0d9a` (PR #52).
 
 ```text
-AI-08-A     = CONTRACT FROZEN      awaiting the human merge checkpoint
-AI-08-B     = NOT STARTED          implementation
-AI-08       = IMPLEMENTATION NOT STARTED
+AI-08-A     = COMPLETE / MERGED    contract frozen   (PR #51, 2117cdf4)
+AI-08-B     = COMPLETE / MERGED    agent runtime     (PR #52, edb7dfc8)
+AI-08       = CLOSED
 
 base        = main @ a7c4a1e2536536940d96431883dadb592f7c151a
 contract    = docs/AI-08_AGENT_EXECUTION_EXECUTION_PLAN.md
-amendments  = 2   AI-08-A Amendment 1 (review corrections)
-                  AI-08-A Amendment 2 (terminal-result invariant)
+contract blob = a01e03f5306299a0a4442648eeb8fdcfce6bd8dd   UNCHANGED by AI-09-A
+amendments  = 4   Amendment 1 (review corrections)
+                  Amendment 2 (terminal-result invariant)
+                  Amendment 3 (Guard-bound tool invocation boundary)
+                  Amendment 4 (required CI configuration in scope)
 ```
 
 AI-08 makes Codex a second Agent with its own identity, its own execution instance, its own result
@@ -1065,4 +1081,93 @@ task result. §10.2's "task result" arm is AI-09's.
 
 AgentResult is run data. It is not an AI-05 EvidenceRecord, and no admission pipeline
 runs when an execution does.
+```
+
+---
+
+## AI-09 status
+
+**AI-09 — Codex Provider Integration: AI-09-A CONTRACT FROZEN. Implementation NOT STARTED.**
+
+AI-09 wires Codex's already-frozen `CodexBackend` seam to a real, already-registered provider
+(`mimo`) through AI-02's already-frozen normalized invocation boundary. It is a composition, not
+a new provider layer.
+
+```text
+AI-09-A     = CONTRACT FROZEN      (2026-10-02)
+AI-09-B     = NOT STARTED          implementation
+AI-09       = NOT CLOSED
+
+base        = main @ edb7dfc82ce51123482ac357fb9319dca2fa0d9a
+branch      = feature/ai-09-provider-codex-contract
+contract    = docs/AI-09_CODEX_PROVIDER_EXECUTION_PLAN.md
+contract blob = 66978cbd685f408ea37dd70e9f0b1e364e2e2955
+```
+
+### What AI-09-A froze
+
+```text
+provider        mimo — the existing profile; NO third provider identity
+reserved        providers/openai-compatible/ stays RESERVED / DISABLED / UNIMPLEMENTED
+models          mimo/mimo-v2.6-pro, mimo/mimo-v2.6-flash — no default, no fallback,
+                no derivation from AgentId, display_name or free-form string
+protocol        openai_compatible_chat — no second protocol, no second adapter
+invocation      providers.invocation.Invoker is the ONLY path; no second invocation API
+backend         integrations/codex/ — a new core namespace layer; AI-09-B creates it
+router          AI-07 unchanged; no execution coupling; `selected` is not auto-injected;
+                `agent_hint` stays a hint
+context         NO context egress. The full ContextResponse and every context item stay
+                in-process; only the declared task text may be sent
+credential      env: only, via the existing resolver; no new scheme, no literal, ever
+capability      UNKNOWN != AVAILABLE; no promotion, no bypass, no new probe
+tool calling    compatibility only (schema in, normalized call out); NO model-driven tool loop
+structured      json_object at minimum; never equated with json_schema
+timeout         always bounded; request deadline tightens, never widens
+retry           max_retries = 0; attempts == 1; retry stays AI-13's
+output          AgentResult unchanged; no raw output; NO durable model-output store
+```
+
+### Contract self-review
+
+```text
+touches the AI-08 frozen contract?     NO   AI-08 contract blob unchanged
+creates a third provider?              NO   §5.2 forbids it explicitly
+connects the Router?                   NO   §9 forbids it explicitly
+sends context wholesale?               NO   §12 forbids it explicitly
+turns UNKNOWN into AVAILABLE?          NO   §14 forbids it explicitly
+adds retry?                            NO   §18 freezes max_retries = 0
+adds a second invocation path?         NO   §8 names Invoker as the only path
+adds a credential scheme?              NO   §13 freezes env: only
+pulls tool execution into AI-09?       NO   §15.2 puts it out of scope
+needs a new Layer 0 boundary?          YES  §10.4 requires check_ai09_integration_layer()
+                                            in AI-09-B
+```
+
+### Recorded, not fixed
+
+```text
+RECORDED GAP   Router -> Provider execution coupling does not exist. `RouterDecision.selected`
+               has no execution consumer. AI-09 does not close this gap; wiring routing into
+               execution is a separate decision with its own contract (§9.1).
+
+RECORDED GAP   AI-02's live-transport confinement guard ranges over the roots
+               ("providers", "tests", "scripts") and therefore does not cover a new top-level
+               package. AI-09-B closes this for `integrations/` through its own Layer 0 check.
+               AI-02's guard is NOT modified (§10.4).
+
+RECORDED LIM.  AI-08's three-member `AgentExecutionOutcome` is frozen. A failed invocation
+               maps onto `FAILED`, so a provider ERROR and a pre-flight BLOCKED are not
+               distinguished in `AgentResult`. The distinction survives on the
+               `InvocationResult` (§19.4).
+```
+
+### What AI-09-A did not do
+
+```text
+no backend implemented
+no `integrations/` directory created
+no provider call made
+no live test run
+no AI-02, AI-03, AI-04, AI-05, AI-06, AI-07 or AI-08 contract or code modified
+no credential read or printed
 ```
