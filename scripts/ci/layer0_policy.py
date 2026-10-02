@@ -174,6 +174,65 @@ AGENTS_FORBIDDEN_LITERALS = (
     "/mnt/d/SecurityLab",
 )
 
+#: AI-09 §10.3: the integration layer composes two layers that must not know about
+#: each other, and reaches a provider only through AI-02's invocation boundary.
+#:
+#: `os` is here for the second half of the enablement claim. Runtime enablement
+#: comes from a parsed `ProviderConfig` the caller hands in, and a credential
+#: comes from the provider layer's resolver — so the layer has no reason to read
+#: the process environment at all, and forbidding the module is stronger than
+#: forbidding the calls.
+AI09_FORBIDDEN_IMPORTS = (
+    "socket",
+    "http",
+    "urllib",
+    "urllib3",
+    "requests",
+    "httpx",
+    "aiohttp",
+    "ftplib",
+    "smtplib",
+    "telnetlib",
+    "ssl",
+    "asyncio",
+    "multiprocessing",
+    "subprocess",
+    "shutil",
+    "os",
+    "routing",
+    "tools",
+)
+
+#: The only provider modules the integration layer may reach — an **allowlist**,
+#: not a denylist. The live-only HTTP transport is therefore unreachable by
+#: omission, exactly as AI-05's boundary treats it, and a module nobody thought
+#: to list cannot be reached either.
+AI09_ALLOWED_PROVIDER_IMPORTS = (
+    "providers.config",
+    "providers.invocation",
+    "providers.model_profile",
+    "providers.profile",
+    "providers.protocol",
+    "providers.transport",
+)
+
+#: The only plugin package it may reach. AI-03's context layer supplies the
+#: `ContextResponse` and the canonical workspace primitive.
+AI09_ALLOWED_PLUGIN_IMPORTS = ("plugins.context",)
+
+#: Names that would mean the layer had taken over a job that is not its own:
+#: resolving a credential, or reading the environment.
+AI09_FORBIDDEN_NAMES = ("CredentialRef", "SecretValue", "getenv", "environ.get")
+
+AI09_FORBIDDEN_BUILTINS = ("eval", "exec", "compile", "__import__")
+
+#: AI-09 §17: the other workspace is not reachable from the integration layer.
+AI09_FORBIDDEN_LITERALS = (
+    "SecurityLab/",
+    "Li20771/SecurityLab",
+    "/mnt/d/SecurityLab",
+)
+
 EVIDENCE_FORBIDDEN_IMPORTS = (
     "socket",
     "http",
@@ -1541,6 +1600,181 @@ def check_ai08_agent_layer() -> list[str]:
     return problems
 
 
+def check_ai09_integration_layer() -> list[str]:
+    """AI-09 §10.3, §17: the Codex integration layer, as a gate.
+
+    AI-09's whole job is to compose two layers that are forbidden to know about
+    each other. That makes this boundary unusually load-bearing: the layer can
+    reach a provider only through AI-02's invocation boundary, and it may not
+    reimplement any part of it.
+
+    ```text
+    structural   what integrations/ can reach -- no network, no process, no
+                 environment, no Router, no tool layer, no Evidence, and no
+                 provider module outside an explicit allowlist
+    identity     what integrations/ is -- a core layer, not a plugin, and not a
+                 second provider implementation
+    one-way      neither agents/ nor providers/ may depend on it
+    ```
+    """
+    import ast
+
+    problems: list[str] = []
+
+    integrations = ROOT / "integrations"
+    if not integrations.is_dir():
+        return [
+            "integrations/ is absent; AI-09's declared home does not exist "
+            "(contract §10.1)"
+        ]
+
+    if not (integrations / "codex").is_dir():
+        problems.append(
+            "integrations/codex/ is absent; AI-09 v1's single composition "
+            "boundary does not exist (contract §10.1)"
+        )
+
+    # (1) Identity: a core layer, not a plugin, and never a second provider.
+    if (integrations / "__init__.py").exists():
+        problems.append(
+            "integrations/__init__.py exists; integrations/ is a core-layer "
+            "directory reached as a namespace package, exactly as routing/ and "
+            "agents/ are (contract §10.1)"
+        )
+    for forbidden in ("plugins/codex", "plugins/integrations", "providers/codex"):
+        if (ROOT / forbidden).exists():
+            problems.append(
+                f"{forbidden} exists; AI-09 is a core integration layer, not a "
+                "plugin layer and not a second provider (contract §10.1, §5.2)"
+            )
+
+    # (2) A provider-side implementation under integrations/ would mean the
+    #     layer had stopped composing and started owning a provider.
+    for path in sorted(integrations.rglob("*")):
+        if path.is_file() and path.suffix in {".yaml", ".yml"}:
+            problems.append(
+                f"{_display(path)} is provider-side data; profiles are repository "
+                "data under providers/, and config is runtime config (contract §10.2)"
+            )
+
+    # (3) Structural: what integrations/ may reach.
+    for path in sorted(integrations.rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        except SyntaxError as exc:  # pragma: no cover - surfaced as a failure
+            problems.append(f"{_display(path)} does not parse: {exc}")
+            continue
+
+        imported: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imported.add(node.module)
+
+        for name in sorted(imported):
+            root = name.split(".")[0]
+            if root in AI09_FORBIDDEN_IMPORTS:
+                problems.append(
+                    f"{_display(path)} imports {name!r}; AI-09 reaches a provider "
+                    "only through AI-02's invocation boundary (contract §8, §9)"
+                )
+            elif root == "providers" and not _matches_prefix(
+                name, AI09_ALLOWED_PROVIDER_IMPORTS
+            ):
+                problems.append(
+                    f"{_display(path)} imports {name!r}, which is outside AI-09's "
+                    f"provider allowlist {AI09_ALLOWED_PROVIDER_IMPORTS}"
+                )
+            elif root == "plugins" and not _matches_prefix(
+                name, AI09_ALLOWED_PLUGIN_IMPORTS
+            ):
+                problems.append(
+                    f"{_display(path)} imports {name!r}; only AI-03's context "
+                    "layer is reachable from the integration layer (contract §10.3)"
+                )
+
+        names: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Name):
+                names.add(node.id)
+            elif isinstance(node, ast.Attribute):
+                names.add(node.attr)
+            elif isinstance(node, ast.ClassDef):
+                names.add(node.name)
+            elif isinstance(node, ast.Call):
+                for keyword in node.keywords:
+                    if keyword.arg == "shell":
+                        problems.append(
+                            f"{_display(path)}:{node.lineno} passes a `shell` "
+                            "keyword; the integration layer starts no process (§10.3)"
+                        )
+                if (
+                    isinstance(node.func, ast.Name)
+                    and node.func.id in AI09_FORBIDDEN_BUILTINS
+                ):
+                    problems.append(f"{_display(path)}:{node.lineno} calls {node.func.id}()")
+
+        for name in AI09_FORBIDDEN_NAMES:
+            if name in names:
+                problems.append(
+                    f"{_display(path)} names {name!r}; credentials are resolved by "
+                    "the provider layer and the environment is not read here "
+                    "(contract §5.3, §13)"
+                )
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef) and node.name.endswith(
+                ("Adapter", "Transport")
+            ):
+                problems.append(
+                    f"{_display(path)}:{node.lineno} defines {node.name}; a "
+                    "protocol adapter and a transport are AI-02's, and AI-09 "
+                    "composes them rather than replacing them (contract §7, §20.4)"
+                )
+
+        source = path.read_text(encoding="utf-8")
+        for needle in AI09_FORBIDDEN_LITERALS:
+            if needle in source:
+                problems.append(f"{_display(path)} names {needle!r}")
+
+    # (4) One-way: the dependency runs into the integration layer, never out of it.
+    for owner, label in ((ROOT / "agents", "Agent"), (ROOT / "providers", "provider")):
+        for path in sorted(owner.rglob("*.py")):
+            if "__pycache__" in path.parts:
+                continue
+            try:
+                tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            except SyntaxError:  # pragma: no cover - other checks report this
+                continue
+            for node in ast.walk(tree):
+                module = None
+                if isinstance(node, ast.ImportFrom) and node.module:
+                    module = node.module
+                elif isinstance(node, ast.Import):
+                    for alias in node.names:
+                        if alias.name == "integrations" or alias.name.startswith(
+                            "integrations."
+                        ):
+                            module = alias.name
+                if module and (
+                    module == "integrations" or module.startswith("integrations.")
+                ):
+                    problems.append(
+                        f"{_display(path)} imports {module!r}; the {label} layer "
+                        "must not depend on the integration layer (contract §10.3)"
+                    )
+
+    return problems
+
+
+def _matches_prefix(name: str, allowed: tuple[str, ...]) -> bool:
+    """Whether `name` is one of `allowed`, or a submodule of one."""
+    return any(name == entry or name.startswith(entry + ".") for entry in allowed)
+
+
 def check_layer_markers() -> list[str]:
     """Every test module belongs to exactly one layer.
 
@@ -1628,6 +1862,10 @@ def main() -> int:
     report.check(
         "agent layer identity and execution boundary",
         check_ai08_agent_layer(),
+    )
+    report.check(
+        "integration layer composition boundary",
+        check_ai09_integration_layer(),
     )
 
     if report.failures:
