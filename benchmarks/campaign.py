@@ -59,7 +59,13 @@ __all__ = [
 ]
 
 #: §26's freeze record. The campaign refuses to run against anything else.
-FROZEN_CONTRACT_BLOB = "08aea86cf82e7476dee442b33dc81c8f9a9873a3"
+#:
+#: Amendment 1 (§27) changed the document, so the record moves with it: the blob below
+#: is the contract AFTER the A.6 amendment, and it is the only blob the campaign
+#: accepts. There is no compatibility branch for the previous value — a campaign that
+#: ran under two different contracts would be a campaign whose results cannot be
+#: attributed to either.
+FROZEN_CONTRACT_BLOB = "6f7548a1c05b31093371f536e9a080434cddbcb0"
 
 CONTRACT_DOC = "docs/AI-11_SECURITY_BENCHMARK_EXECUTION_PLAN.md"
 DEFAULT_CORPUS = Path(__file__).resolve().parent / "tasks"
