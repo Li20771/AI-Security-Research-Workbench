@@ -1,0 +1,1697 @@
+# AI-09 — Codex Provider Integration — Execution Plan
+
+> Status: **FROZEN** (AI-09-A, 2026-10-02)
+> Phase: AI-09 — Domestic Models for Codex
+> Sub-phase: **AI-09-A — Contract / Execution Plan / Freeze**
+> Base: `main` @ `edb7dfc82ce51123482ac357fb9319dca2fa0d9a`
+> Rule: This document defines the contract. AI-09-B implements against it. Nothing in AI-09
+> may deviate from a frozen contract without amending this document first (§26).
+
+---
+
+## 0. The five responsibilities — read this first
+
+```text
+Router selects.
+Agent executes.
+Provider invokes.
+Guard authorizes tool use.
+Evidence records admitted facts.
+```
+
+These are five distinct responsibilities owned by five different phases. AI-09 exists to connect
+**Agent executes** to **Provider invokes** and nothing else.
+
+```text
+FROZEN: AI-09 MUST NOT merge any two of these responsibilities.
+FROZEN: AI-09 MUST NOT move one of them into another layer to make wiring easier.
+```
+
+The whole of AI-09 is one narrow seam: a Codex Agent execution may reach a real provider through
+AI-02's existing normalized invocation boundary, without either layer learning about the other.
+
+---
+
+## 1. Normative language
+
+```text
+MUST       a requirement. AI-09-B that violates it is not conformant.
+MUST NOT   a prohibition.
+FROZEN     binding, and changes only by amendment (§26).
+DEFERRED   declared, and deliberately not decided here.
+OPEN       named as unresolved, with a stated default.
+```
+
+---
+
+## 2. Architectural purpose and identity
+
+### 2.1 What AI-09 is
+
+AI-09 wires the Codex Agent's already-frozen provider seam to a real, already-registered provider,
+using the provider layer that already exists.
+
+```text
+AI-09 is a Workbench CORE INTEGRATION LAYER.
+AI-09 is NOT a DSH plugin.
+AI-09 is NOT a new provider.
+AI-09 is NOT a new invocation API.
+AI-09 is NOT a Router feature.
+```
+
+### 2.2 What AI-09 is not asked to build
+
+Every mechanism AI-09 needs already exists and is already frozen. AI-09 adds **no** transport, **no**
+protocol adapter, **no** credential mechanism, **no** capability probe and **no** invocation
+boundary. It adds a composition, an explicit model binding, and the tests that observe the result.
+
+```text
+FROZEN: AI-09-B MUST NOT reimplement anything AI-02 already ships.
+FROZEN: AI-09-B MUST NOT add a second provider invocation API.
+```
+
+### 2.3 The roadmap requirement this contract answers
+
+`docs/MASTER_ROADMAP.md` §AI-09, verbatim:
+
+```text
+目标：利用 Codex 的 provider abstraction 接入其他 OpenAI-compatible API。
+
+要求：
+- provider profile 独立
+- secret 不入 Git
+- model capability 记录
+- tool calling compatibility test
+- structured output compatibility test
+- timeout / retry / context handling test
+```
+
+Each requirement is answered by a section of this document: provider profile independence (§5),
+secrets (§13), capability records (§14), tool calling (§15), structured output (§16), timeout and
+retry and context (§12, §17, §18).
+
+---
+
+## 3. What already exists — and what AI-09 therefore does not build
+
+| Mechanism | Where it already lives | AI-09's relationship |
+| --- | --- | --- |
+| provider profile (identity, protocol, endpoint, credential ref, models) | `providers/mimo/provider.yaml` | consumed unchanged |
+| model profile (limits, modality, capabilities, provenance) | `providers/mimo/models/*.yaml` | consumed unchanged |
+| credential reference grammar + resolver (`env:` only) | `providers/credential.py` | consumed unchanged |
+| protocol adapter (`openai_compatible_chat`) | `providers/protocol/openai_compatible_chat.py` | consumed unchanged |
+| transport interface | `providers/protocol/base.py` | **injected**, not selected (§10.4) |
+| the one concrete transport (live-only) | `providers/http_transport.py` | untouched; see §20.4 |
+| normalized invocation (`Invoker.invoke`) | `providers/invocation.py` | **the only call path** (§8) |
+| capability gate | `providers/invocation.py` `_check_capabilities` | obeyed, never bypassed (§14) |
+| error taxonomy, redaction, metrics, pricing | `providers/{errors,redaction,metrics,pricing}.py` | untouched |
+| opt-in live verification + probe authorisation | `providers/live_verification.py` | reused for compatibility observation (§20) |
+| Agent identity, execution contract, result grammar | `agents/` | consumed unchanged (§19) |
+| `CodexBackend` seam | `agents/codex/body.py` | **implemented against**, signature unchanged (§9) |
+| Router | `routing/` | untouched, and not on the execution path (§7) |
+
+```text
+FROZEN: AI-09-B MUST NOT modify providers/, agents/, routing/, plugins/ or tools/.
+FROZEN: AI-09-B's only production code is a new integration layer (§10).
+```
+
+---
+
+## 4. Scope
+
+### 4.1 In scope for AI-09
+
+```text
+the AI-09 contract (this document)                     AI-09-A
+a single Codex integration / composition layer          AI-09-B
+a concrete CodexBackend bound to one explicit model_ref AI-09-B
+the offline compatibility tests for that binding        AI-09-B
+the tool-calling and structured-output compatibility observation, reusing AI-02's machinery
+the AI-09 Layer 0 boundary check                        AI-09-B
+the AI-09 evidence record and status updates            AI-09-B
+```
+
+### 4.2 Out of scope for AI-09
+
+```text
+any provider-side change                       AI-02 owns providers/
+any Agent identity or execution change         AI-08 owns agents/
+any routing change or routing integration      AI-07 owns routing/
+tool authorization or execution                AI-04 + AI-06 own it
+Evidence admission or storage                  AI-05 owns it
+Context resolution                             AI-03 owns it
+retry, resume, cancellation, long-running      AI-13 owns it
+cross-agent comparison, second opinion         AI-10 owns it
+benchmark scoring                              AI-11 owns it
+routing v2 fallback / escalation               AI-12 owns it
+SecurityLab, in any form                       not reachable from this repository
+```
+
+---
+
+## 5. Target provider
+
+### 5.1 Concrete provider: `mimo`
+
+```text
+FROZEN: AI-09 v1 integrates exactly one provider identity: `mimo`.
+FROZEN: AI-09 v1 uses the already-registered profile `providers/mimo/provider.yaml`.
+FROZEN: AI-09 v1 creates NO third provider identity.
+```
+
+The profile is consumed exactly as it stands today:
+
+```text
+provider_id     mimo
+display_name    MiMo
+protocol        openai_compatible_chat / v1
+endpoint        base_url https://api.xiaomimimo.com/v1 + path_template /chat/completions
+credential.ref  env:MIMO_API_KEY
+models          mimo/mimo-v2.6-pro, mimo/mimo-v2.6-flash
+status          every fact DECLARED; nothing VERIFIED
+```
+
+### 5.2 `providers/openai-compatible/` stays reserved
+
+```text
+FROZEN: `providers/openai-compatible/` remains a RESERVED, DISABLED, UNIMPLEMENTED
+        extension point. AI-09 v1 does not implement it.
+FROZEN: the runtime config entry `openai-compatible` keeps `reserved: true` and
+        `enabled: false`.
+FROZEN: AI-09-B MUST NOT create `providers/openai-compatible/provider.yaml`.
+```
+
+The reasons are recorded here so a later reader does not have to reconstruct them:
+
+1. AI-02 already froze `deepseek` and `mimo` as the two real providers, and the generic
+   `openai-compatible` slot as a placeholder (`providers/registry.py`, `providers/validate.py`
+   `RESERVED_PROVIDERS`).
+2. The concrete domestic-model target of this phase already has a real, independent `mimo`
+   profile. Nothing is missing.
+3. Creating a third provider identity merely to occupy a reserved directory would add an
+   identity with no independent profile review behind it, and would blur the attribution rule
+   that a shared protocol family is not a shared provider.
+4. AI-02's live allowlist and validation both assume two providers. Enabling a third is a
+   boundary change with no requirement driving it.
+
+### 5.3 Runtime enablement — and profile existence is not it
+
+A provider profile existing is not permission to call it.
+
+```text
+FROZEN: an AI-09 invocation requires ALL of:
+            1. the provider is `mimo`
+            2. runtime config enables it: `providers.mimo.enabled == true`
+            3. the bound `model_ref` is one of that runtime-enabled provider's permitted refs
+FROZEN: `Profile existence != runtime enablement.`
+FROZEN: a backend MUST NOT infer enablement from a registered profile, a loadable model
+        profile, or a directory under `providers/`.
+FROZEN: a `reserved` provider MUST NEVER be enabled and MUST NEVER be invoked. It has no
+        implementation.
+FROZEN: `config/providers/providers.example.yaml` is an example / configuration TEMPLATE.
+        It MUST NOT be read as production enablement. Every entry in it ships
+        `enabled: false`, and that is the shipped state.
+FROZEN: a backend MUST NOT bypass runtime config and send a request anyway.
+```
+
+**Who performs the check.** The integration layer's construction root, using AI-02's existing
+types — `ProviderConfig` and `ProviderConfigEntry` in `providers/config.py`.
+
+```text
+FROZEN: the check is an AI-09 integration-layer precondition, evaluated at CONSTRUCTION
+        time, before any invocation. A backend that cannot show enablement is not built.
+FROZEN: `Invoker` remains the normalized invocation boundary. AI-09 MUST NOT wrap it in a
+        second invocation layer, and MUST NOT invent a second enablement model.
+FROZEN: AI-09 MUST NOT modify `providers/config.py`, and MUST NOT add a field to
+        `ProviderConfig` or `ProviderConfigEntry`. If AI-02's types cannot express a rule,
+        that is an AI-02 amendment, not an AI-09 workaround.
+FROZEN: if the enablement check cannot be satisfied, the failure is a refusal — never a
+        warning, never a fallback to another provider, and never a direct send.
+```
+
+**Enablement is added, not substituted.**
+
+```text
+FROZEN: runtime enablement is an AI-09 CONSTRUCTION-TIME PRECONDITION.
+FROZEN: it does NOT replace, relax or modify `Invoker`'s own provider, model and
+        capability checks. It is an additional gate in front of them, and every existing
+        check still runs.
+```
+
+The frozen call order — each step is a precondition on the next, and none may be skipped:
+
+```text
+    runtime-enabled binding            AI-09 construction precondition (§5.3)
+            |
+            v
+    explicit model_ref                 AI-09 binding (§11)
+            |
+            v
+    InvocationRequest                  AI-02 type
+            |
+            v
+    existing Invoker                   providers.invocation
+            |
+            v
+    existing capability gate           AI-02 §6.7 — unchanged
+            |
+            v
+    credential resolution              AI-02 §5.3 — unchanged
+            |
+            v
+    existing protocol adapter          providers/protocol
+            |
+            v
+    existing Transport                 injected; live-only when it is the HTTP one
+```
+
+```text
+FROZEN: the backend reaches the provider ONLY through `Invoker`. This is forbidden:
+
+             CodexBackend  ->  direct HttpTransport
+             CodexBackend  ->  direct adapter call
+             CodexBackend  ->  direct socket / HTTP client
+
+FROZEN: a backend MUST NOT bypass `Invoker`, and MUST NOT duplicate any part of it.
+```
+
+Four clarifications, so no step is credited with more than it does:
+
+```text
+FROZEN: `ProviderConfig.enabled_providers` MAY be used as the enablement source.
+FROZEN: a provider profile's existence MUST NOT substitute for enablement.
+FROZEN: runtime config `enabled: true` MUST NOT bypass the capability gate. Enablement
+        says a provider may be called at all; it says nothing about what a call may ask for.
+FROZEN: membership in a provider's `models` list MUST NOT make a capability VERIFIED.
+        Model-profile membership and capability truth are different questions (§14).
+```
+
+**What AI-02 does and does not enforce today** — recorded so no reader over-claims it:
+
+```text
+`Invoker.invoke` resolves the provider profile, resolves the model profile, applies the
+capability gate and resolves the credential. It does NOT consult runtime config, and
+`Invoker.from_registry` takes no `ProviderConfig`. Nothing in AI-02 currently blocks an
+invocation addressed to a provider that runtime config leaves disabled.
+
+Enablement is therefore the CALLER's precondition, and AI-09 is that caller. AI-09 must
+not represent that AI-02 enforces this on its behalf.
+```
+
+`ProviderConfig.enabled_providers` computes the enabled id set, and `ProviderConfigEntry`
+already refuses an entry that is both `reserved` and `enabled`; AI-09 consumes both and adds no
+new representation.
+
+---
+
+## 6. Target models
+
+```text
+FROZEN: AI-09 v1 supports exactly two model refs:
+            mimo/mimo-v2.6-pro
+            mimo/mimo-v2.6-flash
+FROZEN: a concrete backend instance binds exactly ONE of them, explicitly (§11).
+FROZEN: there is no default model.
+```
+
+```text
+FROZEN: AI-09 MUST NOT derive a model from an AgentId.
+FROZEN: AI-09 MUST NOT derive a model from a display_name.
+FROZEN: AI-09 MUST NOT derive a model from a free-form string, a prefix match or a
+        "closest available" search.
+FROZEN: AI-09 MUST NOT fall back from one model ref to the other.
+FROZEN: AI-09 MUST NOT let a caller widen the supported set at runtime.
+```
+
+The model list has no ordering semantics and none may be introduced (AI-02 D-13: *no model is a
+default model*). `mimo-v2.6-pro` is not "the good one" and `mimo-v2.6-flash` is not "the fallback";
+they are two identities, and which one an execution used is an explicit, recorded choice.
+
+---
+
+## 7. Protocol
+
+```text
+FROZEN: AI-09 reuses the existing `openai_compatible_chat` protocol family.
+FROZEN: AI-09 MUST NOT add a second HTTP, chat or completion protocol.
+FROZEN: AI-09 MUST NOT add a second protocol adapter or a second adapter registry.
+```
+
+The adapter is selected by the provider profile's declared family through the existing
+`adapter_for(profile.protocol.family)` path. AI-09 never names an adapter.
+
+---
+
+## 8. Invocation path
+
+### 8.1 The one path
+
+```text
+CodexBody
+    |
+    v
+CodexBackend                     (AI-08's seam; signature unchanged)
+    |
+    v
+AI-09 integration backend        (new; binds a model_ref; builds a request)
+    |
+    v
+InvocationRequest  ->  Invoker.invoke(...)     (providers.invocation — the ONLY invocation API)
+    |
+    v
+existing provider / profile / credential / protocol / transport path
+```
+
+```text
+FROZEN: `providers.invocation.Invoker.invoke` is the only way AI-09 reaches a provider.
+FROZEN: AI-09 MUST NOT construct a TransportRequest, an HTTP request, a URL or a header itself.
+FROZEN: AI-09 MUST NOT call the protocol adapter directly.
+FROZEN: AI-09 MUST NOT open a socket, spawn a process, or import an HTTP client.
+```
+
+### 8.2 The Router is not on this path
+
+```text
+FROZEN: the AI-09 execution path contains no Router step.
+FROZEN: AI-09 MUST NOT import `routing`.
+FROZEN: AI-09 MUST NOT consult a rule set, a RouterDecision, or `agent_hint`.
+```
+
+---
+
+## 9. Router boundary (AI-07 is unchanged)
+
+```text
+FROZEN: `RouterRequest` is unchanged.
+FROZEN: `RouterDecision` is unchanged.
+FROZEN: `RoutingOutcome` is unchanged.
+FROZEN: `routing/` MUST NOT import provider execution, and MUST NOT gain an execution step.
+FROZEN: the Router MUST NOT execute a provider call.
+FROZEN: `RouterDecision.selected` remains a routing OUTPUT. It is not an instruction to
+        execute anything.
+FROZEN: `agent_hint` remains a HINT. It is not resolved, and it does not select a model.
+FROZEN: AI-09 v1 MUST NOT feed `RouterDecision.selected` into a CodexBackend, automatically
+        or otherwise.
+```
+
+### 9.1 Recorded architecture gap (not fixed here)
+
+```text
+Today `RouterDecision.selected` has NO execution consumer. `routing.router.evaluate` is called
+only by the Layer 0 policy check and by tests; no production path acts on a decision. Likewise
+`routing.router.py` performs no provider call by design.
+```
+
+```text
+RECORDED GAP: Router -> Provider execution coupling does not exist.
+STATUS:       NOT FIXED BY AI-09. This is an architecture gap, not an AI-09 deliverable.
+FROZEN:       AI-09 MUST NOT close this gap by wiring routing into the execution path.
+```
+
+Connecting routing to execution is a separate decision with its own contract, because it changes
+who chooses a model — and model choice is currently an explicit, auditable act by a caller.
+
+---
+
+## 10. Backend physical boundary
+
+### 10.1 Location
+
+```text
+FROZEN: AI-09-B creates ONE new top-level integration layer:
+
+            integrations/
+                codex/            <- AI-09 v1's single composition boundary
+
+FROZEN: `integrations/` is a Workbench CORE layer, reached as a namespace package.
+FROZEN: `integrations/__init__.py` MUST NOT exist, exactly as `routing/__init__.py` and
+        `agents/__init__.py` must not exist.
+FROZEN: `integrations/` is NOT a plugin and MUST NOT be created under `plugins/`.
+```
+
+### 10.2 Why here, and not somewhere else
+
+Both neighbouring homes are closed by frozen contracts, not by preference:
+
+```text
+agents/codex/        CLOSED by AI-08. AI-08's own boundary tests assert that no module
+                     under agents/ names Invoker, InvocationRequest, ModelProfile,
+                     CapabilityName, CredentialRef, base_url or endpoint, that no
+                     identifier contains "transport", and that no module reads
+                     environ/getenv/SecretValue. Putting a real backend here would
+                     require deleting AI-08's frozen boundary tests.
+
+providers/           CLOSED by AI-02. providers/ is the provider/model layer. It knows
+                     nothing about Agents, executions or AgentResult, and giving it
+                     Agent runtime orchestration would invert the dependency the layer
+                     split exists to create.
+```
+
+A composition of two layers that must not know about each other needs a third place to live. That
+is `integrations/`.
+
+### 10.3 Dependency direction — frozen
+
+```text
+integrations/  ->  agents/            ALLOWED   (AgentBody, CodexBackend, AgentExecutionRequest,
+                                                 AgentId, ContextResponse via plugins.context)
+integrations/  ->  providers/         ALLOWED   (Invoker, InvocationContext, InvocationRequest,
+                                                 InvocationResult, Transport, ModelRef)
+integrations/  ->  plugins/context    ALLOWED   (ContextResponse, read-only)
+integrations/  ->  plugins/evidence   FORBIDDEN (AI-08 writes no EvidenceRecord; AI-09 does not
+                                                 change that — §19.4)
+integrations/  ->  routing/           FORBIDDEN (§9)
+integrations/  ->  tools/             FORBIDDEN (tool execution is AI-08 + AI-06 + AI-04)
+integrations/  ->  plugins/http_transport, socket, http, urllib, requests, httpx, aiohttp,
+                   ftplib, smtplib, telnetlib, ssl, asyncio, multiprocessing, subprocess,
+                   shutil            FORBIDDEN
+
+agents/     -/->  integrations/       FORBIDDEN  (one-way)
+providers/  -/->  integrations/       FORBIDDEN  (one-way)
+routing/    -/->  integrations/       FORBIDDEN  (one-way)
+```
+
+```text
+FROZEN: the integration layer depends on both sides; neither side depends on it.
+FROZEN: the transport is INJECTED into the integration layer. AI-09 MUST NOT select one.
+```
+
+### 10.4 New Layer 0 boundary required
+
+```text
+REQUIRED (AI-09-B): a new `check_ai09_integration_layer()` in `scripts/ci/layer0_policy.py`,
+asserting §10.3 structurally and the frozen non-goals of §21.
+```
+
+This follows the existing precedent: each phase that adds a core layer adds its own Layer 0 check
+(AI-05, AI-06, AI-07 and AI-08 each did). `scripts/ci/layer0_policy.py` is shared CI
+infrastructure.
+
+```text
+RECORDED GAP: AI-02's live-transport confinement guard ranges over the roots
+              ("providers", "tests", "scripts") and therefore does NOT cover a new
+              top-level package. AI-09-B's own Layer 0 check closes this for
+              `integrations/` by forbidding `http_transport` there.
+DO NOT:       AI-09-B MUST NOT modify AI-02's guard in `tests/unit/test_live_verification.py`
+              to widen its roots. That file is an AI-02-owned artifact. Widening it is a
+              separate, reviewed decision.
+```
+
+---
+
+## 11. Model binding
+
+```text
+FROZEN: a concrete backend instance binds its `model_ref` explicitly at construction.
+```
+
+Conceptually, and only conceptually — this contract does not specify the implementation:
+
+```text
+backend(model_ref="mimo/mimo-v2.6-pro")
+```
+
+```text
+FROZEN: the binding is validated at construction, not at call time:
+        the ref parses, and it is one of §6's two supported refs.
+FROZEN: constructing a backend with an unsupported, unregistered or malformed ref is an error.
+FROZEN: the binding is immutable for the instance's lifetime.
+FROZEN: `model_ref` is not a parameter of `produce` and MUST NOT become one — AI-08's
+        signature is frozen (§10 does not reopen it).
+FROZEN: the backend MUST NOT read a model from configuration, environment, the task text,
+        the context, the AgentId, or a routing decision.
+```
+
+The binding is deliberately the *only* thing that decides which model answers. A caller that wants
+the other model constructs the other backend. Nothing infers, substitutes or upgrades.
+
+---
+
+## 12. Context egress policy
+
+This is the security centre of AI-09.
+
+### 12.1 The risk being closed
+
+`CodexBackend.produce` receives a `ContextResponse`. That type carries `facts`, `history`, `plans`,
+`sources`, freshness, conflicts and workspace identity, and it has a `to_dict()`. Serialising it
+and putting it in a prompt is one line of code, is the obvious thing to do, and would be an
+**implicit bulk egress of workspace-scoped state to an external provider**.
+
+```text
+FROZEN: AI-09 v1 MUST NOT send the full ContextResponse, its `to_dict()`, or any
+        wholesale serialisation of it, to a provider.
+FROZEN: AI-09 v1 MUST NOT send any context ITEM (fact, history entry, plan, source record),
+        in whole or in part, to a provider.
+FROZEN: AI-09 v1 MUST NOT send freshness, conflicts, subject resolutions, or item metadata
+        to a provider.
+```
+
+### 12.2 The projection, in two layers
+
+"Only the task may leave" is **not** the same claim as "the provider payload may contain only one
+string". An OpenAI-compatible chat request is a structured body, and the protocol's own control
+fields are not workbench content. The projection therefore has two layers, and they are governed
+separately.
+
+```text
+    LAYER A — workbench execution-state CONTENT     (natural language)
+        AgentExecutionRequest.task
+                  |
+                  v
+        exactly one provider user message
+
+    LAYER B — PROTOCOL CONTROL FIELDS               (structural)
+        model, messages envelope, tools, response_format,
+        stream, temperature, max_tokens, stop, fixed HTTP headers
+```
+
+```text
+FROZEN: Layer A admits exactly one thing, and it is `AgentExecutionRequest.task`.
+FROZEN: Layer B admits protocol control fields, and only those the protocol requires.
+FROZEN: neither layer admits workbench execution or context state.
+```
+
+### 12.2.1 Layer A — workbench execution-state content
+
+```text
+FROZEN: `AgentExecutionRequest.task` is the caller's declared task, and it is the ONLY
+        workbench natural-language content that may leave the process, as ONE user message,
+        verbatim.
+FROZEN: `RequestMetadata` is LOCAL attribution. It is never sent (AI-02 §7.4).
+FROZEN: AI-09 MUST NOT synthesize additional messages — no generated system prompt, no
+        preamble, no instruction wrapper, no few-shot examples, no hidden turns.
+```
+
+Forbidden as content, in any field, header, URL or metadata payload:
+
+```text
+the full `ContextResponse`, or any serialisation of it
+context facts / history / plans
+source records
+workspace metadata — `workspace_id`, `workspace_root`, `repository`, `branch`, `commit`,
+        `detached`, `working_tree`, `changed_files`
+execution metadata — `execution_id`, `input_digest`, `context_descriptor`, timings
+any inference of extra prompt content FROM `ContextResponse`
+credentials, in any encoding
+hidden routing information, or an internal evidence reference
+agent internals
+```
+
+### 12.2.2 Layer B — protocol control fields
+
+These are the protocol's own structural fields. They are permitted when the invocation requires
+them, and they are **not** workbench content:
+
+```text
+model               the explicitly bound API `model_id`. Never a display_name, never a
+                    provider id, never a ref.
+messages            the envelope. Its natural-language user content is `request.task`
+                    and nothing else (Layer A).
+tools               tool schemas supplied explicitly for the invocation — only when the
+                    requested invocation or compatibility test needs them (§15).
+response_format     an explicit structured-output request — only when a structured-output
+                    mode is requested (§16).
+stream              the protocol stream control.
+temperature         generation control.
+max_tokens          generation control.
+stop                generation control.
+```
+
+```text
+FROZEN: fixed protocol/HTTP headers the adapter composes are transport-layer data — for
+        example `Content-Type` and `Accept`. They are not workspace context.
+FROZEN: `tools` and `response_format` come from the invocation, NOT from `ContextResponse`.
+        A tool schema is protocol test input; a structured-output request is an explicit
+        request. Neither is context, agent metadata, or evidence.
+```
+
+Protocol control fields MUST NOT carry:
+
+```text
+workspace identity
+`execution_id`
+`input_digest`
+any context data
+a credential value
+hidden routing information
+an internal evidence reference
+```
+
+```text
+FROZEN: "the payload is allowed to be structured" is not "the payload may carry workbench
+        state". Layer B widens what the PROTOCOL may express, never what the WORKBENCH may
+        disclose.
+```
+
+### 12.2.3 Local-only information
+
+```text
+FROZEN: the following MAY be used locally, inside the process:
+            - `AgentExecutionRequest.input_digest`
+            - the execution's workspace identity
+            - the context identity / revision
+FROZEN: none of them is sent, and none of them enters the request body because it
+        happened to be present in local execution state — not as Layer A content and not
+        as a Layer B control field.
+FROZEN: "available locally" is not "permitted to egress". §12.1 governs egress, and
+        §12.2 lists the entire permitted payload, both layers.
+```
+
+`input_digest` and the workspace identity participate only in local attribution, and in the
+execution's own result record — `AgentResult` already carries `workspace_id`, `execution_id` and
+`input_digest`. They do **not** enter the reference digest, whose input is fixed by §19.2.1, and
+they are never transmitted.
+
+### 12.2.4 The task-projection invariant
+
+The invariant, stated so it can be tested directly:
+
+```text
+GIVEN    task = T
+         context = C
+
+THEN     the provider-visible natural-language user content is exactly T
+         and NOT  T + C
+         and NOT  T + workspace metadata
+         and NOT  T + execution metadata
+         and NOT  T + a hidden prompt
+```
+
+```text
+FROZEN: Layer B protocol control fields are NOT counted as natural-language task content.
+        Their presence does not violate this invariant.
+FROZEN: the invariant is about what the model READS as task content, and it is the property
+        an AI-09-B test must assert.
+```
+
+**A negative example, so no implementer has to guess.** These are WRONG:
+
+```text
+WRONG   messages[0].content = request.task + context.to_dict()
+WRONG   messages[0].content = request.task + f"\n\nworkspace: {context.workspace.workspace_id}"
+WRONG   messages[0].content = request.task + "\n\nbranch: " + context.workspace.branch
+WRONG   messages.insert(0, {"role": "system", "content": <generated instruction>})
+WRONG   tools[0]["function"]["description"] += str(context.workspace.commit)
+
+RIGHT   messages = ({"role": "user", "content": request.task},)
+RIGHT   tools    = the invocation's own schemas, or absent
+```
+
+And the inverse mistake, which is equally wrong:
+
+```text
+WRONG   treating `tools[]` or `response_format` as context egress, and therefore omitting
+        them from a compatibility test that requires them. They are Layer B protocol control
+        fields, not workbench state. Omitting them does not make the test safer; it makes it
+        test something else.
+```
+
+### 12.3 What context may be used for
+
+```text
+FROZEN: `ContextResponse` may be used LOCALLY, and only for:
+            - workspace-identity alignment (§12.4)
+            - local attribution (§12.2.3) — which is not digest input, and not egress
+FROZEN: context metadata MUST NOT reach the request body, headers, URL or metadata payload.
+```
+
+### 12.4 Workspace alignment
+
+```text
+FROZEN: before producing a reference, the integration layer MUST verify that the context's
+        workspace is the execution's workspace — the same canonical workspace root as
+        `AgentExecutionRequest.workspace_root`.
+FROZEN: a mismatch is a REFUSAL. The backend raises; it does not warn, repair or proceed.
+FROZEN: AI-09 MUST NOT reimplement path canonicalisation. AI-03 already provides it.
+```
+
+### 12.5 Future context projection
+
+```text
+DEFERRED: sending any context to a model requires an explicit, bounded PROJECTION CONTRACT:
+          a named subset, a declared purpose, a size bound, and its own review.
+FROZEN: AI-09 v1 ships no projection, and therefore sends no context.
+FROZEN: AI-09 MUST NOT modify AI-03, and MUST NOT introduce a second Context plugin.
+```
+
+---
+
+## 13. Credential policy
+
+```text
+FROZEN: AI-09 reuses `CredentialRef`, `SecretValue` and `resolve()` unchanged.
+FROZEN: AI-09 v1 uses the only supported scheme: `env:`.
+FROZEN: AI-09 MUST NOT add a credential scheme.
+FROZEN: AI-09 MUST NOT modify AI-02's credential grammar.
+```
+
+Forbidden, without exception:
+
+```text
+a credential literal in Git, in any file, including tests and documentation
+an API key in a provider profile
+an API key in a runtime config file
+an API key in `InvocationRequest`
+an API key in `AgentExecutionRequest`
+an API key in `AgentResult`
+an API key in a log line, an error message, a reference, or a digest input
+```
+
+```text
+FROZEN: the credential is resolved by the provider layer at invocation time, from the
+        profile's `credential.ref`. The integration layer never sees it, holds it, or
+        passes it.
+FROZEN: a missing or unsupported credential is a pre-flight refusal produced by the
+        existing path, not an error the integration layer invents.
+```
+
+---
+
+## 14. Capability truth boundary
+
+### 14.1 The rule
+
+```text
+FROZEN: `UNKNOWN` is NOT `AVAILABLE`.
+FROZEN: every shipped capability on both supported models is `UNKNOWN`, and AI-09 does not
+        change that.
+FROZEN: AI-09 MUST NOT promote a capability.
+FROZEN: AI-09 MUST NOT write `VERIFIED` into a model profile.
+FROZEN: AI-09 MUST NOT bypass, weaken, special-case or reimplement the capability gate.
+FROZEN: a synthetic fixture MUST NOT move a capability out of `UNKNOWN`.
+FROZEN: a passing test is not a capability claim.
+```
+
+### 14.2 What this means in practice
+
+The ordinary Codex invocation is a **plain-text** call. It requires no gated capability, so it is
+not refused — and it proves nothing about tool calling, structured output, streaming, reasoning or
+prompt caching.
+
+A call that requests a gated capability is refused by `providers/invocation.py`'s gate before any
+transport activity, because no capability is `VERIFIED`. That refusal is correct behaviour and
+AI-09 must not work around it.
+
+### 14.3 Three test layers, and one truth that is not a test
+
+```text
+A. PROTOCOL / ADAPTER COMPATIBILITY TEST
+   The protocol adapter serializes a request and parses a declared response shape.
+   Exercised against the adapter / normalization boundary with synthetic payloads.
+   Proves: serialization and parsing MECHANICS.
+
+B. OFFLINE INVOCATION NORMALIZATION TEST
+   The invocation boundary maps an adapter response into a normalized `InvocationResult` —
+   finish states, tool-call flattening, usage, the error taxonomy, and the capability gate.
+   Exercised through the existing fake transport.
+   Proves: our NORMALIZATION.
+
+C. LIVE MODEL CAPABILITY OBSERVATION
+   What the model actually does, observed through AI-02's existing
+   `LiveVerifier` / `ProbeAuthorisation` machinery. Opt-in, manual, bounded.
+   Produces: a dated observation and a CANDIDATE status for a human to review.
+```
+
+```text
+FROZEN: A and B prove mechanism. They NEVER prove a Mimo model capability.
+FROZEN: A, B and C are never reported as if they were each other.
+FROZEN: a synthetic fixture MUST NEVER move a capability out of `UNKNOWN` or `DECLARED`.
+FROZEN: no offline test may modify an AI-02 capability profile as a side effect.
+FROZEN: real tool-calling and structured-output capability observation happens ONLY through
+        AI-02's existing `LiveVerifier` / `ProbeAuthorisation` machinery.
+FROZEN: AI-09 MUST NOT copy, fork, or add a second probe mechanism.
+FROZEN: the capability gate MUST NOT be bypassed, weakened or special-cased.
+```
+
+**The truth that is not a test:**
+
+```text
+D. MODEL-PROFILE CAPABILITY TRUTH
+   What `providers/mimo/models/*.yaml` asserts. Every shipped value is `UNKNOWN`.
+   It changes ONLY by a separate, reviewed change to AI-02's profiles — never as a
+   consequence of running a test, and never as a side effect of a passing observation.
+```
+
+```text
+FROZEN: test result != automatic capability promotion.
+FROZEN: `UNKNOWN` MUST NOT become `AVAILABLE`, and MUST NOT become `VERIFIED`, through any
+        AI-09 act.
+FROZEN: a live positive observation produced during AI-09 does NOT license rewriting AI-02's
+        capability truth contract inside this phase.
+FROZEN: if AI-09 produces a live observation, it is recorded as phase evidence. Promoting it
+        is a separate reviewed act, by the existing AI-02 mechanism, in a separate change.
+```
+
+### 14.4 How A and B are actually run
+
+`Invoker.invoke` applies the capability gate to any request carrying `tools`,
+`structured_output`, or `stream: true` (AI-02 §6.7). Every shipped capability is `UNKNOWN`, so
+such a request is refused **before any transport activity**. That refusal is correct behaviour,
+and it is the same gate §14.1 forbids weakening.
+
+```text
+FROZEN: an offline test that needs to exercise serializer or parser behaviour for tools or
+        structured output MUST test the protocol adapter / normalization boundary directly.
+FROZEN: AI-09 MUST NOT fabricate a "verified model" to route such a test through `Invoker`.
+        No synthetic `VERIFIED` capability profile, no `ProbeAuthorisation` misuse, and no
+        gate bypass may be used to make a tool-call or structured-output test runnable.
+FROZEN: the model a compatibility test exercises is the real registered profile. AI-09 MUST
+        NOT register a synthetic model to stand in for Mimo.
+```
+
+AI-02's own gate tests do construct synthetic in-memory `VERIFIED` profiles in order to test the
+gate itself. That is legitimate for testing the gate, and it is not a precedent: it is never
+evidence about a provider, and AI-09 does not reuse the technique to claim capability.
+
+---
+
+## 15. Tool-calling compatibility semantics
+
+### 15.1 What is in scope
+
+```text
+IN SCOPE (AI-09): compatibility of the provider/transport boundary with tool calling:
+    - the provider accepts a standard tool schema
+    - the provider returns a normalized tool call
+    - that call maps correctly into `InvocationResult.tool_calls`
+```
+
+### 15.2 What is out of scope
+
+```text
+OUT OF SCOPE (AI-09): a model-driven tool loop.
+    - Codex deciding, from a model's tool call, to execute a tool
+    - executing that tool
+    - feeding the tool result back and continuing generation
+```
+
+```text
+FROZEN: AI-09-B MUST NOT convert `CodexBody` into a model-driven tool loop.
+FROZEN: tool execution remains AI-08 + AI-06 + AI-04's existing boundary. `CodexBody.plan`
+        stays what it is: a declared, Guard-mediated invocation list that the body executes.
+FROZEN: `agents/codex/body.py` is not modified by AI-09.
+```
+
+This is the difference between "can this provider round-trip a tool call at all" (a compatibility
+question, AI-09's) and "should this Agent act on one" (an execution-policy question, not AI-09's).
+
+### 15.3 What the compatibility test is, exactly
+
+The test observes exactly this chain, and stops at the end of it:
+
+```text
+    protocol accepts a tool schema
+              |
+              v
+    provider response
+              |
+              v
+    normalized `InvocationResult.tool_calls`
+```
+
+```text
+FROZEN: the test verifies MECHANISM — schema in, normalized tool call out. It does not
+        verify that Codex should act on the call, and it does not act on it.
+FROZEN: the test MAY supply ONE bounded, provider-neutral tool schema.
+FROZEN: that schema is PROTOCOL TEST INPUT (a Layer B control field, §12.2.2).
+        It is NOT `ContextResponse`, NOT agent metadata, and NOT evidence.
+FROZEN: the test MUST NOT execute the returned tool call. No AI-06 invocation is
+        triggered by the compatibility probe itself, and no Guard decision is produced
+        by it.
+FROZEN: there is NO model-driven continuation loop — the probe does not feed a tool
+        result back and generate again.
+FROZEN: the test reuses AI-02's existing normalization and protocol machinery. It does
+        not add a probe, a parser or a normalizer.
+```
+
+The schema is chosen to be trivial and provider-agnostic: the probe observes whether the
+mechanism round-trips, not whether the model chooses well. Which tool a model picks is selection
+correctness, and that belongs to AI-11.
+
+### 15.4 Offline vs live, for this test
+
+```text
+FROZEN: the offline half of this test runs at the protocol adapter / normalization boundary
+        (§14.4). It proves serialization and flattening. It does NOT go through `Invoker`
+        with a fabricated VERIFIED capability.
+FROZEN: no capability is promoted by either half. `tool_calling` stays `UNKNOWN` until a
+        live observation is produced and separately reviewed (§14.3).
+```
+
+---
+
+## 16. Structured-output compatibility semantics
+
+```text
+FROZEN: AI-09's structured-output compatibility test covers `json_object` at minimum.
+FROZEN: `json_object` and `json_schema` are NEVER treated as equivalent.
+FROZEN: AI-02's structured-output semantics are preserved: `json_object` guarantees JSON but
+        NOT schema conformance, and a consumer must validate rather than trust.
+FROZEN: AI-09 MUST NOT assert that `json_schema` works. AI-02 records that wrapper shape as
+        unverified for both providers, and nothing in AI-09 verifies it.
+FROZEN: a JSON-looking string is not evidence of schema-enforced output, and MUST NOT be
+        recorded as one.
+```
+
+If a `json_schema` observation is ever wanted, it is its own probe with its own evidence, by
+amendment to this document — not an extension of the `json_object` result.
+
+### 16.1 What the compatibility test is, exactly
+
+```text
+    explicit structured_output request
+              |
+              v
+    response_format: {"type": "json_object"}      a Layer B protocol control field
+              |
+              v
+    normalized `InvocationResult`
+```
+
+```text
+FROZEN: `response_format` is a protocol control field (§12.2.2). It is an explicit
+        structured-output REQUEST, supplied by the invocation. It is NOT context data,
+        NOT agent metadata, and NOT evidence.
+FROZEN: requesting it does not make it available. The capability gate still applies before
+        any transport activity, and no shipped capability is VERIFIED (§14.2).
+FROZEN: `json_object != json_schema` — held here as strictly as anywhere else in this
+        document.
+FROZEN: a compatibility test is not a capability promotion.
+FROZEN: a synthetic response is not live provider evidence.
+FROZEN: `UNKNOWN != VERIFIED`.
+```
+
+The offline half of this test runs at the protocol adapter / normalization boundary (§14.4). It
+proves that the request is serialized and the response parsed as declared. It proves nothing
+about Mimo.
+
+---
+
+## 17. Timeout semantics
+
+```text
+FROZEN: every AI-09 invocation is bounded. There is no unbounded call.
+FROZEN: `InvocationRequest.timeout_ms` is always set, and is always > 0.
+FROZEN: the effective deadline is the stricter of the request deadline and the runtime
+        config ceiling, composed by AI-02's existing `effective_transport_settings`.
+        A request may TIGHTEN a budget; it may never widen one.
+FROZEN: AI-09 MUST NOT pass `None`, `0`, infinity or a "no timeout" sentinel.
+FROZEN: AI-09 MUST NOT add a second timeout subsystem. There is one.
+```
+
+This is the "timeout / context handling test" arm of the roadmap requirement: bounded timeout
+(§17), no egress of context (§12), and the refusal on workspace mismatch (§12.4).
+
+---
+
+## 18. Retry semantics
+
+```text
+FROZEN: AI-09 v1 uses `max_retries = 0`.
+FROZEN: AI-09 MUST NOT add a retry loop, a retry budget, a backoff, or a "try the other model"
+        fallback at any layer it owns.
+FROZEN: compatibility and error tests MUST explicitly assert `attempts == 1`.
+```
+
+```text
+DEFERRED: real retry, resume, cancellation, checkpointing and failure classification remain
+          AI-13's. AI-09 MUST NOT expand into AI-13.
+```
+
+The rationale is not thrift. A retry loop hides the flakiness a compatibility test exists to
+observe, multiplies live cost, and would make `attempts` a lie. AI-02's `max_retries` field is
+frozen for AI-13 to consume; AI-09 leaves it inert.
+
+---
+
+## 19. Output and reference boundary
+
+### 19.1 `AgentResult` is not modified
+
+```text
+FROZEN: AI-08's `AgentResult` contract is unchanged.
+FROZEN: no raw model output.
+FROZEN: no raw prompt.
+FROZEN: no raw tool argument.
+FROZEN: no credential.
+FROZEN: `AgentResult.result` continues to use the existing reference grammar:
+        `sha256:<64 lowercase hex>` or `ref:<opaque token>`.
+```
+
+### 19.2 What the backend may do internally
+
+```text
+ALLOWED: raw provider response text, and normalized structured content, MAY exist in the
+        backend's TRANSIENT runtime memory for the duration of `produce`.
+ALLOWED: that content MAY reach the `InvocationResult`'s transient fields, because
+        `InvocationResult` is AI-02's invocation boundary and that is what it is for.
+FROZEN: the raw text MUST NOT be placed in `AgentResult`, in any field.
+FROZEN: the raw text MUST NOT be written to disk, to a log, to a phase evidence record, or
+        to any durable store.
+FROZEN: transient means transient — it does not survive the call, and nothing is expected to
+        be able to retrieve it afterwards.
+```
+
+### 19.2.1 The reference: one form, and its canonical inputs
+
+Because AI-09 v1 has no durable output store, the concrete backend returns a
+**provenance / content digest reference**, not a retrievable artifact locator.
+
+```text
+FROZEN: the produced reference has exactly ONE form:
+            sha256:<64 lowercase hex>
+FROZEN: it is a PROVENANCE / CONTENT DIGEST REFERENCE.
+FROZEN: it is NOT a retrievable artifact locator. It does NOT assert that a durable artifact
+        exists, that anything can be downloaded by presenting it, or that the bytes survive
+        the process. Nothing in AI-09 may present it as one.
+```
+
+Canonical digest input, by the invocation's normalized shape:
+
+```text
+plain text          the UTF-8 encoding of the normalized response text
+structured output   the canonical UTF-8 JSON representation of the normalized structured
+                    value
+tool-call response  the canonical UTF-8 JSON representation of the normalized invocation
+                    envelope carrying the tool-call data
+```
+
+**JSON canonicalization, stated without ambiguity.** For any JSON form above:
+
+```text
+encoding     UTF-8
+ensure_ascii false        non-ASCII characters are emitted as themselves, not \uXXXX
+sort_keys    true         keys are ordered lexicographically at every level
+separators   (",", ":")   no space after a comma, no space after a colon
+```
+
+```text
+FROZEN: the digest is taken over these exact bytes. Two implementations that follow this
+        clause produce the same digest for the same normalized value.
+```
+
+Never hashed, in any form:
+
+```text
+pretty-printed JSON
+the provider's raw payload
+HTTP headers
+a credential
+the endpoint URL
+`ContextResponse`, or any part of it
+```
+
+```text
+FROZEN: the tool-call digest is computed over the ALREADY-NORMALIZED
+        `InvocationResult` / tool-call representation — never over the provider's raw
+        response body. A digest over a raw payload would make the reference depend on a
+        wire shape AI-02 exists to hide, and would differ between two providers that
+        normalize to the same call.
+FROZEN: a FAILED or BLOCKED invocation produces NO success digest, and a `sha256:...`
+        value MUST NOT be fabricated to stand in for a successful model output.
+FROZEN: no artifact store is created to back any of this (§19.3).
+```
+
+```text
+FROZEN: the digest is computed AFTER normalization succeeds. Never over a raw provider
+        payload, and never over a partially parsed response.
+FROZEN: the digest input NEVER contains a credential, an Authorization header, an endpoint
+        URL, or any context item.
+FROZEN: the form used is determined by the invocation's normalized shape. It is NOT chosen
+        by the caller, and MUST NOT be selected to make a result look like something it is
+        not.
+FROZEN: a FAILED or BLOCKED invocation MUST NOT produce a successful model-output reference.
+        §19.4's failure mapping applies instead. A reference is never fabricated.
+```
+
+```text
+RECORDED, NOT A CONFLICT: these canonical forms are defined over AI-02's ALREADY-NORMALIZED
+        values (`InvocationResult.text`, `InvocationResult.structured_output`,
+        `InvocationResult.tool_calls`). They add no field, change no normalization rule, and
+        reinterpret no AI-02 type. AI-09 does NOT modify AI-02. If AI-09-B finds that a
+        canonical form cannot be computed from the normalized result without reinterpreting
+        it, that is a finding to record and escalate — not to resolve by changing AI-02.
+```
+
+### 19.3 No durable model-output store
+
+```text
+FROZEN: AI-09 v1 introduces NO durable artifact store, no model-output database, no blob
+        store, no cache of responses.
+FROZEN: AI-09 MUST NOT use an AI-05 EvidenceRecord as a model-output store.
+FROZEN: AI-05's Evidence boundary is unchanged, and AI-09 writes no EvidenceRecord.
+```
+
+```text
+FROZEN (scope statement): AI-09 v1 proves provider connectivity and normalized invocation.
+        Durable, user-visible model-output materialization is OUT OF SCOPE.
+```
+
+This is stated plainly rather than left implicit so that no later reader infers a store that was
+never designed. If materialization is wanted, it is its own contract with its own retention,
+redaction and admission questions — the ones AI-05 already asks about everything else.
+
+### 19.3.1 "AI-09 evidence record" — what that phrase means, and what it does not
+
+This document uses "AI-09 evidence record" in §22 and §23. It means one thing:
+
+```text
+FROZEN: "AI-09 evidence record" means the PHASE evidence / test record under `docs/AI-09_*` —
+        a Markdown document in this repository, written by AI-09-B, reviewed like any other
+        phase document.
+```
+
+It does **not** mean, and MUST NOT be implemented as:
+
+```text
+a `plugins/evidence` EvidenceRecord
+AI-05's admission pipeline, Store, or staged/promoted lifecycle
+a second evidence system, store, schema or producer token
+a place where model output is kept
+```
+
+```text
+FROZEN: AI-09 v1 MUST NOT modify `plugins/evidence/**`.
+FROZEN: AI-09 writes no EvidenceRecord, under any producer token.
+FROZEN: the only admissible producer token for an EXECUTION record remains AI-06's, exactly
+        as AI-08 recorded; AI-09 does not claim one and does not change that rule.
+```
+
+### 19.4 Failure and truncation mapping
+
+```text
+FROZEN: a non-SUCCESS `InvocationResult` MUST cause the backend to raise, so that AI-08's
+        existing body-failure path produces `FAILED`.
+FROZEN: the backend MUST NOT return a reference for an invocation that did not succeed.
+        Doing so would report `COMPLETED` for a failed call.
+```
+
+```text
+RECORDED LIMITATION: raising maps both a provider `ERROR` and a pre-flight `BLOCKED` onto
+        AI-08's `FAILED`. AI-08's `AgentExecutionOutcome` is a frozen three-member enum and
+        AI-09 MUST NOT amend it to add a fourth. The distinction is not lost — it survives
+        intact on the `InvocationResult`, which AI-09's tests observe directly, and in the
+        block reason recorded there. It is simply not carried into `AgentResult`.
+```
+
+```text
+OPEN: whether a `LENGTH` (truncated) SUCCESS produces a reference.
+DEFAULT (frozen for AI-09-B): it does NOT; the backend raises. With no durable artifact
+        store, a truncated answer cannot be distinguished downstream from a complete one,
+        and AI-08 forbids a result that reads as more than it is. Revisiting this requires
+        an amendment to this document.
+```
+
+---
+
+## 20. Test model: offline and live
+
+### 20.1 Offline (the default, and the gate)
+
+```text
+FROZEN: AI-09's ordinary tests are offline, deterministic, and require no credential.
+FROZEN: they use the existing shared `FakeTransport`. AI-09 MUST NOT add a second fake
+        transport framework or a second fixture format.
+FROZEN: they declare exactly one layer marker, per the existing layer model.
+```
+
+They prove: the binding, the request construction, the failure mapping, the workspace-alignment
+refusal, the absence of context egress, `attempts == 1`, and that no capability moved.
+
+### 20.2 Live (opt-in, manual, bounded)
+
+```text
+FROZEN: any live observation reuses AI-02's existing LiveVerifier / ProbeAuthorisation
+        machinery. AI-09 MUST NOT copy, fork or reimplement a capability probe.
+FROZEN: no live run is added to the default CI path.
+FROZEN: the default CI path performs NO NETWORK access to a provider.
+FROZEN: AI-09 does not widen `LIVE_PROVIDER_ALLOWLIST`.
+```
+
+`mimo` is already in the allowlist, so no widening is required for §5's target.
+
+### 20.3 The default gate stays as it is
+
+```text
+FROZEN: `pytest.ini`'s `addopts = -m "not layer4"` is unchanged.
+FROZEN: `scripts/ci/layer0_policy.py`'s workflow rules are unchanged except for the new
+        AI-09 layer check of §10.4.
+FROZEN: `.github/workflows/live-model-verification.yml` stays `workflow_dispatch` only,
+        `contents: read`, with step-scoped secrets.
+```
+
+### 20.4 Transport injection
+
+```text
+FROZEN: the integration layer receives its `Transport` by injection from its composition root.
+        It MUST NOT import `providers.http_transport`, and MUST NOT choose a transport.
+FROZEN: the default (offline) path constructs no real transport, exactly as today.
+```
+
+This is what keeps §20.2 true structurally rather than by convention.
+
+---
+
+## 21. Non-goals — frozen
+
+```text
+AI-09 v1 does NOT:
+    implement a generic `openai-compatible` provider
+    create a third provider identity
+    add a protocol, an adapter, or an HTTP client
+    add a second invocation API
+    modify `providers/`, `agents/`, `routing/`, `plugins/`, `tools/`
+    modify the AI-02, AI-07 or AI-08 contracts
+    connect the Router to execution, or consume `RouterDecision.selected`
+    resolve `agent_hint`
+    put a provider client inside `agents/codex/`
+    send context, context items, or a serialised `ContextResponse` to a provider
+    attach workspace or execution metadata to the provider request
+    infer provider enablement from a profile's existence or from a registered model
+    treat `config/providers/providers.example.yaml` as production enablement
+    enable or invoke a `reserved` provider
+    add a credential scheme, or read a credential itself
+    promote a capability, or write `VERIFIED`
+    add a capability probe
+    fabricate a synthetic `VERIFIED` profile to route a test through the capability gate
+    build a model-driven tool loop, or execute a tool
+    add a retry loop, a fallback, or a second timeout subsystem
+    add a durable model-output store, or write an AI-05 EvidenceRecord
+    present a `sha256:` reference as a retrievable artifact locator
+    widen the live provider allowlist or the live workflow's trigger
+    reach SecurityLab
+```
+
+---
+
+## 22. AI-09-B implementation checklist
+
+```text
+[ ]  1. Create `integrations/` and `integrations/codex/` as a namespace package (no __init__.py).
+[ ]  2. Implement one concrete `CodexBackend` implementation, conforming to AI-08's protocol
+        signature EXACTLY. Do not add, remove or rename a parameter.
+[ ]  3. Bind `model_ref` explicitly at construction; validate against §6's two refs; make it
+        immutable; do not expose it on `produce`.
+[ ]  4. Accept an injected `Transport` (and the invocation context it implies) from the
+        composition root. Do not import or select a transport.
+[ ]  5. Build the `InvocationRequest` per §12.2 and §17. Send the declared task text and the
+        protocol-required fields, and nothing derived from `ContextResponse`.
+[ ]  6. Implement the workspace-alignment refusal of §12.4 using AI-03's existing primitive.
+[ ]  7. Implement the failure mapping of §19.4 and the reference of §19.2.1: raise on
+        non-SUCCESS; compute the canonical `sha256:` digest; never materialize the text and
+        never present the reference as an artifact locator.
+[ ]  8. Add `check_ai09_integration_layer()` to `scripts/ci/layer0_policy.py`, asserting §10.3.
+        Add it to `main()`'s report sequence.
+[ ]  9. Add offline AI-09 tests: binding validation, request shape, no-context-egress,
+        workspace mismatch refusal, failure mapping, `attempts == 1`, no capability movement.
+[ ] 10. Add the tool-calling and structured-output compatibility observations by REUSING
+        AI-02's existing machinery (§14.3, §15.3, §16.1, §20.2). Do not add a probe. The
+        offline halves go at the protocol adapter / normalization boundary; the probe does
+        not execute the returned tool call and triggers no AI-06 invocation.
+[ ] 11. Verify Layer 0 passes and Layers 1-3 pass, with no credential present.
+[ ] 12. Write `docs/AI-09_*_EVIDENCE_*.md`.
+[ ] 13. Update `docs/PROJECT_STATUS.md` and `docs/MASTER_ROADMAP.md` status lines.
+[ ] 14. Confirm the AI-09 contract blob is UNCHANGED by the implementation (or amend first).
+[ ] 15. Confirm AI-02, AI-07 and AI-08 contract blobs are UNCHANGED.
+[ ] 16. Enforce §5.3 runtime enablement at construction, from AI-02's `ProviderConfig`.
+         Do NOT modify `providers/config.py`. Refuse when enablement cannot be shown.
+[ ] 17. Implement §12.2's two-layer projection. Layer A: `AgentExecutionRequest.task` ->
+         exactly one provider user message. Layer B: the protocol control fields the
+         invocation requires, and no more. Assert §12.2.4's invariant, and assert the
+         absence of context, workspace and execution metadata in BOTH layers.
+[ ] 18. Implement §19.2.1's single reference form and its canonical digest inputs.
+[ ] 19. Assert §19.3.1: no `plugins/evidence` import, no EvidenceRecord, no second evidence
+         system anywhere in `integrations/`.
+```
+
+---
+
+## 23. Exit criteria
+
+```text
+C0   this contract is frozen and merged.                                    AI-09-A
+C1   `integrations/` exists as a core namespace layer, with the AI-09 Layer 0 check.
+C2   a concrete `CodexBackend` exists, binds one explicit `model_ref`, and conforms to
+     AI-08's signature with no amendment to AI-08.
+C3   every AI-09 invocation reaches a provider only through `Invoker.invoke`.
+C4   no context, context item, or serialised `ContextResponse` crosses the provider boundary,
+     asserted by test.
+C5   no credential literal, no new credential scheme, and no credential read by the
+     integration layer.
+C6   no capability moved out of `UNKNOWN`; the capability gate is intact and unbypassed.
+C7   the tool-calling and structured-output compatibility observations exist and reuse
+     AI-02's machinery; `json_object` is not conflated with `json_schema`.
+C8   timeout is bounded and `attempts == 1` is asserted.
+C9   no durable model output exists anywhere; `AgentResult` is unchanged.
+C10  Layer 0 passes, Layers 1-3 pass with no credential present, and no live call is part of
+     the default gate.
+C11  an AI-09 evidence record is written, and the AI-02, AI-07 and AI-08 contract blobs are
+     unchanged.
+C12  required CI passes on the AI-09-B head branch.
+C13  runtime enablement is enforced at construction; profile existence alone never
+     authorizes a call; no `reserved` provider can be enabled or invoked.
+C14  the provider request contains exactly the declared task as one user message, with no
+     context, workspace or execution metadata attached, asserted by test.
+C15  the reference is a `sha256:` provenance digest over the canonical input of §19.2.1, and
+     is never presented as a retrievable artifact locator.
+C16  the two-layer projection holds: Layer A carries only the declared task, Layer B carries
+     only protocol control fields, and neither carries workbench execution or context state.
+     §12.2.4's invariant is asserted by test.
+C17  the tool-calling compatibility probe supplies a schema it never executes, triggers no
+     AI-06 invocation, and has no continuation loop.
+```
+
+```text
+A phase is COMPLETE only when its required CI passes on its own head and the merge checkpoint
+is taken. Merged code is not a PASS by itself, and neither is a local green run.
+```
+
+---
+
+## 24. Open questions
+
+| # | Question | Stated default for AI-09-B |
+| --- | --- | --- |
+| 1 | Does a `LENGTH` (truncated) success produce a reference? | No — raise (§19.4) |
+| 2 | Should AI-02's transport-confinement guard's roots be widened to include `integrations/`? | Not by AI-09-B; AI-09's own Layer 0 check covers it (§10.4) |
+| 3 | Is a durable model-output store wanted at all? | Out of scope for v1 (§19.3); needs its own contract |
+| 4 | Should context ever reach a model? | Not in v1; requires a bounded projection contract (§12.5) |
+| 5 | Should routing ever select the model an Agent executes? | Not in v1; recorded as an architecture gap (§9.1) |
+| 6 | Which of the two model refs does a given Codex execution use, and who decides? | The caller, by constructing the corresponding backend (§11). No default. |
+
+---
+
+## 25. What a reader must not infer
+
+```text
+Do not infer a model-output store.        There is none (§19.3).
+Do not infer a retry.                     max_retries is 0 and inert (§18).
+Do not infer a fallback model.            There is no default and no substitution (§6).
+Do not infer a capability.                Every shipped capability is UNKNOWN (§14).
+Do not infer provider behaviour.          No provider call has been made in this repository.
+Do not infer that COMPLETED means PASS.   It does not; that is AI-08's rule and it stands.
+Do not infer that a live run promotes.    It produces evidence for review (§14.3).
+Do not infer that AI-09 chose the model.  A caller bound it explicitly (§11).
+Do not infer that a profile is enabled.   Enablement is runtime config, and it is explicit (§5.3).
+Do not infer that the example config is on. Every entry in it ships `enabled: false` (§5.3).
+Do not infer an artifact behind a ref.    A `sha256:` reference locates nothing (§19.2.1).
+Do not infer that Invoker checks enablement. It does not; AI-09 is the caller that must (§5.3).
+Do not infer that enablement is enough.   It never bypasses the capability gate (§5.3).
+Do not infer that protocol fields are egress. `model`, `tools`, `response_format`, `stream`
+                                          and the generation controls are the protocol's own
+                                          structural fields, not workbench content (§12.2.2).
+Do not infer that omitting them is safer. A tool-call test without its schema tests something
+                                          else, not something safer (§12.2.4).
+```
+
+---
+
+## 26. Amendment rule
+
+```text
+FROZEN: AI-09-B MUST NOT deviate from this document without amending it first.
+```
+
+An amendment is REQUIRED for any change to:
+
+```text
+the target provider (§5) or the reserved status of openai-compatible (§5.2)
+the supported model refs (§6), or the introduction of any default or fallback
+the invocation path (§8) or the Router boundary (§9)
+the integration layer's location or dependency direction (§10)
+model binding (§11)
+the context egress policy (§12)
+the credential policy (§13)
+the capability truth boundary (§14)
+tool-calling (§15) or structured-output (§16) semantics
+timeout (§17) or retry (§18) semantics
+the output/reference boundary (§19)
+the test model (§20)
+any non-goal in §21
+```
+
+An amendment records: what changed, why, its security and authority impact, and the date. It is
+committed before the code that depends on it.
+
+Applied amendments are recorded in §28. The contract's own section numbering is not renumbered by
+an amendment: text is amended in place and the change is logged.
+
+---
+
+## 27. Freeze record
+
+```text
+Phase            AI-09 — Domestic Models for Codex
+Sub-phase        AI-09-A — Contract / Execution Plan / Freeze
+Status           FROZEN, as amended by Amendments 1 and 2 (§28)
+Date             2026-10-02
+Base             main @ edb7dfc82ce51123482ac357fb9319dca2fa0d9a
+Contract         docs/AI-09_CODEX_PROVIDER_EXECUTION_PLAN.md
+Amendments       1   Amendment 1 — runtime enablement, exact task projection, capability
+                       test semantics, result-reference semantics, evidence terminology
+                 2   Amendment 2 — two-layer egress semantics (execution-state content vs
+                       protocol control fields), tool/structured-output test semantics,
+                       the call-order freeze, JSON canonicalization
+```
+
+```text
+AI-08 contract blob   a01e03f5306299a0a4442648eeb8fdcfce6bd8dd   UNCHANGED by AI-09-A
+AI-07 contract blob   2f8dcba8f9c2ca36e3d917fc6b69c3a5cb7f36fe   UNCHANGED by AI-09-A
+AI-02 contract        docs/AI-02_MODEL_LAYER_EXECUTION_PLAN.md   UNCHANGED by AI-09-A
+```
+
+```text
+FROZEN here   the target provider, the supported model refs, the reserved status of
+              openai-compatible, the invocation path, the Router boundary, the integration
+              layer's physical boundary and dependency direction, model binding, the context
+              egress policy, the credential policy, the capability truth boundary,
+              tool-calling and structured-output semantics, timeout and retry semantics,
+              the output/reference boundary, the test model, and the non-goals
+NOT DECIDED   any implementation detail of the integration backend (§22 lists what AI-09-B owes)
+```
+
+**AI-09-A freezes a contract. No backend exists, no integration layer exists, and no provider call
+has been made by this phase.**
+
+---
+
+## 28. Amendment log
+
+### Amendment 1 — 2026-10-02 — contract clarification
+
+**What was ambiguous.** Four freeze-level questions had more than one defensible reading, and a
+fifth phrase had a name collision:
+
+```text
+1. runtime enablement   The contract required `mimo` and a bound `model_ref`, but never said
+                        that runtime config must ENABLE the provider. "The profile exists"
+                        and "the provider is enabled" were not distinguished.
+
+2. task projection      §12 forbade sending context, but did not state the permitted payload
+                        positively, completely, or as a single exact projection.
+
+3. capability semantics §14.3 named three things but did not separate the two OFFLINE test
+                        layers from each other, and did not say HOW a tool-call or
+                        structured-output offline test can run at all given the gate.
+
+4. result references    §19 forbade a durable store but did not fix the reference FORM or its
+                        canonical digest input, leaving "digest over what, exactly" open.
+
+5. evidence wording     "AI-09 evidence record" (§22, §23) could be misread as an AI-05
+                        `plugins/evidence` EvidenceRecord.
+```
+
+**What changed.**
+
+```text
+NEW  §5.3      Runtime enablement — the three-part conjunction, who checks it, that profile
+               existence is not enablement, that `reserved` is never enabled, that the
+               example config is a template, and what AI-02 does NOT enforce today.
+NEW  §12.2     The exact projection: `request.task` -> exactly one provider user message,
+               plus the forbidden-egress list.
+NEW  §12.2.1   Local-only information, and the rule that local availability is not egress
+               permission.
+NEW  §14.3     Three test layers (A protocol/adapter, B offline normalization, C live
+               capability observation) plus D, the truth that is not a test.
+NEW  §14.4     How A and B are run: test the adapter / normalization boundary directly;
+               never fabricate a `VERIFIED` model to route a test through the gate.
+NEW  §19.2.1   The single reference form `sha256:<64 lowercase hex>`, its canonical digest
+               inputs by response shape, and that it is not a retrievable artifact locator.
+NEW  §19.3.1   "AI-09 evidence record" means a `docs/AI-09_*` phase record, not an AI-05
+               EvidenceRecord.
+EDIT §21       Non-goals extended with the new prohibitions.
+EDIT §22       Checklist extended with items 16-19.
+EDIT §23       Exit criteria extended with C13, C14, C15.
+EDIT §25       Four more things a reader must not infer.
+EDIT §26, §27  Amendment pointer and record.
+```
+
+**Why.** Each item was a place where a reasonable implementer could have built the wrong thing
+and still believed they were conformant. Freeze-level ambiguity is cheapest to remove before any
+implementation exists.
+
+**Security and authority impact.** Tightening only. Every change narrows what AI-09 may do:
+
+```text
+§5.3   closes "the profile exists, so call it" and blocks invoking a reserved provider
+§12.2  closes "context was available, so it could ride along"
+§14    closes "the test passed, so the capability is verified" and "fake a VERIFIED model"
+§19.2  closes "the digest means something is stored somewhere"
+§19.3  closes "evidence record" being read as AI-05's
+```
+
+No permission is widened, no gate is relaxed, no boundary is moved, and no new authority is
+created. Nothing in this amendment authorizes an implementation act that was previously
+forbidden.
+
+**Contracts touched outside AI-09.** None.
+
+```text
+AI-02 contract   UNCHANGED   no field, rule or type is added, removed or reinterpreted
+AI-07 contract   UNCHANGED   the Router boundary is restated, not altered
+AI-08 contract   UNCHANGED   AgentResult and the CodexBackend signature are restated
+```
+
+**Recorded, not resolved.** §19.2.1 notes that the canonical digest forms are defined over
+AI-02's already-normalized values and add nothing to AI-02. If AI-09-B finds a canonical form
+cannot be computed from the normalized result without reinterpreting an AI-02 type, that is a
+finding to record and escalate — not to resolve by changing AI-02.
+
+**Verified after the amendment** — all offline, no credential present, no network:
+
+```text
+Layer 0 (scripts/ci/layer0_policy.py)     PASS (17 checks)
+providers.validate                        PASS
+plugins.context.validate                  PASS
+pytest (layers 1-3, layer4 deselected)    2483 passed, 2 skipped, 5 deselected
+```
+
+**Still true after the amendment.**
+
+```text
+mimo is the only AI-09 v1 concrete provider.
+mimo/mimo-v2.6-pro and mimo/mimo-v2.6-flash are the only two supported model refs.
+providers/openai-compatible/ remains RESERVED / DISABLED / UNIMPLEMENTED.
+No implementation exists. No provider call has been made.
+```
+
+### Amendment 2 — 2026-10-02 — provider egress semantics
+
+**What was wrong.** As written after Amendment 1, the contract could be read as saying the
+provider payload may contain **only one task string**. That reading is not just stricter than
+intended — it is incoherent with the rest of the same document:
+
+```text
+1. §12.2 said "exactly one provider user message ... and nothing else".
+2. §15 required a tool-calling compatibility test, which needs `tools` in the request.
+3. §16 required a structured-output compatibility test, which needs `response_format`.
+4. Every OpenAI-compatible chat request needs `model` and a `messages` envelope.
+```
+
+An implementer following the literal text of (1) could not have built (2) or (3) at all, and would
+have had to conclude either that the tests were impossible or that the contract was wrong. Worse,
+the ambiguity cut both ways: it invited the opposite error of treating a required protocol field
+as forbidden egress and silently dropping it.
+
+**What changed.**
+
+```text
+REWRITTEN §12.2   Split into two explicitly governed layers.
+
+NEW  §12.2.1      Layer A — workbench execution-state CONTENT (natural language). Admits
+                  exactly one thing: `AgentExecutionRequest.task`, as one user message.
+                  The forbidden-content list is unchanged and restated in full.
+
+NEW  §12.2.2      Layer B — PROTOCOL CONTROL FIELDS (structural). Admits `model`, the
+                  `messages` envelope, `tools`, `response_format`, `stream`, `temperature`,
+                  `max_tokens`, `stop`, and the adapter's fixed HTTP headers. States that
+                  these are the protocol's own fields and not workbench content, and lists
+                  what they must never carry.
+
+NEW  §12.2.3      Local-only information — renumbered from §12.2.1, content preserved and
+                  extended to say "not as Layer A content and not as a Layer B control
+                  field".
+
+NEW  §12.2.4      The task-projection invariant (given T and C, provider-visible natural
+                  language is exactly T), plus worked WRONG/RIGHT examples in both
+                  directions — including the inverse error of dropping a required
+                  protocol control field.
+
+EXTENDED §5.3     Enablement "is added, not substituted": it does not replace or modify
+                  `Invoker`'s provider/model/capability checks. The full call order is
+                  frozen as a diagram, `CodexBackend -> direct HttpTransport` is forbidden
+                  explicitly, and four clarifications pin what each step does and does not
+                  grant.
+
+NEW  §15.3, §15.4 What the tool-calling compatibility test is, exactly: schema in,
+                  normalized tool call out; the schema is protocol test input; the probe
+                  never executes the returned call, triggers no AI-06 invocation and has no
+                  continuation loop.
+
+NEW  §16.1        The same treatment for structured output, with `response_format` named as
+                  a Layer B control field.
+
+EXTENDED §19.2.1  JSON canonicalization stated machine-unambiguously: UTF-8,
+                  `ensure_ascii=false`, `sort_keys=true`, `separators=(",", ":")`. Explicit
+                  never-hashed list, and the rule that a tool-call digest is taken over the
+                  ALREADY-NORMALIZED representation, never the raw provider payload.
+
+EDIT §22, §23     Checklist items 5, 10, 17 refined; exit criteria C16 and C17 added.
+EDIT §25, §27     Two more "must not infer" lines; amendment count.
+```
+
+**Why.** The two-layer split is the difference between a contract that can be implemented and one
+that has to be argued with. It removes an ambiguity that would have been discovered only mid-
+implementation, after a test was already written the wrong way.
+
+**Security and authority impact.** Net tightening, and the widening it does contain is narrowly
+scoped and explicit:
+
+```text
+NARROW WIDENING  Layer B permits `tools` and `response_format` in the request. These were
+                 always necessary for §15 and §16 to be satisfiable; Amendment 2 states it
+                 rather than leaving it implied. The widening is confined to the protocol's
+                 own structural fields and is bounded by §12.2.2's never-carry list.
+TIGHTENING       Layer A is restated in full and unchanged in substance.
+TIGHTENING       §12.2.4 makes the projection a testable invariant and names both failure
+                 directions, so neither over-disclosure nor silent under-disclosure passes.
+TIGHTENING       §5.3 now freezes the call order and forbids the direct-transport shortcut
+                 in as many words.
+TIGHTENING       §19.2.1's canonicalization is exact, so a digest cannot vary by
+                 implementation, and cannot be taken over a raw payload or a credential.
+```
+
+No gate is relaxed. Enablement still does not bypass the capability gate, no capability moves out
+of `UNKNOWN`, and `json_object != json_schema` is restated as strictly as before.
+
+**Contracts touched outside AI-09.** None.
+
+```text
+AI-02 contract   UNCHANGED   no field, rule or type is added, removed or reinterpreted
+AI-07 contract   UNCHANGED   the Router boundary is restated, not altered
+AI-08 contract   UNCHANGED   AgentResult and the CodexBackend signature are restated
+```
+
+**Evidence boundary.** Unchanged from Amendment 1 (§19.3.1). "AI-09 evidence record" continues to
+mean a `docs/AI-09_*` phase / test record, not a `plugins/evidence` EvidenceRecord. AI-05 is not
+modified.
+
+**Verified after the amendment** — all offline, no credential present, no network:
+
+```text
+Layer 0 (scripts/ci/layer0_policy.py)     PASS (17 checks)
+providers.validate                        PASS
+plugins.context.validate                  PASS
+pytest (layers 1-3, layer4 deselected)    2483 passed, 2 skipped, 5 deselected
+```
+
+**Still true after this amendment.**
+
+```text
+mimo is the only AI-09 v1 concrete provider.
+mimo/mimo-v2.6-pro and mimo/mimo-v2.6-flash are the only two supported model refs.
+providers/openai-compatible/ remains RESERVED / DISABLED / UNIMPLEMENTED.
+No implementation exists. No provider call has been made.
+No artifact store exists, and a `sha256:` reference locates nothing.
+```

@@ -417,15 +417,15 @@ second opinion -> independent Agent
 
 ## AI-08 — Codex Second Agent
 
-**Status: AI-08-A COMPLETE / MERGED; AI-08-B IMPLEMENTED ON BRANCH.** The contract is
+**Status: COMPLETE / MERGED.** The contract is
 [AI-08_AGENT_EXECUTION_EXECUTION_PLAN.md](AI-08_AGENT_EXECUTION_EXECUTION_PLAN.md), frozen at
-AI-08-A and merged as `2117cdf4` (PR #51). AI-08-B implements the runtime against it on
-`feature/ai-08-agent-runtime` and is awaiting its merge checkpoint.
+AI-08-A and merged as `2117cdf4` (PR #51). AI-08-B implemented the runtime against it and was
+merged as `edb7dfc82ce51123482ac357fb9319dca2fa0d9a` (PR #52).
 
 ```text
 AI-08-A     = COMPLETE / MERGED    contract frozen          (PR #51, 2117cdf4)
-AI-08-B     = IMPLEMENTED ON BRANCH, NOT MERGED
-AI-08       = NOT CLOSED           awaiting the human merge checkpoint
+AI-08-B     = COMPLETE / MERGED    agent runtime            (PR #52, edb7dfc8)
+AI-08       = CLOSED
 contract    = blob a01e03f5306299a0a4442648eeb8fdcfce6bd8dd
                      after Amendment 4
 previous    = 739ec29f37bfb8654f19ca088d6af57ffdd09e69
@@ -514,6 +514,27 @@ producer claim.
 ---
 
 ## AI-09 — Domestic Models for Codex
+
+**Status: AI-09-A CONTRACT FROZEN.** The contract is
+[AI-09_CODEX_PROVIDER_EXECUTION_PLAN.md](AI-09_CODEX_PROVIDER_EXECUTION_PLAN.md), frozen at
+AI-09-A on `feature/ai-09-provider-codex-contract`. No implementation exists: AI-09-B has not
+started, and no provider call has been made by this phase.
+
+```text
+AI-09-A     = CONTRACT FROZEN      (2026-10-02)
+AI-09-B     = NOT STARTED
+AI-09       = NOT CLOSED
+contract    = blob e9728b184740074e5c8f718db6b45f859c3802bf
+                     Amendment 2 applied 2026-10-02
+previous    = d974c7b62d44210be36c41a105800697a96620ec
+                     after Amendment 1
+earlier     = 66978cbd685f408ea37dd70e9f0b1e364e2e2955
+                     the AI-09-A freeze, before any amendment
+provider    = mimo — the existing profile; NO third provider identity
+models      = mimo/mimo-v2.6-pro, mimo/mimo-v2.6-flash
+backend     = integrations/codex/   (AI-09-B creates it; a namespace package)
+reserved    = providers/openai-compatible/ stays RESERVED / DISABLED / UNIMPLEMENTED
+```
 
 目标：利用 Codex 的 provider abstraction 接入其他 OpenAI-compatible API。
 
@@ -758,8 +779,8 @@ SecurityLab
 | AI-05 | **B1 COMPLETE** (PR #34); **B2 COMPLETE** — P1 `844df7be` (PR #41), P2 `b8692c18` (PR #42) and P3 `67515ff9` (PR #44) merged; **AI-05 INCOMPLETE** — C-1 DEFERRED, §30 step 7 unimplemented; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-06 | **COMPLETE** — merged as `3b1917ab` (PR #47); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-07 | **COMPLETE** — contract `963c181c` (PR #48), implementation `e57541f9` (PR #49) merged; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
-| AI-08 | **AI-08-A MERGED** (`2117cdf49940bb97f5f18a6447fbc2f0137b31e7`, PR #51); **AI-08-B IMPLEMENTED ON BRANCH** — awaiting review; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
-| AI-09 | NOT STARTED |
+| AI-08 | **COMPLETE** — merged as `edb7dfc82ce51123482ac357fb9319dca2fa0d9a` (PR #52); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
+| AI-09 | **AI-09-A CONTRACT FROZEN** — implementation not started; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-10 | NOT STARTED |
 | AI-11 | NOT STARTED |
 | AI-12 | NOT STARTED |
