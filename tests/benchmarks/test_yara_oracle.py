@@ -743,6 +743,10 @@ def test_Y24_an_environment_that_cannot_scan_observed_nothing(task, control) -> 
             "ai11_reference_answer /elsewhere/other_sample.txt\n",
             "a record about a different target",
         ),
+        (
+            "ai11_reference_answer /elsewhere/holdout_positive_beacon.txt\n",
+            "a record about a DIFFERENT file with the SAME basename (see Y26b)",
+        ),
     ],
 )
 def test_Y25_unattributable_output_is_unknown_never_a_guess(control, stdout, why) -> None:
@@ -791,6 +795,8 @@ def test_Y25_unattributable_output_is_unknown_never_a_guess(control, stdout, why
         ("warning: rule may slow down scanning\n", YaraReading.AMBIGUOUS),
         ("ai11_reference_answer\n", YaraReading.AMBIGUOUS),
         ("ai11_reference_answer /elsewhere/other.txt\n", YaraReading.AMBIGUOUS),
+        # Same basename, different directory: a DIFFERENT file. See Y26b.
+        ("ai11_reference_answer /elsewhere/sample.txt\n", YaraReading.AMBIGUOUS),
         ("some prose that is not a record at all\n", YaraReading.AMBIGUOUS),
     ],
 )
@@ -802,6 +808,37 @@ def test_Y26_the_parser_reports_what_the_scanner_said(stdout, expected) -> None:
     something else can become a detection.
     """
     assert parse_yara_matches(stdout, ("ai11_reference_answer",), target="sample.txt") is expected
+
+
+def test_Y26b_the_same_basename_in_another_directory_is_not_the_scanned_target() -> None:
+    """A record is attributed by PATH, never by name.
+
+    `A/clean.txt` and `B/clean.txt` are two different files. An attribution rule that
+    accepted the second because it shares a name with the first would report a detection
+    for a file this invocation never opened — and it would do it silently, because the
+    scanner really did print a record.
+
+    The strict reading is the only one that is provable: the collector invoked the
+    scanner against exactly one target, so the only record it can attribute is the one
+    naming that target.
+    """
+    scanned = Path("/scan/A/clean.txt")
+    stdout = "ai11_reference_answer /scan/B/clean.txt\n"
+
+    assert parse_yara_matches(stdout, ("ai11_reference_answer",), target=scanned) is (
+        YaraReading.AMBIGUOUS
+    ), "a record about a different file must not be attributed to the scanned one"
+    assert parse_yara_matches(
+        stdout, ("ai11_reference_answer",), target="/scan/B/clean.txt"
+    ) is YaraReading.MATCHED, "and the same record IS attributable to the file it names"
+
+    # The same statement end to end: the collector scanning one held-out sample must not
+    # read a record about another file of the same name as a detection.
+    assert parse_yara_matches(
+        "ai11_reference_answer holdout_clean.txt\n",
+        ("ai11_reference_answer",),
+        target="/held/out/holdout_clean.txt",
+    ) is YaraReading.AMBIGUOUS
 
 
 def test_Y27_a_record_is_matched_by_identity_not_by_being_present() -> None:

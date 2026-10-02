@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import sys
 import tempfile
@@ -333,22 +334,39 @@ def declared_rule_names(rule_text: str) -> tuple[str, ...]:
     return tuple(_YARA_RULE_DECLARATION.findall(_YARA_BLOCK_COMMENT.sub(" ", rule_text)))
 
 
-def _same_target(reported: str, scanned: Path) -> bool:
-    """Whether a match record's target is the file this invocation scanned.
+def _comparable(path: Path) -> str:
+    """One path in the form the PLATFORM considers canonical, and nothing beyond it.
 
-    One invocation scans exactly one target, so the echoed path is compared whole, with
-    the basename accepted as the weaker form: the CLI echoes back the path it was given,
-    and a host that spells the same file differently (a normalised separator, a resolved
-    symlink) has still reported THIS invocation's target. Rejecting the weaker form would
-    turn a formatting difference into AMBIGUOUS — the safe direction, but not a correct
-    one.
+    `normpath` collapses `.`, `..` and repeated separators; `normcase` folds letter case
+    and separator style on the platforms that consider them equivalent. Nothing is
+    resolved through a symlink, and nothing is invented.
+    """
+    return os.path.normcase(os.path.normpath(str(path)))
+
+
+def _same_target(reported: str, scanned: Path) -> bool:
+    """Whether a match record's target is the file THIS invocation scanned.
+
+    A record is bound to the target by PATH, never by name. `yara` echoes back the target
+    it was given, and the collector gives it exactly one — `str(sample)` for the sample
+    under scan — so the comparison is:
+
+    ```text
+        the reported path, normalised the way the platform normalises paths
+        ==
+        the scanned path, normalised the same way
+    ```
+
+    A shared BASENAME is deliberately not enough. `A/clean.txt` and `B/clean.txt` are two
+    different files, and accepting a record about the second because it is called the
+    same thing as the first would attribute a detection to a file that was never scanned
+    — an attribution bug in the one place the oracle decides what was observed.
     """
     try:
-        if Path(reported) == scanned:
-            return True
+        candidate = Path(reported)
     except (OSError, ValueError):  # pragma: no cover - a path the platform refuses
         return False
-    return Path(reported).name == scanned.name and scanned.name != ""
+    return _comparable(candidate) == _comparable(scanned)
 
 
 def parse_yara_matches(
