@@ -52,7 +52,7 @@ benchmarks/results/    run data. GITIGNORED and disposable by default
 | `run.py` | `BenchmarkRun`, `TestCounts`, `ToolTraceEntry`, `HostRecord` |
 | `oracle.py` | the oracle protocol, the §11 skip-aware PASS rule, the aggregates |
 | `oracles.py` | the corpus judges. Pure decisions, so §7.4 is testable without tools |
-| `workspace.py` | derivation, the manifest digest, and the read-only rule |
+| `workspace.py` | source derivation, the FILTERED agent-visible tree, the manifest digest, and the read-only rule |
 | `executor.py` | the deterministic **non-model** reference executor |
 | `replay.py` | `python3 -m benchmarks.replay <task_id>` — the reproduction entry point |
 
@@ -68,6 +68,32 @@ benchmarks/tasks/<task_id>/task/            material the task itself ships
 Six tasks, covering firmware, yara, can, uds, reverse and fuzzing-recovery. Five are
 Tier A; `ai11-v1-fuzzing-recovery-triage` is Tier B because it needs an exclusive
 `vcan0` and `CAP_NET_ADMIN`, which a CI runner cannot satisfy at all.
+
+## The workspace lifecycle
+
+```text
+source @ pinned sha -> scratch clone --no-hardlinks -> detached source worktree
+    -> harness builds generated artifacts in scratch/setup
+    -> FILTER: only declared include material is copied into scratch/workspace
+    -> VERIFY: every excluded path must be ABSENT
+    -> MANIFEST: measured over the filtered tree
+```
+
+The order is load-bearing. Filter first, verify second, manifest third — a digest taken
+over the full source worktree measures a tree the Agent never sees.
+
+```text
+<scratch_root>/<run_id>/
+    source.git/    the scratch clone
+    source/        the detached worktree — the BUILD source, never the workspace
+    setup/         build-only area
+    workspace/     the FINAL agent-visible tree
+```
+
+Only `workspace/` is handed to an executor, and it holds exactly: declared include
+material, declared task material (`task/...`), and declared generated artifacts.
+`control/`, the oracle's truth, the withheld sources and the rest of the source tree are
+not in it.
 
 ## What it does not do, and will not
 
