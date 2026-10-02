@@ -24,6 +24,7 @@ from plugins.guard.vocabulary import GuardDecision
 from plugins.security_tools import AdapterFamily, ToolOutcome
 
 from agents.body import OfflineBody
+from agents.result import AgentExecutionOutcome
 from agents.runtime import run_execution
 from agents.toolcall import ToolGateway, ToolInvocation
 from agents.vocabulary import AgentId
@@ -295,3 +296,172 @@ class TestPermissionRecordsAreExecutionLevel:
             reference = gateway.invoke(_invocation())
             seen.add(reference.guard_decision_id)
         assert len(seen) == 2
+
+
+class TestGuardBoundVersusPreGuardRefusal:
+    """Amendment 3 — §12.2. Three cases, kept apart.
+
+    AI-06 refuses on five paths before `ask_guard` (dispatch.py:75, :79, :85,
+    :92, :99). Those invocations carry no `GuardDecision`, and the difference
+    between "no evaluation happened" and "an evaluation returned BLOCKED" is the
+    whole point of the distinction.
+    """
+
+    # -- Case A: the invocation reaches Guard ------------------------------
+
+    def test_case_a_a_guard_bound_invocation_carries_a_real_decision(
+        self, workspace_root, echo_registry, workspace_id_of
+    ):
+        gateway = ToolGateway(
+            agent_id=AgentId.DSH,
+            workspace_id=workspace_id_of(workspace_root),
+            workspace_root=workspace_root,
+            registry=echo_registry,
+            policy=allow_policy(workspace_id_of(workspace_root)),
+        )
+        reference = gateway.invoke(_invocation())
+
+        assert reference.was_evaluated
+        assert reference.guard_decision_id
+        assert reference.guard_decision is GuardDecision.ALLOW
+        assert reference.outcome is ToolOutcome.COMPLETED
+
+    # -- Case B: refused before Guard --------------------------------------
+
+    def test_case_b_a_pre_guard_refusal_carries_no_decision(
+        self, workspace_root, echo_registry, workspace_id_of
+    ):
+        gateway = ToolGateway(
+            agent_id=AgentId.DSH,
+            workspace_id=workspace_id_of(workspace_root),
+            workspace_root=workspace_root,
+            registry=echo_registry,
+            policy=allow_policy(workspace_id_of(workspace_root)),
+        )
+        # An operation the registry does not declare: refused at
+        # dispatch.py:79, before `ask_guard` at :109.
+        reference = gateway.invoke(
+            ToolInvocation(
+                tool_id=ECHO_TOOL_ID,
+                tool_version=ECHO_TOOL_VERSION,
+                adapter_family=AdapterFamily.TERMINAL,
+                operation="no-such-operation",
+                permission_level=PermissionLevel.READ,
+                target=TargetRef(kind=TargetKind.REPOSITORY),
+                timeout_seconds=5,
+            )
+        )
+
+        assert reference.outcome is ToolOutcome.UNKNOWN
+        assert not reference.was_evaluated
+        assert reference.guard_decision_id == ""
+
+    def test_case_b_no_decision_is_fabricated(self, workspace_root, echo_registry, workspace_id_of):
+        """The one thing §12.2 forbids outright."""
+        gateway = ToolGateway(
+            agent_id=AgentId.DSH,
+            workspace_id=workspace_id_of(workspace_root),
+            workspace_root=workspace_root,
+            registry=echo_registry,
+            policy=allow_policy(workspace_id_of(workspace_root)),
+        )
+        reference = gateway.invoke(
+            ToolInvocation(
+                tool_id="no-such-tool",
+                tool_version="1.0",
+                adapter_family=AdapterFamily.TERMINAL,
+                operation="echo",
+                permission_level=PermissionLevel.READ,
+                target=TargetRef(kind=TargetKind.REPOSITORY),
+                timeout_seconds=5,
+            )
+        )
+
+        # Not UNKNOWN, not BLOCKED — absent. AI-06 supplies the word "BLOCKED"
+        # as a fallback alongside an empty id, and carrying it would record a
+        # non-evaluation as a decision.
+        assert reference.guard_decision is None
+        assert reference.guard_decision is not GuardDecision.UNKNOWN
+        assert reference.guard_decision is not GuardDecision.BLOCKED
+
+    def test_case_b_the_refusal_is_still_recorded(self, workspace_root, echo_registry, workspace_id_of):
+        """§11.2/§12.2: narrowing the quantifier does not license dropping it.
+
+        The invocation still appears in `tool_results`, with AI-06's own reason
+        code, and it still does not rewrite the execution outcome.
+        """
+        record = run_execution(
+            make_request(workspace_root),
+            body=OfflineBody(
+                agent_id=AgentId.DSH,
+                plan=(
+                    ToolInvocation(
+                        tool_id=ECHO_TOOL_ID,
+                        tool_version=ECHO_TOOL_VERSION,
+                        adapter_family=AdapterFamily.TERMINAL,
+                        operation="no-such-operation",
+                        permission_level=PermissionLevel.READ,
+                        target=TargetRef(kind=TargetKind.REPOSITORY),
+                        timeout_seconds=5,
+                    ),
+                ),
+            ),
+            registry=echo_registry,
+            policy=allow_policy(workspace_id_of(workspace_root)),
+        )
+
+        assert record.result.outcome is AgentExecutionOutcome.COMPLETED
+        assert len(record.result.tool_calls) == 1
+        call = record.result.tool_calls[0]
+        assert call.was_evaluated is False
+        assert call.guard_reason_code  # AI-06's reason survives
+
+    # -- Case C: repeated Guard-bound invocations --------------------------
+
+    def test_case_c_three_guard_bound_invocations_get_three_decisions(
+        self, workspace_root, echo_registry, workspace_id_of
+    ):
+        record = run_execution(
+            make_request(workspace_root),
+            body=OfflineBody(
+                agent_id=AgentId.DSH, plan=(_invocation(), _invocation(), _invocation())
+            ),
+            registry=echo_registry,
+            policy=allow_policy(workspace_id_of(workspace_root)),
+        )
+        calls = record.result.tool_calls
+        assert len(calls) == 3
+        assert all(c.was_evaluated for c in calls)
+        assert len({c.guard_decision_id for c in calls}) == 3
+
+    def test_a_mixed_execution_counts_authorizations_not_invocations(
+        self, workspace_root, echo_registry, workspace_id_of
+    ):
+        """§13.4: the two counts may differ, and must not be reported as one."""
+        record = run_execution(
+            make_request(workspace_root),
+            body=OfflineBody(
+                agent_id=AgentId.DSH,
+                plan=(
+                    _invocation(),
+                    ToolInvocation(
+                        tool_id=ECHO_TOOL_ID,
+                        tool_version=ECHO_TOOL_VERSION,
+                        adapter_family=AdapterFamily.TERMINAL,
+                        operation="no-such-operation",
+                        permission_level=PermissionLevel.READ,
+                        target=TargetRef(kind=TargetKind.REPOSITORY),
+                        timeout_seconds=5,
+                    ),
+                    _invocation(),
+                ),
+            ),
+            registry=echo_registry,
+            policy=allow_policy(workspace_id_of(workspace_root)),
+        )
+        calls = record.result.tool_calls
+        evaluated = [c for c in calls if c.was_evaluated]
+
+        assert len(calls) == 3          # tool invocations
+        assert len(evaluated) == 2      # authorization records
+        assert len({c.guard_decision_id for c in evaluated}) == 2

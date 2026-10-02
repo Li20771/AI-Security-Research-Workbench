@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
@@ -31,12 +32,67 @@ from typing import Any
 from plugins.guard.vocabulary import GuardDecision
 from plugins.security_tools.vocabulary import ToolOutcome
 
+from agents.vocabulary import AgentId, resolve_agent
+
 __all__ = [
     "AgentExecutionOutcome",
     "AgentResult",
+    "InvalidResultReference",
+    "RESULT_REFERENCE_GRAMMAR",
     "ToolCallRef",
+    "is_valid_result_reference",
     "result_digest",
 ]
+
+#: §10.2, v1 shape. A `result` is a terminal result **reference or digest** and
+#: never raw content, so the field admits exactly two shapes and nothing else:
+#:
+#: ```text
+#: sha256:<64 lowercase hex>        a content digest
+#: ref:<opaque reference token>     a reference, token restricted to
+#:                                  [A-Za-z0-9._:-], no whitespace, no CR,
+#:                                  no LF, no '='
+#: ```
+#:
+#: ### What this is, and what it is NOT
+#:
+#: ```text
+#: IS      a structural result-shape guarantee: obvious raw-content forms —
+#:         multi-line text, `KEY=value` assignments, prose, quotes, spaces —
+#:         cannot be stored in AgentResult.result at all.
+#: IS NOT  a universal secret-content classifier. A single-line secret that
+#:         happens to match the token charset would still pass.
+#: ```
+#:
+#: The complete answer to "is this value content-free" is a *published admission
+#: rule set over bounded-source fields*, which is AI-05's deferred **C-1**.
+#: AI-08 does not become a content scanner to cover a gap another phase owns;
+#: it enforces the shape its own contract states and says plainly where the
+#: guarantee stops.
+RESULT_REFERENCE_GRAMMAR: tuple[str, ...] = (
+    r"^sha256:[0-9a-f]{64}$",
+    r"^ref:[A-Za-z0-9._:-]{1,480}$",
+)
+
+_RESULT_PATTERNS = tuple(re.compile(pattern) for pattern in RESULT_REFERENCE_GRAMMAR)
+
+
+class InvalidResultReference(ValueError):
+    """§10.2. A `result` that is not a v1 reference or digest.
+
+    Raised at construction rather than at serialisation: a value that failed the
+    shape rule must never reach an AgentResult, because the record is what a
+    reader would later take at face value.
+    """
+
+    reason_code = "INVALID_RESULT_REFERENCE"
+
+
+def is_valid_result_reference(value: object) -> bool:
+    """Whether `value` has one of the two v1 `result` shapes."""
+    if not isinstance(value, str):
+        return False
+    return any(pattern.match(value) is not None for pattern in _RESULT_PATTERNS)
 
 
 class AgentExecutionOutcome(StrEnum):
@@ -72,13 +128,30 @@ class AgentExecutionOutcome(StrEnum):
 class ToolCallRef:
     """§10. One tool invocation, as the AgentResult references it.
 
-    The outcome and the decision are **AI-06's and AI-04's own members**,
-    imported and carried, never reinterpreted. `what_ran` is spelled the way
-    AI-06 spells it, so the reference names the same operation AI-06 ran.
+    The outcome is **AI-06's own member**, imported and carried, never
+    reinterpreted. `what_ran` is spelled the way AI-06 spells it, so the
+    reference names the same operation AI-06 ran.
 
-    `guard_decision_id` is the attribution of the evaluation that decided this
-    invocation. It is what makes I5 checkable: two invocations carry two
-    decisions from two evaluations, and nothing is reused.
+    ### `guard_decision` is `None` when Guard never ran (Amendment 3)
+
+    ```text
+    guard_decision is a GuardDecision   the invocation was GUARD-BOUND: it
+                                        reached the Guard boundary and an
+                                        evaluation produced this decision.
+    guard_decision is None              the invocation was a PRE-GUARD REFUSAL:
+                                        AI-06 refused it before the boundary, so
+                                        there is no decision to carry.
+    ```
+
+    `decision_id` is empty in exactly the second case, and `was_evaluated` reads
+    it.
+
+    This is not a reinterpretation of AI-06. AI-06's `unattributed_summary`
+    supplies a fallback `decision` value **and** an empty `decision_id`, and says
+    of the pair that no evaluation produced one — the empty id is AI-06's own
+    signal. Carrying the fallback word as a `GuardDecision` would record "no
+    evaluation occurred" as "an evaluation returned BLOCKED", which are two
+    different facts (§12.2).
     """
 
     ordinal: int
@@ -86,7 +159,7 @@ class ToolCallRef:
     tool_version: str
     operation: str
     outcome: ToolOutcome
-    guard_decision: GuardDecision
+    guard_decision: GuardDecision | None
     guard_decision_id: str
     guard_reason_code: str
     duration_ms: int | None = None
@@ -95,6 +168,11 @@ class ToolCallRef:
     def what_ran(self) -> str:
         return f"{self.tool_id}/{self.operation}"
 
+    @property
+    def was_evaluated(self) -> bool:
+        """Whether Guard actually evaluated this invocation (§12.2)."""
+        return bool(self.guard_decision_id)
+
     def to_mapping(self) -> dict[str, Any]:
         return {
             "ordinal": self.ordinal,
@@ -102,9 +180,13 @@ class ToolCallRef:
             "tool_version": self.tool_version,
             "outcome": str(self.outcome),
             "guard": {
-                "decision": str(self.guard_decision),
+                # `None` is the truthful value for a pre-Guard refusal, and it
+                # serialises as null rather than as a word that would claim an
+                # evaluation happened.
+                "decision": None if self.guard_decision is None else str(self.guard_decision),
                 "decision_id": self.guard_decision_id,
                 "reason_code": self.guard_reason_code,
+                "evaluated": self.was_evaluated,
             },
             "duration_ms": self.duration_ms,
         }
@@ -138,7 +220,7 @@ class AgentResult:
     unauthorized, and inventing one would be worse than the honest blank.
     """
 
-    agent_id: str
+    agent_id: AgentId
     execution_id: str
     workspace_id: str
     input_digest: str
@@ -150,6 +232,33 @@ class AgentResult:
     reason_code: str = ""
     blocking: str | None = None
     schema_version: int = 1
+
+    def __post_init__(self) -> None:
+        """Enforce the two invariants this type is *for* (§10, §10.2).
+
+        **Identity.** `agent_id` is declared `AgentId` and now really is one.
+        It was declared `str` before, which meant a result could carry
+        `'not-registered'` as its declared identity and nothing objected. It is
+        resolved through the same `resolve_agent` boundary the request uses, so
+        there is no second identity rule here either.
+
+        **Result shape.** `result` must be a reference or a digest. Until this
+        existed the invariant was caller convention only: a body returning
+        `BodyOutcome(result_ref="AWS_SECRET=...\\nraw task body")` had the whole
+        string written into a COMPLETED AgentResult verbatim. Now the record
+        cannot be built from it — see `RESULT_REFERENCE_GRAMMAR` for exactly how
+        far that guarantee reaches, and where it stops.
+        """
+        object.__setattr__(self, "agent_id", resolve_agent(self.agent_id))
+        if not is_valid_result_reference(self.result):
+            raise InvalidResultReference(
+                f"result must be a terminal result reference or digest and is "
+                f"neither (§10.2). Admitted shapes: "
+                f"{' | '.join(RESULT_REFERENCE_GRAMMAR)}. Raw model output, a "
+                "prompt body, a task body and tool arguments are not "
+                "references, and a failure record is not a place where the raw "
+                "content that caused the failure becomes storable"
+            )
 
     # -- properties --------------------------------------------------------
 

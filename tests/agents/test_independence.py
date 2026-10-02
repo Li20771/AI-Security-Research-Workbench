@@ -39,7 +39,7 @@ from agents.independence import (
 from agents.request import AgentExecutionRequest
 from agents.result import AgentExecutionOutcome, AgentResult, ToolCallRef
 from agents.runtime import run_execution
-from agents.vocabulary import AgentId
+from agents.vocabulary import AgentId, UnknownAgent
 
 from tests.agents.conftest import make_request
 
@@ -61,13 +61,18 @@ def _call(ordinal: int, decision_id: str) -> ToolCallRef:
     )
 
 
+#: A legal v1 result reference (§10.2). `AgentResult` refuses anything else, so
+#: a synthetic record has to carry a real-shaped reference like any other.
+DIGEST = "sha256:" + "a" * 64
+
+
 def _result(
     *,
     agent_id: str,
     execution_id: str,
     workspace_id: str = "ws-1",
     outcome: AgentExecutionOutcome = AgentExecutionOutcome.COMPLETED,
-    result: str = "sha256:x",
+    result: str = DIGEST,
     tool_calls: tuple[ToolCallRef, ...] = (),
     blocking: str | None = None,
 ) -> AgentResult:
@@ -156,13 +161,21 @@ class TestI1IdentitySeparation:
         right = _record(agent_id="dsh", execution_id="ex-b", workspace_root=workspace_root)
         assert I1_IDENTITY in structural_independence(left, right).violated
 
-    def test_an_unregistered_identity_does_not(self, workspace_root):
-        left = _record(agent_id="dsh", execution_id="ex-a", workspace_root=workspace_root)
-        right = _record(agent_id="dsh", execution_id="ex-b", workspace_root=workspace_root)
-        forged = dataclasses.replace(right.result, agent_id="gpt")
-        assert I1_IDENTITY in structural_independence(
-            left, dataclasses.replace(right, result=forged)
-        ).violated
+    def test_an_unregistered_identity_cannot_be_built_at_all(self, workspace_root):
+        """Amendment-review fix: the forged record is no longer constructible.
+
+        This test used to build one with `dataclasses.replace(result,
+        agent_id="gpt")` and assert I1 caught it. That is no longer possible —
+        which is the stronger outcome: the predicate cannot be handed a
+        non-registered identity to catch, because `AgentResult` refuses to exist
+        with one.
+        """
+        with pytest.raises(UnknownAgent):
+            dataclasses.replace(
+                _result(agent_id="dsh", execution_id="ex-a"), agent_id="gpt"
+            )
+        with pytest.raises(UnknownAgent):
+            _result(agent_id="gpt", execution_id="ex-a")
 
 
 class TestI2ExecutionSeparation:
@@ -372,7 +385,7 @@ class TestI6AndI7Separation:
                 agent_id="dsh",
                 execution_id="ex-a",
                 outcome=AgentExecutionOutcome.COMPLETED,
-                result="converted-from-ex-b",
+                result="ref:converted-from-ex-b",
             ),
         )
         right = _record(agent_id="codex", execution_id="ex-b", workspace_root=workspace_root)

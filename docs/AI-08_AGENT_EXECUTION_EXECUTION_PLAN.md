@@ -698,9 +698,13 @@ I4  Context separation
     context was supplied through its request.
 
 I5  Tool authorization separation
-    every tool invocation creates a FRESH GuardRequest and a FRESH GuardDecision.
+    every GUARD-BOUND tool invocation creates a FRESH GuardRequest and a FRESH
+    GuardDecision (Amendment 3, §9.1.2).
     No GuardDecision object is reused across executions.
     No authorization result is reused across executions.
+    A pre-Guard tool-request refusal has NO GuardDecision, because no evaluation
+    occurred. It is not a reused decision, not a hidden decision and not a
+    fabricated one, and it violates nothing here.
 
 I6  Result separation
     each execution produces its own AgentResult, and neither carries the other's.
@@ -755,6 +759,30 @@ FROZEN: AI-10 MAY later build cross-agent review, in which one Agent's result IS
         an input to another. When it does, that is a DIFFERENT execution mode and
         MUST NOT be described as blind independent execution, and MUST NOT be
         recorded as satisfying I3.
+```
+
+### 9.1.2 The Guard-bound invocation boundary — FROZEN (Amendment 3)
+
+I5 ranges over **Guard-bound** invocations. The definition is at §12.2 and the
+reason it exists is recorded there: AI-06 legitimately refuses some requests
+before Guard, and a universal quantifier over *every* invocation would require
+AI-08 to either duplicate AI-06's gates, fabricate a decision, or change AI-06 —
+all three forbidden.
+
+```text
+FROZEN: a PRE-GUARD TOOL-REQUEST REFUSAL is an invocation AI-06 refused before
+        the Guard authorization boundary was reached. No GuardRequest was built
+        and no GuardDecision exists.
+FROZEN: such a refusal MUST NOT fabricate a GuardDecision, MUST NOT fabricate a
+        decision_id, and MUST NOT be described as an authorization decision.
+FROZEN: an empty `guard_decision_id` means "no evaluation happened". It is NOT
+        `GuardDecision.UNKNOWN`, and it is NOT `GuardDecision.BLOCKED`. "No
+        evaluation occurred" and "an evaluation returned BLOCKED" are two
+        different facts and MUST NOT be conflated.
+FROZEN: I5 asks whether any GuardDecision was REUSED among Guard-bound
+        invocations. It does NOT ask whether every tool call carries a
+        non-empty decision id — that would be a requirement AI-06 cannot meet
+        and AI-08 has no business inventing.
 ```
 
 ### 9.2 What independence canNOT prove — FROZEN
@@ -1070,7 +1098,7 @@ FROZEN: AI-08 MUST NOT evaluate a policy itself, and MUST NOT wrap, extend,
         reimplement or shadow Guard.evaluate(request, policy).
 ```
 
-Every Agent tool call MUST carry:
+Every **Guard-bound** Agent tool invocation MUST carry:
 
 ```text
 ActorType.AGENT
@@ -1079,8 +1107,13 @@ a FRESH GuardRequest
 a FRESH GuardDecision
 ```
 
-The existing rule applies unchanged: **one ALLOW authorizes one invocation.** A second invocation
-asks again. There is no decision store, and AI-08 MUST NOT create one.
+The existing rule applies unchanged: **one ALLOW authorizes one Guard-bound invocation.** A second
+invocation asks again. There is no decision store, and AI-08 MUST NOT create one.
+
+> *Amendment 3 narrowed this quantifier.* It read "Every Agent tool call" until AI-08-B's review
+> found that AI-06 legitimately refuses some requests **before** Guard, so no `GuardDecision` can
+> exist for them. The definition of "Guard-bound", and what a pre-Guard refusal is and is not, is
+> at **§12.2**.
 
 ### 12.1 No agent-specific permission policy — FROZEN
 
@@ -1136,6 +1169,72 @@ An observable side-effect of §12 is NOT a policy. That two Guard decisions diff
 because their actor.id differs is an attribution fact, and §12.1 already forbids
 reading it as an authorization difference. Amendment 1 extends the same
 prohibition to any per-Agent ceiling built on top of it.
+```
+
+### 12.2 The Guard-bound invocation boundary — FROZEN (Amendment 3)
+
+AI-08-B's implementation review found a cross-phase terminology conflict. AI-08's wording was
+universal — *"every Agent tool call"*, *"every tool invocation"*, *"EVERY tool invocation"* — while
+AI-06's frozen fail-fast pipeline legitimately refuses some tool requests **before** Guard is
+reached. A universal quantifier cannot be satisfied for those requests.
+
+```text
+AI-06 refuses, before `ask_guard`, on five paths (plugins/security_tools/dispatch.py):
+    UNKNOWN_TOOL                 :75
+    UNKNOWN_OPERATION            :79
+    invalid arguments            :85
+    v1 target boundary           :92
+    workspace resolution         :99
+
+ask_guard is called at :109. Those five never reach it.
+
+AI-06's own `unattributed_summary` (plugins/security_tools/guards.py:211-219) says
+the same thing from its side: the guard block for "a request that never reached
+AI-04" carries `decision_id: ""`, "precisely because no evaluation produced one".
+```
+
+**Adjudication — Guard-bound semantics.** The requirement is narrowed to the invocations it can
+truthfully apply to. AI-06 is not modified, AI-08 does not duplicate AI-06's validation, and no
+decision is fabricated.
+
+```text
+FROZEN: a GUARD-BOUND Agent tool invocation is one that has passed AI-06's
+        pre-Guard validation, target and workspace gates and reached the Guard
+        authorization boundary.
+FROZEN: a PRE-GUARD TOOL-REQUEST REFUSAL is one AI-06 refused before that
+        boundary. It has NO GuardDecision, because no Guard evaluation occurred.
+FROZEN: a pre-Guard refusal MUST NOT fabricate a GuardDecision, MUST NOT
+        fabricate a decision_id, and MUST NOT be described as an authorization
+        decision.
+FROZEN: an empty `guard_decision_id` means "no evaluation happened". It is NOT
+        `GuardDecision.UNKNOWN` and it is NOT `GuardDecision.BLOCKED`. "No
+        evaluation occurred" and "an evaluation returned BLOCKED" are two
+        different facts, and conflating them would record a non-evaluation as a
+        decision — the class of false claim this repository refuses everywhere.
+```
+
+```text
+For every Guard-bound invocation:
+    ActorType.AGENT
+    Actor.id = the executing AgentId
+    a fresh GuardRequest
+    a fresh GuardDecision
+
+One ALLOW authorizes one such invocation. A second asks again.
+```
+
+```text
+FROZEN: a pre-Guard refusal is NOT a violation of I5 (§9.1.2). It is not a
+        reused decision, not a hidden decision and not a fabricated one. There
+        is nothing to reuse.
+FROZEN: it IS still a tool invocation, and it IS still recorded in the
+        AgentResult's tool_results with its AI-06 reason code. Narrowing the
+        quantifier narrows the authorization requirement; it does not license
+        dropping the record (§11.2).
+FROZEN: AI-08 MUST NOT re-implement AI-06's descriptor lookup, argument
+        validation, target gate or workspace resolution in order to force every
+        request through Guard. That would be the "reimplement or shadow"
+        prohibition of §12, one layer over.
 ```
 
 ---
@@ -1204,19 +1303,30 @@ The roadmap requires *"独立工具权限记录"* — independent tool permissio
 AI-05:
 
 ```text
-SUPPLIED BY   a fresh GuardRequest and a fresh GuardDecision for EVERY tool
-              invocation, per execution (§12, I5)
+SUPPLIED BY   a fresh GuardRequest and a fresh GuardDecision for every
+              GUARD-BOUND tool invocation, per execution (§12.2, I5)
 NOT REQUIRED  a durable AI-05 EvidenceRecord
 ```
 
 ```text
 FROZEN: the roadmap's "independent tool permission records" means EXECUTION-LEVEL
-        AUTHORIZATION RECORDS: each Agent's tool invocations carry their own
-        Guard decision, made against their own request, with their own actor.id.
+        AUTHORIZATION RECORDS: each Agent's Guard-bound tool invocations carry
+        their own Guard decision, made against their own request, with their own
+        actor.id.
 FROZEN: it does NOT mean a durable AI-05 EvidenceRecord, and AI-08 v1 MUST NOT
         be read as claiming one (§13.1).
 FROZEN: the independence of these records is exactly I5 — fresh objects, fresh
         decisions, no reuse. It is not digest uniqueness (§9.1.1).
+```
+
+```text
+FROZEN (Amendment 3): a pre-Guard refusal has NO authorization record, because
+        no authorization evaluation occurred. Its empty `guard_decision_id` is
+        the truthful state and MUST be recorded as such — not as UNKNOWN, not as
+        BLOCKED, and not omitted (§12.2).
+FROZEN: the count of authorization records for an execution equals the number of
+        its Guard-bound invocations, which may be fewer than the number of its
+        tool invocations. A document MUST NOT report the two as the same number.
 ```
 
 ```text
@@ -1454,8 +1564,9 @@ Layers 1 only. **AI-08 adds no layer 4** — v1 reaches no network and starts no
 | T17 | I2 execution separation | §9.1 | distinct execution ids, neither derived |
 | T18 | I3 input separation | §9.1 | neither result is the other's input, both directions |
 | T19 | I4 context separation | §9.1, §8.1 | each execution established and owns its own context |
-| T20 | I5 authorization separation | §9.1 | a fresh request and a fresh decision per invocation — NOT digest uniqueness |
+| T20 | I5 authorization separation | §9.1, §12.2 | a fresh request and a fresh decision per **Guard-bound** invocation — NOT digest uniqueness, and NOT a required non-empty id on every call |
 | T21 | request_digest is not an identity | §9.1.1 | equal digests across executions are not a violation; no nonce is added |
+| T44 | pre-Guard refusal is not a decision | §12.2, §9.1.2 | an empty `guard_decision_id` is not UNKNOWN and not BLOCKED; no decision is fabricated |
 | T22 | I6 result separation | §9.1 | two results, neither carrying the other |
 | T23 | I7 failure separation | §9.1 | FAILED/BLOCKED never becomes the other's COMPLETED |
 | T24 | I8 provenance separation | §9.1 | each result names its own agent and execution |
@@ -1496,7 +1607,7 @@ AI-08 is complete only when every gate below passes.
 | C6 | Non-provability stated | no artifact claims independence is verification, and no role is read as a finding |
 | C7 | Result boundary verified | `result` is present for every outcome and is never a task result that does not exist; AgentResult carries no verdict, no raw output, no credential, no fabricated producer field |
 | C8 | Outcome vocabulary verified | exactly three members; BLOCKED is execution-level and means the body did not start, never "no AgentResult"; a tool refusal never rewrites it; no AI-12/AI-13 vocabulary |
-| C9 | Guard boundary verified | no Guard change, fresh request and fresh decision per invocation, digest uniqueness neither required nor tested, no ceiling claimed or inferred |
+| C9 | Guard boundary verified | no Guard change; a fresh request and a fresh decision per **Guard-bound** invocation; a pre-Guard refusal carries no decision and none is fabricated; digest uniqueness neither required nor tested; no ceiling claimed or inferred |
 | C10 | Evidence boundary verified | no AI-08 EvidenceRecord written; no AI-05 change; execution-level permission records present |
 | C11 | Sharing prohibition verified | no cross-agent result injection exists |
 | C12 | Provider boundary verified | no network, no subprocess, no provider or model binding |
@@ -1533,9 +1644,10 @@ Context acquisition: the RUNTIME establishes exactly one execution-owned
   The request carries none, and none is passed in (§7.3, §8.1).
 AgentResult, and AgentExecutionOutcome
 the independence predicate over I1–I8
-the Guard call path: one fresh request and one fresh decision per tool invocation
+the Guard call path: one fresh request and one fresh decision per GUARD-BOUND
+  tool invocation, and no fabrication for a pre-Guard refusal (§12.2)
 the Layer 0 AI-08 gate
-tests/agents/, layer 1, covering T1–T43
+tests/agents/, layer 1, covering T1–T44
 ```
 
 AI-08-B MUST NOT:
@@ -1705,6 +1817,70 @@ EXPLICITLY NOT CHANGED by Amendment 2:
     the AI-07 contract, and any AI-03/AI-04/AI-05/AI-06 implementation
 ```
 
+### Amendment 3 — the Guard-bound tool invocation boundary
+
+```text
+AI-08-A Amendment 3   FROZEN    written during AI-08-B, before its merge
+base                  main @ 2117cdf49940bb97f5f18a6447fbc2f0137b31e7
+PR                    #52, the AI-08-B implementation PR
+```
+
+**A cross-phase contract conflict, found by implementation review.** This is the first amendment
+that resolves a contradiction between AI-08's frozen text and another phase's frozen architecture,
+rather than an internal one.
+
+```text
+1  "every tool invocation" was unsatisfiable
+   §9.1 I5, §12, §13.4, §20 C9, §21, test matrix T20, and new §9.1.2 and §12.2
+
+   Three independent clauses quantified over EVERY tool invocation:
+
+       §12     "Every Agent tool call MUST carry ... a FRESH GuardRequest
+                ... a FRESH GuardDecision"
+       §9.1 I5 "every tool invocation creates a FRESH GuardRequest and a FRESH
+                GuardDecision."
+       §13.4   "a fresh GuardRequest and a fresh GuardDecision for EVERY tool
+                invocation, per execution"
+
+   AI-06's frozen pipeline refuses on five paths BEFORE `ask_guard`
+   (plugins/security_tools/dispatch.py:75, :79, :85, :92, :99 — unknown tool,
+   unknown operation, invalid arguments, v1 target boundary, workspace
+   resolution). No GuardRequest is built and no DecisionRecord exists. AI-06's
+   own `unattributed_summary` documents it: `decision_id` "stays empty
+   precisely because no evaluation produced one".
+
+   So the universal could not be met. Closing it would have required one of
+   three things, and all three are forbidden: duplicating AI-06's gates in
+   AI-08 (§12 "MUST NOT ... reimplement or shadow"), fabricating a
+   GuardDecision, or changing AI-06.
+
+   RESOLVED — GUARD-BOUND SEMANTICS. The quantifier is narrowed to the
+   invocations it can truthfully apply to, and a pre-Guard refusal is named and
+   defined rather than left as an unmentioned hole:
+
+       Guard-bound invocation   passed AI-06's pre-Guard gates and reached the
+                                Guard authorization boundary. Carries a fresh
+                                GuardRequest and a fresh GuardDecision.
+       Pre-Guard refusal        refused before that boundary. Has NO
+                                GuardDecision, and none may be fabricated.
+
+   An empty `guard_decision_id` now means exactly one thing: no evaluation
+   happened. It is NOT `UNKNOWN` and NOT `BLOCKED`.
+```
+
+```text
+EXPLICITLY NOT CHANGED by Amendment 3:
+    AI-06, AI-04, AI-05 and AI-07, in any respect
+    the requirement that a Guard-bound invocation carries its own fresh
+      request and fresh decision — narrowed in scope, not weakened
+    I3, and every other independence condition
+    §11.2: a pre-Guard refusal is STILL recorded in tool_results with its AI-06
+      reason code. Narrowing the authorization requirement does not license
+      dropping the record
+    the Guard boundary's prohibitions: no wrapping, no policy evaluation, no
+      decision store, no ceiling
+```
+
 An amendment is required before any frozen rule above changes.
 
 ---
@@ -1715,6 +1891,7 @@ An amendment is required before any frozen rule above changes.
 AI-08-A   FROZEN    this document
 AI-08-A   Amendment 1 applied before AI-08-B began (§22)
 AI-08-A   Amendment 2 applied before AI-08-B began (§22)
+AI-08-A   Amendment 3 applied during AI-08-B, before its merge (§22)
 base      main @ a7c4a1e2536536940d96431883dadb592f7c151a
 date      2026-10-01
 
@@ -1748,8 +1925,11 @@ Frozen here:
     AgentExecutionOutcome: three members; BLOCKED is execution-level and a
       tool refusal never rewrites it (Amendment 1); and each of the three still
       produces exactly one terminal AgentResult (Amendment 2)
-    the Guard boundary: unchanged, fresh decision per invocation, and no
-      Agent-specific permission policy claimed or inferred
+    the Guard boundary: unchanged, fresh decision per GUARD-BOUND invocation,
+      and no Agent-specific permission policy claimed or inferred
+    that a pre-Guard refusal is neither a decision nor a violation: it has no
+      GuardDecision, none may be fabricated, and an empty decision id is not
+      UNKNOWN and not BLOCKED (Amendment 3)
     the Evidence boundary: AI-08 writes no EvidenceRecord in v1, and why
     that execution-level permission records satisfy the roadmap requirement
       without a durable record (Amendment 1)

@@ -174,14 +174,22 @@ class ToolGateway:
         )
 
         guard = result.guard
+        decision_id = str(guard.get("decision_id", ""))
+
+        # §12.2. AI-06 supplies a fallback `decision` word AND an empty
+        # `decision_id` for a request that never reached Guard. The empty id is
+        # AI-06's own signal that no evaluation produced one, so the decision is
+        # carried as `None` rather than as that fallback word: recording "no
+        # evaluation occurred" as "an evaluation returned BLOCKED" would put a
+        # claim in the record that nothing supports.
         reference = ToolCallRef(
             ordinal=len(self._calls),
             tool_id=result.tool_id,
             tool_version=result.tool_version,
             operation=result.operation,
             outcome=result.outcome,
-            guard_decision=result.guard_decision,
-            guard_decision_id=str(guard.get("decision_id", "")),
+            guard_decision=result.guard_decision if decision_id else None,
+            guard_decision_id=decision_id,
             guard_reason_code=str(guard.get("reason_code", "")),
             duration_ms=result.duration_ms,
         )

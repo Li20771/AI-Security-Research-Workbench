@@ -16,6 +16,7 @@ import pytest
 from plugins.guard.vocabulary import ActorType
 
 from agents.independence import IndependenceFinding
+from agents.request import AgentExecutionRequest
 from agents.vocabulary import (
     ROLE_BY_AGENT,
     AgentId,
@@ -25,7 +26,7 @@ from agents.vocabulary import (
     role_for,
 )
 
-from tests.agents.conftest import python_modules, string_literals
+from tests.agents.conftest import make_request, python_modules, string_literals
 
 pytestmark = pytest.mark.layer1
 
@@ -198,3 +199,129 @@ class TestARoleIsNotAnIndependenceFinding:
                 imported.update(alias.name for alias in node.names)
         assert "AgentRole" not in imported
         assert "role_for" not in imported
+
+
+class TestTheConstructorIsTheIdentityBoundary:
+    """Amendment-review regression — §6.2 at the REAL boundary.
+
+    The defect this class exists for: `resolve_agent` was correct, and the
+    request constructor bypassed it. A dataclass does not check annotations, so
+    `AgentExecutionRequest(agent_id="not-registered", ...)` constructed happily
+    and two things followed — a BLOCKED result attributed to no registered
+    Agent, and a `ValueError` escaping `execute()` on the happy path.
+
+    Testing `resolve_agent("gpt")` would not have caught either. These go
+    through the constructor and the runtime.
+    """
+
+    def test_a_registered_candidate_becomes_an_agent_id(self, workspace_root):
+        for candidate, expected in (("dsh", AgentId.DSH), ("codex", AgentId.CODEX)):
+            request = AgentExecutionRequest(
+                agent_id=candidate,
+                workspace_root=workspace_root,
+                task="t",
+                input_digest="sha256:" + "a" * 64,
+            )
+            assert request.agent_id is expected
+            assert isinstance(request.agent_id, AgentId)
+
+    def test_an_agent_id_member_passes_through_unchanged(self, workspace_root):
+        request = AgentExecutionRequest(
+            agent_id=AgentId.DSH,
+            workspace_root=workspace_root,
+            task="t",
+            input_digest="sha256:" + "a" * 64,
+        )
+        assert request.agent_id is AgentId.DSH
+
+    @pytest.mark.parametrize("candidate", ["not-registered", "gpt", "", "DSH", None, 7])
+    def test_an_unregistered_candidate_is_refused_at_construction(
+        self, candidate, workspace_root
+    ):
+        with pytest.raises(UnknownAgent):
+            AgentExecutionRequest(
+                agent_id=candidate,
+                workspace_root=workspace_root,
+                task="t",
+                input_digest="sha256:" + "a" * 64,
+            )
+
+    def test_the_raw_boundary_uses_the_same_one(self, workspace_root):
+        with pytest.raises(UnknownAgent):
+            AgentExecutionRequest.from_mapping(
+                {
+                    "schema_version": 1,
+                    "agent_id": "not-registered",
+                    "workspace": {"root": workspace_root},
+                    "task": "t",
+                    "input": "x",
+                }
+            )
+
+    def test_a_blocked_execution_cannot_carry_an_unregistered_identity(self, workspace_root):
+        """The path that used to expose it: BLOCKED returns before the gateway."""
+        with pytest.raises(UnknownAgent):
+            AgentExecutionRequest(
+                agent_id="not-registered",
+                workspace_root=workspace_root + "-absent",
+                task="t",
+                input_digest="sha256:" + "a" * 64,
+            )
+        # And no execution can be started from one, so no BLOCKED AgentResult
+        # with a non-registered declared identity can exist.
+        assert True
+
+    def test_a_normal_execution_cannot_carry_one_either(self, workspace_root):
+        """The other path: a ValueError used to escape execute() entirely."""
+        with pytest.raises(UnknownAgent):
+            AgentExecutionRequest(
+                agent_id="not-registered",
+                workspace_root=workspace_root,
+                task="t",
+                input_digest="sha256:" + "a" * 64,
+            )
+
+
+class TestAgentResultIdentityIsAnAgentId:
+    """Amendment-review regression — §10 `AgentResult.agent_id = an AgentId`."""
+
+    def test_a_result_carries_a_real_agent_id(self, workspace_root):
+        from agents.body import OfflineBody
+        from agents.runtime import run_execution
+
+        record = run_execution(
+            make_request(workspace_root), body=OfflineBody(agent_id=AgentId.DSH)
+        )
+        assert isinstance(record.result.agent_id, AgentId)
+        assert record.result.agent_id is AgentId.DSH
+
+    @pytest.mark.parametrize("candidate", ["gpt", "not-registered", "", None])
+    def test_a_result_refuses_an_unregistered_identity(self, candidate):
+        from agents.result import AgentExecutionOutcome, AgentResult
+
+        with pytest.raises(UnknownAgent):
+            AgentResult(
+                agent_id=candidate,
+                execution_id="ex-1",
+                workspace_id="ws-1",
+                input_digest="sha256:" + "a" * 64,
+                outcome=AgentExecutionOutcome.COMPLETED,
+                result="sha256:" + "b" * 64,
+            )
+
+    def test_a_result_cannot_be_forged_into_another_identity(self):
+        import dataclasses
+
+        from agents.result import AgentExecutionOutcome, AgentResult
+
+        original = AgentResult(
+            agent_id=AgentId.DSH,
+            execution_id="ex-1",
+            workspace_id="ws-1",
+            input_digest="sha256:" + "a" * 64,
+            outcome=AgentExecutionOutcome.COMPLETED,
+            result="sha256:" + "b" * 64,
+        )
+        with pytest.raises(UnknownAgent):
+            dataclasses.replace(original, agent_id="gpt")
+        assert isinstance(dataclasses.replace(original, agent_id="codex").agent_id, AgentId)

@@ -12,7 +12,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Mapping
 
-from agents.vocabulary import AgentId
+from agents.vocabulary import AgentId, resolve_agent
 
 __all__ = ["AgentExecutionRequest", "new_execution_id"]
 
@@ -94,6 +94,35 @@ class AgentExecutionRequest:
     context_descriptor: str | None = None
     schema_version: int = 1
 
+    def __post_init__(self) -> None:
+        """Resolve the identity through `resolve_agent`, at construction (§6.2).
+
+        **This is the fix for a real defect.** Until it existed, the annotation
+        said `AgentId` but nothing enforced it: a dataclass does not check
+        annotations, so `AgentExecutionRequest(agent_id="not-registered", ...)`
+        constructed happily. Two things then went wrong, both reproduced:
+
+        ```text
+        BLOCKED path    the runtime returns before it builds a ToolGateway, so
+                        an AgentResult was produced whose declared identity was
+                        'not-registered' — a result attributed to no registered
+                        Agent.
+        COMPLETED path  ToolGateway.__init__ called AgentId(...) on the way past,
+                        so a ValueError escaped execute() entirely — breaking
+                        §7.1.1, one terminal result per execution.
+        ```
+
+        The constructor now calls the SAME boundary the rest of the layer uses
+        rather than adding a second identity rule beside it, so §6.2's claim
+        that `resolve_agent` is the only place a candidate becomes an `AgentId`
+        is structural instead of aspirational. An unregistered candidate is
+        refused before an execution is accepted, not partway through one.
+
+        A frozen dataclass needs `object.__setattr__`; the value written is
+        always an `AgentId`, so the field cannot hold anything else afterwards.
+        """
+        object.__setattr__(self, "agent_id", resolve_agent(self.agent_id))
+
     @classmethod
     def from_mapping(cls, raw: object) -> "AgentExecutionRequest":
         if not isinstance(raw, Mapping):
@@ -121,13 +150,11 @@ class AgentExecutionRequest:
                 "this contract defines 1"
             )
 
-        try:
-            agent_id = AgentId(raw.get("agent_id"))
-        except ValueError:
-            raise ValueError(
-                "agent_id is not a registered AgentId member; resolve the "
-                "candidate through agents.vocabulary.resolve_agent first (§6.2)"
-            ) from None
+        # Through the one boundary, as the constructor is. `UnknownAgent` is a
+        # `ValueError`, so the raw boundary keeps refusing malformed input with
+        # the same exception type it always did — and the refusal message comes
+        # from `resolve_agent` rather than from a second copy of the rule here.
+        agent_id = resolve_agent(raw.get("agent_id"))
 
         workspace = _mapping(raw.get("workspace"), "workspace")
         workspace_unknown = set(workspace) - {"root"}

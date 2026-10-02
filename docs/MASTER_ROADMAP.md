@@ -426,9 +426,11 @@ AI-08-A and merged as `2117cdf4` (PR #51). AI-08-B implements the runtime agains
 AI-08-A     = COMPLETE / MERGED    contract frozen          (PR #51, 2117cdf4)
 AI-08-B     = IMPLEMENTED ON BRANCH, NOT MERGED
 AI-08       = NOT CLOSED           awaiting the human merge checkpoint
-contract    = unchanged by AI-08-B; blob 7fa9effd
-amendments  = 2                    AI-08-A Amendment 1 (review corrections)
-                                   AI-08-A Amendment 2 (terminal-result invariant)
+contract    = blob 739ec29f, after Amendment 3
+previous    = 7fa9effd (after Amendment 2)
+amendments  = 3                    Amendment 1 (review corrections)
+                                   Amendment 2 (terminal-result invariant)
+                                   Amendment 3 (Guard-bound invocation boundary)
 ```
 
 目标：把 Codex 建成独立的第二 Agent，而不是 DSH 子进程或 DSH 内部模型。
@@ -485,7 +487,15 @@ AI-08-B 实现要点：
   COMPLETED / FAILED / BLOCKED 三者皆然
 - Context 由 runtime 建立、归该 execution 所有；request 只携带 descriptor，绝不携带 `ContextResponse`
 - AI-08 不直接调用 Guard：它把 `actor = AgentId` 的 `ToolRequest` 交给 AI-06，
-  由 AI-06 为每次 invocation 新建 `GuardRequest` / `GuardDecision`；不复用、不缓存
+  由 AI-06 为每次 **Guard-bound** invocation 新建 `GuardRequest` / `GuardDecision`；
+  不复用、不缓存
+- AI-06 会在 Guard 之前拒绝某些请求（unknown tool / operation / 参数 / v1 target /
+  workspace）。这类 **pre-Guard refusal 没有 GuardDecision**，不得伪造；
+  `decision_id` 为空表示「没有发生评价」，**不等于** UNKNOWN，也**不等于** BLOCKED
+- `AgentExecutionRequest` 构造时即经 `resolve_agent` 解析身份；
+  `AgentResult.agent_id` 是真正的 `AgentId`，未注册字符串无法构造
+- `AgentResult.result` 只接受 `sha256:<64 hex>` 或 `ref:<token>` 两种形状：
+  这是**结构性形状保证**，不是内容扫描器（完整答案属于 AI-05 的 C-1）
 - AI-08 不写任何 EvidenceRecord，也不 import `plugins.evidence`（Layer 0 会拦）
 - v1 的 body 不做推理、不联网、不绑模型；它产出的是 provenance reference，不是 task result
 - `COMPLETED != PASS`；`AgentRole.INDEPENDENT_SECOND` 不是 independence finding

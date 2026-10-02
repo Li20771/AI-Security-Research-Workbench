@@ -125,7 +125,7 @@ def _terminal_result(
     because there is nowhere else to return from.
     """
     return AgentResult(
-        agent_id=str(request.agent_id),
+        agent_id=request.agent_id,
         execution_id=execution_id,
         workspace_id=workspace_id,
         input_digest=request.input_digest,
@@ -171,7 +171,7 @@ def execute(
             execution_id=execution_id,
             workspace_id="",
             outcome=AgentExecutionOutcome.BLOCKED,
-            result=f"agent-block:{execution_id}",
+            result=f"ref:agent-block:{execution_id}",
             reason_code=REASON_WORKSPACE_UNAVAILABLE,
             blocking=(
                 "the declared workspace root is not a usable directory, so the "
@@ -189,7 +189,7 @@ def execute(
             execution_id=execution_id,
             workspace_id="",
             outcome=AgentExecutionOutcome.BLOCKED,
-            result=f"agent-block:{execution_id}",
+            result=f"ref:agent-block:{execution_id}",
             reason_code=REASON_CONTEXT_UNAVAILABLE,
             blocking=(
                 "the execution's ContextResponse could not be established, so "
@@ -223,7 +223,7 @@ def execute(
             execution_id=execution_id,
             workspace_id=workspace_id,
             outcome=AgentExecutionOutcome.FAILED,
-            result=f"agent-failure:{execution_id}",
+            result=f"ref:agent-failure:{execution_id}",
             reason_code=REASON_BODY_FAILED,
             blocking=(
                 "the execution body started and did not reach a valid task "

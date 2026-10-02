@@ -17,9 +17,9 @@ from plugins.guard import PermissionLevel, TargetKind, TargetRef
 from plugins.guard.vocabulary import GuardDecision
 from plugins.security_tools import AdapterFamily, ToolOutcome
 
-from agents.body import OfflineBody
+from agents.body import BodyOutcome, OfflineBody
 from agents.request import AgentExecutionRequest, new_execution_id
-from agents.result import AgentExecutionOutcome
+from agents.result import AgentExecutionOutcome, AgentResult
 from agents.runtime import execute
 from agents.toolcall import ToolInvocation
 from agents.vocabulary import AgentId
@@ -341,3 +341,97 @@ class TestNoLaterPhaseVocabularyLeaked:
                     continue
                 for needle in forbidden:
                     assert needle not in name, f"{path}: {node.name}"
+
+
+class TestTheResultReferenceShape:
+    """Amendment-review regression — §10.2 at the construction boundary.
+
+    The defect this class exists for: `result` was caller convention only. A body
+    returning `BodyOutcome(result_ref="AWS_SECRET=...\nraw task body")` had the
+    whole string written into a COMPLETED AgentResult verbatim, and nothing
+    objected.
+    """
+
+    def test_the_two_admitted_shapes_are_accepted(self):
+        from agents.result import is_valid_result_reference
+
+        assert is_valid_result_reference("sha256:" + "a" * 64)
+        assert is_valid_result_reference("ref:agent-block:ex-0123456789abcdef")
+        assert is_valid_result_reference("ref:" + "x")
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "AWS_SECRET=abc123",              # an assignment
+            "raw task body",                  # prose with a space
+            "line one\nline two",             # multi-line
+            "line one\r\nline two",           # CRLF
+            "",                               # empty
+            "sha256:" + "A" * 64,             # uppercase hex
+            "sha256:" + "a" * 63,             # short digest
+            "ref:",                           # empty reference
+            "ref:has space",                  # whitespace in the token
+            "ref:has\nequals=sign",           # LF and '='
+            "not-a-reference",
+            None,
+            7,
+        ],
+    )
+    def test_raw_and_malformed_forms_are_refused(self, value):
+        from agents.result import InvalidResultReference, is_valid_result_reference
+
+        assert not is_valid_result_reference(value)
+        with pytest.raises(InvalidResultReference):
+            AgentResult(
+                agent_id=AgentId.DSH,
+                execution_id="ex-1",
+                workspace_id="ws-1",
+                input_digest="sha256:" + "a" * 64,
+                outcome=AgentExecutionOutcome.COMPLETED,
+                result=value,
+            )
+
+    def test_a_body_returning_raw_content_cannot_produce_a_result(self, workspace_root):
+        """The runtime path, not just the constructor."""
+
+        class RawBody:
+            def run(self, *, request, context, tools):  # noqa: ANN001, ANN202
+                return BodyOutcome(result_ref="AWS_SECRET=abc123\nraw task body")
+
+        from agents.result import InvalidResultReference
+
+        with pytest.raises(InvalidResultReference):
+            execute(make_request(workspace_root), body=RawBody())
+
+    def test_every_runtime_produced_reference_has_the_shape(self, workspace_root):
+        """Including the failure and block paths — neither bypasses the rule."""
+        from agents.result import is_valid_result_reference
+
+        completed = execute(
+            make_request(workspace_root), body=OfflineBody(agent_id=AgentId.DSH)
+        )
+        failed = execute(make_request(workspace_root), body=_ExplodingBody())
+
+        request = make_request(workspace_root)
+        blocked = execute(
+            AgentExecutionRequest(
+                agent_id=request.agent_id,
+                workspace_root=request.workspace_root + "-absent",
+                task=request.task,
+                input_digest=request.input_digest,
+            ),
+            body=_ExplodingBody(),
+        )
+
+        for result in (completed, failed, blocked):
+            assert is_valid_result_reference(result.result), result.result
+        assert failed.result.startswith("ref:agent-failure:")
+        assert blocked.result.startswith("ref:agent-block:")
+
+    def test_the_grammar_is_documented_as_bounded(self):
+        """§10.2's limit is stated, not implied away."""
+        import pathlib
+
+        source = pathlib.Path("agents/result.py").read_text(encoding="utf-8")
+        assert "IS NOT  a universal secret-content classifier" in source
+        assert "C-1" in source
