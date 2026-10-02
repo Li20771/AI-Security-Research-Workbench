@@ -68,6 +68,13 @@ class TestRequestShape:
             with pytest.raises(ReviewError):
                 request(subject=bad)
 
+    def test_a_bare_material_is_not_a_verification_subject(self):
+        """§10.2 names ONE claim; a material alone cannot be verified."""
+        with pytest.raises(InvalidVerification):
+            request(subject="m-left")
+        with pytest.raises(InvalidVerification):
+            observation(subject="m-left")
+
     def test_the_request_carries_no_authorization(self):
         fields = {field.name for field in dataclasses.fields(VerificationRequest)}
         for forbidden in (

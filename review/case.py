@@ -125,6 +125,15 @@ class ReviewCase:
 
     `state` and `independence_status` answer two different questions and are
     never derived from each other (§5.4).
+
+    ```text
+    The constructor is a VALUE boundary, not an act boundary. It enforces the
+    structural invariants a case must satisfy — two distinct sides, materials
+    present where the state requires them, the two axes consistent — and it
+    cannot enforce that the acts which produced the value were legal, because a
+    case does not store its acts. Only `observe_independence` runs AI-08's
+    predicate, and only `close_with_decision` closes a decided case.
+    ```
     """
 
     review_case_id: str
@@ -187,6 +196,14 @@ class ReviewCase:
         has_materials = (
             self.left_material_id is not None and self.right_material_id is not None
         )
+        if (
+            self.left_material_id is not None
+            and self.left_material_id == self.right_material_id
+        ):
+            raise InvalidCase(
+                "a case has two sides, and they are two materials; the same "
+                "material_id on both sides is not a comparison (§5.1)"
+            )
         if state is ReviewCaseState.CREATED and has_materials:
             raise InvalidCase(
                 "a case in CREATED holds no material; supplying one is the act "
@@ -286,12 +303,41 @@ def _require_case_materials(
         )
 
 
-def _require_subject_of_case(case: ReviewCase, subject: str) -> None:
-    material_id = subject.split("#", 1)[0]
-    if material_id not in (case.left_material_id, case.right_material_id):
+def _require_subject_of_case(
+    case: ReviewCase,
+    subject: str,
+    *,
+    left: ReviewMaterial,
+    right: ReviewMaterial,
+) -> None:
+    """§10.2. The subject names a material of THIS case and a claim it DECLARES.
+
+    Membership is checked against the two materials the caller hands in, not
+    against a copy stored on the case: a case holds identifiers, and the values
+    are produced at each act. Nothing is repaired and nothing is matched
+    approximately — a subject naming a claim that does not exist is refused,
+    because a verification of a claim nobody declared is not a verification of
+    anything.
+    """
+    material_id, separator, claim_id = subject.partition("#")
+    sides = {left.material_id: left, right.material_id: right}
+    material = sides.get(material_id)
+    if material is None:
         raise InvalidCase(
             f"subject {subject!r} names material {material_id!r}, which is not "
             "one of this case's two sides"
+        )
+    if not separator or not claim_id:
+        raise InvalidCase(
+            f"subject {subject!r} names a material and no claim; a verification "
+            "answers a specific declared claim (§10.2)"
+        )
+    declared = {claim.claim_id for claim in material.claims}
+    if claim_id not in declared:
+        raise InvalidVerification(
+            f"subject {subject!r} names claim {claim_id!r}, which material "
+            f"{material_id!r} does not declare. A subject is never repaired, and "
+            "an approximate match is not a match"
         )
 
 
@@ -393,14 +439,24 @@ def observe_independence(
 
 
 def request_verification(
-    case: ReviewCase, *, request: VerificationRequest
+    case: ReviewCase,
+    *,
+    request: VerificationRequest,
+    left: ReviewMaterial,
+    right: ReviewMaterial,
 ) -> ReviewCase:
-    """§10.2. A request authorizes nothing and executes nothing."""
+    """§10.2. A request authorizes nothing and executes nothing.
+
+    The two materials are handed in, not stored: the subject must name a claim
+    that one of them actually DECLARES, and the case keeps identifiers only
+    (§5.1).
+    """
     _require_state(
         case, (ReviewCaseState.COMPARISON_RECORDED,), "requesting verification"
     )
     _require_same_case(case, request.review_case_id, "the verification request")
-    _require_subject_of_case(case, request.subject)
+    _require_case_materials(case, left, right)
+    _require_subject_of_case(case, request.subject, left=left, right=right)
     return dataclasses.replace(case, state=ReviewCaseState.VERIFICATION_REQUESTED)
 
 
@@ -409,6 +465,8 @@ def observe_verification(
     *,
     request: VerificationRequest,
     observation: VerificationObservation,
+    left: ReviewMaterial,
+    right: ReviewMaterial,
 ) -> ReviewCase:
     """§10.3. The observation is a projection of an AI-06 execution.
 
@@ -450,8 +508,10 @@ def observe_verification(
             f"{observation.subject!r}; a subject is never substituted"
         )
 
-    _require_subject_of_case(case, request.subject)
-    _require_subject_of_case(case, observation.subject)
+    _require_case_materials(case, left, right)
+    # The two subjects are equal by the check above, so one membership check
+    # answers for both: the claim must be one this case's materials declare.
+    _require_subject_of_case(case, request.subject, left=left, right=right)
     return dataclasses.replace(case, state=ReviewCaseState.VERIFICATION_OBSERVED)
 
 

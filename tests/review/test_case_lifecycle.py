@@ -100,12 +100,12 @@ def supplied(pair):
 
 @pytest.fixture
 def requested(supplied):
-    """A case in VERIFICATION_REQUESTED, with the request that put it there."""
+    """A case in VERIFICATION_REQUESTED: the case, its request, and both sides."""
     case, left, right = supplied
     case, _ = record_comparison(case, left=left, right=right)
     request = request_for(case.review_case_id, "m-left#c1")
-    case = request_verification(case, request=request)
-    return case, request
+    case = request_verification(case, request=request, left=left, right=right)
+    return case, request, left, right
 
 
 class TestCreateAndSupply:
@@ -276,25 +276,39 @@ class TestVerification:
     def test_a_request_is_legal_after_a_comparison(self, supplied):
         case, left, right = supplied
         case, _ = record_comparison(case, left=left, right=right)
-        case = request_verification(case, request=request_for(case.review_case_id, "m-left#c1"))
+        case = request_verification(
+            case, request=request_for(case.review_case_id, "m-left#c1"), left=left, right=right
+        )
         assert case.state is ReviewCaseState.VERIFICATION_REQUESTED
 
     def test_a_request_before_a_comparison_is_refused(self, supplied):
-        case, _, _ = supplied
+        case, left, right = supplied
         with pytest.raises(InvalidTransition):
-            request_verification(case, request=request_for(case.review_case_id, "m-left#c1"))
+            request_verification(
+                case,
+                request=request_for(case.review_case_id, "m-left#c1"),
+                left=left,
+                right=right,
+            )
 
     def test_a_request_for_another_case_is_refused(self, supplied):
         case, left, right = supplied
         case, _ = record_comparison(case, left=left, right=right)
         with pytest.raises(InvalidCase):
-            request_verification(case, request=request_for("rc-other", "m-left#c1"))
+            request_verification(
+                case, request=request_for("rc-other", "m-left#c1"), left=left, right=right
+            )
 
     def test_a_subject_outside_the_case_is_refused(self, supplied):
         case, left, right = supplied
         case, _ = record_comparison(case, left=left, right=right)
         with pytest.raises(InvalidCase):
-            request_verification(case, request=request_for(case.review_case_id, "m-elsewhere#c1"))
+            request_verification(
+                case,
+                request=request_for(case.review_case_id, "m-elsewhere#c1"),
+                left=left,
+                right=right,
+            )
 
     def test_an_observation_needs_a_request_first(self, supplied):
         case, left, right = supplied
@@ -305,68 +319,153 @@ class TestVerification:
                 case,
                 request=request,
                 observation=observation_for(case.review_case_id, "m-left#c1"),
+                left=left,
+                right=right,
             )
 
     def test_an_observation_after_a_request_advances_the_case(self, requested):
-        case, request = requested
+        case, request, left, right = requested
         case = observe_verification(
             case,
             request=request,
             observation=observation_for(case.review_case_id, "m-left#c1"),
+            left=left,
+            right=right,
         )
         assert case.state is ReviewCaseState.VERIFICATION_OBSERVED
 
     def test_one_round_in_v1_a_second_request_is_refused(self, requested):
-        case, request = requested
+        case, request, left, right = requested
         case = observe_verification(
             case,
             request=request,
             observation=observation_for(case.review_case_id, "m-left#c1"),
+            left=left,
+            right=right,
         )
         with pytest.raises(InvalidTransition):
-            request_verification(case, request=request_for(case.review_case_id, "m-left#c1"))
+            request_verification(
+                case,
+                request=request_for(case.review_case_id, "m-left#c1"),
+                left=left,
+                right=right,
+            )
+
+
+class TestTheSubjectNamesARealClaim:
+    """§10.2. `<material_id>#<claim_id>` must name a claim the material declares."""
+
+    def test_a_declared_claim_is_accepted(self, requested):
+        case, request, _, _ = requested
+        assert request.subject == "m-left#c1"
+        assert case.state is ReviewCaseState.VERIFICATION_REQUESTED
+
+    def test_a_claim_the_material_does_not_declare_is_refused(self, supplied):
+        case, left, right = supplied
+        case, _ = record_comparison(case, left=left, right=right)
+        with pytest.raises(InvalidVerification):
+            request_verification(
+                case,
+                request=request_for(case.review_case_id, "m-left#nonexistent"),
+                left=left,
+                right=right,
+            )
+
+    def test_the_other_side_is_checked_too(self, supplied):
+        case, left, right = supplied
+        case, _ = record_comparison(case, left=left, right=right)
+        with pytest.raises(InvalidVerification):
+            request_verification(
+                case,
+                request=request_for(case.review_case_id, "m-right#nonexistent"),
+                left=left,
+                right=right,
+            )
+
+    def test_a_nonexistent_claim_is_refused_at_the_observation_too(self, requested):
+        """The observation cannot smuggle in a subject the request could not name."""
+        case, request, left, right = requested
+        forged = dataclasses.replace(
+            request, subject="m-left#nonexistent"
+        )
+        forged_observation = observation_for(case.review_case_id, "m-left#nonexistent")
+        with pytest.raises(InvalidVerification):
+            observe_verification(
+                case, request=forged, observation=forged_observation, left=left, right=right
+            )
+
+    def test_a_bare_material_subject_is_not_a_verification_subject(self):
+        """§10.2 names a claim; the schema refuses a subject that names none."""
+        with pytest.raises(InvalidVerification):
+            request_for("rc-1", "m-left")
+
+    def test_materials_are_handed_in_not_stored(self, requested):
+        """§5.1. The case holds identifiers; the values are handed in per act."""
+        case, _, _, _ = requested
+        fields = {field.name: field.type for field in dataclasses.fields(case)}
+        assert set(fields) == {
+            "review_case_id",
+            "workspace_id",
+            "left_material_id",
+            "right_material_id",
+            "state",
+            "independence_status",
+            "schema_version",
+        }
+        for name, annotation in fields.items():
+            assert "ReviewMaterial" not in str(annotation), name
 
 
 class TestVerificationBinding:
     """The request and the observation are bound structurally, never by guesswork."""
 
     def test_a_matching_observation_is_accepted(self, requested):
-        case, request = requested
+        case, request, left, right = requested
         advanced = observe_verification(
             case,
             request=request,
             observation=observation_for(case.review_case_id, "m-left#c1"),
+            left=left,
+            right=right,
         )
         assert advanced.state is ReviewCaseState.VERIFICATION_OBSERVED
 
     def test_a_mismatched_verification_id_is_refused(self, requested):
-        case, request = requested
+        case, request, left, right = requested
         observation = observation_for(case.review_case_id, "m-left#c1")
         mismatched = dataclasses.replace(observation, verification_id="vr-other")
         with pytest.raises(InvalidVerification):
-            observe_verification(case, request=request, observation=mismatched)
+            observe_verification(
+                case, request=request, observation=mismatched, left=left, right=right
+            )
 
     def test_a_mismatched_case_is_refused(self, requested):
-        case, request = requested
+        case, request, left, right = requested
         observation = observation_for("rc-other", "m-left#c1")
         with pytest.raises(InvalidCase):
-            observe_verification(case, request=request, observation=observation)
+            observe_verification(
+                case, request=request, observation=observation, left=left, right=right
+            )
 
     def test_a_request_for_another_case_is_refused(self, requested):
-        case, _ = requested
+        case, _, left, right = requested
         foreign = request_for("rc-other", "m-left#c1")
         with pytest.raises(InvalidCase):
             observe_verification(
                 case,
                 request=foreign,
                 observation=observation_for(case.review_case_id, "m-left#c1"),
+                left=left,
+                right=right,
             )
 
     def test_a_mismatched_subject_is_refused(self, requested):
-        case, request = requested
+        case, request, left, right = requested
         other_side = observation_for(case.review_case_id, "m-right#c1")
         with pytest.raises(InvalidVerification):
-            observe_verification(case, request=request, observation=other_side)
+            observe_verification(
+                case, request=request, observation=other_side, left=left, right=right
+            )
 
     def test_a_subject_outside_the_case_is_refused(self, requested):
         """A request and an observation that agree on a foreign subject.
@@ -374,26 +473,32 @@ class TestVerificationBinding:
         The request the case accepted could not have named it, so this is a
         forged or stale pair — and it is refused by the case's membership rule.
         """
-        case, _ = requested
+        case, _, left, right = requested
         outside = request_for(case.review_case_id, "m-elsewhere#c1")
         with pytest.raises(InvalidCase):
             observe_verification(
                 case,
                 request=outside,
                 observation=observation_for(case.review_case_id, "m-elsewhere#c1"),
+                left=left,
+                right=right,
             )
 
     def test_one_request_takes_at_most_one_observation(self, requested):
         """The rule is structural: the lifecycle never returns to REQUESTED."""
-        case, request = requested
+        case, request, left, right = requested
         observation = observation_for(case.review_case_id, "m-left#c1")
-        case = observe_verification(case, request=request, observation=observation)
+        case = observe_verification(
+            case, request=request, observation=observation, left=left, right=right
+        )
         with pytest.raises(InvalidTransition):
-            observe_verification(case, request=request, observation=observation)
+            observe_verification(
+                case, request=request, observation=observation, left=left, right=right
+            )
 
     def test_the_request_is_not_stored_on_the_case(self, requested):
         """AI-10 checks structure; it does not keep a request registry."""
-        case, _ = requested
+        case, _, _, _ = requested
         fields = {field.name for field in dataclasses.fields(case)}
         assert not any("request" in name or "observation" in name for name in fields)
 
@@ -494,6 +599,42 @@ class TestCaseInvariants:
                 right_material_id="m2",
                 state=ReviewCaseState.CREATED,
             )
+
+    def test_the_two_sides_are_two_materials(self):
+        """The constructor cannot be used to build a case against itself.
+
+        `supply_materials` refuses the same material on both sides; the value
+        boundary refuses it too, so no path produces such a case.
+        """
+        with pytest.raises(InvalidCase):
+            ReviewCase(
+                review_case_id="rc-1",
+                workspace_id="ws-1",
+                left_material_id="m1",
+                right_material_id="m1",
+                state=ReviewCaseState.MATERIALS_SUPPLIED,
+                independence_status=IndependenceObservationStatus.UNCHECKED,
+            )
+
+    def test_the_constructor_is_a_value_boundary_not_an_act_boundary(self):
+        """A case does not store its acts, and the type does not pretend otherwise.
+
+        A value can be constructed in a state the transition API would have had
+        to earn; what the type CAN enforce — materials where the state requires
+        them, two distinct sides, the two axes consistent — it does, and the
+        OBSERVED status is only ever OBTAINED through `observe_independence`.
+        """
+        fabricated = ReviewCase(
+            review_case_id="rc-1",
+            workspace_id="ws-1",
+            left_material_id="m1",
+            right_material_id="m2",
+            state=ReviewCaseState.INDEPENDENCE_OBSERVED,
+            independence_status=IndependenceObservationStatus.OBSERVED,
+        )
+        assert fabricated.independence_status is IndependenceObservationStatus.OBSERVED
+        # and it carries no finding: only observe_independence runs the predicate
+        assert not hasattr(fabricated, "finding")
 
     def test_a_supplied_state_requires_both_materials(self):
         with pytest.raises(InvalidCase):
@@ -634,12 +775,14 @@ class TestIndependenceStatus:
             )
 
     def test_verification_does_not_change_the_status(self, requested):
-        case, request = requested
+        case, request, left, right = requested
         assert case.independence_status is IndependenceObservationStatus.UNCHECKED
         advanced = observe_verification(
             case,
             request=request,
             observation=observation_for(case.review_case_id, "m-left#c1"),
+            left=left,
+            right=right,
         )
         assert advanced.independence_status is IndependenceObservationStatus.UNCHECKED
 

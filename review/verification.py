@@ -42,13 +42,13 @@ from plugins.security_tools import ToolOutcome
 from review.claim import VerificationTarget
 from review.errors import InvalidVerification
 from review.validation import (
+    claim_subject,
     closed_keys,
     identifier,
     mapping,
     refused_keys,
     sequence,
     single_line,
-    subject as subject_text,
 )
 from review.vocabulary import MAX_IDENTIFIER_CHARS
 
@@ -155,7 +155,9 @@ class VerificationRequest:
             identifier(self.review_case_id, "request.review_case_id"),
         )
         object.__setattr__(
-            self, "subject", subject_text(self.subject, "request.subject")
+            self,
+            "subject",
+            claim_subject(self.subject, "request.subject", error=InvalidVerification),
         )
         object.__setattr__(
             self, "requested_at", _timestamp(self.requested_at, "request.requested_at")
@@ -262,7 +264,9 @@ class VerificationObservation:
             identifier(self.review_case_id, "observation.review_case_id"),
         )
         object.__setattr__(
-            self, "subject", subject_text(self.subject, "observation.subject")
+            self,
+            "subject",
+            claim_subject(self.subject, "observation.subject", error=InvalidVerification),
         )
 
         try:

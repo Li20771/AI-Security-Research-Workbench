@@ -100,7 +100,20 @@ _MACHINE_ORIGIN_KEYS = frozenset(
 
 @dataclass(frozen=True, slots=True)
 class HumanDecision:
-    """§12.1. One human's decision about one review case."""
+    """§12.1. One human's decision about one review case.
+
+    ```text
+    FROZEN (§12.3): a decision is recorded as an ACT, "with its rationale and its
+    time". `recorded_at` therefore carries the same weight as `decision`: this
+    type refuses an absent or empty one, and it NEVER supplies a time of its own.
+    There is no clock here, no default and no automatic fill — a decision whose
+    time AI-10 invented would be a decision AI-10 partly authored.
+
+    `rationale` is bounded (§12.1) and may be empty. §12.3's phrase is not read
+    here as adding a non-empty requirement the field list does not state; widening
+    it is a contract question, not an implementation one.
+    ```
+    """
 
     decision_id: str
     review_case_id: str
@@ -161,7 +174,6 @@ class HumanDecision:
                 "decision.recorded_at",
                 maximum=_TIMESTAMP_MAX,
                 error=InvalidDecision,
-                allow_empty=True,
             ),
         )
 
@@ -189,13 +201,19 @@ class HumanDecision:
                 f"decision.schema_version {data.get('schema_version')!r} is not "
                 "supported; this contract defines 1"
             )
+        recorded_at = data.get("recorded_at")
+        if recorded_at is None:
+            raise InvalidDecision(
+                "decision.recorded_at is required: §12.3 records a decision as an "
+                "act, with its time, and AI-10 never supplies a time of its own"
+            )
         return cls(
             decision_id=data.get("decision_id"),
             review_case_id=data.get("review_case_id"),
             actor_id=data.get("actor_id"),
             decision=data.get("decision"),
             rationale=data.get("rationale", ""),
-            recorded_at=data.get("recorded_at", ""),
+            recorded_at=recorded_at,
         )
 
     def to_mapping(self) -> dict[str, Any]:

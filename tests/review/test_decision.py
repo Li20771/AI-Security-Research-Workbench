@@ -7,7 +7,9 @@ anything that would make one machine-made.
 
 from __future__ import annotations
 
+import ast
 import dataclasses
+import pathlib
 
 import pytest
 
@@ -61,7 +63,50 @@ class TestShape:
     def test_the_rationale_is_bounded(self):
         with pytest.raises(InvalidDecision):
             decision(rationale="x" * (MAX_RATIONALE_CHARS + 1))
+        # §12.1 bounds the field; it does not make it non-empty, and this
+        # implementation does not widen the schema by itself.
         assert decision(rationale="").rationale == ""
+
+    def test_the_time_is_required(self):
+        """§12.3 records a decision as an act, with its time."""
+        with pytest.raises(InvalidDecision):
+            decision(recorded_at="")
+        with pytest.raises(InvalidDecision):
+            HumanDecision(
+                decision_id="hd-1",
+                review_case_id="rc-1",
+                actor_id="li",
+                decision="ACCEPTED",
+            )
+        raw = decision().to_mapping()
+        del raw["recorded_at"]
+        with pytest.raises(InvalidDecision):
+            HumanDecision.from_mapping(raw)
+
+    def test_the_time_is_bounded_and_single_line(self):
+        with pytest.raises(InvalidDecision):
+            decision(recorded_at="x" * 65)
+        with pytest.raises(InvalidDecision):
+            decision(recorded_at="2026-10-02\n00:00:00Z")
+
+    def test_a_supplied_time_is_accepted_verbatim(self):
+        assert decision(recorded_at="2026-10-02T00:02:00Z").recorded_at == (
+            "2026-10-02T00:02:00Z"
+        )
+
+    def test_ai10_never_supplies_a_time_of_its_own(self):
+        """No clock, no default that could stand in for one."""
+        tree = ast.parse(pathlib.Path("review/decision.py").read_text(encoding="utf-8"))
+        imported: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imported.add(node.module)
+        assert not ({"datetime", "time", "uuid", "random"} & imported)
+        # The default is the empty string, and the empty string is refused, so
+        # there is no path on which a caller omits the field and gets a value.
+        assert isinstance(decision().recorded_at, str)
 
     def test_there_is_no_field_for_a_recommendation(self):
         fields = {field.name for field in dataclasses.fields(HumanDecision)}

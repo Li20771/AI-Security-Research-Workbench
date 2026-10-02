@@ -26,6 +26,7 @@ from review.vocabulary import MAX_IDENTIFIER_CHARS
 
 __all__ = [
     "bounded_text",
+    "claim_subject",
     "closed_keys",
     "identifier",
     "mapping",
@@ -40,9 +41,12 @@ __all__ = [
 #: and free of the separators a composite key would need.
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9._:-]+$")
 
-#: A finding subject (§9.1) and a verification subject (§10.2). A whole
-#: material, or one claim inside it.
+#: A finding subject (§9.1). A whole material, or one claim inside it.
 _SUBJECT_RE = re.compile(r"^[A-Za-z0-9._:-]{1,64}(#[A-Za-z0-9._:-]{1,64})?$")
+
+#: A verification subject (§10.2, §10.3). ONE claim inside ONE material — never
+#: a whole material, because a verification answers a specific declared claim.
+_CLAIM_SUBJECT_RE = re.compile(r"^[A-Za-z0-9._:-]{1,64}#[A-Za-z0-9._:-]{1,64}$")
 
 
 def mapping(value: object, where: str) -> Mapping[str, Any]:
@@ -156,6 +160,30 @@ def subject(value: object, where: str = "subject") -> str:
         raise ReviewError(
             f"{where} must be `<material_id>` or `<material_id>#<claim_id>`, "
             "each part a bounded identifier"
+        )
+    return value
+
+
+def claim_subject(
+    value: object,
+    where: str = "subject",
+    *,
+    error: type[ReviewError] = ReviewError,
+) -> str:
+    """`"<material_id>#<claim_id>"` — the subject a VERIFICATION names (§10.2).
+
+    §9.1's finding subjects may name a whole material; a verification may not. It
+    asks about a claim, and a subject without one is a request that cannot be
+    answered.
+
+    Whether the named claim is actually DECLARED is a different question, and is
+    answered where the materials are in hand — `review.case`'s membership rule.
+    This function fixes the shape only.
+    """
+    if not isinstance(value, str) or not _CLAIM_SUBJECT_RE.match(value):
+        raise error(
+            f"{where} must be `<material_id>#<claim_id>`, each part a bounded "
+            "identifier; a verification names one declared claim"
         )
     return value
 
