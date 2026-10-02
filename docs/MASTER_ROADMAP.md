@@ -426,11 +426,12 @@ AI-08-A and merged as `2117cdf4` (PR #51). AI-08-B implements the runtime agains
 AI-08-A     = COMPLETE / MERGED    contract frozen          (PR #51, 2117cdf4)
 AI-08-B     = IMPLEMENTED ON BRANCH, NOT MERGED
 AI-08       = NOT CLOSED           awaiting the human merge checkpoint
-contract    = blob 739ec29f, after Amendment 3
-previous    = 7fa9effd (after Amendment 2)
-amendments  = 3                    Amendment 1 (review corrections)
+contract    = blob a01e03f5, after Amendment 4
+previous    = 739ec29f (after Amendment 3) · 7fa9effd (after Amendment 2)
+amendments  = 4                    Amendment 1 (review corrections)
                                    Amendment 2 (terminal-result invariant)
                                    Amendment 3 (Guard-bound invocation boundary)
+                                   Amendment 4 (required CI configuration in scope)
 ```
 
 目标：把 Codex 建成独立的第二 Agent，而不是 DSH 子进程或 DSH 内部模型。

@@ -1508,6 +1508,52 @@ touched.**
     AI-08-B's implementation, which the absence assertion could not.
 ```
 
+### 17.2 Required CI configuration is part of phase scope — FROZEN (Amendment 4)
+
+C17 listed the phase's diff as living inside `agents/`, `tests/agents/`, docs, tests and the Layer 0
+gate. AI-08-B also changed `.github/workflows/preflight.yml`, so that CI syntax-checks the new
+`agents/` code — `tests` was compiled and `agents` was not. The change is one word on a `compileall`
+line, but it is real, and a frozen scope statement that does not mention it is a scope statement
+that is not true.
+
+**This is not implementation leakage.** It is the difference between a frozen boundary and an
+accurate one:
+
+```text
+.github/workflows/preflight.yml   REQUIRED CI VALIDATION INFRASTRUCTURE
+                                  what checks AI-08's code in the required path
+NOT                               AI-08 application or runtime logic
+```
+
+```text
+FROZEN: AI-08-B MAY modify repository CI configuration only when the change is
+        STRICTLY NECESSARY to validate AI-08-owned code in the required CI path.
+FROZEN: such a change is within C17 scope only when it:
+            - only adds or adjusts validation for agents/ or tests/agents/,
+            - does not weaken any existing repository security gate,
+            - does not enable network, provider or live execution,
+            - does not change permissions, branch protection or protected paths,
+            - does not alter another phase's contract or implementation.
+FROZEN: the change AI-08-B made is within this exception, and only because it
+        adds `agents` to an existing `compileall` line and does nothing else.
+```
+
+```text
+FROZEN: "narrowly scoped" is the operative phrase. `.github/` is NOT an AI-08
+        free-edit area, and this exception MUST NOT be read as opening it.
+FORBIDDEN: adding, removing or renaming a workflow file
+FORBIDDEN: changing a trigger, a job, a permission, a secret, or a protected path
+FORBIDDEN: adding an HTTP client, a provider hostname, a live opt-in flag or a
+           credential to any workflow
+FORBIDDEN: touching .github/pull_request_template.md or any workflow not needed
+           to validate AI-08-owned code
+```
+
+```text
+A CI change that fails any of the five conditions above is OUT OF SCOPE, and
+C17 does not close. It is not a judgement call to be made while implementing.
+```
+
 ---
 
 ## 18. Contract amendment rule
@@ -1615,7 +1661,7 @@ AI-08 is complete only when every gate below passes.
 | C14 | Full offline tests PASS | layers 1–3, with the counts recorded |
 | C15 | Required CI PASS | CI green on the head the phase claims |
 | C16 | Evidence artifact complete | `docs/AI-08_EVIDENCE_<date>.md` |
-| C17 | Scope and diff audit clean | the diff is inside `agents/`, `tests/agents/`, docs, tests and the Layer 0 gate |
+| C17 | Scope and diff audit clean | the diff is inside `agents/`, `tests/agents/`, docs, tests, the Layer 0 gate, and narrowly scoped CI configuration required to validate AI-08-owned code (Amendment 4, §17.2) |
 
 ```text
 C0 is satisfied by AI-08-A. C1–C17 are AI-08-B's.
@@ -1647,6 +1693,7 @@ the independence predicate over I1–I8
 the Guard call path: one fresh request and one fresh decision per GUARD-BOUND
   tool invocation, and no fabrication for a pre-Guard refusal (§12.2)
 the Layer 0 AI-08 gate
+required CI validation for AI-08-owned code — narrowly scoped, per §17.2
 tests/agents/, layer 1, covering T1–T44
 ```
 
@@ -1666,6 +1713,9 @@ add a nonce, counter or random field so that a
   Guard request digest becomes unique             (§9.1.1)
 rewrite an execution outcome because one tool
   invocation was refused                          (§11.2)
+widen the CI exception beyond what §17.2 permits —
+  no new workflow, no trigger or permission change,
+  no provider host, no live flag, no credential   (§17.2)
 ```
 
 ---
@@ -1881,6 +1931,56 @@ EXPLICITLY NOT CHANGED by Amendment 3:
       decision store, no ceiling
 ```
 
+### Amendment 4 — Required CI configuration is part of phase scope
+
+```text
+AI-08-A Amendment 4   FROZEN    written during AI-08-B, before its merge
+base                  main @ 2117cdf49940bb97f5f18a6447fbc2f0137b31e7
+PR                    #52, the AI-08-B implementation PR
+```
+
+**A scope-statement correction, not an implementation change.** The last
+reconciliation between what the frozen contract says the phase's diff contains
+and what it actually contains.
+
+```text
+1  C17 did not name the CI configuration
+   §17.2 (new), §20 C17, §21, §23
+
+   C17 listed the phase's diff as living inside `agents/`, `tests/agents/`,
+   docs, tests and the Layer 0 gate. AI-08-B also changed
+   `.github/workflows/preflight.yml`, so that CI syntax-checks the new
+   `agents/` code: `tests` was compiled and `agents` was not.
+
+   The change is one word on an existing `compileall` line. It is still real,
+   and a frozen scope statement that does not mention it is a scope statement
+   that is not true.
+
+   RESOLVED — §17.2 names it, with a narrow exception. A CI change is in scope
+   only when it is STRICTLY NECESSARY to validate AI-08-owned code in the
+   required CI path, and only when it:
+
+       - only adds or adjusts validation for agents/ or tests/agents/,
+       - does not weaken any existing repository security gate,
+       - does not enable network, provider or live execution,
+       - does not change permissions, branch protection or protected paths,
+       - does not alter another phase's contract or implementation.
+
+   The AI-08-B change satisfies all five. `.github/` is NOT an AI-08 free-edit
+   area, and §17.2 says so where a reader will find it rather than leaving the
+   limit to inference.
+```
+
+```text
+EXPLICITLY NOT CHANGED by Amendment 4:
+    any implementation. No AI-08 module, no test, no Layer 0 check.
+    AI-06, AI-04, AI-05, AI-07 and providers/, in any respect
+    what a CI change must NOT do: new workflows, triggers, permissions,
+      secrets, protected paths, provider hosts, live flags and credentials all
+      remain forbidden (§17.2)
+    C1-C16
+```
+
 An amendment is required before any frozen rule above changes.
 
 ---
@@ -1892,6 +1992,7 @@ AI-08-A   FROZEN    this document
 AI-08-A   Amendment 1 applied before AI-08-B began (§22)
 AI-08-A   Amendment 2 applied before AI-08-B began (§22)
 AI-08-A   Amendment 3 applied during AI-08-B, before its merge (§22)
+AI-08-A   Amendment 4 applied during AI-08-B, before its merge (§22)
 base      main @ a7c4a1e2536536940d96431883dadb592f7c151a
 date      2026-10-01
 
@@ -1936,6 +2037,8 @@ Frozen here:
     the cross-agent result sharing prohibition
     the Codex provider boundary, deferred whole to AI-09
     the repository layout, and the two AI-07 test assertions maintained here
+    that required CI configuration for validating AI-08-owned code is part of
+      phase scope, narrowly bounded (Amendment 4)
 
 Not decided here:
     the AI-08 producer token for Evidence                             DEFERRED,

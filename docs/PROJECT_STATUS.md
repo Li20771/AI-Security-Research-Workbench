@@ -75,14 +75,17 @@ AI-08       = NOT CLOSED           awaiting the human merge checkpoint
 AI-08-A merge SHA  = 2117cdf49940bb97f5f18a6447fbc2f0137b31e7
 AI-08-A head       = 838e4617a5465367f5410be37d34c745054f86b9
 contract           = docs/AI-08_AGENT_EXECUTION_EXECUTION_PLAN.md
-contract blob      = 739ec29f37bfb8654f19ca088d6af57ffdd09e69
-                     after Amendment 3, applied during AI-08-B
-previous blob      = 7fa9effde597c71f127c4e14dc31641a5ffe7589
+contract blob      = a01e03f5306299a0a4442648eeb8fdcfce6bd8dd
+                     after Amendment 4, applied during AI-08-B
+previous blob      = 739ec29f37bfb8654f19ca088d6af57ffdd09e69
+                     (after Amendment 3)
+earlier blob       = 7fa9effde597c71f127c4e14dc31641a5ffe7589
                      (after Amendment 2; unchanged by the AI-08-B implementation
                       commits themselves)
-amendments         = 3   Amendment 1 (review corrections, §22)
+amendments         = 4   Amendment 1 (review corrections, §22)
                          Amendment 2 (terminal-result invariant, §22)
                          Amendment 3 (Guard-bound tool invocation boundary, §22)
+                         Amendment 4 (required CI configuration in scope, §22)
 
 FROZEN here   AgentId, AgentRole, the identity boundary, the execution contract,
               Context isolation, the independence definition I1-I8,
@@ -1001,7 +1004,27 @@ Synchronised: §9.1 I5, §12, §12.2 (new), §9.1.2 (new), §13.4, §20 C9,
 §21, test matrix T20 and new T44.
 ```
 
-Two implementation fixes landed with it:
+### AI-08-A Amendment 4 — required CI configuration is part of phase scope
+
+A scope-statement correction. C17 listed the phase's diff as living inside
+`agents/`, `tests/agents/`, docs, tests and the Layer 0 gate, but AI-08-B also
+changed `.github/workflows/preflight.yml` so that CI syntax-checks the new
+`agents/` code — `tests` was compiled and `agents` was not.
+
+```text
+.github/workflows/preflight.yml   REQUIRED CI VALIDATION INFRASTRUCTURE
+NOT                               AI-08 application or runtime logic
+```
+
+New §17.2 names it with a narrow exception: a CI change is in scope only when
+STRICTLY NECESSARY to validate AI-08-owned code in the required CI path, and
+only when it adds or adjusts validation for `agents/` or `tests/agents/`, does
+not weaken a security gate, does not enable network/provider/live execution,
+does not change permissions or protected paths, and does not alter another
+phase's contract or implementation. `.github/` is not an AI-08 free-edit area
+and §17.2 says so. No implementation changed.
+
+Two implementation fixes landed with Amendment 3:
 
 ```text
 identity boundary   AgentExecutionRequest.__post_init__ resolves through
