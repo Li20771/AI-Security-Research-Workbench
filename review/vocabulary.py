@@ -40,6 +40,7 @@ __all__ = [
     "FORBIDDEN_CLAIM_FIELDS",
     "FORBIDDEN_MATERIAL_FIELDS",
     "HumanDecisionKind",
+    "IndependenceObservationStatus",
     "ReviewCaseState",
     "ReviewFindingKind",
     "ReviewSide",
@@ -145,6 +146,41 @@ CLOSURE_CASE_STATES: frozenset[ReviewCaseState] = frozenset(
 TERMINAL_CASE_STATES: frozenset[ReviewCaseState] = frozenset(
     {ReviewCaseState.CLOSED} | set(CLOSURE_CASE_STATES)
 )
+
+
+class IndependenceObservationStatus(StrEnum):
+    """§5.4 (Amendment 2). Whether an independence observation was obtained.
+
+    Closed, exactly three. It is a SECOND AXIS beside `ReviewCaseState`: the
+    lifecycle says where a review is, and this says whether AI-08's predicate was
+    ever run over a supplied, aligned pair of ExecutionRecords.
+
+    ```text
+    NOT_APPLICABLE   the case does not yet hold two materials, so an independence
+                     observation has no subject
+    UNCHECKED        the case holds two materials, and no qualifying pair of
+                     ExecutionRecords has been supplied (§6.4's required record)
+    OBSERVED         two ExecutionRecords were supplied, every declared attribution
+                     field agreed with them, and structural_independence ran
+    ```
+
+    ```text
+    UNCHECKED means only that the observation has not been obtained. It is NOT
+    non-independence, NOT a failure, NOT a violation, NOT a negative finding, and
+    NOT `ReviewCaseState.NOT_RUN` or `ReviewCaseState.BLOCKED`.
+
+    OBSERVED does not mean correct, does not mean the two sides agree, does not
+    mean the material provenance is verified, and does not mean anything is true.
+
+    No member may describe a pair as independent, non-independent or failed. That
+    question belongs to AI-08's finding, which is itself a finding and not a
+    verdict.
+    ```
+    """
+
+    NOT_APPLICABLE = "NOT_APPLICABLE"
+    UNCHECKED = "UNCHECKED"
+    OBSERVED = "OBSERVED"
 
 
 class ReviewFindingKind(StrEnum):

@@ -256,28 +256,32 @@ class ReviewClaim:
 
 
 def claim_content_digest(claim: ReviewClaim) -> str:
-    """§9.3. The digest two claims are compared by for overlap and uniqueness."""
+    """§9.3. The CONTENT identity: what a claim says AND what it cites.
+
+    Covers `schema_version`, `statement`, `sorted(evidence_refs)` and
+    `sorted(verification_targets)`, and excludes `claim_id`. It is the identity
+    for overlap, uniqueness and the claim-set comparison.
+    """
     return digest_of(claim.content_projection())
 
 
 def claim_statement_digest(claim: ReviewClaim) -> str:
-    """The claim's STATEMENT identity: what it says, plus its declared targets.
+    """§9.3.1. The claim's STATEMENT identity: what it says, not what it cites.
 
-    Excludes `evidence_refs`, and exists for exactly one rule.
+    Covers `schema_version`, `statement` and `sorted(verification_targets)`. It
+    excludes `claim_id` and `evidence_refs`.
 
     ```text
-    RECORDED FINDING — a contract inconsistency, recorded rather than resolved.
-        §9.3 defines the claim content digest as covering `evidence_refs`.
-        §9.2 asks EVIDENCE_REFERENCE_DIFFERENCE to fire "for a claim content
-        digest present on both sides" whose `evidence_refs` sets are not equal.
-        Evaluated over the content digest alone the rule could never fire: two
-        claims whose references differ do not share a content digest, and two
-        claims that share one have equal references by construction.
-        AI-10-B evaluates that ONE observation over statement identity, which is
-        the only reading under which the frozen member is reachable, and does
-        NOT change the contract. The overlap and uniqueness observations keep
-        §9.3's definition unchanged. Resolving this properly is an AI-10
-        amendment, not an implementation decision.
+    statement identity   ->  EVIDENCE_REFERENCE_DIFFERENCE, and nothing else
+    content identity     ->  CLAIM_OVERLAP, CLAIM_UNIQUE_TO_LEFT/RIGHT, and the
+                             claim-set comparison behind IDENTICAL_MATERIAL and
+                             MATERIAL_DIFFERENCE
+    ```
+
+    Two claims that say the same thing and cite different references are
+    statement-equivalent and content-different, and that is exactly the fact the
+    reference-difference observation exists to record. §9.3.1 is the frozen rule
+    that says so; this function is its implementation.
     """
     return digest_of(
         {

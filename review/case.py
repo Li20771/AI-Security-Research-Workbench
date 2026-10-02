@@ -20,13 +20,28 @@ observations and decisions are separate values the caller holds, because a case
 that accumulated content would be the durable store this contract refuses to
 create.
 
+### Two axes, not one — §5.4 (Amendment 2)
+
+```text
+state                 where the review is in its lifecycle       §5.2
+independence_status   whether an independence observation was
+                      obtained                                  §5.4
+```
+
+They are orthogonal. A case in `COMPARISON_RECORDED` may hold `UNCHECKED` (no
+ExecutionRecords were supplied — §6.4's required record) or `OBSERVED` (they
+were, and §8.2's conditions held), and both are complete, honest records.
+`UNCHECKED` is NOT a lifecycle state and MUST NOT become one: it describes an
+observation that was not made, not a phase a review is in.
+
 ### Two boundaries worth stating where a reader will find them
 
 ```text
 v1 exercises at most ONE verification round. §5.3 has no transition from
 VERIFICATION_OBSERVED back to VERIFICATION_REQUESTED, so a second request after
 an observation is refused like any other illegal transition. A second round is
-an amendment, not an implementation choice.
+an amendment, not an implementation choice — and that same rule is what makes
+"one request, at most one observation" structural rather than stored.
 
 DEFERRED does not close a case. §12.2 leaves the case open, so a superseding
 decision may be recorded, and CLOSED requires an ACCEPTED or REJECTED decision
@@ -45,7 +60,7 @@ from agents.independence import ExecutionRecord, IndependenceFinding
 from review import independence as independence_module
 from review.comparison import compare
 from review.decision import HumanDecision
-from review.errors import InvalidCase, InvalidTransition
+from review.errors import InvalidCase, InvalidTransition, InvalidVerification
 from review.finding import ReviewFinding
 from review.material import ReviewMaterial
 from review.validation import identifier, single_line
@@ -55,6 +70,7 @@ from review.vocabulary import (
     MAX_WORKSPACE_ID_CHARS,
     TERMINAL_CASE_STATES,
     HumanDecisionKind,
+    IndependenceObservationStatus,
     ReviewCaseState,
 )
 
@@ -105,13 +121,20 @@ def new_review_case_id() -> str:
 
 @dataclass(frozen=True, slots=True)
 class ReviewCase:
-    """§5.1. One review, at one point in its lifecycle."""
+    """§5.1. One review, at one point in its lifecycle.
+
+    `state` and `independence_status` answer two different questions and are
+    never derived from each other (§5.4).
+    """
 
     review_case_id: str
     workspace_id: str
     left_material_id: str | None = None
     right_material_id: str | None = None
     state: ReviewCaseState = ReviewCaseState.CREATED
+    independence_status: IndependenceObservationStatus = (
+        IndependenceObservationStatus.NOT_APPLICABLE
+    )
     schema_version: int = 1
 
     def __post_init__(self) -> None:
@@ -144,6 +167,17 @@ class ReviewCase:
             ) from exc
         object.__setattr__(self, "state", state)
 
+        try:
+            status = IndependenceObservationStatus(self.independence_status)
+        except ValueError as exc:
+            raise InvalidCase(
+                "case.independence_status must be one of "
+                f"{[member.value for member in IndependenceObservationStatus]}; got "
+                f"{self.independence_status!r}. It is a second axis, not a twelfth "
+                "lifecycle state (§5.4)"
+            ) from exc
+        object.__setattr__(self, "independence_status", status)
+
         if self.schema_version != 1:
             raise InvalidCase(
                 f"case.schema_version {self.schema_version!r} is not supported; "
@@ -164,6 +198,36 @@ class ReviewCase:
                 "state without them (§5.3)"
             )
 
+        # §5.4. The axes stay consistent without either being derived from the
+        # other: a case with no materials has nothing to observe, a case with
+        # materials that was never observed is UNCHECKED, and the one state that
+        # says an observation happened requires the status that says so.
+        if (
+            state is ReviewCaseState.CREATED
+            and status is not IndependenceObservationStatus.NOT_APPLICABLE
+        ):
+            raise InvalidCase(
+                f"a case in CREATED holds no materials, so independence_status is "
+                f"NOT_APPLICABLE; got {status} (§5.4)"
+            )
+        if (
+            state in _STATES_REQUIRING_MATERIALS
+            and status is IndependenceObservationStatus.NOT_APPLICABLE
+        ):
+            raise InvalidCase(
+                f"a case in {state} holds two materials, so independence_status is "
+                "UNCHECKED or OBSERVED; NOT_APPLICABLE would say there is nothing "
+                "to observe (§5.4)"
+            )
+        if (
+            state is ReviewCaseState.INDEPENDENCE_OBSERVED
+            and status is not IndependenceObservationStatus.OBSERVED
+        ):
+            raise InvalidCase(
+                f"a case in INDEPENDENCE_OBSERVED holds the observation, so "
+                f"independence_status is OBSERVED; got {status} (§5.4)"
+            )
+
     @property
     def terminal(self) -> bool:
         """Whether the case is finished. A terminal case takes no further acts."""
@@ -177,6 +241,7 @@ class ReviewCase:
             "left_material_id": self.left_material_id,
             "right_material_id": self.right_material_id,
             "state": str(self.state),
+            "independence_status": str(self.independence_status),
         }
 
 
@@ -268,6 +333,7 @@ def supply_materials(
         left_material_id=left.material_id,
         right_material_id=right.material_id,
         state=ReviewCaseState.MATERIALS_SUPPLIED,
+        independence_status=IndependenceObservationStatus.UNCHECKED,
     )
 
 
@@ -276,21 +342,19 @@ def record_comparison(
     *,
     left: ReviewMaterial,
     right: ReviewMaterial,
-    observed_subjects: frozenset[str] = frozenset(),
 ) -> tuple[ReviewCase, tuple[ReviewFinding, ...]]:
-    """§9. The comparison runs here; the findings are returned, not stored."""
+    """§9. The comparison runs here; the findings are returned, not stored.
+
+    `independence_status` is NOT touched: a case compared after an observation
+    keeps OBSERVED, a case compared without one keeps UNCHECKED (§5.4).
+    """
     _require_state(
         case,
         (ReviewCaseState.MATERIALS_SUPPLIED, ReviewCaseState.INDEPENDENCE_OBSERVED),
         "recording a comparison",
     )
     _require_case_materials(case, left, right)
-    findings = compare(
-        left,
-        right,
-        review_case_id=case.review_case_id,
-        observed_subjects=observed_subjects,
-    )
+    findings = compare(left, right, review_case_id=case.review_case_id)
     return (
         dataclasses.replace(case, state=ReviewCaseState.COMPARISON_RECORDED),
         findings,
@@ -319,7 +383,11 @@ def observe_independence(
     independence_module.require_aligned_declaration(right, right_record)
     finding = independence_module.observe_independence(left_record, right_record)
     return (
-        dataclasses.replace(case, state=ReviewCaseState.INDEPENDENCE_OBSERVED),
+        dataclasses.replace(
+            case,
+            state=ReviewCaseState.INDEPENDENCE_OBSERVED,
+            independence_status=IndependenceObservationStatus.OBSERVED,
+        ),
         finding,
     )
 
@@ -337,17 +405,52 @@ def request_verification(
 
 
 def observe_verification(
-    case: ReviewCase, *, observation: VerificationObservation
+    case: ReviewCase,
+    *,
+    request: VerificationRequest,
+    observation: VerificationObservation,
 ) -> ReviewCase:
     """§10.3. The observation is a projection of an AI-06 execution.
 
     Nothing here fabricates one: an observation exists because a controlled
-    verification caller reported what an invocation did.
+    verification caller reported what an invocation did. What this function
+    checks is the STRUCTURAL binding between the request and the observation —
+    the ids, the case and the subject must all agree, and no field is inferred,
+    repaired or matched by guesswork.
+
+    ```text
+    one request -> at most one observation
+    ```
+
+    That rule is structural rather than stored: after an observation the case is
+    in VERIFICATION_OBSERVED, §5.3 provides no transition back to
+    VERIFICATION_REQUESTED, and a second observation is refused like any other
+    illegal transition. AI-10 keeps no record of requests.
+
+    What is NOT claimed: AI-10 cannot prove the observation describes a real
+    AI-06 invocation. It verifies structure, and the controlled caller remains
+    the only source of an observation (§11.2).
     """
     _require_state(
         case, (ReviewCaseState.VERIFICATION_REQUESTED,), "observing a verification"
     )
+    _require_same_case(case, request.review_case_id, "the verification request")
     _require_same_case(case, observation.review_case_id, "the verification observation")
+
+    if request.verification_id != observation.verification_id:
+        raise InvalidVerification(
+            f"the observation answers verification {observation.verification_id!r}, "
+            f"but this case requested {request.verification_id!r}. An observation "
+            "that does not answer the request in hand is refused rather than "
+            "matched to it"
+        )
+    if request.subject != observation.subject:
+        raise InvalidVerification(
+            f"the request is about {request.subject!r} and the observation is about "
+            f"{observation.subject!r}; a subject is never substituted"
+        )
+
+    _require_subject_of_case(case, request.subject)
     _require_subject_of_case(case, observation.subject)
     return dataclasses.replace(case, state=ReviewCaseState.VERIFICATION_OBSERVED)
 

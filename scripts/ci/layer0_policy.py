@@ -2058,6 +2058,7 @@ def check_ai10_review_layer() -> list[str]:
         if str(ROOT) not in sys.path:
             sys.path.insert(0, str(ROOT))
 
+        from review.case import ReviewCase
         from review.claim import ReviewClaim
         from review.decision import HumanDecision
         from review.finding import ReviewFinding
@@ -2066,6 +2067,7 @@ def check_ai10_review_layer() -> list[str]:
             FORBIDDEN_CLAIM_FIELDS,
             FORBIDDEN_MATERIAL_FIELDS,
             HumanDecisionKind,
+            IndependenceObservationStatus,
             ReviewCaseState,
             ReviewFindingKind,
         )
@@ -2113,6 +2115,30 @@ def check_ai10_review_layer() -> list[str]:
                 "HumanDecisionKind is "
                 f"{sorted(member.value for member in HumanDecisionKind)}; contract "
                 "§12.2 closes it at exactly three members"
+            )
+
+        expected_status = ["NOT_APPLICABLE", "OBSERVED", "UNCHECKED"]
+        if sorted(member.value for member in IndependenceObservationStatus) != expected_status:
+            problems.append(
+                "IndependenceObservationStatus is "
+                f"{sorted(member.value for member in IndependenceObservationStatus)}; "
+                "contract §5.4 closes it at exactly three members, and no member may "
+                "describe a pair as independent, non-independent or failed"
+            )
+        if {member.value for member in IndependenceObservationStatus} & {
+            member.value for member in ReviewCaseState
+        }:
+            problems.append(
+                "IndependenceObservationStatus and ReviewCaseState share a member; "
+                "§5.4 makes them two orthogonal axes, and neither may absorb the other"
+            )
+
+        case_fields = {field.name for field in _dataclasses.fields(ReviewCase)}
+        if "independence_status" not in case_fields:
+            problems.append(
+                "ReviewCase has no `independence_status`; §5.1 requires it, and §6.4 "
+                "requires the case to record UNCHECKED when no ExecutionRecord is "
+                "supplied"
             )
 
         forbidden_fields = FORBIDDEN_CLAIM_FIELDS | FORBIDDEN_MATERIAL_FIELDS

@@ -136,6 +136,42 @@ class TestTheGate:
         assert any(needle in problem for problem in problems), problems
 
 
+class TestTheAmendmentTwoAssertionsAreNotVacuous:
+    """§5.4. The gate must catch a drift in the third vocabulary, not just read it."""
+
+    def test_a_fourth_status_member_is_caught(self, monkeypatch):
+        import enum
+
+        import review.vocabulary as vocabulary
+
+        module = _policy_module()
+
+        class Extended(enum.StrEnum):
+            NOT_APPLICABLE = "NOT_APPLICABLE"
+            UNCHECKED = "UNCHECKED"
+            OBSERVED = "OBSERVED"
+            INDEPENDENT = "INDEPENDENT"
+
+        monkeypatch.setattr(vocabulary, "IndependenceObservationStatus", Extended)
+        problems = module.check_ai10_review_layer()
+        assert any("IndependenceObservationStatus" in problem for problem in problems), problems
+
+    def test_a_case_without_the_field_is_caught(self, monkeypatch):
+        import dataclasses
+
+        import review.case as case_module
+
+        module = _policy_module()
+
+        @dataclasses.dataclass(frozen=True, slots=True)
+        class Bare:
+            review_case_id: str = "rc-1"
+
+        monkeypatch.setattr(case_module, "ReviewCase", Bare)
+        problems = module.check_ai10_review_layer()
+        assert any("independence_status" in problem for problem in problems), problems
+
+
 class TestIdentity:
     def test_review_is_a_directory_at_the_root(self):
         assert pathlib.Path("review").is_dir()
