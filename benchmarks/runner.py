@@ -53,7 +53,7 @@ from benchmarks.oracle import (
     aggregate_oracle_verdicts,
     aggregate_security_status,
 )
-from benchmarks.oracles import evaluate_submission
+from benchmarks.oracles import SUBJECT_SIDE_REGRESSIONS, evaluate_submission
 from benchmarks.run import BenchmarkRun, HostRecord, TestCounts, new_run_id
 from benchmarks.task import TaskDefinition
 from benchmarks.vocabulary import (
@@ -269,6 +269,12 @@ def _record(
     )
 
 
+#: How long a subject-side regression observation may take. A controlled reproduction
+#: that executes a whole case set is not a single tool invocation; see
+#: `benchmarks.oracles.FUZZ_RERUN_TIMEOUT_SECONDS`.
+REGRESSION_OBSERVATION_TIMEOUT_SECONDS = 600
+
+
 def evaluate_regression(
     *,
     task: TaskDefinition,
@@ -301,8 +307,25 @@ def evaluate_regression(
     executor = ReferenceExecutor(task, corpus_root)
     results: list[Mapping[str, Any]] = []
     outcomes: list[OracleVerdict] = []
+    subject_side_used = False
 
     for condition in conditions:
+        # §27.8. A condition whose question is about the SUBJECT — did the ECU survive
+        # and recover — cannot be answered by judging an answer. Those conditions name
+        # their own evaluator; every other condition keeps the negative-control path
+        # below, unchanged.
+        subject_side = SUBJECT_SIDE_REGRESSIONS.get((task.task_id, condition.condition_id))
+        if subject_side is not None:
+            subject_side_used = True
+            verdict, reason = subject_side(
+                source_root=source_root, setup_dir=setup_dir, runner=oracle_runner,
+                timeout_seconds=REGRESSION_OBSERVATION_TIMEOUT_SECONDS,
+            )
+            results.append({"condition_id": condition.condition_id,
+                            "verdict": str(verdict), "reason_code": reason})
+            outcomes.append(verdict)
+            continue
+
         if condition.kind not in ("FROZEN_DEFINITION", "BEHAVIOURAL_PIN"):
             # A tracked suite would be run here; v1 declares none, and inventing a
             # runner for one would be a mechanism nobody asked for.
@@ -351,7 +374,16 @@ def evaluate_regression(
         outcomes.append(verdict)
 
     if all(v is OracleVerdict.PASS for v in outcomes):
-        return (OracleVerdict.PASS, "NEGATIVE_CONTROLS_REJECTED", tuple(results))
+        # The aggregate reason names what was actually measured. A subject-side
+        # condition never looked at a negative control, so reporting
+        # "NEGATIVE_CONTROLS_REJECTED" for one would be a true verdict with a false
+        # explanation attached (§27.8).
+        reason = (
+            "REGRESSION_CONDITIONS_SATISFIED"
+            if subject_side_used
+            else "NEGATIVE_CONTROLS_REJECTED"
+        )
+        return (OracleVerdict.PASS, reason, tuple(results))
 
     from benchmarks.vocabulary import ORACLE_VERDICT_PRECEDENCE
 
