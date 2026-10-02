@@ -27,8 +27,9 @@ raising or guessing. §8.2: nothing ran, so nothing is known about the thing che
 
 from __future__ import annotations
 
-import re
+import json
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -38,7 +39,6 @@ __all__ = [
     "decode_dbc_frame",
     "inspect_elf",
     "inspect_firmware",
-    "parse_dbc_signals",
     "run_binary",
 ]
 
@@ -58,135 +58,80 @@ class InspectionUnavailable(RuntimeError):
         self.detail = detail
 
 
-@dataclass(frozen=True, slots=True)
-class DecodedSignal:
-    name: str
-    start_bit: int
-    length: int
-    byte_order: int
-    signed: bool
-    factor: float
-    offset: float
-    raw: int
-    physical: float
-
-
 # ---------------------------------------------------------------------------
-# DBC
+# DBC — A.1's declared decoder
 # ---------------------------------------------------------------------------
 
-#: `SG_ EngineSpeed : 0|16@1+ (1,0) [0|65535] "rpm" ECU_TEST`
-_SIGNAL_RE = re.compile(
-    r"^\s*SG_\s+(?P<name>\w+)\s*:\s*"
-    r"(?P<start>\d+)\|(?P<length>\d+)@(?P<order>[01])(?P<sign>[+-])\s*"
-    r"\((?P<factor>[-\d.eE+]+),(?P<offset>[-\d.eE+]+)\)"
-)
+#: The decoder program. It runs in a subprocess under the interpreter that is running
+#: the harness, so it sees the same environment — and it either imports `cantools` or it
+#: does not.
+_CANTOOLS_PROGRAM = """
+import json, sys
+import cantools
 
-#: `BO_ 291 EngineData: 8 ECU_TEST`
-_MESSAGE_RE = re.compile(r"^\s*BO_\s+(?P<id>\d+)\s+(?P<name>\w+)\s*:\s*(?P<dlc>\d+)")
-
-
-def parse_dbc_signals(dbc_text: str, message_id: int) -> tuple[Mapping[str, Any], ...]:
-    """The signals the DBC declares for one arbitration id.
-
-    A deliberately small parser for the subset the corpus declares. Anything it cannot
-    read is REFUSED rather than skipped: a decoder that silently ignores a signal would
-    compare fewer values and report a pass.
-    """
-    current: int | None = None
-    found: list[Mapping[str, Any]] = []
-    for line in dbc_text.splitlines():
-        message = _MESSAGE_RE.match(line)
-        if message:
-            current = int(message.group("id"))
-            continue
-        if not line.strip().startswith("SG_"):
-            continue
-        if current != message_id:
-            continue
-        signal = _SIGNAL_RE.match(line)
-        if signal is None:
-            raise ValueError(
-                f"the DBC declares a signal this decoder cannot read: {line.strip()!r}. "
-                "Refusing rather than skipping: an unread signal would be a value nobody "
-                "compared"
-            )
-        found.append(
-            {
-                "name": signal.group("name"),
-                "start_bit": int(signal.group("start")),
-                "length": int(signal.group("length")),
-                "byte_order": int(signal.group("order")),
-                "signed": signal.group("sign") == "-",
-                "factor": float(signal.group("factor")),
-                "offset": float(signal.group("offset")),
-            }
-        )
-    return tuple(found)
-
-
-def _extract_raw(data: bytes, start_bit: int, length: int, byte_order: int) -> int:
-    """The raw integer a signal occupies.
-
-    `@1` is little-endian (Intel): the start bit is the least significant bit of the
-    signal and the signal runs upward. `@0` is big-endian (Motorola). Only the first is
-    used by the corpus, and the second is implemented rather than refused so that a
-    future task declaring it is not silently mis-decoded.
-    """
-    if byte_order == 1:
-        whole = int.from_bytes(data, "little")
-        return (whole >> start_bit) & ((1 << length) - 1)
-
-    # Motorola: the start bit is the MSB, counted from the start of the payload.
-    whole = int.from_bytes(data, "big")
-    total = len(data) * 8
-    shift = total - start_bit - length
-    if shift < 0:
-        raise ValueError("a big-endian signal starts outside the payload")
-    return (whole >> shift) & ((1 << length) - 1)
+database = cantools.database.load_file(sys.argv[1])
+identifier, _, payload = sys.argv[2].partition("#")
+message = database.get_message_by_frame_id(int(identifier, 16))
+data = bytes.fromhex(payload)
+decoded = message.decode(data)
+units = {signal.name: signal.unit for signal in message.signals}
+print(json.dumps({
+    "message": message.name,
+    "values": {name: float(value) for name, value in decoded.items()},
+    "raw": {
+        signal.name: int.from_bytes(
+            data, "little"
+        ) if signal.byte_order == "little_endian" else int.from_bytes(data, "big")
+        for signal in message.signals
+    },
+    "units": units,
+}))
+"""
 
 
 def decode_dbc_frame(
-    dbc_text: str, frame: str
-) -> tuple[Mapping[str, Any], tuple[DecodedSignal, ...]]:
-    """Decode one `<id>#<hex>` frame using the DBC.
+    dbc_path: str | Path, frame: str, *, runner: Any
+) -> Mapping[str, Any]:
+    """A.1. The harness's own `cantools` invocation, over the pinned DBC and the frame.
 
-    The frame's own arbitration id selects the signals, so a task whose frame names a
-    message the DBC does not declare fails here rather than comparing nothing.
+    ```text
+    FROZEN (A.1): the independent decoder is the harness's own cantools invocation.
+    ```
+
+    There is no fallback decoder. If `cantools` is absent the task is BLOCKED, because a
+    substitute would be a different oracle wearing A.1's name — and a reader comparing
+    this run against the contract would have no way to tell.
+
+    The subprocess exits 0 and prints one JSON object, or it does not and the failure is
+    classified by its kind: a missing module is BLOCKED, anything else is reported.
     """
-    identifier, _, payload = frame.partition("#")
-    if not _ or not payload:
-        raise ValueError(f"frame {frame!r} is not in `<id>#<hex>` form")
-    message_id = int(identifier, 16)
-    data = bytes.fromhex(payload)
-
-    declared = parse_dbc_signals(dbc_text, message_id)
-    if not declared:
-        raise ValueError(
-            f"the DBC declares no signal for arbitration id {message_id}; a decode with "
-            "nothing to compare would pass vacuously"
-        )
-
-    decoded: list[DecodedSignal] = []
-    for spec in declared:
-        raw = _extract_raw(data, spec["start_bit"], spec["length"], spec["byte_order"])
-        signed_raw = raw
-        if spec["signed"] and raw >= (1 << (spec["length"] - 1)):
-            signed_raw = raw - (1 << spec["length"])
-        decoded.append(
-            DecodedSignal(
-                name=spec["name"],
-                start_bit=spec["start_bit"],
-                length=spec["length"],
-                byte_order=spec["byte_order"],
-                signed=spec["signed"],
-                factor=spec["factor"],
-                offset=spec["offset"],
-                raw=raw,
-                physical=signed_raw * spec["factor"] + spec["offset"],
+    result = runner.run(
+        [sys.executable, "-c", _CANTOOLS_PROGRAM, str(dbc_path), frame],
+        cwd=None,
+        timeout_seconds=INSPECTION_TIMEOUT_SECONDS,
+    )
+    if result.exit_code is None:
+        if getattr(result, "timed_out", False):
+            raise InspectionUnavailable("CANTOOLS_TIMEOUT")
+        raise InspectionUnavailable("CANTOOLS_UNAVAILABLE", "the decoder did not run")
+    if result.exit_code != 0:
+        stderr = (result.stderr or "").strip()
+        if "ModuleNotFoundError" in stderr or "No module named" in stderr:
+            raise InspectionUnavailable(
+                "CANTOOLS_UNAVAILABLE", "cantools is not importable on this host"
             )
+        raise InspectionUnavailable("CANTOOLS_FAILED", stderr[:200])
+
+    try:
+        decoded = json.loads((result.stdout or "").strip().splitlines()[-1])
+    except (ValueError, IndexError) as exc:
+        raise InspectionUnavailable("CANTOOLS_OUTPUT_UNREADABLE") from exc
+    if not decoded.get("values"):
+        raise InspectionUnavailable(
+            "CANTOOLS_DECODED_NOTHING",
+            "the DBC declares no signal for this frame; nothing would be compared",
         )
-    return {"message_id": message_id, "dlc": len(data)}, tuple(decoded)
+    return decoded
 
 
 # ---------------------------------------------------------------------------
@@ -235,13 +180,17 @@ def inspect_elf(binary: str | Path) -> Mapping[str, Any]:
     return {"architecture": machine, "linkage": linked}
 
 
-def run_binary(binary: str | Path, argv: Sequence[str] = ()) -> Mapping[str, Any]:
+def run_binary(
+    binary: str | Path, *, launcher: Sequence[str] = (), argv: Sequence[str] = ()
+) -> Mapping[str, Any]:
     """§A.5. Execute the built binary and record what it printed and exited with.
 
-    The program is run from the artefact itself. Its stdout and status are the
-    observation; nothing about them is read from a fixture.
+    `launcher` is the emulator the task declares. An AArch64 binary MUST NOT be executed
+    directly on the benchmark host: it would either fail with `Exec format error` or, on
+    a host that happens to have binfmt registered, run through an emulator nobody
+    declared and whose version is therefore not in the environment record.
     """
-    completed = _run([str(binary), *argv])
+    completed = _run([*launcher, str(binary), *argv])
     return {
         "stdout": (completed.stdout or "").strip(),
         "exit_code": completed.returncode,

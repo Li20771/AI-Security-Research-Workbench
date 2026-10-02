@@ -365,3 +365,315 @@ def test_C16_no_observation_content_reaches_the_run_record(tmp_path: Path) -> No
             f"{forbidden!r} reached the run record; §18.2 forbids raw content and "
             "observation bodies"
         )
+
+
+# ---------------------------------------------------------------------------
+# C17 — A.1 uses cantools, and only cantools
+# ---------------------------------------------------------------------------
+
+
+class RecordingRunner:
+    """Records argv, and answers from a declared result. Starts nothing."""
+
+    def __init__(self, *, exit_code=0, stdout="", stderr="", timed_out=False):
+        from benchmarks.oracle import ProcessResult
+
+        self.result = ProcessResult(
+            exit_code=exit_code, stdout=stdout, stderr=stderr, timed_out=timed_out
+        )
+        self.calls: list[list[str]] = []
+
+    def run(self, argv, *, cwd=None, timeout_seconds=0):  # noqa: ANN001, ANN201
+        self.calls.append(list(argv))
+        return self.result
+
+
+@pytest.fixture
+def can_source(tmp_path: Path):
+    """A real source root holding a real DBC. The collector resolves the path."""
+    (tmp_path / "labs/vehicle/can-basic").mkdir(parents=True)
+    (tmp_path / "labs/vehicle/can-basic/demo.dbc").write_text(
+        "BO_ 291 EngineData: 8 ECU_TEST\n", encoding="utf-8"
+    )
+    return tmp_path, "labs/vehicle/can-basic/demo.dbc"
+
+
+def test_C17_the_can_collector_invokes_cantools(can_source) -> None:
+    """A.1 names cantools. The collector runs it, and there is no substitute decoder."""
+    import json as _json
+
+    from benchmarks.oracles import collect
+
+    runner = RecordingRunner(
+        stdout=_json.dumps(
+            {"message": "EngineData", "values": {"EngineSpeed": 8721.0},
+             "raw": {"EngineSpeed": 8721}, "units": {}}
+        )
+    )
+    observation = collect(
+        "ai11-v1-can-dbc-decode.oracle",
+        {"answer": {"EngineSpeed": 1.0}},
+        {"dbc": can_source[1], "frame": "123#1122334455667788",
+         "expected": {"EngineSpeed": 8721.0}},
+        control_dir=Path("."),
+        source_root=can_source[0],
+        runner=runner,
+    )
+    assert runner.calls, "the decoder was never invoked"
+    argv = runner.calls[0]
+    assert "cantools" in " ".join(argv), (
+        "A.1's decoder is the harness's own cantools invocation; the argv does not "
+        f"mention it: {argv}"
+    )
+    assert observation.values["derived"] == {"EngineSpeed": 8721.0}
+
+
+def test_C18_an_unavailable_cantools_is_blocked_not_substituted(can_source) -> None:
+    """A missing decoder is BLOCKED. A substitute would be a different oracle."""
+    from benchmarks.oracles import collect
+
+    runner = RecordingRunner(
+        exit_code=1, stderr="ModuleNotFoundError: No module named 'cantools'"
+    )
+    observation = collect(
+        "ai11-v1-can-dbc-decode.oracle",
+        {"answer": {}},
+        {"dbc": can_source[1], "frame": "123#1122334455667788", "expected": {}},
+        control_dir=Path("."),
+        source_root=can_source[0],
+        runner=runner,
+    )
+    assert not observation.complete
+    assert observation.reason_code == "CANTOOLS_UNAVAILABLE"
+
+
+def test_C19_derived_is_not_the_submission(can_source) -> None:
+    """The derived side comes from the decoder, not from the answer."""
+    import json as _json
+
+    from benchmarks.oracles import collect
+
+    runner = RecordingRunner(
+        stdout=_json.dumps(
+            {"message": "m", "values": {"EngineSpeed": 8721.0}, "raw": {}, "units": {}}
+        )
+    )
+    observation = collect(
+        "ai11-v1-can-dbc-decode.oracle",
+        {"answer": {"EngineSpeed": 1.0}},
+        {"dbc": can_source[1], "frame": "123#1122334455667788",
+         "expected": {"EngineSpeed": 8721.0}},
+        control_dir=Path("."),
+        source_root=can_source[0],
+        runner=runner,
+    )
+    assert observation.values["derived"] != observation.values["submitted"]
+
+
+# ---------------------------------------------------------------------------
+# C20 — A.5 executes through the declared emulator
+# ---------------------------------------------------------------------------
+
+
+def test_C20_the_reverse_oracle_runs_the_binary_through_qemu(tmp_path: Path) -> None:
+    """A.5 declares qemu-aarch64. An AArch64 binary is not executed on the host."""
+    import benchmarks.oracles as oracles
+
+    calls: list[list[str]] = []
+    real_run_binary = oracles.run_binary
+    real_inspect_elf = oracles.inspect_elf
+
+    def spy(binary, *, launcher=(), argv=()):  # noqa: ANN001, ANN202
+        calls.append([*launcher, str(binary)])
+        return {"stdout": "ARM64 result = 42", "exit_code": 0}
+
+    # A REAL file: the collector checks that the artefact exists before executing it,
+    # so a fabricated path would make it refuse for a reason unrelated to the assertion.
+    binary = tmp_path / "setup" / "hello_arm64"
+    binary.parent.mkdir(parents=True)
+    binary.write_bytes(b"ELF fake aarch64\n")
+
+    class SetupDir:
+        def glob(self, pattern):  # noqa: ANN001, ANN202
+            return [binary]
+
+    oracles.run_binary = spy
+    oracles.inspect_elf = lambda binary: {"architecture": "AArch64", "linkage": "static"}
+    try:
+        oracles.collect(
+            "ai11-v1-reverse-arm64-triage.oracle",
+            {"answer": {"architecture": "AArch64"}},
+            {"expected": {"architecture": "AArch64"}},
+            control_dir=Path("."),
+            setup_dir=SetupDir(),
+        )
+    finally:
+        oracles.run_binary = real_run_binary
+        oracles.inspect_elf = real_inspect_elf
+
+    assert calls, "the binary was never executed"
+    assert calls[0][0] == "qemu-aarch64", (
+        f"the binary was executed as {calls[0]}; A.5 requires qemu-aarch64"
+    )
+    assert calls[0][1] == str(binary), "the artefact is not the built binary"
+
+
+# ---------------------------------------------------------------------------
+# C21 — A.6 runs the tracked generator at a fixed seed
+# ---------------------------------------------------------------------------
+
+
+def _fuzz_truth() -> dict:
+    return {
+        "class_priority": ["KERNEL_ANOMALY", "ECU_CRASH", "STATE_CORRUPTION", "HANG",
+                           "TRANSPORT_ERROR", "UDS_RESPONSE", "DISCARD", "NORMAL"],
+        "rerun_seed": 12345,
+        "expected": {"c1": {"class": "DISCARD", "kernel_oracle": "AVAILABLE", "kernel_events": 0}},
+    }
+
+
+class RerunRunner:
+    """vcan0 answers; the generator answers with a declared classification."""
+
+    def __init__(self, classification: str, kernel: str = "AVAILABLE", events=0) -> None:
+        self.classification = classification
+        self.kernel = kernel
+        self.events = events
+        self.calls: list[list[str]] = []
+
+    def run(self, argv, *, cwd=None, timeout_seconds=0):  # noqa: ANN001, ANN201
+        import json as _json
+
+        from benchmarks.oracle import ProcessResult
+
+        self.calls.append(list(argv))
+        if argv[0] == "ip":
+            return ProcessResult(exit_code=0, stdout="vcan0: <UP>")
+        return ProcessResult(
+            exit_code=0,
+            stdout=_json.dumps({"cases": {"c1": {
+                "class": self.classification,
+                "kernel_oracle": self.kernel,
+                "kernel_events": self.events,
+            }}}),
+        )
+
+
+def _fuzz_source(tmp_path: Path):
+    import benchmarks.oracles as oracles
+
+    source = tmp_path / "source"
+    (source / "labs/vehicle/can-tools/fuzz").mkdir(parents=True)
+    (source / oracles.FUZZ_GENERATOR).write_text("# tracked generator\n", encoding="utf-8")
+    return source
+
+
+def test_C21_the_fuzz_collector_runs_the_tracked_generator(tmp_path: Path) -> None:
+    """A.6 requires a controlled RE-RUN, not `derived = expected`."""
+    import benchmarks.oracles as oracles
+
+    source = _fuzz_source(tmp_path)
+    runner = RerunRunner(classification="TRANSPORT_ERROR")
+    observation = oracles.collect(
+        "ai11-v1-fuzzing-recovery-triage.oracle",
+        {"answer": {"c1": {"class": "DISCARD", "kernel_events": 0}}},
+        _fuzz_truth(),
+        control_dir=Path("."),
+        source_root=source,
+        runner=runner,
+    )
+
+    generator_calls = [call for call in runner.calls if call[0] != "ip"]
+    assert generator_calls, "the tracked generator was never invoked"
+    argv = generator_calls[0]
+    assert any(a.endswith("isotp_fuzz.py") for a in argv), f"the generator is not in {argv}"
+    assert "--seed" in argv and "12345" in argv, f"the re-run is not fixed-seed: {argv}"
+
+    # THE assertion that fails if someone reverts to `derived = expected`: the generator
+    # reported TRANSPORT_ERROR, the truth says DISCARD, and derived follows the GENERATOR.
+    assert observation.values["derived"]["c1"]["class"] == "TRANSPORT_ERROR"
+    assert (
+        observation.values["derived"]["c1"]["class"]
+        != _fuzz_truth()["expected"]["c1"]["class"]
+    )
+
+
+def test_C22_a_missing_vcan_is_blocked_not_a_pass(tmp_path: Path) -> None:
+    import benchmarks.oracles as oracles
+    from benchmarks.oracle import ProcessResult
+
+    source = _fuzz_source(tmp_path)
+
+    class NoVcan:
+        def run(self, argv, *, cwd=None, timeout_seconds=0):  # noqa: ANN001, ANN201
+            return ProcessResult(exit_code=1, stderr="Device vcan0 does not exist")
+
+    observation = oracles.collect(
+        "ai11-v1-fuzzing-recovery-triage.oracle",
+        {"answer": {}},
+        _fuzz_truth(),
+        control_dir=Path("."),
+        source_root=source,
+        runner=NoVcan(),
+    )
+    assert not observation.complete
+    assert observation.reason_code == "FUZZ_VCAN0_UNAVAILABLE"
+
+
+def test_C23_kernel_events_are_null_under_a_non_available_oracle(tmp_path: Path) -> None:
+    """SecurityLab's own rule: null, never 0 and never an empty list."""
+    import benchmarks.oracles as oracles
+
+    source = _fuzz_source(tmp_path)
+    # The generator reports 0 under an unavailable oracle; the collector must not pass
+    # that through as if it were an observation.
+    runner = RerunRunner(classification="DISCARD", kernel="UNAVAILABLE", events=0)
+    observation = oracles.collect(
+        "ai11-v1-fuzzing-recovery-triage.oracle",
+        {"answer": {}},
+        _fuzz_truth(),
+        control_dir=Path("."),
+        source_root=source,
+        runner=runner,
+    )
+    assert observation.values["derived"]["c1"]["kernel_events"] is None
+
+
+# ---------------------------------------------------------------------------
+# C24 — YARA compile failure counts what actually ran
+# ---------------------------------------------------------------------------
+
+
+def test_C24_a_compile_failure_counts_one_executed_check_not_four(tasks) -> None:
+    """One scanner invocation is not four. The record must say what happened."""
+    from benchmarks.oracles import evaluate_submission
+
+    class CompileFail:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def run(self, argv, *, cwd=None, timeout_seconds=0):  # noqa: ANN001, ANN201
+            from benchmarks.oracle import ProcessResult
+
+            self.calls += 1
+            return ProcessResult(exit_code=2, stderr="error: syntax error, unexpected '}'")
+
+    task = next(t for t in tasks if t.task_id == "ai11-v1-yara-rule-author")
+    executor = ReferenceExecutor(task, CORPUS_ROOT)
+    counters = CompileFail()
+    result = evaluate_submission(
+        oracle_id=task.oracle.oracle_id,
+        required=task.oracle.required,
+        submission=executor.produce(ReferenceVariant.KNOWN_GOOD).payload,
+        truth=executor.truth(),
+        control_dir=executor.control,
+        runner=counters,
+    )
+
+    assert counters.calls == 1, "the scanner ran more than once after refusing the rule"
+    assert result.verdict is OracleVerdict.FAIL
+    assert result.tests.planned == 4
+    assert result.tests.executed == 1, "one invocation is one executed check"
+    assert result.tests.failed == 1
+    assert result.tests.skipped == 3
+    assert result.tests.executed + result.tests.skipped == result.tests.planned

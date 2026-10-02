@@ -33,7 +33,9 @@ including one that does not compile.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
+import sys
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -210,23 +212,24 @@ def _collect_can(
         return _blocked(f"CAN_DBC_MISSING:{dbc_rel}", skip_class="ENVIRONMENT", planned=0)
 
     try:
-        _message, decoded = decode_dbc_frame(dbc_path.read_text(encoding="utf-8"), frame)
-    except (ValueError, InspectionUnavailable) as exc:
-        return _blocked(
-            f"CAN_DECODE_FAILED:{type(exc).__name__}", skip_class="ENVIRONMENT", planned=0
-        )
+        decoded = decode_dbc_frame(dbc_path, frame, runner=context.runner)
+    except InspectionUnavailable as exc:
+        # A.1 names cantools. An absent decoder is BLOCKED — never FAIL, and never a
+        # substitute decoder wearing cantools' name.
+        return _blocked(exc.reason_code, skip_class="ENVIRONMENT", planned=0)
 
+    derived = {name: float(value) for name, value in decoded["values"].items()}
     return Observation(
         values={
-            # DERIVED: what the harness decoder read out of the pinned DBC.
-            "derived": {signal.name: signal.physical for signal in decoded},
-            "raw": {signal.name: signal.raw for signal in decoded},
+            # DERIVED: what the harness's cantools invocation read out of the pinned DBC.
+            "derived": derived,
+            "raw": dict(decoded.get("raw", {})),
             # SUBMITTED: what the run claimed. It is compared against, never observed.
             "submitted": dict(_require_mapping(submission, "submission").get("answer") or {}),
             "expected": dict(_require_mapping(truth.get("expected"), "truth.expected")),
         },
         complete=True,
-        planned=len(decoded),
+        planned=len(derived),
     )
 
 
@@ -258,6 +261,9 @@ def _collect_uds(
 #: (`tools/reverse_engineering/__init__.py`: a match is reported through the status).
 YARA_MATCH = 0
 YARA_NO_MATCH = 1
+
+#: A.6's tracked generator, relative to the pinned source root.
+FUZZ_GENERATOR = "labs/vehicle/can-tools/fuzz/isotp_fuzz.py"
 
 
 def _collect_yara(
@@ -318,10 +324,15 @@ def _collect_yara(
         else:
             # The scanner ran and refused the rule: a bad SUBMISSION, not a bad
             # environment. The required check executed and its assertion failed.
+            # The scanner RAN and refused the rule. That is a bad submission, not a bad
+            # environment -- and one invocation is not N. The counts say how much
+            # actually executed: this invocation ran and failed, the remaining samples
+            # were never attempted.
             return Observation(
                 values={
                     "matches": matches,
                     "compile_error": (process.stderr or "").strip()[:200],
+                    "invocations": len(matches) + 1,
                 },
                 complete=True,
                 planned=planned,
@@ -386,7 +397,9 @@ def _collect_reverse(
     binary = binaries[0]
     try:
         derived = dict(inspect_elf(binary))
-        derived.update(run_binary(binary))
+        # A.5: the binary is AArch64 and the task declares qemu-aarch64, so it is run
+        # through the declared emulator rather than executed on the host.
+        derived.update(run_binary(binary, launcher=["qemu-aarch64"]))
     except InspectionUnavailable as exc:
         return _blocked(exc.reason_code, skip_class="ENVIRONMENT", planned=planned)
 
@@ -433,7 +446,8 @@ def _collect_fuzz(
     if context.source_root is None:
         return _blocked("FUZZ_SOURCE_ROOT_ABSENT", skip_class="ENVIRONMENT", planned=len(expected))
 
-    generator = context.source_root / "labs/vehicle/can-tools/fuzz/isotp_fuzz.py"
+    seed = truth.get("rerun_seed", 12345)
+    generator = context.source_root / FUZZ_GENERATOR
     if not generator.is_file():
         return _blocked("FUZZ_GENERATOR_ABSENT", skip_class="ENVIRONMENT", planned=len(expected))
 
@@ -446,14 +460,64 @@ def _collect_fuzz(
     if probe.exit_code != 0:
         return _blocked("FUZZ_VCAN0_UNAVAILABLE", skip_class="ENVIRONMENT", planned=len(expected))
 
+    # The controlled re-run: the TRACKED generator, at a FIXED seed. What it reports is
+    # the derived observation. `derived = expected` would make the oracle compare the
+    # tracked truth with itself and pass whatever was submitted.
+    rerun = context.runner.run(
+        [sys.executable, str(generator), "--smoke", "--seed", str(seed), "--json"],
+        cwd=str(context.source_root),
+        timeout_seconds=context.timeout_seconds,
+    )
+    if rerun.exit_code is None:
+        if getattr(rerun, "timed_out", False):
+            return _blocked("FUZZ_RERUN_TIMEOUT", skip_class="ENVIRONMENT", planned=len(expected))
+        return _blocked(
+            "FUZZ_GENERATOR_UNAVAILABLE", skip_class="ENVIRONMENT", planned=len(expected)
+        )
+    if rerun.exit_code != 0:
+        return _blocked(
+            f"FUZZ_RERUN_FAILED:{rerun.exit_code}", skip_class="ENVIRONMENT", planned=len(expected)
+        )
+
+    try:
+        reported = json.loads((rerun.stdout or "").strip().splitlines()[-1])
+        cases = reported["cases"]
+    except (ValueError, KeyError, IndexError, TypeError):
+        return _blocked(
+            "FUZZ_RERUN_OUTPUT_UNREADABLE", skip_class="ENVIRONMENT", planned=len(expected)
+        )
+
+    derived: dict[str, Any] = {}
+    for case_id, entry in sorted(cases.items()):
+        klass = entry.get("class")
+        if klass not in priority:
+            return _blocked(
+                f"FUZZ_CLASS_NOT_FROZEN:{case_id}", skip_class="ENVIRONMENT", planned=len(expected)
+            )
+        kernel = entry.get("kernel_oracle", "UNAVAILABLE")
+        if kernel not in ("AVAILABLE", "UNAVAILABLE", "ERROR"):
+            return _blocked(
+                f"FUZZ_KERNEL_ORACLE_NOT_TRISTATE:{case_id}",
+                skip_class="ENVIRONMENT",
+                planned=len(expected),
+            )
+        # SecurityLab's own rule: kernel events are meaningful ONLY when the oracle was
+        # AVAILABLE. Otherwise the observation is null -- never 0, never an empty list.
+        events = entry.get("kernel_events") if kernel == "AVAILABLE" else None
+        derived[case_id] = {
+            "class": klass,
+            "kernel_oracle": kernel,
+            "kernel_events": events,
+        }
+
     return Observation(
         values={
-            "derived": {case: dict(entry) for case, entry in expected.items()},
+            "derived": derived,
             "submitted": dict(_require_mapping(submission, "submission").get("answer") or {}),
             "expected": {case: dict(entry) for case, entry in expected.items()},
         },
         complete=True,
-        planned=len(expected),
+        planned=len(derived),
     )
 
 
@@ -632,8 +696,19 @@ def _judge_yara_detection(observation: Mapping[str, Any], truth: Mapping[str, An
     """
     samples = _require_mapping(truth.get("samples"), "truth.samples")
     if observation.get("compile_error") is not None:
-        counts = TestCounts(planned=len(samples), executed=len(samples),
-                            passed=0, failed=len(samples), skipped=0)
+        # Factually correct counts. A rule the scanner refused on the first invocation
+        # produced ONE executed check that failed, not N; the rest were never attempted.
+        # Reporting `executed = N` would be a false record of what the harness did.
+        invocations = int(observation.get("invocations", 1))
+        planned = len(samples)
+        attempted = min(max(invocations, 1), planned)
+        counts = TestCounts(
+            planned=planned,
+            executed=attempted,
+            passed=0,
+            failed=attempted,
+            skipped=planned - attempted,
+        )
         return Judgement(
             verdict=OracleVerdict.FAIL,
             tests=counts,
