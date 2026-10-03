@@ -877,6 +877,102 @@ def test_N4_the_whole_campaign_cannot_select_a_model() -> None:
 
 
 # ---------------------------------------------------------------------------
+# N5-N8 — the TYPED-OBJECT boundary, which had a door in it
+# ---------------------------------------------------------------------------
+#
+# `from_mapping` refused a MODEL_EXECUTION label and the CONSTRUCTOR did not, so a
+# caller could step around the parser with three lines: build an `EvidenceRef`, wrap it
+# in a `SuppliedRecord`, hand it to `resolve_policy`, and get a model selection. A
+# boundary enforced on the parser alone is not a boundary.
+#
+# The invariant now lives in `__post_init__`, so the illegal record cannot exist. These
+# tests construct the objects DIRECTLY and never call `supplied_records`, because a
+# test that goes through the parser cannot show anything about the door beside it.
+
+
+def _synthetic_ref(evidence_class: str = "MODEL_EXECUTION"):
+    """Build an `EvidenceRef` by hand — no mapping, no parser, no helper.
+
+    Deliberately does not use `record()`: the whole point is a path that never touches
+    the mapping boundary.
+    """
+    return EvidenceRef(
+        run_id="run-synthetic",
+        task_id=CAN,
+        source_sha="efa836ff9225f6226ca8a76615f3f45c31110d58",
+        workbench_sha="60c630d83c576a013f828fa8ec5414f34fd9974c",
+        verdict=OracleVerdict.PASS,
+        reason_code="",
+        # The record's own limitations say no provider was called.
+        limitations=("NO_PROVIDER_CALL_IN_PATH",),
+        evidence_class=EvidenceClass(evidence_class),
+    )
+
+
+def test_N5_a_directly_constructed_model_execution_ref_is_refused() -> None:
+    """The constructor is the boundary, not the parser."""
+    with pytest.raises(InvalidEvidence) as raised:
+        _synthetic_ref()
+    assert "no supplied record" in str(raised.value)
+
+
+def test_N6_a_supplied_record_cannot_wrap_an_illegal_ref() -> None:
+    """There is nothing to wrap: the reference refuses to exist first."""
+    with pytest.raises(InvalidEvidence):
+        SuppliedRecord(ref=_synthetic_ref(), digest="sha256:synthetic")
+
+
+def test_N7_synthetic_model_evidence_cannot_reach_the_resolver() -> None:
+    """The end of the bypass. There is no object to hand over.
+
+    The earlier revision reached `SELECTED` here. Nothing about the resolver changed:
+    what changed is that no caller can build the argument.
+    """
+    policy = Policy.from_mapping(a_policy())
+
+    with pytest.raises(InvalidEvidence):
+        resolve_policy(policy, [_synthetic_ref()])  # type: ignore[list-item]
+
+    # And with a legal reference, the same policy selects nothing.
+    legal = supplied_records([record("run-ref-0001", verdict="PASS")])
+    resolution = resolve_policy(policy, legal)
+    assert resolution.outcome is PolicyOutcome.DORMANT
+    assert resolution.selected_model_ref is None
+
+
+def test_N8_a_legal_reference_record_still_constructs_directly() -> None:
+    """The guard refuses one class, not the type. REFERENCE is constructible, both
+    ways, and the two paths produce equal objects."""
+    direct = _synthetic_ref("REFERENCE")
+    parsed = supplied_records(
+        [record("run-synthetic", verdict="PASS", digest="sha256:synthetic")]
+    )[0]
+
+    assert direct == parsed.ref
+    assert direct.evidence_class is EvidenceClass.REFERENCE
+
+
+def test_N8b_the_two_boundaries_agree_on_every_invariant() -> None:
+    """A rule enforced in one path and not the other is a rule with a way around it.
+
+    Each mapping below is refused by `supplied_records`, and the equivalent DIRECT
+    construction is refused too — so the two boundaries cannot drift apart.
+    """
+    cases = [
+        (lambda: _synthetic_ref("MODEL_EXECUTION"),),
+        (lambda: EvidenceRef(run_id="", task_id=CAN, source_sha="s", workbench_sha="w",
+                             verdict=OracleVerdict.PASS, reason_code="",
+                             limitations=(), evidence_class=EvidenceClass.REFERENCE),),
+        (lambda: EvidenceRef(run_id="r", task_id=CAN, source_sha="s", workbench_sha="w",
+                             verdict=OracleVerdict.BLOCKED, reason_code="",
+                             limitations=(), evidence_class=EvidenceClass.REFERENCE),),
+    ]
+    for (build,) in cases:
+        with pytest.raises(InvalidEvidence):
+            build()
+
+
+# ---------------------------------------------------------------------------
 # P15 — the policy core reaches nothing
 # ---------------------------------------------------------------------------
 

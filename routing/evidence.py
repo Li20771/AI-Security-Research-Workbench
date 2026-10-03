@@ -159,8 +159,81 @@ class EvidenceRef:
     limitations: tuple[str, ...]
     evidence_class: EvidenceClass
 
+    def __post_init__(self) -> None:
+        """The invariants hold AT CONSTRUCTION, so an illegal record cannot exist.
+
+        ```text
+        FROZEN: model-specific routing evidence requires an execution record whose
+                producer identifies the model / provider execution, under a contract
+                that defines how that measurement is produced and attributed.
+        ```
+
+        `from_mapping` enforced that, and a caller could step around it by calling the
+        constructor: three lines built an `EvidenceRef` labelled `MODEL_EXECUTION`,
+        wrapped it in a `SuppliedRecord`, and handed it to `resolve_policy`, which
+        selected a model. Guarding the parser and leaving the type open is a boundary
+        with a door in it.
+
+        The check therefore lives here, where it applies to every path — a supplied
+        mapping, a direct construction, and anything a later revision adds — and
+        `from_mapping` coerces and delegates rather than restating the rules. One
+        definition, no path around it.
+        """
+        for name in ("run_id", "task_id", "source_sha", "workbench_sha"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise InvalidEvidence(f"EvidenceRef.{name} must be a non-empty string")
+
+        if not isinstance(self.verdict, OracleVerdict):
+            raise InvalidEvidence(
+                "EvidenceRef.verdict must be one of AI-11's six verdicts, not a bare "
+                "string: a rule compares verdicts by identity, so a string would "
+                "silently satisfy nothing and the record would be evidence of nothing"
+            )
+        if not isinstance(self.reason_code, str):
+            raise InvalidEvidence("EvidenceRef.reason_code must be a string")
+        if self.verdict is not OracleVerdict.PASS and not self.reason_code.strip():
+            raise InvalidEvidence(
+                f"EvidenceRef.reason_code is empty under a {self.verdict} verdict; a "
+                "non-PASS record names why, and a reader cannot act on a refusal it "
+                "cannot read"
+            )
+
+        if not isinstance(self.limitations, tuple):
+            raise InvalidEvidence("EvidenceRef.limitations must be a tuple")
+        for entry in self.limitations:
+            if not isinstance(entry, str) or not entry.strip():
+                raise InvalidEvidence(
+                    "EvidenceRef.limitations[] must be a non-empty string"
+                )
+
+        if not isinstance(self.evidence_class, EvidenceClass):
+            raise InvalidEvidence(
+                "EvidenceRef.evidence_class must be an EvidenceClass"
+            )
+
+        if self.evidence_class not in SUPPLIABLE_EVIDENCE_CLASSES:
+            # §4.2, §6. A record is not model evidence because it says so — whether the
+            # claim arrives in a mapping or in a constructor call.
+            raise InvalidEvidence(
+                f"EvidenceRef.evidence_class is {self.evidence_class}, which no supplied "
+                "record may be: model-specific routing evidence requires an execution "
+                "record whose producer identifies the model / provider execution under "
+                "a contract that defines how that measurement is produced and "
+                "attributed (§4.2), and no such contract exists (§6). A caller cannot "
+                "satisfy the prerequisite by declaring it satisfied; the declaration is "
+                "what the missing contract would define"
+            )
+
     @classmethod
     def from_mapping(cls, raw: object, where: str = "evidence") -> "EvidenceRef":
+        """Coerce one mapping, then let the CONSTRUCTOR decide whether it is legal.
+
+        This method deliberately restates none of the invariants. They live in
+        `__post_init__`, so the parser and a direct construction are held to the same
+        rules by construction rather than by two lists that can drift apart — and a
+        rule enforced in only one of those places is a rule with a way around it.
+        """
         data = _mapping(raw, where)
         _closed(data, _EVIDENCE_KEYS, where)
 
@@ -181,9 +254,6 @@ class EvidenceRef:
             limitations_raw, Sequence
         ):
             raise InvalidEvidence(f"{where}.limitations must be a list")
-        limitations = tuple(
-            _non_empty_text(entry, f"{where}.limitations[]") for entry in limitations_raw
-        )
 
         try:
             evidence_class = EvidenceClass(data.get("evidence_class"))
@@ -193,43 +263,14 @@ class EvidenceRef:
                 f"{', '.join(m.value for m in EvidenceClass)}"
             ) from None
 
-        if evidence_class not in SUPPLIABLE_EVIDENCE_CLASSES:
-            # §4.2, §6. A record is not model evidence because it says so. The thing
-            # that would make it one — a contract defining the producer, the
-            # attribution and the measurement method — does not exist, and the
-            # prerequisite is not satisfied by a caller declaring it satisfied.
-            raise InvalidEvidence(
-                f"{where}.evidence_class is {evidence_class}, which no supplied record "
-                "may be: model-specific routing evidence requires an execution record "
-                "whose producer identifies the model / provider execution under a "
-                "contract that defines how that measurement is produced and attributed "
-                "(§4.2), and no such contract exists (§6). A caller cannot satisfy the "
-                "prerequisite by labelling a record; the label is what the missing "
-                "contract would define"
-            )
-
-        # AI-11 records an EMPTY reason_code on a PASS — there is no refusal to name.
-        # A non-PASS verdict without one is a different thing: a reader cannot act on
-        # "this did not pass" and not know why, so that shape is refused.
-        reason_code = data.get("reason_code")
-        if not isinstance(reason_code, str):
-            raise InvalidEvidence(f"{where}.reason_code must be a string")
-        if verdict is not OracleVerdict.PASS and not reason_code.strip():
-            raise InvalidEvidence(
-                f"{where}.reason_code is empty under a {verdict} verdict; a non-PASS "
-                "record names why, and a reader cannot act on a refusal it cannot read"
-            )
-
         return cls(
-            run_id=_non_empty_text(data.get("run_id"), f"{where}.run_id"),
-            task_id=_non_empty_text(data.get("task_id"), f"{where}.task_id"),
-            source_sha=_non_empty_text(data.get("source_sha"), f"{where}.source_sha"),
-            workbench_sha=_non_empty_text(
-                data.get("workbench_sha"), f"{where}.workbench_sha"
-            ),
+            run_id=data.get("run_id"),
+            task_id=data.get("task_id"),
+            source_sha=data.get("source_sha"),
+            workbench_sha=data.get("workbench_sha"),
             verdict=verdict,
-            reason_code=reason_code,
-            limitations=limitations,
+            reason_code=data.get("reason_code"),
+            limitations=tuple(limitations_raw),
             evidence_class=evidence_class,
         )
 
@@ -263,13 +304,27 @@ class SuppliedRecord:
     ref: EvidenceRef
     digest: str
 
+    def __post_init__(self) -> None:
+        """The same boundary, for the record that holds the reference.
+
+        A `SuppliedRecord` cannot carry a legal digest around an illegal reference:
+        `EvidenceRef` refuses to exist, so there is nothing to wrap.
+        """
+        if not isinstance(self.ref, EvidenceRef):
+            raise InvalidEvidence("SuppliedRecord.ref must be an EvidenceRef")
+        if not isinstance(self.digest, str) or not self.digest.strip():
+            raise InvalidEvidence(
+                "SuppliedRecord.digest must be a non-empty string; the digest is what "
+                "makes the exact supplied record checkable (§4.1)"
+            )
+
     @classmethod
     def from_mapping(cls, raw: object, where: str = "record") -> "SuppliedRecord":
         data = _mapping(raw, where)
         _closed(data, _RECORD_KEYS, where)
         return cls(
             ref=EvidenceRef.from_mapping(data.get("evidence"), f"{where}.evidence"),
-            digest=_non_empty_text(data.get("record_digest"), f"{where}.record_digest"),
+            digest=data.get("record_digest"),
         )
 
     def to_mapping(self) -> dict[str, Any]:

@@ -151,6 +151,9 @@ P10    stop reporting a task dropped from the scope (§4.4)       caught
 P13    audit that cannot notice a tampered resolution (§8)       caught
 PROV-1 let a caller label a record MODEL_EXECUTION (§4.2, §6)    caught
 PROV-2 the same, against the unreachability guard (§6.1)         caught
+CTOR-1 remove the construction-time guard, direct ref (§4.2, §6) caught
+CTOR-2 the same, against the SuppliedRecord wrapper              caught
+CTOR-3 the same, against reaching the resolver                   caught
 CLS-1  let a REFERENCE record satisfy a MODEL_EXECUTION rule     caught
 PROJ-1 drop match_task_id from the rule projection (§8)          caught
 PROJ-2 drop requires_run_id from the rule projection (§8)        caught
@@ -158,7 +161,7 @@ PROJ-3 drop the selection from the rule projection (§8)          caught
 PROJ-4 drop match_task_id, caught by the round-trip guard (§8)   caught
 ```
 
-Thirteen, and **two of them survived on the first run**. That is worth recording: the
+Sixteen, and **two survived on an earlier run**. That is worth recording: the
 probes showed that two of the tests guarding the §6.1 line exercised only the CLASS
 COMPARISON in the resolver and never the input boundary, so removing the input guard
 left them passing. `P17` now asserts both mechanisms — a REFERENCE record cannot
@@ -168,6 +171,36 @@ and the third probe was retargeted at the mechanism that actually guards `N4`.
 Each of those tests fails if its check is removed, rather than only if the check was
 never written. The rest of the file names its own mutations inline (`M1`, `M2`,
 `M5`, `M7`, `M8`, `M9`, `M9b`).
+
+### 5.3 A review finding: the boundary had a door beside it
+
+§5.2 closed the MAPPING path and left the TYPED-OBJECT path open. `EvidenceRef` and
+`SuppliedRecord` are frozen dataclasses with no construction-time invariant, so a
+caller could step around the parser entirely:
+
+```python
+ref = EvidenceRef(..., evidence_class=EvidenceClass.MODEL_EXECUTION)
+resolve_policy(policy, [SuppliedRecord(ref=ref, digest="sha256:synthetic")])
+        -> SELECTED
+```
+
+Three lines, no mapping, no parser, model selected. A boundary enforced on the parser
+alone is not a boundary.
+
+**The invariants now hold at construction.** `EvidenceRef.__post_init__` enforces all
+of them, and `from_mapping` coerces and delegates rather than restating the rules — one
+definition, applied to every path, including paths a later revision adds. There is no
+longer an illegal object to hand to the resolver: the argument cannot be built.
+
+The same applies to `SuppliedRecord`, which refuses a digest that is not one and a
+`ref` that is not an `EvidenceRef`; and since an illegal reference cannot exist, there
+is nothing for the record to wrap.
+
+```text
+raw mapping boundary        CLOSED  (from_mapping -> constructor -> invariant)
+typed-object boundary       CLOSED  (constructor -> invariant)
+no synthetic MODEL_EXECUTION path remains
+```
 
 ### 5.2 A review finding: the prerequisite could be fabricated
 
@@ -254,10 +287,10 @@ that selected — which is the claim's basis, in the claim.
 ## 6. Verification
 
 ```text
-tests/routing                                    216 passed   (run twice: 216 / 216)
-tests/routing/test_policy_core.py                 70 passed   (P1-P17, N1-N4, M1-M9b)
+tests/routing                                    221 passed   (run twice: 221 / 221)
+tests/routing/test_policy_core.py                 75 passed   (P1-P17, N1-N8b, M1-M9b)
 tests/routing/test_policy_layer0.py               12 passed   (T40-T51)
-full offline suite                             3424 passed, 5 skipped, 5 deselected
+full offline suite                             3429 passed, 5 skipped, 5 deselected
 Layer 0                                         PASS (21 checks)
 compileall                                      exit 0
 providers.validate                              exit 0
