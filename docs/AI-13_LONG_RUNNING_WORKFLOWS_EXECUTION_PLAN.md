@@ -746,17 +746,69 @@ FROZEN: an old approval MUST NOT silently grant a new scope. A scope that differ
         mechanical rather than a matter of careful reading.
 ```
 
-### 13.3 Self-approval is structurally impossible
+### 13.3 Only a designated ingress can produce an approval
+
+An earlier revision said self-approval was "structurally impossible" and then listed
+only what a record may SAY: `actor.type = human`, not the executing Agent, not a
+service principal. Every one of those is a FIELD. A caller that writes them satisfies
+all three, and a check that reads them proves a string, not a human — the same defect
+AI-12-B's review found when a caller labelled its own record `MODEL_EXECUTION` and
+manufactured the prerequisite.
 
 ```text
-FROZEN: the approver is a HUMAN actor. An Agent MUST NOT approve, and a model MUST NOT
+FROZEN: a caller-authored record that declares `actor.type = human` is NOT proof of a
+        human approval. The declaration is a LABEL, and AI-13-C MUST NOT accept a label
+        as the thing it labels.
+FROZEN: a valid workflow approval MUST originate from the EXPLICITLY DESIGNATED HUMAN
+        APPROVAL INGRESS — the one authority this phase permits to produce approvals.
+FROZEN: that ingress MUST be EXTERNAL to Agent, model and service execution. No Agent
+        body, no tool, no provider call, no workflow step and no run may reach it,
+        invoke it, or stand in for it.
+FROZEN: an approval is accepted only after AI-13-C has MACHINE-VERIFIED that it came
+        from that ingress. The verification is over PROVENANCE, never over the fields a
+        record carries.
+FROZEN: a typed or mapping record whose only claim to humanity is `actor.type = human`
+        MUST be REFUSED, however well-formed the rest of it is.
+FROZEN: AI-13-C MUST NOT provide a constructor, a factory, a default or any other path
+        by which an Agent, a model or a service can manufacture an approval, or the
+        provenance that would make one acceptable.
+```
+
+```text
+NOT FROZEN HERE — AI-13-C's to implement:
+    the ingress MECHANISM. A local operator console, an artifact signed outside the
+    process, a human-driven command — which one, and how provenance is proved, is C's.
+FROZEN HERE — and C MUST NOT amend without §20:
+    that such an authority EXISTS, that it is DESIGNATED, that it is EXTERNAL to
+    execution, and that a caller cannot be it.
+```
+
+```text
+FROZEN: until AI-13-C designates an ingress and its provenance check, NO approval is
+        valid, and every approval step is therefore BLOCKED. That is the fail-closed
+        shape AI-04 already has — "AI-04 v1 implements no approval issuance, so with no
+        verified source every gated action is permanently BLOCKED. That is the intended
+        fail-closed state, not a defect" — and AI-13 adopts it rather than inventing a
+        weaker one of its own.
+```
+
+### 13.3.1 Self-approval, restated on that boundary
+
+```text
+FROZEN: the approver is a HUMAN actor. An Agent MUST NOT approve and a model MUST NOT
         approve — not through a tool, not through a body, not by emitting a record that
         looks like one.
-FROZEN: the approver MUST NOT be the actor whose step is being approved. A workflow MUST
-        NOT present an approval whose actor is the executing Agent, the run's own
-        identity, or any service principal.
-FROZEN: AI-13 v1 provides no mechanism by which an Agent, a model or a service can
-        produce, synthesize or default an approval.
+FROZEN: the approver MUST NOT be the actor whose step is being approved. An approval
+        whose actor is the executing Agent, the run's own identity, or any service
+        principal is REFUSED.
+FROZEN: those checks are NECESSARY AND NOT SUFFICIENT. They reject a record that names
+        the wrong actor; §13.3 rejects a record that names the right one without coming
+        from the authority entitled to name it. A record must pass BOTH, and passing the
+        field checks alone is worth nothing.
+FROZEN: an Agent, a model or a service is not an approval SOURCE. A caller-supplied
+        human label is not sufficient. The designated ingress is the ONLY accepted
+        source, and "self-approval is impossible" is a claim about that boundary — not
+        about a field.
 ```
 
 ### 13.4 Rejection and deadline
@@ -785,6 +837,14 @@ FROZEN: it is NOT an AI-04 `ApprovalRef`, and AI-13 MUST NOT present it to Guard
 FROZEN: AI-13 MUST NOT accept a caller-supplied boolean as an approval. AI-04 §8 already
         refuses `approved = true` as evidence of a human approval, and AI-13 does not
         reintroduce it under another name.
+```
+
+```text
+FROZEN: the trusted ingress (§13.3) is a WORKFLOW-level authority and NOT the approval
+        source AI-04 leaves open. D-12 puts approval issuance/verification outside
+        Guard and §25.2 Q-3 leaves `approval.scope_digest` to "a later phase"; a
+        designated ingress for one phase's own gate does not answer AI-04's question,
+        and AI-13 MUST NOT present it as though it did.
 ```
 
 ```text
@@ -988,16 +1048,22 @@ AI-13-A   contract / design freeze   this document, merged
 AI-13-B   the workflow core          definition · identity · step · attempt · checkpoint
                                      · resume · failure classification · retry · timeout
                                      · cancellation · limits · run record
-AI-13-C   the approval point         the workflow approval record · validation · scope
-                                     digest · deadline · non-inheritance · self-approval
-                                     refusal · denied semantics
+AI-13-C   the approval point         the DESIGNATED HUMAN APPROVAL INGRESS and its
+                                     provenance check · the workflow approval record ·
+                                     validation · scope digest · deadline ·
+                                     non-inheritance · self-approval refusal · denied
+                                     semantics
 ```
 
 ```text
-FROZEN: AI-13-B implements NO approval semantics. The approval RECORD, its scope digest,
-        its non-inheritance, its deadline and its refusal rules are AI-13-C's, and they
-        are frozen in §13 so that C implements against a settled contract rather than
-        deciding them while coding.
+FROZEN: AI-13-B implements NO approval semantics. The approval RECORD, the ingress it
+        must come from, its scope digest, its non-inheritance, its deadline and its
+        refusal rules are AI-13-C's, and they are frozen in §13 so that C implements
+        against a settled contract rather than deciding them while coding.
+FROZEN: C's exit INCLUDES designating the ingress and implementing its provenance
+        check. Until both exist, every approval is invalid and every approval step is
+        BLOCKED (§13.3) — so a C that implemented the record without the ingress would
+        have implemented a gate that accepts anything, which is worse than none.
 FROZEN: therefore AI-13-B REFUSES a definition that declares an approval step, with a
         named reason (`APPROVAL_STEP_NOT_IMPLEMENTED`). A workflow that needs a human
         approval does not run until AI-13-C exists. Half an approval point — a step that
@@ -1032,10 +1098,11 @@ C4   retry and failure semantics frozen — the nine classes with NO UNKNOWN mem
      list, and the effective-bound precedence (§9, §10)
 C5   timeout and cancellation semantics frozen (§11)
 C6   resource limits frozen — declared, bounded, terminal when reached (§12)
-C7   human approval boundary frozen — binding, the scope preimage, non-inheritance, no
-     self-approval, no Evidence record, no Guard approval (§13). FROZEN HERE, and
+C7   human approval boundary frozen — the TRUSTED INGRESS and the rule that a caller
+     assertion is not an approval, plus binding, the scope preimage, non-inheritance,
+     no self-approval, no Evidence record and no Guard approval (§13). FROZEN HERE, and
      IMPLEMENTED BY AI-13-C: freezing the boundary is this contract's exit, and it is
-     NOT a claim that any approval mechanism exists
+     NOT a claim that any approval mechanism or ingress exists
 C8   Guard / Router / Evidence ownership frozen, with the ownership table (§4, §17),
      and the B/C split that keeps an exit criterion from claiming a proof whose
      mechanism does not exist (§18)
@@ -1068,7 +1135,7 @@ failure classification or retryability (§9)
 the retry boundary, its bounds, or the effective-bound precedence (§10)
 timeout or cancellation semantics (§11)
 the resource limits or the rule that they are declared (§12)
-the human-approval boundary, including the scope preimage (§13)
+the human-approval boundary, including the trusted ingress and the scope preimage (§13)
 AI-13's vocabulary, or the absence of an UNKNOWN FailureClass member (§14, §9.1)
 the run record's contents, or the RunRecord / Checkpoint boundary (§15)
 which sub-phase owns which semantics (§18)
@@ -1131,7 +1198,11 @@ T25  an attempt that would begin at or after an effective deadline does not begi
 T2   an approval bound to attempt 1 does not authorize attempt 2
 T3   an approval whose scope digest differs in ANY of the six bound fields is refused,
      and §13.2's preimage is what it is compared against
-T4   an approval whose actor is the executing Agent, a model or a service is refused
+T4   a FORGED human approval is refused: a caller-authored record that carries
+     `actor.type = human`, a valid scope_digest and a well-formed timestamp, but
+     without provenance from the designated approval ingress, MUST be rejected —
+     AND a record whose actor is the executing Agent, a model or a service is rejected
+     too. Both halves are required; the field half alone proves a string, not a human
 T5   a denied approval is terminal and produces no automatic re-request
 T6   an approval that misses its deadline is APPROVAL_DENIED, not a pending state
 ```
@@ -1150,6 +1221,14 @@ checkpoint digest preimage     change one byte of a covered field, or move the d
                                field into the preimage — T10 must fail
 approval scope digest preimage add the approver or a timestamp to the preimage, or
                                change one of the six — T3 must fail
+trusted approval ingress       remove the ingress-provenance check and let a
+                               caller-authored record be accepted on its fields —
+                               T4 must fail. A control that only changes
+                               `actor.type` proves the enum check, not the boundary,
+                               and is NOT an acceptable control for this rule
+approval source is not an actor let an Agent, a model or a service reach the ingress,
+                               or expose a constructor that mints an approval or its
+                               provenance — T4 must fail
 persisted runtime budget       recompute the deadline on resume instead of reading it,
                                or persist a monotonic reading — T23 must fail
 resumed retry budget           reset the attempt counter on resume — T23/T24 must fail

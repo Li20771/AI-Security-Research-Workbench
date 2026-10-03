@@ -847,6 +847,10 @@ effective bound            多 bound 并存取 min；先判后跑，不允许跑
 workspace re-derivation    v1 无此机制：exact identity 或 WORKSPACE_CHANGED
 FailureClass               九个成员，无 UNKNOWN 成员；无法归类 = 不赋类 + 停止 + 不 retry
 B/C 分工                   B = workflow core（拒绝 approval step）；C = approval point
+trusted approval ingress   caller 自述 actor.type = human 不等于 human approval；
+                           approval 必须来自 C 指派的、位于 Agent/model/service 执行
+                           之外的 ingress，且 provenance 可被机械验证；在此 ingress
+                           存在之前，任何 approval 都无效、approval step 一律 BLOCKED
 ```
 
 仍 BLOCKED / 未解决，不得借 AI-13 绕过：

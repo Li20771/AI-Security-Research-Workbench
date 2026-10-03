@@ -112,6 +112,11 @@ Made mechanically checkable by the review round that preceded the freeze:
     v1 has no workspace re-derivation: exact identity, or WORKSPACE_CHANGED
     AI-13-B owns the workflow core and REFUSES an approval step; AI-13-C owns the
     approval point — so a B exit cannot claim a proof whose mechanism does not exist
+    a caller-authored `actor.type = human` is NOT a human approval: an approval must
+    come from a designated ingress that is external to Agent/model/service execution,
+    and its provenance must be machine-verifiable. Until AI-13-C designates one, no
+    approval is valid and every approval step is BLOCKED — the same fail-closed shape
+    AI-04 already has
 ```
 
 **AI-13 does not unblock anything it does not own.** AI-12 §6's model-comparative
