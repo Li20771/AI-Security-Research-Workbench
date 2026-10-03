@@ -565,7 +565,7 @@ def test_an_attempt_that_stays_inside_its_bound_is_not_TIMED_OUT() -> None:
 @pytest.mark.parametrize(
     "declared",
     [
-        "workflow_deadline",
+        "workflow_seconds",
         "step_seconds",
         "attempts_per_step",
         "attempts_total",
@@ -596,14 +596,18 @@ def test_every_declared_limit_is_named_where_it_is_enforced(declared: str) -> No
 
     # The two attempt bounds are consumed through EFFECTIVE bound arithmetic rather than
     # by name, so they are checked against the attribute they are read from.
+    # §15.1, §15.2. Every one of these is read from the RUN RECORD, which is the
+    # authority for the bounds a run declared. The workflow runtime is the one exception
+    # in form: it is turned into an absolute at creation, and the absolute is what is
+    # enforced from then on.
     attribute = {
-        "workflow_deadline": "run.workflow_deadline",
-        "step_seconds": "step_deadline_from",
-        "attempts_per_step": "definition.limits.attempts_per_step",
-        "attempts_total": "definition.limits.attempts_total",
-        "max_checkpoints": "definition.limits.max_checkpoints",
-        "max_checkpoint_bytes": "definition.limits.max_checkpoint_bytes",
-        "max_artifact_bytes": "definition.limits.max_artifact_bytes",
+        "workflow_seconds": "definition.limits.workflow_seconds",
+        "step_seconds": 'run.declared_limit("step_seconds")',
+        "attempts_per_step": 'run.declared_limit("attempts_per_step")',
+        "attempts_total": 'run.declared_limit("attempts_total")',
+        "max_checkpoints": 'run.declared_limit("max_checkpoints")',
+        "max_checkpoint_bytes": 'run.declared_limit("max_checkpoint_bytes")',
+        "max_artifact_bytes": 'run.declared_limit("max_artifact_bytes")',
     }[declared]
 
     assert attribute in policy_source or attribute in engine_source, (

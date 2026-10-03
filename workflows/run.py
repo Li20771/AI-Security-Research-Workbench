@@ -61,6 +61,31 @@ __all__ = [
 #: the artifact a reader trusts most" (§15.2).
 RUN_DIGEST_FIELD = "run_digest"
 
+#: §5, §15.1. Facts about a run that its own successors may not move. A deadline a
+#: later record could extend is not a bound; a workspace a later record could change is
+#: not the place the earlier steps ran.
+_FIXED_FOR_THE_LIFE_OF_A_RUN = (
+    "run_id",
+    "workflow_id",
+    "revision",
+    "definition_digest",
+    "workspace_identity",
+    "created_at",
+    "declared",
+    "workflow_deadline",
+    "retry_deadline",
+)
+
+#: §12, §15.1. Counters a bound is enforced from. They may only ever go UP: a successor
+#: that could lower one would restore budget that a run has already spent, which is the
+#: same escape §15.1 closes for checkpoints and §8.3 closes for deadlines.
+_NEVER_DECREASES = (
+    "consumed_total_attempts",
+    "consumed_checkpoints",
+    "consumed_checkpoint_bytes",
+    "consumed_artifact_bytes",
+)
+
 
 def new_run_id() -> str:
     """A `WorkflowRunId`. Opaque, unique, never reused, never derived (§5)."""
@@ -400,10 +425,134 @@ class RunRecord:
     def to_mapping(self) -> dict[str, Any]:
         return {**self.body, RUN_DIGEST_FIELD: self.run_digest}
 
+    def _verify_successor(self, successor: "RunRecord") -> None:
+        """§5, §6.3, §8.3, §12, §15. EVERY rule a successor must obey, in one place.
+
+        A digest proves a record is internally consistent. It proves NOTHING about the
+        step from the record before it, so the transition is checked here — and here is
+        the only place `advance` can be reached from, which is what makes the rule
+        structural rather than a convention callers are asked to observe.
+
+        Without this the public API IS a budget reset: `run.advance(
+        consumed_total_attempts=0)` produces a record whose digest verifies and whose
+        counters say the run has spent nothing.
+        """
+        for name in _FIXED_FOR_THE_LIFE_OF_A_RUN:
+            if getattr(self, name) != getattr(successor, name):
+                raise InvalidRecord(
+                    f"a successor changed {name}; it is fixed when the run is created "
+                    "and no later record may move it (§5, §15.1)"
+                )
+
+        for name in _NEVER_DECREASES:
+            before = getattr(self, name)
+            after = getattr(successor, name)
+            if after < before:
+                raise InvalidRecord(
+                    f"a successor lowered {name}; a counter a bound is enforced from "
+                    "may only ever increase (§12, §15.1)"
+                )
+
+        # §6.3, §15.2. The attempt lineage is a RECORD of what happened. A successor may
+        # append to it; it may not delete an attempt, rewrite one, or renumber one — the
+        # first two would erase history and the third would hand out a number twice.
+        for record in self.steps:
+            other = successor.step(record.step_id)
+            if other is None:
+                raise InvalidRecord(
+                    "a successor dropped a step the run declared; a step does not "
+                    "leave the record of the run that declared it (§6.1)"
+                )
+            if len(other.attempts) < len(record.attempts):
+                raise InvalidRecord(
+                    "a successor shortened an attempt lineage; a spent attempt "
+                    "cannot be unspent (§15.1)"
+                )
+            for before, after in zip(record.attempts, other.attempts):
+                if before != after:
+                    raise InvalidRecord(
+                        "a successor rewrote a recorded attempt; §15.2 records what "
+                        "an attempt WAS, and an attempt number is never reused or "
+                        "renumbered (§6.3)"
+                    )
+            numbers = [attempt.attempt_id.attempt_no for attempt in other.attempts]
+            if any(b <= a for a, b in zip(numbers, numbers[1:])):
+                raise InvalidRecord(
+                    "a successor recorded attempt numbers that do not strictly "
+                    "increase; §6.3 increases the count by exactly one per attempt"
+                )
+
+        # §8.3, §11.1. The step bound is anchored once. It may be set, kept, or released
+        # — and released only by the step succeeding, which is the one transition the
+        # engine performs. Replacing it would hand the same step a second budget.
+        if self.step_deadline is not None and successor.step_deadline != self.step_deadline:
+            if successor.step_deadline is not None:
+                raise InvalidRecord(
+                    "a successor replaced the step deadline; it is anchored once at "
+                    "the step's first attempt and read from there (§8.3)"
+                )
+            succeeded_before = {
+                record.step_id for record in self.steps if record.state is StepState.SUCCEEDED
+            }
+            succeeded_after = {
+                record.step_id
+                for record in successor.steps
+                if record.state is StepState.SUCCEEDED
+            }
+            if not succeeded_after - succeeded_before:
+                raise InvalidRecord(
+                    "a successor released the step deadline without its step "
+                    "succeeding; a step that has not finished still has its bound, and "
+                    "clearing it would grant the retry a fresh one (§8.3)"
+                )
+
+        # §6.3. The in-flight attempt number may be reserved, kept, or cleared — and if
+        # it is reserved again it must be a LATER number, never an earlier one.
+        if (
+            self.inflight_attempt_no is not None
+            and successor.inflight_attempt_no is not None
+            and successor.inflight_attempt_no < self.inflight_attempt_no
+        ):
+            raise InvalidRecord(
+                "a successor moved the in-flight attempt number backwards; an attempt "
+                "number is never reused (§6.3)"
+            )
+
+        # §14, §15.2. A terminal run stays terminal, and the facts that stopped it stay
+        # on the record. A successor that could leave a terminal state would make
+        # "terminal" mean "terminal until someone asks again".
+        if self.is_terminal and successor.state is not self.state:
+            raise InvalidRecord(
+                "a successor moved a terminal run out of its terminal state; §14 "
+                "gives a terminal state no transition out of it"
+            )
+        for name in ("reached_bound", "cancelled_by", "cancelled_reason"):
+            before = getattr(self, name)
+            if before is not None and getattr(successor, name) != before:
+                raise InvalidRecord(
+                    f"a successor changed {name}; what a run reached, and who "
+                    "cancelled it, are facts about what happened (§15.2)"
+                )
+
     def advance(self, **changes: Any) -> "RunRecord":
-        """A successor record. Recomputes the digest; never mutates this one."""
+        """§15. The ONE way to make a successor. Recomputes the digest, and refuses a
+        transition that violates the predecessor's own history.
+
+        ```text
+        FROZEN: the run record of a NON-TERMINAL run MUST NOT be discarded.
+        FROZEN: discarding a checkpoint MUST NOT lose, and MUST NOT alter: the attempt
+                count, the elapsed or remaining runtime budget, ... or the run's lineage.
+        ```
+
+        Those clauses are about a reader trusting the ledger. They hold only if a
+        successor cannot quietly disagree with its predecessor, which is a property of
+        this boundary rather than of the digest — the digest would happily verify
+        `consumed_total_attempts=0`.
+        """
         successor = replace(self, **changes)
-        return replace(successor, run_digest=successor.computed_digest)
+        successor = replace(successor, run_digest=successor.computed_digest)
+        self._verify_successor(successor)
+        return successor
 
     def with_step(self, step_id: str, **changes: Any) -> "RunRecord":
         """Replace ONE step record and re-digest."""

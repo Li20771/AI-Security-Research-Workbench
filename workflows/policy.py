@@ -104,9 +104,12 @@ def effective_attempt_bound(
     question is being asked before a failure exists (may an attempt begin at all?), and
     the policy bound is included: it is a declared ceiling on this step either way.
     """
-    candidates = [definition.limits.attempts_per_step]
+    # §15.1, §15.2. Read from the RUN RECORD, which is the authority for this run's
+    # declared bounds. `definition` is a tracked artifact that can be amended between
+    # two reads of the same run; the record is what the run was given.
+    candidates = [run.declared_limit("attempts_per_step")]
 
-    remaining_total = definition.limits.attempts_total - run.consumed_total_attempts
+    remaining_total = run.declared_limit("attempts_total") - run.consumed_total_attempts
     # A run with no budget left has an effective bound of zero, which refuses the next
     # attempt. Clamping at 1 here would silently restore one attempt's worth of budget.
     candidates.append(max(remaining_total, 0))
@@ -118,7 +121,7 @@ def effective_attempt_bound(
     return min(candidates)
 
 
-def step_deadline_from(definition: WorkflowDefinition, now: str) -> str:
+def step_deadline_from(run: RunRecord, now: str) -> str:
     """§11.1, §12. The absolute instant a step's declared runtime ends at.
 
     Called ONCE, when the step's first attempt begins, and then persisted on the run
@@ -127,12 +130,10 @@ def step_deadline_from(definition: WorkflowDefinition, now: str) -> str:
     escape §8.3 forbids. A step bounded at one hour would get a fresh hour every time the
     run was picked back up.
     """
-    return plus_seconds(now, definition.limits.step_seconds)
+    return plus_seconds(now, run.declared_limit("step_seconds"))
 
 
-def effective_deadline(
-    definition: WorkflowDefinition, run: RunRecord, step_id: str, now: str
-) -> str:
+def effective_deadline(run: RunRecord, step_id: str, now: str) -> str:
     """§10.3.1. The narrowest deadline an attempt at this step must finish inside.
 
     ```text
@@ -144,7 +145,7 @@ def effective_deadline(
     from `now` only when it has not — because before a step starts there is no step bound
     to read, and the instant the first attempt would begin is the only honest anchor.
     """
-    step_deadline = run.step_deadline or step_deadline_from(definition, now)
+    step_deadline = run.step_deadline or step_deadline_from(run, now)
 
     candidates = [_earliest([step_deadline, run.workflow_deadline])]
     if run.retry_deadline is not None:
@@ -153,12 +154,7 @@ def effective_deadline(
     return _earliest(candidates)
 
 
-def effective_timeout_seconds(
-    definition: WorkflowDefinition,
-    run: RunRecord,
-    step: WorkflowStep,
-    now: str,
-) -> int:
+def effective_timeout_seconds(run: RunRecord, step: WorkflowStep, now: str) -> int:
     """§11.1. The timeout an attempt at this step must be GIVEN, composed.
 
     ```text
@@ -180,7 +176,7 @@ def effective_timeout_seconds(
     such an attempt before it begins, so a caller that has already asked that question
     receives at least one second here.
     """
-    step_deadline = run.step_deadline or step_deadline_from(definition, now)
+    step_deadline = run.step_deadline or step_deadline_from(run, now)
     candidates = [
         step.timeout_seconds,
         seconds_remaining(step_deadline, now),
@@ -251,7 +247,7 @@ def check_attempt_may_begin(
     # §12's three resource bounds, all enforced from counters on the RUN RECORD. Each is
     # checked before the attempt because a bound discovered by overrunning it is not a
     # bound — and each was declared, so none may be left with nothing that reaches it.
-    if run.consumed_checkpoints >= definition.limits.max_checkpoints:
+    if run.consumed_checkpoints >= run.declared_limit("max_checkpoints"):
         return BoundDecision(
             allowed=False,
             reason_code="CHECKPOINT_COUNT_BOUND_REACHED",
@@ -259,7 +255,7 @@ def check_attempt_may_begin(
             detail="the declared checkpoint count bound has been reached",
         )
 
-    if run.consumed_checkpoint_bytes >= definition.limits.max_checkpoint_bytes:
+    if run.consumed_checkpoint_bytes >= run.declared_limit("max_checkpoint_bytes"):
         return BoundDecision(
             allowed=False,
             reason_code="CHECKPOINT_BYTES_BOUND_REACHED",
@@ -267,7 +263,7 @@ def check_attempt_may_begin(
             detail="the declared total checkpoint byte bound has been reached",
         )
 
-    if run.consumed_artifact_bytes >= definition.limits.max_artifact_bytes:
+    if run.consumed_artifact_bytes >= run.declared_limit("max_artifact_bytes"):
         return BoundDecision(
             allowed=False,
             reason_code="ARTIFACT_BOUND_REACHED",

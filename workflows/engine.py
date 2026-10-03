@@ -81,6 +81,46 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).strftime(INSTANT_FORMAT)
 
 
+def _require_the_runs_own_definition(
+    definition: WorkflowDefinition, run: RunRecord
+) -> None:
+    """§5, §8.1. Refuse a definition that is not the one this RUN was created under.
+
+    A run binds to (workflow_id, revision, definition_digest) at creation, and §8.1
+    makes a mismatch terminal for a resume. The same mismatch matters anywhere a
+    definition is used to act ON a run: an old run read through a newer definition
+    produces artifacts that look right and belong to another revision — a checkpoint
+    stamped with a digest the run never ran under, or a bound taken from a policy the
+    run was never given.
+
+    It is also what makes the two authorities the SAME. §15.1 puts every bound on the
+    run record; the definition carries its own copy of the declared limits. Checking the
+    digest proves they hold the same numbers, so a bound read from either is the bound
+    this run declared.
+
+    The message names the FIELD and not the value: a definition is tracked content, and
+    an error message is a place a value escapes to a log.
+    """
+    if definition.workflow_id != run.workflow_id:
+        raise InvalidRecord(
+            "the definition is not the one this run was created under: workflow_id "
+            "differs (§5)"
+        )
+    if definition.revision != run.revision:
+        raise InvalidRecord(
+            "the definition is not the one this run was created under: revision "
+            "differs (§5)"
+        )
+    if definition.definition_digest != run.definition_digest:
+        # Checked separately from the revision string on purpose: a revision is a label
+        # its author chose, and the digest is the bytes. Two definitions can share a
+        # revision and differ, and only the digest catches that.
+        raise InvalidRecord(
+            "the definition is not the one this run was created under: "
+            "definition_digest differs, so its declared bounds are not this run's (§5)"
+        )
+
+
 def _checkpoint_bytes(checkpoint: Checkpoint) -> int:
     """§12's byte bound, measured over §7.4's canonical body.
 
@@ -409,6 +449,10 @@ def begin_attempt(
     """
     moment = now or _utc_now()
 
+    # §5, §8.1. Checked FIRST, before the terminal short-circuit: a foreign definition
+    # must not be able to act on this run at all, not even to be told it is finished.
+    _require_the_runs_own_definition(definition, run)
+
     if run.is_terminal:
         return AttemptPlan(
             run=run, admitted=False, refusal=f"RUN_ALREADY_TERMINAL:{run.state}", moment=moment
@@ -449,7 +493,7 @@ def begin_attempt(
     # retry inside this step — and a resume of it — spends the same step budget rather
     # than being handed a new one. `run.step_deadline` is read, never recomputed, once
     # the step has started.
-    step_deadline = run.step_deadline or step_deadline_from(definition, moment)
+    step_deadline = run.step_deadline or step_deadline_from(run, moment)
 
     prepared = run.advance(
         step_deadline=step_deadline,
@@ -471,8 +515,8 @@ def begin_attempt(
         admitted=True,
         step=step,
         attempt_id=attempt_id,
-        timeout_seconds=effective_timeout_seconds(definition, prepared, step, moment),
-        deadline=effective_deadline(definition, prepared, step.step_id, moment),
+        timeout_seconds=effective_timeout_seconds(prepared, step, moment),
+        deadline=effective_deadline(prepared, step.step_id, moment),
         moment=moment,
     )
 
@@ -571,11 +615,21 @@ def complete_attempt(
         decision_id=outcome.decision_id or None,
     )
     spent_artifacts = run.consumed_artifact_bytes + outcome.artifact_bytes
-    record = run.with_step(
-        step.step_id,
-        state=StepState.SUCCEEDED if outcome.succeeded else StepState.READY,
-        attempts=run.attempts_for(step.step_id) + (attempt,),
-    ).advance(
+    # ONE successor, not two chained ones. A step reaching its outcome and its bound
+    # being released are the same fact, and splitting them would publish an intermediate
+    # record that never existed — a step already SUCCEEDED while its deadline was still
+    # anchored — and would make the release unverifiable against its predecessor.
+    record = run.advance(
+        steps=tuple(
+            replace(
+                other,
+                state=StepState.SUCCEEDED if outcome.succeeded else StepState.READY,
+                attempts=other.attempts + (attempt,),
+            )
+            if other.step_id == step.step_id
+            else other
+            for other in run.steps
+        ),
         # The attempt was counted in `begin_attempt`; this records what it DID.
         consumed_artifact_bytes=spent_artifacts,
         # A step that SUCCEEDED releases its bound, so the next step is anchored on its
@@ -605,7 +659,7 @@ def complete_attempt(
             bound=_deadline_reached(run, step_deadline),
         )
 
-    if spent_artifacts >= definition.limits.max_artifact_bytes:
+    if spent_artifacts >= run.declared_limit("max_artifact_bytes"):
         # §12. Every other bound is evaluated BEFORE its attempt (§10.3.1) because it is
         # knowable then; the bytes an attempt references are knowable only once it has
         # run. So this one is met here — and it is still TERMINAL and NAMED rather than a
@@ -754,6 +808,10 @@ def checkpoint_for(
     """
     moment = now or _utc_now()
 
+    # §5, §8.1. Before anything is built: the definition must be the run's own, so a
+    # checkpoint cannot be stamped with a digest this run never ran under.
+    _require_the_runs_own_definition(definition, run)
+
     completed = tuple(
         record.step_id
         for record in run.steps
@@ -779,13 +837,18 @@ def checkpoint_for(
     )
     checkpoint = replace(draft, checkpoint_digest=draft.computed_digest)
 
-    if _checkpoint_bytes(checkpoint) > definition.limits.max_checkpoint_bytes:
+    # §15.1, §15.2. The bound comes from the RUN RECORD — the authority for this run's
+    # declared limits — and not from the definition's copy of them. `definition` is a
+    # tracked artifact that can be amended between two reads of the same run; the record
+    # is what the run was given, and reading it here is what stops a modified definition
+    # from changing a budget the run already has.
+    if _checkpoint_bytes(checkpoint) > run.declared_limit("max_checkpoint_bytes"):
         raise InvalidRecord(
             "the checkpoint exceeds the declared byte bound; §12 makes reaching a "
             "declared limit a terminal state rather than a silent write",
             reason_code="CHECKPOINT_BYTES_BOUND_REACHED",
         )
-    if run.consumed_checkpoints + 1 > definition.limits.max_checkpoints:
+    if run.consumed_checkpoints + 1 > run.declared_limit("max_checkpoints"):
         raise InvalidRecord(
             "the declared checkpoint count bound has been reached (§12)",
             reason_code="CHECKPOINT_COUNT_BOUND_REACHED",

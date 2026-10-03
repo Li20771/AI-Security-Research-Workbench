@@ -54,6 +54,7 @@ CORE = "tests/workflows/test_workflow_core.py"
 RESUME = "tests/workflows/test_workflow_resume.py"
 RUN = "tests/workflows/test_workflow_run.py"
 LIMITS = "tests/workflows/test_workflow_limits.py"
+BOUNDARY = "tests/workflows/test_workflow_record_boundary.py"
 
 
 @dataclass(frozen=True, slots=True)
@@ -230,7 +231,7 @@ MUTATIONS: tuple[Mutation, ...] = (
         guard="§8.3 the step deadline is anchored in phase ONE and written to the "
               "record a caller persists BEFORE the execution is entered",
         path="workflows/engine.py",
-        old="    step_deadline = run.step_deadline or step_deadline_from(definition, moment)",
+        old="    step_deadline = run.step_deadline or step_deadline_from(run, moment)",
         new="    step_deadline = run.step_deadline  # mutated: not anchored at phase one",
         focused=(
             f"{RUN}::test_begin_attempt_anchors_the_step_deadline_before_any_execution",
@@ -263,10 +264,32 @@ MUTATIONS: tuple[Mutation, ...] = (
         guard="§12 the artifact bound binds AT its declared value; a bound that only "
               "bit one byte later would be a limit of maximum plus one",
         path="workflows/engine.py",
-        old="    if spent_artifacts >= definition.limits.max_artifact_bytes:",
+        old='    if spent_artifacts >= run.declared_limit("max_artifact_bytes"):',
         new="    if spent_artifacts > definition.limits.max_artifact_bytes:  # mutated",
         focused=(
             f"{LIMITS}::test_the_artifact_bound_is_terminal_AT_the_declared_maximum",
+        ),
+    ),
+    Mutation(
+        control="successor cannot lower a counter",
+        guard="§12, §15.1 a successor may not lower a counter a bound is enforced "
+              "from, so the public successor API is not a budget reset",
+        path="workflows/run.py",
+        old="            if after < before:",
+        new="            if after < before and False:  # mutated: the guard is off",
+        focused=(
+            f"{BOUNDARY}::test_a_successor_cannot_restore_the_attempt_budget",
+        ),
+    ),
+    Mutation(
+        control="a run is bound to its own definition",
+        guard="§5 a run is only ever read through the definition it was created under, "
+              "by workflow_id, revision and definition_digest",
+        path="workflows/engine.py",
+        old="    if definition.definition_digest != run.definition_digest:",
+        new="    if definition.definition_digest != run.definition_digest and False:  # mutated",
+        focused=(
+            f"{BOUNDARY}::test_checkpoint_for_refuses_a_definition_digest_mismatch",
         ),
     ),
 )
