@@ -71,7 +71,7 @@ MAX_ARTIFACT_BYTES_CEILING = 1 << 40
 _DEFINITION_KEYS = frozenset(
     {"workflow_id", "revision", "steps", "limits", "retry_policy", DIGEST_FIELD}
 )
-_STEP_KEYS = frozenset({"step_id", "kind", "timeout_seconds"})
+_STEP_KEYS = frozenset({"step_id", "kind", "timeout_seconds", "approval_seconds"})
 _LIMIT_KEYS = frozenset(
     {
         "workflow_seconds",
@@ -282,7 +282,16 @@ class WorkflowStep:
 
     step_id: str
     kind: StepKind
-    timeout_seconds: int
+    #: An AGENT_EXECUTION step's per-invocation timeout (§11.1). `None` for an APPROVAL
+    #: step, which has no invocation to bound.
+    timeout_seconds: int | None = None
+    #: §13.4. An APPROVAL step's DECLARED wait. `None` for an AGENT_EXECUTION step.
+    #:
+    #: An approval "that does not arrive before its declared deadline is
+    #: `APPROVAL_DENIED`, not a silent wait. There is no open-ended pending state" — so
+    #: the declaration is not optional, and §12's rule that a workflow declaring no
+    #: limit is refused applies to this bound exactly as it applies to the others.
+    approval_seconds: int | None = None
 
     @classmethod
     def from_mapping(cls, raw: object, where: str = "steps[]") -> "WorkflowStep":
@@ -298,30 +307,47 @@ class WorkflowStep:
                 "admits (§6.1)"
             ) from None
         if kind is StepKind.APPROVAL:
-            # §18. This is the whole of AI-13-B's obligation toward the approval point:
-            # refuse it BY NAME, so a caller can report which rule stopped it. A step
-            # that waited for a gate nothing opens would park the run forever, which is
-            # exactly the unbounded state §16 forbids.
-            raise InvalidDefinition(
-                f"{where} declares an approval step; AI-13-B implements no approval "
-                "semantics and the trusted ingress does not exist yet (§13.3, §18)",
-                reason_code="APPROVAL_STEP_NOT_IMPLEMENTED",
+            # §13.4, §18. AI-13-C enables the approval step, and the ONE thing it must
+            # declare is how long the wait may last: a wait with no declared deadline is
+            # the open-ended pending state §16 forbids.
+            #
+            # An approval step declares no per-invocation timeout, because there is no
+            # invocation — the step waits for a human, and the human's bound is the
+            # approval deadline. A step carrying a field its kind has no use for is
+            # refused rather than ignored: ignoring it would let a definition appear to
+            # bound something it does not.
+            if "timeout_seconds" in data:
+                raise InvalidDefinition(
+                    f"{where} is an approval step and declares timeout_seconds; there is "
+                    "no invocation for an inner timeout to bound, and the bound an "
+                    "approval step has is its declared wait (§13.4)"
+                )
+            approval_seconds = _positive_int(
+                data.get("approval_seconds"), f"{where}.approval_seconds"
             )
+            return cls(step_id=step_id, kind=kind, approval_seconds=approval_seconds)
+
         # §11.1: "AI-13 does not make an inner one optional." A step that declared no
         # per-invocation timeout would have only the OUTER bound, which is precisely the
         # composition the contract refuses — so an omitted one is refused here rather
         # than defaulted, for the same reason §12 refuses an omitted limit.
+        if "approval_seconds" in data:
+            raise InvalidDefinition(
+                f"{where} is an execution step and declares approval_seconds; there is "
+                "no approval wait for that bound to govern (§13.4)"
+            )
         timeout_seconds = _positive_int(
             data.get("timeout_seconds"), f"{where}.timeout_seconds"
         )
         return cls(step_id=step_id, kind=kind, timeout_seconds=timeout_seconds)
 
     def to_body(self) -> dict[str, Any]:
-        return {
-            "step_id": self.step_id,
-            "kind": str(self.kind),
-            "timeout_seconds": self.timeout_seconds,
-        }
+        body: dict[str, Any] = {"step_id": self.step_id, "kind": str(self.kind)}
+        if self.kind is StepKind.APPROVAL:
+            body["approval_seconds"] = self.approval_seconds
+        else:
+            body["timeout_seconds"] = self.timeout_seconds
+        return body
 
 
 @dataclass(frozen=True, slots=True)
@@ -369,6 +395,32 @@ class WorkflowDefinition:
                 "(workflow_id, revision, step_id) and a duplicate makes it ambiguous (§6.1)"
             )
 
+        # §6.1 (Amendment 2). An APPROVAL step MUST be IMMEDIATELY followed in declared
+        # order by exactly one execution-seam step, and THAT step is the one it gates.
+        #
+        # Two things follow, and both are refused here rather than discovered at run
+        # time. An approval point at the END of a workflow has nothing to gate. And an
+        # approval point followed by ANOTHER approval point would let the second wait
+        # reach past the first — which is what Amendment 2 forbids, because two waits
+        # naming one (step_id, attempt_no) would have identical scope identity and no
+        # field able to tell them apart.
+        for index, entry in enumerate(steps):
+            if entry.kind is not StepKind.APPROVAL:
+                continue
+            following = steps[index + 1] if index + 1 < len(steps) else None
+            if following is None:
+                raise InvalidDefinition(
+                    f"definition.steps[{index}] is an approval step and the LAST step; an "
+                    "approval point must be immediately followed by the execution-seam "
+                    "step it gates (§6.1)"
+                )
+            if following.kind is StepKind.APPROVAL:
+                raise InvalidDefinition(
+                    f"definition.steps[{index}] is an approval step immediately followed "
+                    "by another approval step; an approval wait may not skip another "
+                    "approval wait, or the two would name one scope (§6.1, Amendment 2)"
+                )
+
         limits = ResourceLimits.from_mapping(data.get("limits"), "definition.limits")
 
         retry_raw = data.get("retry_policy")
@@ -408,6 +460,40 @@ class WorkflowDefinition:
             if step.step_id == step_id:
                 return step
         return None
+
+    def gating_step(self, step_id: str) -> WorkflowStep | None:
+        """§6.1 (Amendments 1, 2). The approval point that gates `step_id`, if one does.
+
+        An approval point gates the step IMMEDIATELY AFTER it, and validation refuses a
+        definition that puts two approval points in a row — so a step has AT MOST one
+        gating approval point, and finding it is a lookup of the preceding step rather
+        than a search for the best match. A step with none is not gated at all.
+        """
+        target = self.step(step_id)
+        if target is None:
+            return None
+        index = self.steps.index(target)
+        if index == 0:
+            return None
+        previous = self.steps[index - 1]
+        return previous if previous.kind is StepKind.APPROVAL else None
+
+    def gated_step(self, step_id: str) -> WorkflowStep | None:
+        """§6.1 (Amendment 2). The execution-seam step an approval point gates.
+
+        The IMMEDIATELY FOLLOWING declared step and nothing else. There is no selector,
+        no name and no index — a target a definition could point anywhere, or reach
+        past, would be a target two approval points could share.
+
+        Validation has already refused a definition where the following step is missing
+        or is itself an approval step, so a `WorkflowStep` returned here is always an
+        execution seam.
+        """
+        entry = self.step(step_id)
+        if entry is None or entry.kind is not StepKind.APPROVAL:
+            return None
+        index = self.steps.index(entry)
+        return self.steps[index + 1] if index + 1 < len(self.steps) else None
 
     def verify_digest(self) -> None:
         """§5. A definition whose digest does not match its own body is not usable."""

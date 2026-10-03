@@ -10,10 +10,10 @@ import pytest
 
 from workflows.canonical import canonical_body, digest_of
 from workflows.checkpoint import CHECKPOINT_DIGEST_FIELD, Checkpoint
-from workflows.definition import DIGEST_FIELD, WorkflowDefinition
+from workflows.definition import DIGEST_FIELD, StepKind, WorkflowDefinition
 from workflows.errors import InvalidCheckpoint, InvalidDefinition, InvalidRecord
 
-from tests.workflows.conftest import T0, a_step, definition_body, limits
+from tests.workflows.conftest import NEAR_SECONDS, T0, a_step, definition_body, limits
 
 pytestmark = pytest.mark.layer1
 
@@ -101,13 +101,59 @@ def test_T16b_a_bound_that_no_run_could_reach_is_refused() -> None:
         )
 
 
-def test_T22_an_approval_step_is_refused_by_name() -> None:
-    """§18. AI-13-B's whole obligation toward the approval point, in one assertion."""
+def test_T22_an_approval_step_declares_its_wait_and_is_accepted() -> None:
+    """§13.4, §18. AI-13-C enables the approval step; the ONE thing it must declare is
+    how long the wait may last.
+
+    B refused this step BY NAME while it implemented no approval semantics. C implements
+    them, so the refusal it inherited is gone — and what replaces it is the bound that
+    makes the wait finite: "There is no open-ended pending state."
+    """
+    definition = WorkflowDefinition.from_mapping(
+        definition_body(steps=[a_step("approve-me", kind="APPROVAL"), a_step("work")])
+    )
+
+    step = definition.step("approve-me")
+    assert step is not None and step.kind is StepKind.APPROVAL
+    assert step.approval_seconds == NEAR_SECONDS
+    assert step.timeout_seconds is None, "an approval step has no invocation to bound"
+
+
+def test_T22_an_approval_step_with_no_declared_wait_is_refused() -> None:
+    """§12, §13.4. "No limit" and "a limit nobody wrote down" are the same thing at run
+    time, and a wait with neither is the unbounded state §16 forbids."""
     with pytest.raises(InvalidDefinition) as raised:
         WorkflowDefinition.from_mapping(
-            definition_body(steps=[a_step("approve-me", kind="APPROVAL")])
+            definition_body(
+                steps=[{"step_id": "approve-me", "kind": "APPROVAL"}, a_step("work")]
+            )
         )
-    assert raised.value.reason_code == "APPROVAL_STEP_NOT_IMPLEMENTED"
+    assert "approval_seconds" in str(raised.value)
+
+
+def test_a_step_may_not_declare_the_bound_its_kind_has_no_use_for() -> None:
+    """A field a kind cannot use is REFUSED rather than ignored, because ignoring it
+    would let a definition appear to bound something it does not."""
+    with pytest.raises(InvalidDefinition):
+        WorkflowDefinition.from_mapping(
+            definition_body(
+                steps=[
+                    {
+                        "step_id": "approve-me",
+                        "kind": "APPROVAL",
+                        "approval_seconds": 60,
+                        "timeout_seconds": 30,
+                    },
+                    a_step("work"),
+                ]
+            )
+        )
+    with pytest.raises(InvalidDefinition):
+        WorkflowDefinition.from_mapping(
+            definition_body(
+                steps=[a_step("s", approval_seconds=60)],
+            )
+        )
 
 
 def test_T22b_the_refusal_names_which_step_it_refused() -> None:
@@ -116,19 +162,17 @@ def test_T22b_the_refusal_names_which_step_it_refused() -> None:
     It names the POSITION and not the step id, and the difference is the repository's
     error convention rather than an accident: a message names the field, the rule and at
     most a shape fact, and "never an interpolated value" — an error message is a place a
-    value escapes to a log. The rule a caller acts on is the reason code; the position
-    says where to look.
+    value escapes to a log.
     """
     with pytest.raises(InvalidDefinition) as raised:
         WorkflowDefinition.from_mapping(
             definition_body(
                 steps=[
                     a_step("fine"),
-                    a_step("needs-a-human", kind="APPROVAL"),
+                    {"step_id": "needs-a-human", "kind": "APPROVAL"},
                 ]
             )
         )
-    assert raised.value.reason_code == "APPROVAL_STEP_NOT_IMPLEMENTED"
     assert "definition.steps[1]" in str(raised.value)
     assert "needs-a-human" not in str(raised.value)
 

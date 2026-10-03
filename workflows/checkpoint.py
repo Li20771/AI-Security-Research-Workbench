@@ -79,6 +79,10 @@ FORBIDDEN_KEYS = frozenset(
         "authorized", "permission", "capability_status", "capability",
         # approval (§13 — AI-13-B implements none of it)
         "approval", "approval_status", "approver", "approved", "scope_digest",
+        # §13. AI-13-C's approval shapes. A checkpoint that could carry any of
+        # these would be a resume snapshot carrying an authorization or a way back
+        # into a wait — the one thing §7.2 keeps out of disposable state.
+        "provenance", "actor_reference", "decided_at", "artifact_reference",
         # routing and model selection
         "router_decision", "routing_decision", "model_ref", "selected_model",
         "model_selection", "candidate_set", "route",

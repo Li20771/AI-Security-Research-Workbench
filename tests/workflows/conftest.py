@@ -20,14 +20,22 @@ import pathlib
 import uuid
 from typing import Any
 
+from cryptography.hazmat.primitives import serialization as _serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
 from workflows import vocabulary as _vocabulary
-from workflows.canonical import digest_of
+from workflows.approval import ApprovalScope, SignedApprovalArtifact
+from workflows.canonical import canonical_body, digest_of
 from workflows.checkpoint import ArtifactRef
 from workflows.definition import WorkflowDefinition
-from workflows.engine import ExecutionOutcome
+from workflows.engine import ExecutionOutcome, advance, start_run
+from workflows.ingress import APPROVAL_TRUST_ANCHOR_ENV
 from workflows.instants import plus_seconds
 from workflows.policy import attempt_request_digest
 from workflows.vocabulary import FailureClass
+
+Encoding = _serialization.Encoding
+PublicFormat = _serialization.PublicFormat
 
 #: The instants these tests use. Fixed, so a bound is a fact rather than a race.
 T0 = "2026-10-03T10:00:00Z"
@@ -81,13 +89,21 @@ def module_roots(names: set[str]) -> set[str]:
 
 
 def a_step(step_id: str = "s1", **overrides: Any) -> dict[str, Any]:
-    """One declared step, with the per-invocation timeout §11.1 requires."""
-    step = {
+    """One declared step, carrying the bound ITS KIND declares.
+
+    §11.1 gives an execution step a per-invocation timeout; §13.4 gives an approval step
+    a declared wait. The two are mutually exclusive, so the helper emits the one that
+    belongs to the kind unless the caller overrides it.
+    """
+    step: dict[str, Any] = {
         "step_id": step_id,
         "kind": "AGENT_EXECUTION",
         "timeout_seconds": STEP_TIMEOUT_SECONDS,
     }
     step.update(overrides)
+    if step["kind"] == "APPROVAL":
+        step.pop("timeout_seconds", None)
+        step.setdefault("approval_seconds", NEAR_SECONDS)
     return step
 
 
@@ -344,3 +360,78 @@ class AlwaysFailsExecutor(_Executor):
             reason_code="AGAIN",
             **self._cancellation(),
         )
+
+
+# ---------------------------------------------------------------------------
+# AI-13-C — a signing authority for the tests, and NOT a production seam
+# ---------------------------------------------------------------------------
+
+
+class SigningAuthority:
+    """The DEPLOYMENT side of §13.3, exercised the way a deployment would be.
+
+    It holds an Ed25519 private key and signs, which is exactly what an operator's tool
+    does. The tests point the deployment's anchor at its public key with
+    `monkeypatch.setenv` — the same act a real deployment performs by configuring its
+    environment — so `workflows/` carries NO test-only API at all, and nothing here can
+    be mistaken for a production trust anchor.
+
+    A SECOND instance with a different key is how a forgery is built: it signs perfectly
+    well, and the signature does not verify against the designated anchor.
+    """
+
+    def __init__(self) -> None:
+        self._private = Ed25519PrivateKey.generate()
+        self.public_hex = self._private.public_key().public_bytes(
+            Encoding.Raw, PublicFormat.Raw
+        ).hex()
+
+    def install(self, monkeypatch: Any) -> None:
+        """Designate this authority as THE anchor, as a deployment would."""
+        monkeypatch.setenv(APPROVAL_TRUST_ANCHOR_ENV, self.public_hex)
+
+    def sign(
+        self,
+        scope: ApprovalScope,
+        *,
+        decision: str = "APPROVED",
+        actor_kind: str = "HUMAN",
+        actor_reference: str = "operator-li",
+        decided_at: str = T1,
+        artifact_reference: str = "artifact://approvals/a1",
+    ) -> SignedApprovalArtifact:
+        """A signed artifact. Every field is covered by the signature."""
+        body: dict[str, Any] = {
+            "decision": decision,
+            "actor_kind": actor_kind,
+            "actor_reference": actor_reference,
+            "decided_at": decided_at,
+            "artifact_reference": artifact_reference,
+            "scope_digest": scope.digest,
+        }
+        preimage = canonical_body({**body, "signature": ""}, digest_field="signature")
+        return SignedApprovalArtifact.from_mapping(
+            {**body, "signature": self._private.sign(preimage).hex()}
+        )
+
+
+def a_gated_definition(**overrides: Any) -> WorkflowDefinition:
+    """A workflow whose execution step is gated by an approval point (§6.1).
+
+    `gate` is the declared wait; `work` is the execution-seam step it gates, and the
+    attempt an approval authorizes belongs to `work` — never to the wait.
+    """
+    steps = overrides.pop("steps", [a_step("gate", kind="APPROVAL"), a_step("work")])
+    return make_definition(steps=steps, **overrides)
+
+
+def a_waiting_run(definition: WorkflowDefinition):
+    """A run that has arrived at the approval point and is waiting.
+
+    It returns the run in AWAITING_APPROVAL with the gated step untouched and READY —
+    no attempt, no ExecutionId, and no counter movement.
+    """
+    run = start_run(definition=definition, workspace_identity="ws-1", now=T0)
+    return advance(
+        definition=definition, run=run, executor=RecordingExecutor(), now=T0
+    )
