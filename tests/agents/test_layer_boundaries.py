@@ -301,9 +301,31 @@ class TestTheLayerIsACoreLayer:
                 if isinstance(node, ast.FunctionDef)
             }, path
 
-    def test_no_tests_were_added_under_tests_routing(self):
-        names = {p.name for p in pathlib.Path("tests/routing").iterdir()}
-        assert names == {"test_router.py", "__pycache__"}
+    def test_no_agent_tests_were_added_under_tests_routing(self):
+        """§17. `tests/routing/` is the ROUTING layer's test home.
+
+        This asserted an exact file set, which was a true proxy while AI-07 was the
+        only phase with tests there. AI-12 legitimately added the policy core's
+        tests, so the file set is no longer the claim — the claim is that nothing
+        under this directory belongs to the AGENT layer. An agent, Codex or DSH test
+        living in the routing layer's home would mean the boundary this class exists
+        for had been crossed, and that is what is asserted now.
+
+        The routing suite itself is still required to be there: a directory that
+        satisfies this by being empty would satisfy it vacuously.
+        """
+        directory = pathlib.Path("tests/routing")
+        assert (directory / "test_router.py").is_file(), (
+            "AI-07's suite is gone; an empty home would pass the check below for the "
+            "wrong reason"
+        )
+        for path in sorted(directory.glob("test_*.py")):
+            lowered = path.name.lower()
+            for forbidden in ("agent", "codex", "dsh"):
+                assert forbidden not in lowered, (
+                    f"{path} is named for the agent layer; tests/routing/ is the "
+                    "routing layer's home"
+                )
 
 
 class TestTheLayerZeroGate:

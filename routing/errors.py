@@ -13,7 +13,7 @@ not an exception.
 
 from __future__ import annotations
 
-__all__ = ["InvalidRequest", "InvalidRules", "RoutingError"]
+__all__ = ["InvalidEvidence", "InvalidPolicy", "InvalidRequest", "InvalidRules", "RoutingError"]
 
 
 class RoutingError(Exception):
@@ -48,3 +48,31 @@ class InvalidRules(RoutingError):
     """
 
     reason_code = "INVALID_RULES"
+
+
+class InvalidPolicy(RoutingError):
+    """AI-12 §5. The policy artifact is not usable.
+
+    An unsupported version, a duplicate `rule_id`, an unknown field, a rule with no
+    falsifier or no discrimination control, a selecting rule justified by REFERENCE
+    evidence (§4.2), a `task_id` used where an evidence identity is required (§5.3),
+    a score/weight/confidence field the contract does not define (§4.3, §9), or an
+    activatable policy with no rollback metadata (§8).
+
+    A policy that is well-formed but cannot be activated because the measurement it
+    needs does not exist is **not** this. That is `DORMANT`, which is a state, not a
+    refusal.
+    """
+
+    reason_code = "INVALID_POLICY"
+
+
+class InvalidEvidence(RoutingError):
+    """AI-12 §4.1. The supplied AI-11 record set is not usable.
+
+    A missing identity field, a verdict outside AI-11's six, an unknown field, or
+    two records claiming one `run_id`. A record that is absent altogether is not
+    this either: absence is `UNKNOWN`, and §4.1 forbids regenerating it.
+    """
+
+    reason_code = "INVALID_EVIDENCE"

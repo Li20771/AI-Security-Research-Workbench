@@ -726,6 +726,52 @@ UNAVAILABLE，也不得因某个 task 当前 BLOCKED 而将其删除。
 - 可审计
 - 可回退
 
+### Status: AI-12-A COMPLETE / MERGED · AI-12-B PR OPEN · AI-12 NOT CLOSED
+
+```text
+AI-12-A  = COMPLETE / MERGED   contract frozen   (PR #66, 60c630d8)
+contract blob = b6e3cc8bd3a54b61e88c1f45c080bfd44965a462
+AI-12-B  = IMPLEMENTATION COMPLETE / PR OPEN   the policy core
+AI-12    = NOT CLOSED
+AI-12-C  = BLOCKED / NOT STARTED
+evidence = docs/AI-12-B_EVIDENCE_2026-10-03.md
+```
+
+已实现（offline verified）：
+
+```text
+policy artifact + validator        版本、rule identity、全序、condition、
+                                   selection、reason_code、evidence binding、
+                                   falsifier、discrimination control、
+                                   fallback / escalation 声明、rollback、dormant
+supplied evidence input            run_id 为身份，task_id / source_sha 不足以定位；
+                                   重复 run_id 被拒；verdict 使用 AI-11 的封闭词表
+resolution + audit                 fired rules、cited evidence、每一条 supplied
+                                   record 的去向；verify_resolution 可外部重算
+Layer 0 boundary                   policy core 只可 import benchmarks.vocabulary；
+                                   无 score/weight/ranking、无 fallback/retry 执行路径
+```
+
+仍 BLOCKED —— 不得当作已完成：
+
+```text
+model-comparative prerequisite (§6)
+    AI-11 的 campaign 是 executor_kind = REFERENCE，不含 per-model history / cost /
+    latency；实现 infrastructure 不产生这些测量
+    -> 任何 policy 只能 DORMANT，不能选择模型
+live provider call / model measurement = NOT_RUN
+AI-12-C = BLOCKED / NOT STARTED
+```
+
+边界：
+
+```text
+AI-12 只声明 policy，不做 runtime fallback / retry / escalation
+AI-12 不产生 score / weight / ranking / aggregate / composite
+AI-12 不修改 AI-07 / AI-11 / AI-05
+把六任务合成一个分数仍然是禁止的
+```
+
 ---
 
 ## AI-13 — Long-running Workflows
@@ -886,7 +932,7 @@ SecurityLab
 | AI-09 | **COMPLETE** — merged as `b8b815b181e69f7651efdde97dd9473a3e619c7f` (PR #54); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-10 | **COMPLETE** — contract `3613896d` (PR #56), Amendments 1 and 2 (`fbf1e1b0` PR #58, `32126416` PR #59), implementation `d22fe25c5fe94ae697083fd9fbdfaf3976785703` (PR #60) merged; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-11 | **COMPLETE / CLOSED** — contract `6f7548a1` (PR #62 + Amendment 1), benchmark core `ce880282` (PR #63), measured campaign `6bbe526b5bedeb29fb138f8979f0a4cb6df1b3ce` (PR #65); five tasks PASS, A.6 BLOCKED by `PRECONDITION_UNMET:environment:vcan0-exclusive`; see [AI-11_EVIDENCE_2026-10-03.md](AI-11_EVIDENCE_2026-10-03.md) |
-| AI-12 | **AI-12-A IN PROGRESS** — contract/design freeze; see [AI-12_MODEL_ROUTING_V2_EXECUTION_PLAN.md](AI-12_MODEL_ROUTING_V2_EXECUTION_PLAN.md) |
+| AI-12 | **AI-12-A COMPLETE / MERGED** (`60c630d8`), **AI-12-B IMPLEMENTATION COMPLETE / PR OPEN** — the policy core; **AI-12 NOT CLOSED**, model-comparative prerequisite BLOCKED; see [AI-12-B_EVIDENCE_2026-10-03.md](AI-12-B_EVIDENCE_2026-10-03.md) |
 | AI-13 | NOT STARTED |
 | AI-14 | NOT STARTED |
 

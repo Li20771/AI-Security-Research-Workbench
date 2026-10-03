@@ -2206,6 +2206,187 @@ def check_pytest_excludes_layer4() -> list[str]:
     return problems
 
 
+#: AI-12's policy modules. The policy core lives under `routing/` beside AI-07's
+#: Router, because AI-12 supplies the policy AI-07 is given and is not a second
+#: router, not a plugin, and not a runtime.
+AI12_POLICY_MODULES = ("evidence.py", "policy.py", "policy_eval.py")
+
+#: The ONE module under `benchmarks` the policy core may import. The verdict
+#: vocabulary is AI-11's and AI-12 does not redefine it; everything else under
+#: `benchmarks` is out of reach, because a policy core that could reach
+#: `benchmarks.runner` or `benchmarks.campaign` could re-run the benchmark, which
+#: the AI-12 contract forbids (§4.1).
+AI12_ALLOWED_BENCHMARK_IMPORTS = ("benchmarks.vocabulary",)
+
+#: Identifiers the policy core MUST NOT define. These are the names a hidden
+#: scoring system would acquire, and §4.3 and §9 forbid one existing at all.
+#: Checked as AST identifiers and never as raw text: the refusal list itself names
+#: these words as strings so the refusal can say what it refused, and a text scan
+#: would flag the guard.
+AI12_FORBIDDEN_IDENTIFIERS = (
+    "score",
+    "weight",
+    "weights",
+    "confidence",
+    "ranking",
+    "aggregate",
+    "effective_score",
+    "model_score",
+    "success_rate",
+)
+
+#: Callables that would mean AI-12 had become a runtime. AI-12 declares fallback
+#: and escalation as data; it performs neither, retries no model, and creates no
+#: hidden second decision (§5.2).
+AI12_FORBIDDEN_CALLABLES = (
+    "execute_fallback",
+    "apply_fallback",
+    "retry",
+    "rerun",
+    "escalate",
+)
+
+
+def check_ai12_policy_core(root: "Path | None" = None) -> list[str]:
+    """AI-12 §4, §6, §8, §9: the policy core, as a gate.
+
+    ```text
+    identity     the policy core is under routing/, not a plugin and not a second
+                 router
+    reach        the policy modules import ONE module under benchmarks -- the
+                 verdict vocabulary -- and nothing else of AI-11's (§4.1)
+    no execution no provider, no subprocess, no socket, no file write (§8)
+    no scoring   no identifier a hidden score, weight or ranking would acquire
+                 (§4.3, §9)
+    no runtime   no callable that would execute a fallback, a retry or an
+                 escalation; AI-12 declares those as data (§5.2)
+    ```
+
+    `root` defaults to the repository, and is a parameter so the test suite can run
+    this check against a scratch tree carrying a violation: a check that cannot fail
+    proves nothing, and the only way to show this one CAN fail is to make it fail on
+    purpose.
+    """
+    import ast
+
+    base = ROOT if root is None else root
+    problems: list[str] = []
+
+    # (1) Identity: a core service under routing/, not a plugin, not a second Router.
+    for forbidden in ("plugins/policy", "plugins/ai12", "plugins/benchmark_policy"):
+        if (base / forbidden).exists():
+            problems.append(
+                f"{forbidden}/ exists; AI-12 is part of the routing core service and "
+                "not a DSH plugin (contract §3.2)"
+            )
+
+    routing = base / "routing"
+    if not routing.is_dir():
+        return problems + ["routing/ is absent; the policy core has no home"]
+
+    for name in AI12_POLICY_MODULES:
+        if not (routing / name).is_file():
+            problems.append(f"routing/{name} is absent; the policy core is incomplete")
+
+    for path in sorted(routing.rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        except SyntaxError as exc:  # pragma: no cover - surfaced as a failure
+            problems.append(f"{_display(path)} does not parse: {exc}")
+            continue
+
+        imported: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imported.add(node.module)
+
+        # (2) Reach: only the verdict vocabulary is importable from benchmarks.
+        for name in sorted(imported):
+            if not name.startswith("benchmarks"):
+                continue
+            if any(
+                name == allowed or name.startswith(f"{allowed}.")
+                for allowed in AI12_ALLOWED_BENCHMARK_IMPORTS
+            ):
+                continue
+            problems.append(
+                f"{_display(path)} imports {name!r}; the policy core may import "
+                f"{', '.join(AI12_ALLOWED_BENCHMARK_IMPORTS)} and nothing else under "
+                "benchmarks/. A core that could reach the runner or the campaign "
+                "could re-run AI-11, which the contract forbids (§4.1)"
+            )
+
+        # (3) No execution. routing/ is checked globally in the AI-07 gate; this
+        # names the AI-12 rule so a policy module cannot acquire one quietly.
+        roots = {name.split(".")[0] for name in imported}
+        for banned in ROUTING_FORBIDDEN_IMPORTS:
+            if banned in roots:
+                problems.append(
+                    f"{_display(path)} imports {banned!r}; AI-12 describes policy and "
+                    "executes nothing (contract §5.2, §8)"
+                )
+
+        # (4) No scoring vocabulary as CODE. String constants are excluded on
+        # purpose: the refusal list names these words so a refusal can say what it
+        # refused, and the guard must not flag itself.
+        defined: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                defined.add(node.name)
+            elif isinstance(node, ast.Name):
+                defined.add(node.id)
+            elif isinstance(node, ast.Attribute):
+                defined.add(node.attr)
+            elif isinstance(node, ast.arg):
+                defined.add(node.arg)
+
+        for identifier in sorted(defined):
+            lowered = identifier.lower()
+            for forbidden in AI12_FORBIDDEN_IDENTIFIERS:
+                if lowered == forbidden or lowered.endswith(f"_{forbidden}"):
+                    problems.append(
+                        f"{_display(path)} defines {identifier!r}; an AI-11 verdict is "
+                        "a fact consumed by policy and not a numeric quantity, and "
+                        "AI-12 derives no score, weight, confidence, ranking or "
+                        "aggregate from one (contract §4.3, §9)"
+                    )
+            for callable_name in AI12_FORBIDDEN_CALLABLES:
+                if lowered == callable_name:
+                    problems.append(
+                        f"{_display(path)} defines {identifier!r}; AI-12 declares "
+                        "fallback and escalation as data and performs neither, and it "
+                        "retries no model and creates no hidden second decision "
+                        "(contract §5.2)"
+                    )
+
+    # (5) The tracked example policy validates through the REAL model. A tracked
+    # artifact nothing checks is an artifact that drifts.
+    example = base / "config" / "routing" / "policy.example.yaml"
+    if not example.is_file():
+        problems.append(
+            "config/routing/policy.example.yaml is absent; AI-12 ships the mechanism "
+            "and an example, as AI-07 ships a default rule set"
+        )
+    else:
+        try:
+            import yaml
+
+            from routing.policy import Policy
+
+            Policy.from_mapping(yaml.safe_load(example.read_text(encoding="utf-8")))
+        except Exception as exc:  # noqa: BLE001 - any failure is the finding
+            problems.append(
+                "config/routing/policy.example.yaml does not validate through the "
+                f"policy model: {type(exc).__name__}"
+            )
+
+    return problems
+
+
 def check_ai11_benchmark_layer(root: "Path | None" = None) -> list[str]:
     """AI-11 §4, §7.4, §17, §19: the benchmark layer, as a gate.
 
@@ -2457,6 +2638,10 @@ def main() -> int:
     report.check(
         "benchmark layer core-service boundary and corpus",
         check_ai11_benchmark_layer(),
+    )
+    report.check(
+        "policy core boundary and scoring absence",
+        check_ai12_policy_core(),
     )
 
     if report.failures:
