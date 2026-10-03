@@ -2,8 +2,10 @@
 
 > Phase: **AI-12 — Model Routing v2**
 > Sub-phase: **AI-12-B — the policy core**
-> Status: **IMPLEMENTATION COMPLETE / PR OPEN** — not merged, not CLOSED
+> Status: **COMPLETE / MERGED** — AI-12 itself is **NOT CLOSED**
 > Date: 2026-10-03
+> Merged: PR #67 → `fa892eb1bde4291ab8010b85616d3783cd2cab49`
+> Implementation head: `9626553043e097b899f02a75407c443461081ba4`
 > Baseline: `main` @ `60c630d83c576a013f828fa8ec5414f34fd9974c`
 > Contract: [AI-12_MODEL_ROUTING_V2_EXECUTION_PLAN.md](AI-12_MODEL_ROUTING_V2_EXECUTION_PLAN.md) (`b6e3cc8b`)
 
@@ -38,7 +40,8 @@ BLOCKED
     the model-comparative prerequisite (§6)         unchanged by this sub-phase
 
 UNKNOWN
-    every input §5.1 marks NO: tool-call facts, cost, latency, per-model history
+    every input contract §5.1 marks NO: tool-call facts, cost, latency,
+    per-model history
 ```
 
 **Nothing here claims a model performs better than another model.** No model was
@@ -78,7 +81,8 @@ reach `benchmarks.runner` or `benchmarks.campaign` could re-run the benchmark, w
 An `EvidenceRef` carries `run_id · task_id · source_sha · workbench_sha · verdict ·
 reason_code · limitations · evidence_class`, and a `SuppliedRecord` adds a
 `record_digest`. Two records claiming one `run_id` are refused rather than
-tie-broken: a run is one measured run, and §5.3 makes that the identity.
+tie-broken: a run is one measured run, and contract §5.3 makes that the
+identity.
 
 An empty `reason_code` is accepted **only** under `PASS`, because AI-11 records
 exactly that — there is no refusal for a PASS to name — while a non-PASS record with
@@ -138,6 +142,10 @@ or a weight.
 
 ## 5. The mutation controls
 
+Review found three defects in successive rounds, each listed below most-recent-first
+as they were found: the typed-object boundary (§5.1), the mapping fabrication (§5.2),
+and the lossy rule projection (§5.3). All three are closed.
+
 Ten documented mutation controls, each taken from a WORKING artifact, mutated into the
 shape under test, with the focused test required to notice. Run as a harness against
 the real modules:
@@ -172,7 +180,7 @@ Each of those tests fails if its check is removed, rather than only if the check
 never written. The rest of the file names its own mutations inline (`M1`, `M2`,
 `M5`, `M7`, `M8`, `M9`, `M9b`).
 
-### 5.3 A review finding: the boundary had a door beside it
+### 5.1 A review finding: the boundary had a door beside it
 
 §5.2 closed the MAPPING path and left the TYPED-OBJECT path open. `EvidenceRef` and
 `SuppliedRecord` are frozen dataclasses with no construction-time invariant, so a
@@ -252,7 +260,7 @@ routes nothing. Reporting that as `NO_MATCH` would call a rule that fired one th
 not. `CONDITION_MET` says what happened: the requirement held and the policy selected
 nothing.
 
-### 5.1 A review finding: the rule projection was lossy
+### 5.3 A review finding: the rule projection was lossy
 
 Review of the first revision found that `PolicyRule.to_mapping()` emitted only
 identity, requirements, falsifier and discrimination — and dropped `match_task_id`,
@@ -286,6 +294,31 @@ that selected — which is the claim's basis, in the claim.
 
 ## 6. Verification
 
+### 6.0 Merged
+
+```text
+PR           #67
+merge        fa892eb1bde4291ab8010b85616d3783cd2cab49
+impl head    9626553043e097b899f02a75407c443461081ba4
+merged       2026-10-03T06:34:35Z
+frozen contracts unchanged
+    AI-11  6f7548a1c05b31093371f536e9a080434cddbcb0
+    AI-07  2f8dcba8f9c2ca36e3d917fc6b69c3a5cb7f36fe
+    AI-05  dd062148938f902109b49a496bb6051c3331a349
+    AI-12  b6e3cc8bd3a54b61e88c1f45c080bfd44965a462
+```
+
+```text
+AI-12-B is COMPLETE and MERGED. That is not AI-12 being CLOSED: §6's
+model-comparative prerequisite is BLOCKED and AI-12-C has not started, so the phase
+has not met its own exit criteria.
+```
+
+### 6.1 Post-merge verification
+
+Re-run on `main` at the merge commit, so the numbers describe what was merged rather
+than what a branch held:
+
 ```text
 tests/routing                                    221 passed   (run twice: 221 / 221)
 tests/routing/test_policy_core.py                 75 passed   (P1-P17, N1-N8b, M1-M9b)
@@ -302,7 +335,7 @@ Layer 0 gained one check, `policy core boundary and scoring absence`, whose own 
 plant each violation in a scratch tree and require it to be caught — including the
 baseline that it reports nothing on the real repository.
 
-### 6.1 One historical assertion was corrected, not deleted
+### 6.2 One historical assertion was corrected, not deleted
 
 `tests/agents/test_layer_boundaries.py::test_no_tests_were_added_under_tests_routing`
 asserted the exact file set under `tests/routing/`, which was a true proxy while AI-07
@@ -325,7 +358,7 @@ NOT CLAIMED   AI-12 is CLOSED
 
 ```text
 AI-12-A  = COMPLETE / MERGED          contract frozen (merge 60c630d8)
-AI-12-B  = IMPLEMENTATION COMPLETE / PR OPEN
+AI-12-B  = COMPLETE / MERGED          the policy core (PR #67, fa892eb1)
 AI-12    = NOT CLOSED
 AI-12-C  = BLOCKED / NOT STARTED      §6's prerequisite is unmet
 ```
