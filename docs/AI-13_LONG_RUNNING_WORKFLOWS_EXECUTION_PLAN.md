@@ -883,6 +883,41 @@ FROZEN: acceptance does NOT touch the gated step's deadline, the run's deadline,
         counter. It moves the run out of a wait it was already paying for.
 ```
 
+```text
+AMENDMENT 4 (2026-10-04) — THE ADMISSION GATE: an attempt at a gated step needs an
+approval for ITS OWN number.
+
+FROZEN: for any execution-seam step GATED by an approval point, an attempt MUST NOT
+        begin unless the run record holds an ACCEPTED approval whose scope EXACTLY
+        covers
+
+            workflow_id · revision · definition_digest · run_id ·
+            step_id    = that gated execution-seam step
+            attempt_no = THE NUMBER THAT ATTEMPT WILL USE
+
+FROZEN: the check happens AFTER the next legal attempt number is computed and BEFORE any
+        effect of admitting the attempt. With no such approval the engine:
+
+            MUST NOT admit the attempt
+            MUST NOT reserve `inflight_attempt_no`
+            MUST NOT increment `consumed_total_attempts`
+            MUST NOT create or enter an AI-08 execution
+            MUST NOT create an ExecutionId
+
+FROZEN: refusing admission is NOT a terminal state, and is NOT a failure. It is a
+        PRECONDITION on beginning an attempt rather than a failure of one, so it does NOT
+        terminate the run, does NOT assign a FailureClass, and MUST NOT be recorded as
+        FAILED or BLOCKED. §9's nine classes are unchanged, no tenth is introduced, and
+        `UNKNOWN` is still not a member. The run is simply not yet allowed to proceed,
+        and §13.1.3 is the path that allows it.
+
+FROZEN: this is what makes §13.2 enforceable rather than advisory. Without it, "an
+        approval for one attempt authorizes THAT attempt" would describe a decision the
+        engine is free to skip, and §13.1.3's "this is the only way to it" would be
+        false — because a second and far easier way would exist: running the attempt
+        without one.
+```
+
 ### 13.1.3 A retry re-enters the approval point
 
 ```text
@@ -970,6 +1005,54 @@ they are most likely to be confused with one:
     a scope that does not match       REFUSED the same way, and for the same reason
 ```
 
+```text
+AMENDMENT 4 (2026-10-04) — SUPERSEDES the permission condition above. It is not
+"a retryable failure"; it is "the next attempt has no approval covering it".
+
+FROZEN: the transition above MAY be taken when ALL FOUR hold at once:
+
+            the gated execution-seam step is READY
+            the immediately preceding APPROVAL step is SUCCEEDED
+            the NEXT LEGAL attempt number for the gated step has NO accepted approval
+              whose scope covers it
+            the caller explicitly asks the run to continue, retry or resume
+
+FROZEN: the third condition is what replaces "a retryable failure". A retryable failure
+        was ONE way to arrive at a next attempt with no approval covering it; a process
+        dying before an attempt's result was recorded is ANOTHER, and a rule narrowed to
+        the first left the second with no legal path at all — so the only route left open
+        to it was §13.1.2's admission gate being absent, which Amendment 4 closes.
+
+FROZEN: it covers both, and neither is special-cased:
+
+    CASE 1 — a retryable failure
+        approval #1 -> attempt #1 -> RETRYABLE_FAILURE -> gated step READY
+        next legal attempt = 2 ; approval #1 covers 1
+        caller asks for the retry -> fresh request for attempt #2
+
+    CASE 2 — process death
+        approval #1 accepted, attempt #1 reserved, the process dies before any result is
+        recorded -> resume -> gated step READY, next legal attempt = 2
+        approval #1 covers 1 -> caller asks to continue -> fresh request for attempt #2
+
+FROZEN: CASE 2 is stated rather than left to inference, because RESUME MUST NOT BECOME A
+        WAY AROUND A WORKFLOW APPROVAL. A resumed attempt is a NEW attempt (§8.2) with a
+        NEW number, and §13.2 gives it nothing from the approval that let the interrupted
+        attempt start. Crash recovery is therefore not a path that skips the gate; it is
+        a path that must pass through it again.
+
+FROZEN: and the reverse, so a wait is never re-opened for nothing. When the next legal
+        attempt number ALREADY has an accepted approval covering it, the run MUST NOT
+        re-enter the wait: it proceeds, and §13.1.2's gate admits that exact attempt. An
+        approval point is not re-entered for an attempt that is already authorized, and
+        no second approval is requested for it.
+
+FROZEN: none of this adds an identity. The scope remains exactly the six fields of
+        §13.2; no ApprovalPointId is introduced; there is no second selector, no seventh
+        field and no second approval identity. An attempt is authorized by the SAME
+        approval its scope already names, or it is not authorized at all.
+```
+
 ### 13.2 It is not inheritable
 
 ```text
@@ -998,6 +1081,17 @@ FROZEN: SAME RUN, SAME STEP, SAME REVISION and SAME DEFINITION DIGEST are FOUR o
     approval(scope attempt_no = 1)   authorizes only attempt_no = 1
     retry | resume                   produces attempt_no = 2
     the same approval                REFUSED, because the scope it names no longer exists
+```
+
+```text
+AMENDMENT 4 (2026-10-04) — RESUME is not an exception to any of the above.
+
+FROZEN: an attempt produced by a RESUME is a new attempt (§8.2) with a new number, and
+        it inherits nothing from the approval that let the interrupted attempt start.
+FROZEN: the rule is not merely that the resumed attempt may not USE the old approval. It
+        is that the resumed attempt does not BEGIN at all until an accepted approval
+        covers ITS number (§13.1.2), and the path to one is §13.1.3's CASE 2. A crash is
+        not a way around the approval point; it is a way back through it.
 ```
 
 ### 13.3 Only a designated ingress can produce an approval
@@ -1329,6 +1423,20 @@ FROZEN: AI-13-B's exit does NOT include any approval assertion, and AI-13-B MUST
 ```
 
 ```text
+AMENDMENT 4 (2026-10-04) — what C owns, extended.
+
+FROZEN: C's exit ALSO INCLUDES the ATTEMPT ADMISSION GATE (§13.1.2) and the re-entry
+        path that feeds it (§13.1.3). The approval point is not delivered by a record and
+        an ingress alone: without the gate, an attempt at a gated step begins without an
+        approval covering it, and every other rule about approvals becomes a rule the
+        engine may skip.
+FROZEN: the gate is C's because it is a property of the APPROVAL, not of the execution
+        seam. AI-08 is told to run an attempt; whether an approval covers that attempt is
+        a fact only this phase holds, and a phase that recorded approvals without
+        enforcing them would have delivered the appearance of a gate rather than one.
+```
+
+```text
 FROZEN: AI-13-A changes this document and synchronizes the status documents it names.
         It writes no workflow code, runs no workflow, and creates no checkpoint.
 ```
@@ -1461,6 +1569,33 @@ T5   a denied approval is terminal and produces no automatic re-request
 T6   an approval that misses its deadline is APPROVAL_DENIED, not a pending state
 ```
 
+```text
+AMENDMENT 4 (2026-10-04) — the tests that prove the admission gate is a boundary.
+
+T26  GATED EXECUTION ATTEMPT WITHOUT A MATCHING ACCEPTED APPROVAL MUST NOT BE ADMITTED.
+     A retryable failure leaves the gated step READY with approval #1 covering attempt 1.
+     Asking the run to advance MUST NOT admit attempt 2: no reservation, no counter
+     movement, no execution, no ExecutionId — and NO terminal state, because refusing
+     admission is a precondition rather than a failure.
+     This is a SECURITY BOUNDARY test, not a happy path: it is the test that fails if
+     the gate is removed.
+
+T27  RETRYABLE FAILURE + EXPLICIT RETRY REACHES A FRESH APPROVAL FOR ATTEMPT N+1.
+     The re-entry opens a request for attempt 2; an approval whose scope names attempt 2
+     is accepted; the attempt that then begins is exactly number 2.
+
+T28  CRASH/RESUME WITH ONLY THE PREVIOUS APPROVAL MUST NOT START THE NEXT ATTEMPT.
+     approval #1 accepted, attempt #1 reserved, the process ends before any result is
+     recorded. On resume, attempt 2 MUST NOT begin on the strength of approval #1, and
+     the ONLY path to it is a fresh approval covering attempt 2.
+     This is a SECURITY BOUNDARY test: it is the one that fails if resume is allowed to
+     skip the gate, which is the exact defect Amendment 4 closes.
+
+T29  AN EXACT ACCEPTED APPROVAL FOR THE NEXT LEGAL ATTEMPT PERMITS THAT ATTEMPT, AND
+     DOES NOT CREATE A SECOND APPROVAL WAIT. The gate admits the attempt, and the run
+     MUST NOT re-enter the approval point for a number it already holds.
+```
+
 ### 21.3 Mutation controls — required of both
 
 ```text
@@ -1492,6 +1627,22 @@ B/C ownership boundary         let B accept an approval step — T22 must fail
 unclassified failure stops     give an unclassified failure a class, or a retry —
                                T14 must fail
 effective bound precedence     let the WIDER of two bounds govern — T12/T25 must fail
+```
+
+```text
+AMENDMENT 4 (2026-10-04) — the controls that prove the gate, not merely that code ran.
+
+approval admission gate        remove the check that an attempt at a gated step has an
+                               accepted approval covering ITS number, and let the attempt
+                               begin — T26 must fail
+crash re-entry path            remove the path by which a resumed run obtains a fresh
+                               approval for the next attempt, or let resume proceed on
+                               the previous approval — T28 must fail
+
+FROZEN: both are of the kind §21.3 already requires — the guard is REMOVED and the
+        focused test must FAIL — and neither is satisfied by showing that the code was
+        reached. A control that proves the check ran, rather than that its absence is
+        observable, is a coverage-shaped control and this phase does not accept one.
 ```
 
 ```text
@@ -1665,6 +1816,64 @@ AUTHORITY IMPACT
     None. Guard remains the authorization authority (§13.5); ApprovalPointId is still
     forbidden; no approval becomes an ApprovalRef, an EvidenceRecord or an AI-10
     decision.
+
+THIS AMENDMENT DOES NOT CHANGE
+    the six-field scope preimage          approval non-inheritance
+    Guard authority                       Evidence ownership
+    AI-08 execution identity              the failure vocabulary
+    the checkpoint boundary               the trusted-ingress boundary
+
+    The preimage remains EXACTLY workflow_id · revision · definition_digest · run_id ·
+    step_id · attempt_no — unchanged byte for byte. No field is added, no vocabulary
+    member is added, and no section is renumbered.
+```
+
+```text
+AMENDMENT 4 — 2026-10-04 — an attempt at a gated step needs an approval for ITS number.
+
+CHANGED CLAUSES
+    §13.1.2  NEW — the ATTEMPT ADMISSION GATE: an attempt at a gated execution-seam step
+             MUST NOT begin unless an accepted approval's scope exactly covers it, and
+             refusing admission reserves nothing, counts nothing, creates no execution
+             and no ExecutionId — and is NOT a terminal state
+    §13.1.3  the re-entry condition is SUPERSEDED: not "a retryable failure", but "the
+             next legal attempt number has no accepted approval covering it", which
+             covers a retryable failure AND a crash, and excludes re-entry when the
+             number is already approved
+    §13.2    resume stated as not an exception: a resumed attempt does not begin until an
+             approval covers its number
+    §18      C's exit extended to include the gate and the re-entry path that feeds it
+    §21.2    T26, T27, T28, T29 — the tests that prove the gate is a boundary
+    §21.3    two mutation controls: removing the gate, and removing the crash re-entry
+
+WHY AMENDMENT 3 WAS INSUFFICIENT
+    Amendment 3 gave a retry a legal path to a fresh approval. It did not require one.
+    The engine could still admit an attempt at a gated step with no approval covering its
+    number — so a caller could run attempt 2 by simply advancing, which is easier than
+    the path Amendment 3 had just defined, and "this is the only way to it" was false.
+
+    A second case had no path at all. When a process dies after reserving an attempt but
+    before recording any result, the resumed attempt is a NEW number (§8.2) that the old
+    approval does not cover — and Amendment 3's condition did not hold, because no
+    attempt had failed RETRYABLE. Closing only that half would have deadlocked the run;
+    closing only the gate would have left crash recovery with an ungated attempt. The two
+    halves are one amendment because either alone is worse than neither.
+
+SECURITY IMPACT
+    Without this amendment: §13.2's non-inheritance was enforceable only by the engine
+    choosing to enforce it, and crash recovery was a route to an attempt that no approval
+    covered — a human gate that the ordinary failure of a process could walk past.
+    With this amendment: no attempt at a gated step begins without an approval naming its
+    exact number, and every path that produces a new number — retry or resume — passes
+    back through the approval point first.
+
+AUTHORITY IMPACT
+    None. Guard remains the authorization authority (§13.5); the workflow approval still
+    opens a WORKFLOW gate and nothing else; ApprovalPointId is still forbidden; no
+    approval becomes an ApprovalRef, an EvidenceRecord or an AI-10 decision.
+    No FailureClass is added and `UNKNOWN` is still not a member: refusing admission is a
+    precondition, not a failure, and the contract declines to give it a vocabulary it
+    does not have.
 
 THIS AMENDMENT DOES NOT CHANGE
     the six-field scope preimage          approval non-inheritance
