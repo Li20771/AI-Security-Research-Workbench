@@ -7,10 +7,11 @@ AI-09 — Codex Provider Integration is **COMPLETE / MERGED / CLOSED** as
 `b8b815b181e69f7651efdde97dd9473a3e619c7f` (PR #54). AI-08 — Codex Second Agent is
 **COMPLETE and MERGED** as `edb7dfc82ce51123482ac357fb9319dca2fa0d9a` (PR #52).
 AI-07 — Model Router v1 is **COMPLETE / CLOSED**. **AI-11 — AI Security Benchmark** is
-**COMPLETE / MERGED** through AI-11-B, with its contract **FROZEN** as
-`08aea86cf82e7476dee442b33dc81c8f9a9873a3` (PR #62) and the benchmark core merged as
-`ce880282d0ed1a3e3e3b5054347a81db876dab62` (PR #63). AI-11-C, the measured campaign, is
-**NOT STARTED**.
+**COMPLETE / MERGED / CLOSED**, merged to `main` as
+`6bbe526b5bedeb29fb138f8979f0a4cb6df1b3ce` (PR #65), with its contract **FROZEN** as
+`6f7548a1c05b31093371f536e9a080434cddbcb0`. Its reference campaign has run: five of the
+six corpus tasks PASS and the sixth is BLOCKED by a declared environment precondition.
+See [AI-11_EVIDENCE_2026-10-03.md](AI-11_EVIDENCE_2026-10-03.md).
 
 AI-00 architecture and repository baseline is complete. **AI-01 DSH Baseline is COMPLETE** — see
 [AI-01 final gate status](#ai-01-final-gate-status). **AI-02 Model Layer is COMPLETE** — see
@@ -70,26 +71,47 @@ This file is the single entry point for deciding what to do next.
 
 **AI-10 — Cross-Agent Review — COMPLETE / CLOSED.**
 
-**AI-11 — AI Security Benchmark — contract FROZEN; benchmark core COMPLETE / MERGED.**
+**AI-11 — AI Security Benchmark — COMPLETE / MERGED / CLOSED.**
 
 ```text
-AI-11-A     = COMPLETE / MERGED / FROZEN   contract frozen   (PR #62, c1118551)
-contract blob = 08aea86cf82e7476dee442b33dc81c8f9a9873a3
-AI-11-B     = COMPLETE / MERGED            benchmark core    (PR #63, ce880282)
-branch        feature/ai-11-b-benchmark-core   (merged; retained)
-AI-11-C     = NOT STARTED                  measured campaign
+AI-11-A     = COMPLETE / MERGED / FROZEN   contract frozen        (PR #62, c1118551)
+AI-11-B     = COMPLETE / MERGED            the benchmark core     (PR #63, ce880282)
+AI-11-C     = COMPLETE / MERGED            the measured campaign  (PR #65, 6bbe526b)
+AI-11       = CLOSED
+contract blob = 6f7548a1c05b31093371f536e9a080434cddbcb0
+              docs/AI-11_SECURITY_BENCHMARK_EXECUTION_PLAN.md
+              current, after Amendment 1 (§27)
 ```
 
-**No measured campaign has run and no model has been measured.** What exists is the
-contract, the layer, the oracle protocol with its derived observations, and the first
-tracked corpus. `AI-11-C` is what would produce results, and it has not begun.
+**The reference campaign has run**, on the authoritative host (WSL Ubuntu), through
+`python3 -m benchmarks.campaign`, against SecurityLab
+`efa836ff9225f6226ca8a76615f3f45c31110d58`:
+
+```text
+campaign     = executed, exit 0, six tasks accounted for
+five tasks   = PASS      CAN · UDS · YARA · firmware · reverse
+A.6          = BLOCKED   PRECONDITION_UNMET:environment:vcan0-exclusive
+Layer 4      = BLOCKED   LAYER4_BLOCKED
+determinism  = agreed, 2 runs, no disagreement on any of the 11 compared fields
+```
+
+**This is not "six tasks PASS", and it is not a fully available benchmark.** A.6 is a
+Tier B task whose declared precondition — exclusive use of `vcan0` — cannot be
+demonstrated on any current host, because the contract admits no mechanism that could
+demonstrate it. `vcan0` existing is not `vcan0` being exclusively held, and the campaign
+did not open that gate or fabricate evidence for it.
+
+**No model has been measured.** Every run is `executor_kind = REFERENCE`, `agent_id`
+null, `token_usage` null, `cost` null, with `NO_PROVIDER_CALL_IN_PATH`.
 
 ```text
 AI-11 produces no universal ranking, no winner and no best-model claim. There is no
 composite score, and no per-model aggregate a reader could take as one.
 AI-05 §28 remains OPEN: no AI-11-admissible Evidence producer token exists.
-             Resolution owner = AI-05. AI-11-B did not resolve it.
+             Resolution owner = AI-05. AI-11 did not resolve it.
 ```
+
+Evidence: [AI-11_EVIDENCE_2026-10-03.md](AI-11_EVIDENCE_2026-10-03.md).
 
 ```text
 AI-10-A     = COMPLETE / MERGED    contract frozen           (PR #56, 3613896d)
@@ -294,23 +316,23 @@ PROJECT_STATUS.md
     -> update PROJECT_STATUS.md
 ```
 
-### Not yet started
+### Closed and queued
 
 ```text
-AI-11   AI Security Benchmark                 NEXT      AI-11-A FROZEN
-                                                        AI-11-B MERGED
-AI-12   routing v2 fallback / escalation      queued    NOT STARTED
+AI-11   AI Security Benchmark                 CLOSED    merged 6bbe526b (PR #65)
+AI-12   routing v2 fallback / escalation      ACTIVE    AI-12-A design frozen
 AI-13   retry / timeout / cancellation /
         checkpoint / resume /
         failure classification                queued    NOT STARTED
 ```
 
-- **AI-11 — AI Security Benchmark — contract FROZEN; benchmark core COMPLETE / MERGED.**
-  The contract is frozen as `08aea86cf82e7476dee442b33dc81c8f9a9873a3` (PR #62) and the
-  benchmark core is merged as `ce880282d0ed1a3e3e3b5054347a81db876dab62` (PR #63). No
-  measured campaign has run, no model has been measured, and `AI-11-C` is NOT STARTED.
-  It consumes AI-08's result data read-only and modifies no other phase. AI-05 §28
-  remains OPEN and is not resolved by AI-11-B.
+- **AI-11 — AI Security Benchmark — CLOSED.** Merged to `main` as
+  `6bbe526b5bedeb29fb138f8979f0a4cb6df1b3ce` (PR #65), contract frozen as
+  `6f7548a1c05b31093371f536e9a080434cddbcb0` after Amendment 1 (§27). The reference
+  campaign has run: five tasks PASS and A.6 is BLOCKED by a declared environment
+  precondition (`PRECONDITION_UNMET:environment:vcan0-exclusive`). No model was
+  measured and Layer 4 remains BLOCKED. It consumed AI-08's result data read-only and
+  modified no other phase. AI-05 §28 remains OPEN and is not resolved by AI-11.
 
 ## Completed
 
@@ -970,7 +992,10 @@ DEFERRED  a per-Agent permission ceiling          OUT OF SCOPE. AI-08 v1 does no
                                                   AgentRole or ActorType (§12.1.1)
 DEFERRED  AI-09  real Codex provider / model integration
 DEFERRED  AI-10  cross-agent review / second-opinion closure
-DEFERRED  AI-11  benchmark comparison
+DEFERRED  AI-11  model comparison             the benchmark ran at
+                                               executor_kind = REFERENCE; no model
+                                               has been measured, so nothing is
+                                               compared
 DEFERRED  AI-12  routing v2 fallback / escalation
 DEFERRED  AI-13  retry / timeout / cancellation / checkpoint / resume /
                  failure classification
@@ -1127,7 +1152,10 @@ raw-content shape   AgentResult.result admits exactly two shapes —
 required CI on this branch   run 36892373480 — Layer 0 pass, Layers 1-3 pass
 DEFERRED  AI-09  real Codex provider / model integration
 DEFERRED  AI-10  cross-agent review / second-opinion closure
-DEFERRED  AI-11  benchmark comparison
+DEFERRED  AI-11  model comparison             the benchmark ran at
+                                               executor_kind = REFERENCE; no model
+                                               has been measured, so nothing is
+                                               compared
 DEFERRED  AI-12  routing v2 fallback / escalation
 DEFERRED  AI-13  retry / timeout / cancellation / checkpoint / resume /
                  failure classification

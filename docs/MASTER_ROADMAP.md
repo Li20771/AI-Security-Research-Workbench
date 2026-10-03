@@ -647,6 +647,58 @@ Evidence
 
 模型比较只输出测量结果，不输出脱离任务场景的“万能排名”。
 
+### Status: COMPLETE / MERGED / CLOSED
+
+```text
+AI-11-A     = COMPLETE / MERGED / FROZEN   contract frozen        (PR #62, c1118551)
+AI-11-B     = COMPLETE / MERGED            the benchmark core     (PR #63, ce880282)
+AI-11-C     = COMPLETE / MERGED            the measured campaign  (PR #65, 6bbe526b)
+AI-11       = CLOSED
+contract blob = 6f7548a1c05b31093371f536e9a080434cddbcb0
+              docs/AI-11_SECURITY_BENCHMARK_EXECUTION_PLAN.md (after Amendment 1, §27)
+SecurityLab = efa836ff9225f6226ca8a76615f3f45c31110d58   read-only throughout
+evidence    = docs/AI-11_EVIDENCE_2026-10-03.md
+```
+
+实际成果：
+
+```text
+benchmark core                benchmarks/ — contract型 oracle、BLOCKED/FAIL/PASS 分离
+six-task corpus               六个 tracked task，每个带独立 oracle 与 negative control
+reference executor campaign   python3 -m benchmarks.campaign，六任务全覆盖
+independent oracle            每个 task 的真实独立观测（非 truth 回读）
+campaign determinism check    同任务两次运行，11 个语义字段全部一致
+A.6 controlled reproduction   固定 seed 重放 pinned generator，30 case
+```
+
+实际限制 —— 不得省略：
+
+```text
+A.6 production = BLOCKED
+    PRECONDITION_UNMET:environment:vcan0-exclusive
+    vcan0 存在 != vcan0 独占；当前合同不承认任何可审计的独占机制
+Layer 4 = BLOCKED / DEFERRED
+    无 provider 调用，故无 live 验证可做
+kernel oracle truth 是 host-contingent（见 evidence §7）
+    FINAL-REVIEW OBSERVATION / FUTURE DESIGN DEBT，未修，未改合同
+```
+
+明确的边界：
+
+```text
+AI-11 does not produce:
+    universal ranking
+    winner
+    best model
+    composite score
+
+六任务中五个 PASS、一个 BLOCKED。把六项合成一个分数，等于把五次测量和一个环境边界相加。
+```
+
+AI-11 交付的是**测量事实**，不是模型结论。AI-12 才开始把这些事实用于路由决策；
+AI-12 必须读取 AI-11 的 measurements，不得重新解释 BLOCKED / NOT_RUN / UNKNOWN /
+UNAVAILABLE，也不得因某个 task 当前 BLOCKED 而将其删除。
+
 ---
 
 ## AI-12 — Model Routing v2
@@ -833,8 +885,8 @@ SecurityLab
 | AI-08 | **COMPLETE** — merged as `edb7dfc82ce51123482ac357fb9319dca2fa0d9a` (PR #52); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-09 | **COMPLETE** — merged as `b8b815b181e69f7651efdde97dd9473a3e619c7f` (PR #54); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-10 | **COMPLETE** — contract `3613896d` (PR #56), Amendments 1 and 2 (`fbf1e1b0` PR #58, `32126416` PR #59), implementation `d22fe25c5fe94ae697083fd9fbdfaf3976785703` (PR #60) merged; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
-| AI-11 | NOT STARTED |
-| AI-12 | NOT STARTED |
+| AI-11 | **COMPLETE / CLOSED** — contract `6f7548a1` (PR #62 + Amendment 1), benchmark core `ce880282` (PR #63), measured campaign `6bbe526b5bedeb29fb138f8979f0a4cb6df1b3ce` (PR #65); five tasks PASS, A.6 BLOCKED by `PRECONDITION_UNMET:environment:vcan0-exclusive`; see [AI-11_EVIDENCE_2026-10-03.md](AI-11_EVIDENCE_2026-10-03.md) |
+| AI-12 | **AI-12-A IN PROGRESS** — contract/design freeze; see [AI-12_MODEL_ROUTING_V2_EXECUTION_PLAN.md](AI-12_MODEL_ROUTING_V2_EXECUTION_PLAN.md) |
 | AI-13 | NOT STARTED |
 | AI-14 | NOT STARTED |
 
