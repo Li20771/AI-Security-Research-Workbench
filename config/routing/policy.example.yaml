@@ -1,0 +1,107 @@
+# AI-12 v1 — an example policy artifact. DORMANT by construction.
+#
+# Contract §5, §6, §7. This is the MECHANISM, and it is deliberately not a tuned
+# policy: §6's model-comparative prerequisite is BLOCKED, because AI-11's campaign
+# measured TASKS through `executor_kind = REFERENCE` and therefore contains no
+# per-model history, no cost and no latency. A policy presented as tuned would be a
+# claim this repository cannot support.
+#
+# Why the one rule below can never activate today, on purpose:
+#
+#   it requires `MODEL_EXECUTION` evidence — a record whose producer identifies the
+#   model/provider execution under a contract that defines how that measurement is
+#   produced and attributed. No such record exists (§6). AI-11's records are all
+#   `REFERENCE`, and §4.2 forbids selecting a model because a REFERENCE run passed,
+#   so the rule cannot be pointed at them either. It resolves DORMANT, which is the
+#   honest answer rather than a gap to fill with a default, a weight or a prior.
+#
+# Schema (contract §5, §7), and nothing here is optional except the pieces marked:
+#
+#   version:        1
+#   policy_id:      string
+#   revision:       string          recorded in every resolution (§8)
+#   state:          DORMANT|ACTIVE  ACTIVE requires complete `rollback` (§8)
+#   evidence_scope: [task_id, ...]  the AI-11 tasks this policy reasons over;
+#                                   non-empty, and a supplied record outside it is
+#                                   reported OUTSIDE_SCOPE rather than ignored
+#   rollback:                       optional unless state is ACTIVE
+#     previous_policy: string
+#     trigger:         string
+#     decider:         string       who performs it — AI-12 declares, never executes
+#   fallback:   []                  optional; declarative data, executed by nobody here
+#     - condition: string
+#       target_model_ref: provider_id/model_id
+#       reason_code: string
+#   escalation: []                  optional; the same shape as `fallback`
+#   rules:
+#     - rule_id:   string           unique within this file
+#       priority:  integer          lower runs first; ties break on rule_id
+#       reason_code: string
+#       match_task_id: string|null  absent = every record in scope
+#       requires_verdict: PASS|FAIL|BLOCKED|NOT_RUN|UNKNOWN|UNAVAILABLE
+#       requires_evidence_class: REFERENCE|MODEL_EXECUTION
+#       requires_run_id: string|null   pins ONE run (§5.3), not a task
+#       select:                       a rule that selects must require
+#         model_ref: provider_id/model_id    MODEL_EXECUTION evidence (§4.2)
+#         agent: string|null
+#       falsifier:                  REQUIRED — what would show this rule is wrong
+#         observation: string
+#         expected_if_rule_wrong: string
+#       discrimination:             REQUIRED — two inputs routed differently
+#         input_a: string
+#         input_b: string
+#         expected_distinction: string
+#
+# Forbidden by name, anywhere in this file: score, weight, confidence, ranking,
+# rank, aggregate, prior, effective_score, model_score, success_rate (§4.3, §9).
+# An AI-11 verdict is a fact consumed by policy, not a number weights are computed
+# from.
+
+version: 1
+policy_id: ai12-v1-example
+revision: v1-dormant
+state: DORMANT
+
+# The six AI-11 v1 corpus tasks. `ai11-v1-fuzzing-recovery-triage` is BLOCKED on
+# `PRECONDITION_UNMET:environment:vcan0-exclusive`, and it stays here: §4.4 forbids
+# removing a task because it is BLOCKED, and a scope that dropped it would be a
+# policy claiming completeness by naming less.
+evidence_scope:
+  - ai11-v1-can-dbc-decode
+  - ai11-v1-uds-nrc-triage
+  - ai11-v1-yara-rule-author
+  - ai11-v1-firmware-syn-ecu-inventory
+  - ai11-v1-reverse-arm64-triage
+  - ai11-v1-fuzzing-recovery-triage
+
+rules:
+  - rule_id: can-to-model-when-measured
+    priority: 10
+    reason_code: MEASURED_TASK_SUCCESS
+    match_task_id: ai11-v1-can-dbc-decode
+    requires_verdict: PASS
+    requires_evidence_class: MODEL_EXECUTION
+    select:
+      model_ref: deepseek/deepseek-flash
+    falsifier:
+      observation: >-
+        a controlled run of ai11-v1-can-dbc-decode on the selected model, recorded
+        under a contract that defines how a model execution is measured
+      expected_if_rule_wrong: >-
+        the task does not pass there, which would make this rule's selection wrong
+    discrimination:
+      input_a: a model-execution record for this task whose verdict is PASS
+      input_b: a model-execution record for this task whose verdict is FAIL
+      expected_distinction: >-
+        only the PASSing record activates this rule; the FAILing record must leave
+        it dormant, and neither may be selected on a REFERENCE run
+
+fallback:
+  - condition: the selected model is withdrawn from AI-02's registry
+    target_model_ref: mimo/mimo-v2.6-pro
+    reason_code: SELECTED_MODEL_WITHDRAWN
+
+# No rollback is declared because this policy is DORMANT. Activating it requires
+# one: §8 refuses an ACTIVE policy with no declared previous policy, trigger and
+# decider, so "activated with no way back" is unrepresentable rather than merely
+# discouraged.

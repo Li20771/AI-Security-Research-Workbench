@@ -69,6 +69,33 @@ This file is the single entry point for deciding what to do next.
 
 ### Current work item
 
+**AI-12 — Model Routing v2 — AI-12-B IMPLEMENTATION COMPLETE / PR OPEN.**
+
+```text
+AI-12-A  = COMPLETE / MERGED          contract frozen   (PR #66, 60c630d8)
+AI-12-B  = IMPLEMENTATION COMPLETE    the policy core   (PR open, not merged)
+AI-12    = NOT CLOSED
+AI-12-C  = BLOCKED / NOT STARTED      §6's prerequisite is unmet
+contract blob = b6e3cc8bd3a54b61e88c1f45c080bfd44965a462
+```
+
+The policy core is implemented and offline verified: a policy artifact and its
+validator, the supplied-evidence input with exact `run_id` identity, and an
+explainable, auditable resolution under `routing/`. Every selecting rule requires
+model-execution evidence (§4.2 forbids justifying a selection with a REFERENCE run),
+no such measurement exists, and every policy over AI-11's records therefore resolves
+**DORMANT** — which is the honest answer, not a gap to fill.
+
+```text
+NO model has been measured, no provider has been called, and no policy selects a
+model today. The model-comparative prerequisite (§6) is BLOCKED and is NOT satisfied
+by implementing the infrastructure. No score, weight, ranking or aggregate exists.
+```
+
+Evidence: [AI-12-B_EVIDENCE_2026-10-03.md](AI-12-B_EVIDENCE_2026-10-03.md).
+
+**AI-11 — AI Security Benchmark — COMPLETE / MERGED / CLOSED.**
+
 **AI-10 — Cross-Agent Review — COMPLETE / CLOSED.**
 
 **AI-11 — AI Security Benchmark — COMPLETE / MERGED / CLOSED.**
@@ -320,7 +347,8 @@ PROJECT_STATUS.md
 
 ```text
 AI-11   AI Security Benchmark                 CLOSED    merged 6bbe526b (PR #65)
-AI-12   routing v2 fallback / escalation      ACTIVE    AI-12-A design frozen
+AI-12   Model Routing v2                      ACTIVE    AI-12-A MERGED
+                                                        AI-12-B PR OPEN
 AI-13   retry / timeout / cancellation /
         checkpoint / resume /
         failure classification                queued    NOT STARTED
