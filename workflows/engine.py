@@ -485,7 +485,9 @@ def begin_attempt(
                 run,
                 decision.terminal_state or WorkflowState.FAILED,
                 moment,
-                bound=decision.reason_code,
+                # §15.2. A refusal that is not a bound names none: a run that stopped
+                # because it was already terminal reached no limit doing so.
+                bound=decision.reason_code if decision.reached_bound else None,
             ),
             admitted=False,
             refusal=decision.reason_code,
@@ -595,21 +597,14 @@ def complete_attempt(
     if outcome.execution_id and outcome.execution_id in run.execution_ids():
         # §6.3. A retry lineage is a sequence of AttemptIds, each pointing at a DISTINCT
         # ExecutionId — never one ExecutionId with a counter on it.
-        return _refuse_attempt(
-            run,
-            step.step_id,
-            AttemptRecord(
-                attempt_id=attempt_id,
-                execution_id=outcome.execution_id,
-                failure_class=FailureClass.TERMINAL_FAILURE,
-                reason_code="EXECUTION_ID_REUSED",
-                started_at=outcome.started_at,
-                ended_at=outcome.ended_at,
-                succeeded=False,
-                decision_id=outcome.decision_id or None,
-            ),
-            moment,
-        )
+        #
+        # The offending attempt is deliberately NOT recorded. Recording it would put the
+        # duplicate INTO the lineage, which is the very shape §6.3 forbids: the record
+        # would be the violation it means to report. So the run stops instead, the step
+        # is left as it was, and the spent attempt stays on the counter — the seam
+        # produced something that is not an attempt, and the ledger does not pretend
+        # otherwise.
+        return _terminal(run, WorkflowState.FAILED, moment)
 
     attempt = AttemptRecord(
         attempt_id=attempt_id,
@@ -714,7 +709,12 @@ def complete_attempt(
             cancelled_by=outcome.cancelled_by,
             cancelled_reason=outcome.cancelled_reason,
         )
-    return _terminal(record, state, moment)
+    # §15.2. A retry refused by a BOUND records which one; a retry refused for any other
+    # reason — an unclassified failure, a policy that does not cover this class — reached
+    # no bound and names none.
+    return _terminal(
+        record, state, moment, bound=retry.reason_code if retry.reached_bound else None
+    )
 
 
 def advance(

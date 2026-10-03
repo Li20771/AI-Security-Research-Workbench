@@ -82,6 +82,14 @@ class BoundDecision:
     reason_code: str = ""
     terminal_state: WorkflowState | None = None
     detail: str = ""
+    #: §15.2. Whether this refusal is a declared BOUND the run REACHED, as opposed to a
+    #: reason the run stopped that is not a limit at all — an unclassified failure, a
+    #: policy that does not cover this class, a run that is already terminal.
+    #:
+    #: The distinction is the record's, not the reader's: `reached_bound` is "which
+    #: bound the run reached, IF it reached one", and a caller that had to infer it from
+    #: the reason code's spelling would be guessing where the decision already knew.
+    reached_bound: bool = False
 
 
 def effective_attempt_bound(
@@ -210,6 +218,7 @@ def check_attempt_may_begin(
         return BoundDecision(
             allowed=False,
             reason_code="WORKFLOW_DEADLINE_REACHED",
+            reached_bound=True,
             terminal_state=WorkflowState.TIMED_OUT,
             detail="the workflow deadline has passed",
         )
@@ -218,6 +227,7 @@ def check_attempt_may_begin(
         return BoundDecision(
             allowed=False,
             reason_code="RETRY_DEADLINE_REACHED",
+            reached_bound=True,
             terminal_state=WorkflowState.RESOURCE_EXHAUSTED,
             detail="the run-wide retry deadline has passed",
         )
@@ -230,6 +240,7 @@ def check_attempt_may_begin(
         return BoundDecision(
             allowed=False,
             reason_code="STEP_DEADLINE_REACHED",
+            reached_bound=True,
             terminal_state=WorkflowState.TIMED_OUT,
             detail="the step's declared runtime has been reached",
         )
@@ -240,6 +251,7 @@ def check_attempt_may_begin(
         return BoundDecision(
             allowed=False,
             reason_code="ATTEMPT_BOUND_REACHED",
+            reached_bound=True,
             terminal_state=WorkflowState.RESOURCE_EXHAUSTED,
             detail=f"{spent} of {bound} permitted attempts at this step have been spent",
         )
@@ -251,6 +263,7 @@ def check_attempt_may_begin(
         return BoundDecision(
             allowed=False,
             reason_code="CHECKPOINT_COUNT_BOUND_REACHED",
+            reached_bound=True,
             terminal_state=WorkflowState.RESOURCE_EXHAUSTED,
             detail="the declared checkpoint count bound has been reached",
         )
@@ -259,6 +272,7 @@ def check_attempt_may_begin(
         return BoundDecision(
             allowed=False,
             reason_code="CHECKPOINT_BYTES_BOUND_REACHED",
+            reached_bound=True,
             terminal_state=WorkflowState.RESOURCE_EXHAUSTED,
             detail="the declared total checkpoint byte bound has been reached",
         )
@@ -267,6 +281,7 @@ def check_attempt_may_begin(
         return BoundDecision(
             allowed=False,
             reason_code="ARTIFACT_BOUND_REACHED",
+            reached_bound=True,
             terminal_state=WorkflowState.RESOURCE_EXHAUSTED,
             detail="the declared artifact byte bound has been reached",
         )

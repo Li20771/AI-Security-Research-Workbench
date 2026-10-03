@@ -41,6 +41,7 @@ from workflows.vocabulary import FailureClass, StepState, WorkflowState
 from tests.workflows.conftest import (
     T0,
     T1,
+    T2,
     AlwaysFailsExecutor,
     RecordingExecutor,
     a_retry_policy,
@@ -670,3 +671,290 @@ def test_a_successor_cannot_lower_the_checkpoint_count() -> None:
 
     with pytest.raises(InvalidRecord):
         charged.advance(consumed_checkpoints=0)
+
+
+# ---------------------------------------------------------------------------
+# §6.3 — one execution, one attempt
+# ---------------------------------------------------------------------------
+
+
+def test_a_successor_cannot_point_two_attempts_at_one_execution() -> None:
+    """§6.3. "A retry lineage is a sequence of AttemptIds, each pointing at a DISTINCT
+    ExecutionId — never one ExecutionId with a counter on it."
+
+    The engine refuses a reuse when it sees one, but that is the engine choosing to
+    check. This is the record's own rule, and it holds for a lineage assembled by
+    anyone.
+    """
+    definition, run = _failed_once()
+    reserved = begin_attempt(definition=definition, run=run, now=T1).run
+    earlier = reserved.attempts_for("s1")[0].execution_id
+    duplicate = _attempt(reserved, "s1", 2, execution_id=earlier)
+
+    with pytest.raises(InvalidRecord):
+        reserved.advance(
+            steps=_with_step(
+                reserved, "s1", attempts=reserved.attempts_for("s1") + (duplicate,)
+            ),
+            inflight_attempt_no=None,
+        )
+
+
+def test_an_engine_retry_with_a_new_execution_id_is_accepted() -> None:
+    """The control. A retry that produced its OWN execution is exactly what §6.3 asks
+    for, and refusing it would make the rule useless rather than strict."""
+    definition, run = _failed_once()
+
+    after = advance(
+        definition=definition, run=run, executor=RecordingExecutor(), now=T1
+    )
+
+    produced = [a.execution_id for r in after.steps for a in r.attempts]
+    assert len(produced) == 2
+    assert len(set(produced)) == 2, "the retry reused an ExecutionId"
+
+
+# ---------------------------------------------------------------------------
+# §9, §15.2 — an attempt's outcome and the step it moved
+# ---------------------------------------------------------------------------
+
+
+def test_a_failed_attempt_cannot_make_its_step_SUCCEEDED() -> None:
+    """§15.2. A step's state is what its ATTEMPTS did.
+
+    This buys more than a false record. A SUCCEEDED step releases its deadline, so a
+    failure disguised as a success also grants the next attempt a whole fresh step
+    budget — the disguise pays for itself.
+    """
+    definition, run = _failed_once()
+    reserved = begin_attempt(definition=definition, run=run, now=T1).run
+    failing = _attempt(reserved, "s1", 2, execution_id="exec-failing")
+
+    with pytest.raises(InvalidRecord):
+        reserved.advance(
+            steps=_with_step(
+                reserved,
+                "s1",
+                state=StepState.SUCCEEDED,
+                attempts=reserved.attempts_for("s1") + (failing,),
+            ),
+            step_deadline=None,
+            inflight_attempt_no=None,
+        )
+
+
+def test_a_successful_attempt_can_make_its_step_SUCCEEDED() -> None:
+    """The control, and the transition the engine performs on every success."""
+    definition, run = _failed_once()
+    reserved = begin_attempt(definition=definition, run=run, now=T1).run
+    passing = _attempt(
+        reserved, "s1", 2, execution_id="exec-passing", succeeded=True
+    )
+
+    after = reserved.advance(
+        steps=_with_step(
+            reserved,
+            "s1",
+            state=StepState.SUCCEEDED,
+            attempts=reserved.attempts_for("s1") + (passing,),
+        ),
+        step_deadline=None,
+        inflight_attempt_no=None,
+    )
+
+    assert after.step("s1").state is StepState.SUCCEEDED
+    assert after.step_deadline is None
+
+
+def test_an_attempt_cannot_have_succeeded_and_carried_a_failure() -> None:
+    """§9. An outcome and a classification are one fact, not two fields.
+
+    §9.1's "matched none of the nine" stays `failure_class is None`; there is no tenth
+    member and no UNKNOWN for a success to smuggle a class through.
+    """
+    with pytest.raises(InvalidRecord):
+        AttemptRecord(
+            attempt_id=AttemptId(run_id="run-1", step_id="s1", attempt_no=1),
+            execution_id="exec-1",
+            failure_class=FailureClass.TERMINAL_FAILURE,
+            reason_code="REFUSED",
+            started_at=T1,
+            ended_at=T1,
+            succeeded=True,
+        )
+
+
+def test_the_engines_success_and_failure_paths_still_move_their_steps() -> None:
+    """The control over both halves: what the engine actually does is not refused."""
+    definition = make_definition(
+        limits=limits(step_seconds=30, attempts_per_step=5, attempts_total=10),
+        retry_policy=a_retry_policy(max_attempts=5),
+    )
+    run = start_run(definition=definition, workspace_identity="ws-1", now=T0)
+
+    failed = advance(
+        definition=definition, run=run, executor=AlwaysFailsExecutor(), now=T0
+    )
+    assert failed.step("s1").state is StepState.READY, "a retryable failure is a retry"
+
+    succeeded = advance(
+        definition=definition, run=failed, executor=RecordingExecutor(), now=T1
+    )
+    assert succeeded.step("s1").state is StepState.SUCCEEDED
+    assert succeeded.step_deadline is None, "a succeeded step kept its bound"
+    assert len(succeeded.attempts_for("s1")) == 2
+
+
+# ---------------------------------------------------------------------------
+# §15.2 — reached_bound is a FACT
+# ---------------------------------------------------------------------------
+
+
+def test_a_non_terminal_run_cannot_name_a_bound() -> None:
+    """A run reaches a bound when one STOPS it, and a run still going has not been
+    stopped."""
+    _, run = _failed_once()
+
+    with pytest.raises(InvalidRecord):
+        run.advance(reached_bound="WORKFLOW_DEADLINE_REACHED")
+
+
+@pytest.mark.parametrize(
+    ("state", "extra"),
+    [
+        (WorkflowState.FAILED, {}),
+        (WorkflowState.BLOCKED, {}),
+        (WorkflowState.CANCELLED, {"cancelled_by": "operator-li", "cancelled_reason": "SUPERSEDED"}),
+    ],
+)
+def test_a_run_that_reached_no_bound_cannot_name_one(
+    state: WorkflowState, extra: dict[str, str]
+) -> None:
+    """§15.2. "which bound the run reached, IF it reached one".
+
+    Naming one on a run that failed or was cancelled attributes the stop to a limit
+    nothing touched — which is worse than saying nothing, because a reader would act on
+    it.
+    """
+    _, run = _failed_once()
+
+    with pytest.raises(InvalidRecord):
+        run.advance(state=state, reached_bound="ATTEMPT_BOUND_REACHED", **extra)
+
+
+def test_a_completed_run_cannot_name_a_bound() -> None:
+    """A run that FINISHED reached no bound."""
+    definition, run = _failed_once()
+    done = advance(
+        definition=definition, run=run, executor=RecordingExecutor(), now=T1
+    )
+    assert done.step("s1").state is StepState.SUCCEEDED
+    assert done.step("s2").state is not StepState.SUCCEEDED
+
+    reserved = begin_attempt(definition=definition, run=done, now=T2).run
+    passing = _attempt(reserved, "s2", 1, execution_id="exec-s2", succeeded=True)
+
+    with pytest.raises(InvalidRecord):
+        reserved.advance(
+            steps=_with_step(
+                reserved,
+                "s2",
+                state=StepState.SUCCEEDED,
+                attempts=reserved.attempts_for("s2") + (passing,),
+            ),
+            state=WorkflowState.COMPLETED,
+            reached_bound="ATTEMPT_BOUND_REACHED",
+            inflight_attempt_no=None,
+        )
+
+
+def test_the_engines_bound_reaching_paths_still_name_their_reason() -> None:
+    """The controls. Every bound the engine can reach keeps working."""
+    deadline_definition = make_definition(
+        limits=limits(workflow_seconds=5, step_seconds=600)
+    )
+    timed_out = advance(
+        definition=deadline_definition,
+        run=start_run(
+            definition=deadline_definition, workspace_identity="ws-1", now=T0
+        ),
+        executor=RecordingExecutor(),
+        now="2026-10-03T10:00:05Z",
+    )
+    assert timed_out.state is WorkflowState.TIMED_OUT
+    assert timed_out.reached_bound == "WORKFLOW_DEADLINE_REACHED"
+
+    attempts_definition = make_definition(
+        limits=limits(step_seconds=30, attempts_per_step=2, attempts_total=10),
+        retry_policy=a_retry_policy(max_attempts=2),
+    )
+    executor = AlwaysFailsExecutor()
+    exhausted = start_run(
+        definition=attempts_definition, workspace_identity="ws-1", now=T0
+    )
+    exhausted = advance(
+        definition=attempts_definition, run=exhausted, executor=executor, now=T0
+    )
+    exhausted = advance(
+        definition=attempts_definition, run=exhausted, executor=executor, now=T1
+    )
+    assert exhausted.state is WorkflowState.RESOURCE_EXHAUSTED
+    assert exhausted.reached_bound == "ATTEMPT_BOUND_REACHED"
+
+
+# ---------------------------------------------------------------------------
+# §15.2 — the declared bounds are frozen, not merely un-assignable
+# ---------------------------------------------------------------------------
+
+
+def test_the_declared_bounds_cannot_be_edited_in_place() -> None:
+    """`frozen=True` stops `run.declared = ...`. It does nothing about
+    `run.declared["x"] = ...`, which edits the bound EVERY limit in the phase is
+    enforced from — behind `advance`, behind `_verify_successor`, and behind the digest,
+    which was computed over the values as they were.
+    """
+    definition, run = _failed_once()
+    before = run.declared_limit("attempts_total")
+
+    with pytest.raises(TypeError):
+        run.declared["attempts_total"] = 999_999
+
+    assert run.declared_limit("attempts_total") == before
+
+
+def test_the_declared_bounds_survive_a_round_trip_still_frozen() -> None:
+    """And the serialized form stays an ordinary mapping, so a record reads and writes
+    as it always did."""
+    definition, run = _failed_once()
+    restored = RunRecord.from_mapping(run.to_mapping())
+
+    for name in (
+        "workflow_seconds",
+        "step_seconds",
+        "attempts_per_step",
+        "attempts_total",
+        "max_checkpoints",
+        "max_checkpoint_bytes",
+        "max_artifact_bytes",
+    ):
+        assert restored.declared_limit(name) == run.declared_limit(name), name
+
+    assert isinstance(restored.to_mapping()["declared"], dict), (
+        "the serialized form must stay an ordinary, serializable mapping"
+    )
+    with pytest.raises(TypeError):
+        restored.declared["attempts_total"] = 1
+
+
+def test_the_declared_bounds_are_copied_away_from_their_source() -> None:
+    """A read-only VIEW over a mapping someone else still holds is a lock whose key is
+    on the table: the holder mutates the original and the record changes underneath."""
+    source = {"attempts_total": 4, "max_checkpoints": 8}
+    definition, run = _failed_once()
+    built = dataclasses.replace(run, declared=source)
+
+    source["attempts_total"] = 999_999
+
+    assert built.declared_limit("attempts_total") == 4, (
+        "the record's bounds followed a mapping it does not own"
+    )

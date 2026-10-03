@@ -104,18 +104,25 @@ def test_T13_every_attempt_produces_its_own_execution() -> None:
 
 
 def test_T13b_a_reused_execution_id_is_refused() -> None:
-    """§6.3. Refused on what the executor REPORTED, not on a promise about it."""
-    definition = make_definition(
-        steps=[a_step("s1"),
-               a_step("s2")]
-    )
+    """§6.3. Refused on what the executor REPORTED, not on a promise about it.
+
+    The offending attempt is NOT recorded, and that is the rule rather than an omission:
+    putting it in the lineage would BE the duplicate §6.3 forbids, so the record would
+    be the violation it means to report. The run stops, the second step keeps the state
+    it had, and the attempt it spent stays on the counter.
+    """
+    definition = make_definition(steps=[a_step("s1"), a_step("s2")])
     executor = ReusingExecutor()
     run = _run(definition)
     run = advance(definition=definition, run=run, executor=executor, now=T1)
     run = advance(definition=definition, run=run, executor=executor, now=T2)
 
     assert run.state is WorkflowState.FAILED
-    assert run.attempts_for("s2")[-1].reason_code == "EXECUTION_ID_REUSED"
+    assert run.attempts_for("s2") == (), "the duplicate ExecutionId entered the lineage"
+    assert run.consumed_total_attempts == 2, "the spent attempt was not counted"
+
+    produced = [a.execution_id for r in run.steps for a in r.attempts]
+    assert len(set(produced)) == len(produced)
 
 
 def test_T1_a_resumed_attempt_inherits_no_authorization() -> None:

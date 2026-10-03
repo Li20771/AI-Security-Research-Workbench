@@ -349,6 +349,53 @@ MUTATIONS: tuple[Mutation, ...] = (
             f"{BOUNDARY}::test_the_step_deadline_is_released_only_by_its_step_SUCCEEDING",
         ),
     ),
+    Mutation(
+        control="one execution, one attempt",
+        guard="§6.3 a retry lineage points each AttemptId at a DISTINCT ExecutionId, so "
+              "a successor may not append an execution another attempt already produced",
+        path="workflows/run.py",
+        old="        if len(set(produced)) != len(produced):",
+        new="        if False:  # mutated: the lineage is not checked for reuse",
+        focused=(
+            f"{BOUNDARY}::test_a_successor_cannot_point_two_attempts_at_one_execution",
+        ),
+    ),
+    Mutation(
+        control="a step's state is what its attempt did",
+        guard="§15.2 an attempt that did NOT succeed cannot make its step SUCCEEDED — "
+              "which also stops it releasing the step deadline",
+        path="workflows/run.py",
+        old="            if moved[0][1].state not in _STEP_STATES_BY_OUTCOME[outcome]:",
+        new="            if moved[0][1].state not in _STEP_STATES_BY_OUTCOME[outcome] and False:  # mutated",
+        focused=(
+            f"{BOUNDARY}::test_a_failed_attempt_cannot_make_its_step_SUCCEEDED",
+        ),
+    ),
+    Mutation(
+        control="reached_bound must fit the terminal state",
+        guard="§15.2 which bound a run reached is a FACT: a run that failed or finished "
+              "reached none, and a bound named for the wrong terminal state is refused",
+        path="workflows/run.py",
+        old="            if bound not in _BOUNDS_BY_TERMINAL_STATE.get(successor.state, frozenset()):",
+        new="            if False:  # mutated: any state may name any bound",
+        focused=(
+            f"{BOUNDARY}::test_a_completed_run_cannot_name_a_bound",
+            f"{BOUNDARY}::test_a_run_that_reached_no_bound_cannot_name_one",
+        ),
+    ),
+    Mutation(
+        control="declared bounds are frozen, not merely un-assignable",
+        guard="§15.2 `declared` is copied into a read-only mapping, so it cannot be "
+              "edited in place behind the successor boundary and the digest",
+        path="workflows/run.py",
+        old="        object.__setattr__(\n"
+            '            self, "declared", MappingProxyType(dict(self.declared))\n'
+            "        )",
+        new="        pass  # mutated: declared stays a mutable mapping",
+        focused=(
+            f"{BOUNDARY}::test_the_declared_bounds_cannot_be_edited_in_place",
+        ),
+    ),
 )
 
 #: Named so a failure reads as "the harness cannot see the copy", not as an unrelated

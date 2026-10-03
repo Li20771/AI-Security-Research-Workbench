@@ -39,6 +39,7 @@ from __future__ import annotations
 import re
 import uuid
 from dataclasses import dataclass, replace
+from types import MappingProxyType
 from typing import Any, Mapping, Sequence
 
 from workflows.canonical import digest_of, verify_digest
@@ -85,6 +86,39 @@ _NEVER_DECREASES = (
     "consumed_checkpoint_bytes",
     "consumed_artifact_bytes",
 )
+
+#: §14, §15.2. Which bound a terminal state is ALLOWED to have reached. The reason codes
+#: are the ones AI-13-B already emits — this maps them, it does not invent any.
+#:
+#: `RETRY_DEADLINE_REACHED` appears on both sides, and that is not an oversight: §8.3
+#: makes the retry bound a DEADLINE when an attempt would begin after it (TIMED_OUT via
+#: the bound check) and a RESOURCE bound when an attempt overran it (RESOURCE_EXHAUSTED
+#: via the post-attempt check). One name, two terminal states, both declared.
+_BOUNDS_BY_TERMINAL_STATE: dict[WorkflowState, frozenset[str]] = {
+    WorkflowState.TIMED_OUT: frozenset(
+        {"WORKFLOW_DEADLINE_REACHED", "STEP_DEADLINE_REACHED", "RETRY_DEADLINE_REACHED"}
+    ),
+    WorkflowState.RESOURCE_EXHAUSTED: frozenset(
+        {
+            "ATTEMPT_BOUND_REACHED",
+            "CHECKPOINT_COUNT_BOUND_REACHED",
+            "CHECKPOINT_BYTES_BOUND_REACHED",
+            "ARTIFACT_BOUND_REACHED",
+            "RETRY_DEADLINE_REACHED",
+        }
+    ),
+}
+
+#: §12. The step states an ATTEMPT can produce, keyed by what the attempt did.
+#:
+#: The engine sets SUCCEEDED on success, READY when a retryable failure leaves the step
+#: to run again, and FAILED when the attempt is refused outright. Nothing else is
+#: produced from an attempt, so nothing else is admitted here: a state whose cause is not
+#: an attempt would be a claim the record cannot support.
+_STEP_STATES_BY_OUTCOME: dict[bool, frozenset[StepState]] = {
+    True: frozenset({StepState.SUCCEEDED}),
+    False: frozenset({StepState.READY, StepState.FAILED}),
+}
 
 
 def new_run_id() -> str:
@@ -208,6 +242,20 @@ class AttemptRecord:
     #: the name outright, so the record can carry what the snapshot must not.
     decision_id: str | None = None
 
+    def __post_init__(self) -> None:
+        """§9, §15.2. An attempt's outcome and its classification are one fact.
+
+        A FailureClass classifies a FAILURE. An attempt recorded as having succeeded and
+        carrying one is describing two different runs of itself, and §9.1's "no class"
+        case is the opposite one — `failure_class is None`, which `unclassified` reports
+        and which stays the only way to say "matched none of the nine".
+        """
+        if self.succeeded and self.failure_class is not None:
+            raise InvalidRecord(
+                "an attempt recorded as succeeded carries a failure class; §9's nine "
+                "classes classify failures, and this attempt had none"
+            )
+
     @property
     def unclassified(self) -> bool:
         return self.failure_class is None and not self.succeeded
@@ -321,6 +369,24 @@ class RunRecord:
         `MODEL_EXECUTION` and manufactured the prerequisite. The helper is a
         convenience; this is the boundary.
         """
+        # §15.2. The declared bounds are FROZEN, not merely un-assignable. `frozen=True`
+        # stops `run.declared = ...`; it does nothing about `run.declared["x"] = ...`,
+        # which edits the bound every limit in the phase is enforced from — behind
+        # `advance`, behind `_verify_successor`, and behind the digest, which was
+        # computed over the values as they were.
+        #
+        # A read-only VIEW is not enough on its own: a proxy over a dict someone else
+        # still holds is a lock whose key is on the table. The mapping is COPIED, so no
+        # reference to the mutable original survives construction.
+        if not isinstance(self.declared, Mapping):
+            raise InvalidRecord(
+                "run.declared must be a mapping of the bounds the run declared; §15.2 "
+                "records every bound, and a bound that is not in one bounds nothing"
+            )
+        object.__setattr__(
+            self, "declared", MappingProxyType(dict(self.declared))
+        )
+
         # §11.2. Format first, so a malformed reference is named as malformed rather
         # than reported as a missing one.
         for name in ("cancelled_by", "cancelled_reason"):
@@ -616,6 +682,22 @@ class RunRecord:
                     "recorded or by the run stopping (§6.3)"
                 )
 
+        # §6.3. A retry lineage is a sequence of AttemptIds, each pointing at a DISTINCT
+        # ExecutionId — "never one ExecutionId with a counter on it". The engine refuses
+        # a repeat when it sees one, but that is the engine choosing to check; this is
+        # the record's own rule, and it holds for a lineage assembled by anyone.
+        produced = [
+            attempt.execution_id
+            for record in successor.steps
+            for attempt in record.attempts
+        ]
+        if len(set(produced)) != len(produced):
+            raise InvalidRecord(
+                "a successor's lineage points two attempts at one ExecutionId; §6.3 "
+                "makes a retry a sequence of distinct executions, never one execution "
+                "with a counter on it"
+            )
+
         # ---- step state (§6.1, §12, §14) -----------------------------------------
         moved = [
             (record, successor.step(record.step_id))
@@ -641,6 +723,17 @@ class RunRecord:
                     "a successor changed a step's state with no attempt recorded; a "
                     "step's state is what its ATTEMPTS did, and a state with no attempt "
                     "behind it is a claim the record does not support (§15.2)"
+                )
+            # Having an attempt is necessary and not sufficient. The state has to be one
+            # THAT attempt produced: a failed attempt recorded against a SUCCEEDED step
+            # disguises a failure as a success, and it also releases the step deadline,
+            # so the disguise buys a fresh budget as well as a false record.
+            outcome = appended[0][1].succeeded
+            if moved[0][1].state not in _STEP_STATES_BY_OUTCOME[outcome]:
+                raise InvalidRecord(
+                    "a successor moved a step to a state its attempt does not support; "
+                    "an attempt that SUCCEEDED is what makes a step SUCCEEDED, and an "
+                    "attempt that did not cannot make it one (§15.2)"
                 )
 
         # ---- the step deadline (§8.3, §11.1) -------------------------------------
@@ -707,6 +800,25 @@ class RunRecord:
                 raise InvalidRecord(
                     f"a successor changed {name}; what a run reached, and who cancelled "
                     "it, are facts about what happened (§15.2)"
+                )
+
+        # ---- reached_bound is a FACT, not terminal metadata (§15.2) --------------
+        # "which bound the run reached, IF it reached one". A run that never ended cannot
+        # have reached one, and a run that ended because its work failed did not reach
+        # one either — naming one there would attribute the stop to a limit nothing
+        # touched, which is worse than saying nothing.
+        bound = successor.reached_bound
+        if bound is not None:
+            if not successor.is_terminal:
+                raise InvalidRecord(
+                    "a non-terminal run names a bound it reached; a run reaches a bound "
+                    "when one STOPS it, and a run still going has not been stopped (§15.2)"
+                )
+            if bound not in _BOUNDS_BY_TERMINAL_STATE.get(successor.state, frozenset()):
+                raise InvalidRecord(
+                    f"a run in state {successor.state} names a bound that state cannot "
+                    "have reached; §15.2 records which bound stopped the run, and the "
+                    "reason must be one that state is reachable by"
                 )
 
     def advance(self, **changes: Any) -> "RunRecord":

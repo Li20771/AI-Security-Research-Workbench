@@ -352,10 +352,13 @@ def test_the_workspace_identity_has_no_re_derivation_field() -> None:
     """§5. There is no equivalence claim to make, so there is no place to make one."""
     definition = make_definition()
     run = _started(definition)
-    carried = set(dataclasses.asdict(run)) if dataclasses.is_dataclass(run) else set()
+    # The FIELD NAMES, not `dataclasses.asdict`: `asdict` deep-copies, and the record's
+    # `declared` is a read-only mapping precisely so it cannot be copied back into
+    # something writable. The names are what this test is about.
+    carried = {field.name for field in dataclasses.fields(run)}
     # The run carries ONE workspace fact. A second field is how "equivalent" would
     # arrive, and §5 defers that mechanism rather than implementing it.
-    assert "workspace_identity" in {f.name for f in dataclasses.fields(run)}
+    assert "workspace_identity" in carried
     assert not {name for name in carried if "re_deriv" in name or "equivalent" in name}
 
 
