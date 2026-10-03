@@ -110,18 +110,40 @@ FROZEN: AI-12 v1 does not remove a task from the corpus, for any reason, includi
 
 ## 4. What AI-12 consumes — AI-11's measured facts, read-only
 
-### 4.1 The record
+### 4.1 The record — an explicitly supplied, immutable input
 
 ```text
-FROZEN: AI-12 reads the AI-11 `BenchmarkRun` records under `benchmarks/`, and the
-        campaign report produced by `python3 -m benchmarks.campaign`. It reads them
-        read-only.
+FROZEN: AI-12 consumes explicitly supplied immutable AI-11 `BenchmarkRun` records and,
+        when used, an explicitly supplied campaign report / manifest.
+FROZEN: every consumed `BenchmarkRun` is identified by its exact `run_id` and a
+        recorded digest of the supplied record.
+FROZEN: AI-12 MUST NOT assume `benchmarks/results/` contains durable historical
+        campaign data.
+FROZEN: AI-12 MUST NOT reconstruct a `BenchmarkRun` from `docs/AI-11_EVIDENCE_*.md`,
+        task definitions, truth files, or raw campaign output.
+FROZEN: if the required machine-readable AI-11 record is absent, the input dimension is
+        UNKNOWN / unavailable to AI-12. AI-12 MUST NOT regenerate it by re-running or
+        re-judging AI-11.
+FROZEN: a campaign report is an input only when its exact supplied instance and
+        provenance are identifiable. AI-12 MUST NOT silently substitute a different
+        campaign report.
 ```
 
-For each task, the fields AI-12 may reason over:
+AI-11's run data is **disposable by design**. A `BenchmarkRun` is produced into a
+scratch root, and the campaign report of §3 of the AI-11 evidence is command output —
+neither is durable tracked corpus. Supplying them is therefore an explicit act, and the
+supplied instance is what AI-12 reasons over.
 
 ```text
-task_id · task_version · source_sha · workbench_sha
+FROZEN: this contract does not make AI-11's result directory durable, and does not ask
+        AI-11 to change where it writes. AI-12's input is a supplied artifact, not a
+        location.
+```
+
+For each task, the fields AI-12 may reason over once such a record is supplied:
+
+```text
+run_id · task_id · task_version · source_sha · workbench_sha
 task_status              PASS / FAIL / BLOCKED / NOT_RUN / UNKNOWN / UNAVAILABLE
 regression_status        the same six-member vocabulary, on its own axis (§12 of AI-11)
 tests                    planned / executed / passed / failed / skipped
@@ -131,7 +153,31 @@ workspace_identity       the manifest digest the measurement was taken in
 security_boundary_status its own axis
 ```
 
-### 4.2 The four non-PASS verdicts are not promotable
+### 4.2 REFERENCE evidence is not model evidence
+
+```text
+FROZEN: a `BenchmarkRun` with `executor_kind = REFERENCE` is evidence about the
+        benchmark task, the oracle and the reference execution path.
+FROZEN: a REFERENCE verdict MUST NOT be interpreted as evidence of a model's
+        capability, model success rate, model reliability, model cost or model latency.
+FROZEN: AI-12 MUST NOT select a particular model because an AI-11 REFERENCE run
+        received PASS.
+FROZEN: AI-12 MUST NOT convert a REFERENCE task PASS into a model-performance claim.
+FROZEN: model-specific routing evidence requires an execution record whose producer
+        identifies the model / provider execution, under a contract that defines how
+        that measurement is produced and attributed.
+```
+
+A REFERENCE run says *this task is solvable and this oracle says so*. It says nothing
+about any model, because no model was involved: `agent_id` is null, `provider` is null,
+`token_usage` and `cost` are null, and `tool_trace` is empty on every record.
+
+```text
+FROZEN: "the task PASSed" and "a model performs well on the task" are different
+        sentences, and AI-12 MUST NOT write the second from the first.
+```
+
+### 4.3 The four non-PASS verdicts are not promotable
 
 ```text
 FROZEN: BLOCKED, NOT_RUN, UNKNOWN and UNAVAILABLE MUST NOT be read, weighted, summed,
@@ -148,7 +194,7 @@ FROZEN: the ONLY path from a record to a routing weight is a recorded verdict. A
         that cites a task MUST cite the verdict it was derived from.
 ```
 
-### 4.3 A BLOCKED task is not a task to delete
+### 4.4 A BLOCKED task is not a task to delete
 
 ```text
 FROZEN: `ai11-v1-fuzzing-recovery-triage` is BLOCKED in the AI-11-C campaign on
@@ -161,7 +207,7 @@ FROZEN: AI-12 MUST NOT treat a BLOCKED task as evidence for OR against any model
         carries no information about model behaviour, because nothing ran.
 ```
 
-### 4.4 No re-derivation
+### 4.5 No re-derivation
 
 ```text
 FROZEN: AI-12 MUST NOT recompute an oracle verdict, reinterpret a reason code, or
@@ -212,14 +258,55 @@ escalation policy       the declared condition under which a task moves to a dif
                         model, and what happens to the result of the first attempt
 ```
 
-### 5.3 Evidence binding
+```text
+FROZEN: AI-12 fallback and escalation are DECLARATIVE POLICY DATA only.
+FROZEN: AI-12 MUST NOT execute a fallback, retry a model, or create a hidden second
+        routing decision.
+FROZEN: AI-07 v1's frozen no-automatic-fallback boundary remains unchanged. AI-07 does
+        not retry a selected model and keeps no "the previous model failed" state.
+FROZEN: when a fallback is realised through AI-07, it is a new caller-submitted
+        `RouterRequest` and an independently evaluated `RouterDecision`.
+FROZEN: the previous decision does not grant authorization to the next decision.
+FROZEN: AI-12 MUST NOT widen the original candidate set, or relax capabilities,
+        modality, independence or any other `RouterRequest` constraint, during
+        fallback or escalation.
+FROZEN: execution, retry and long-running recovery remain outside AI-12.
+```
+
+AI-12 declares *what should happen*; it does not make it happen. The actor that submits
+the next request, and the component that evaluates it, are unchanged by this contract.
+
+### 5.3 Evidence binding — the exact run, not merely the task
 
 ```text
-FROZEN: every emitted decision carries the evidence it cites: the task_id, the
-        source_sha, the verdict, the reason code and the limitations of the run it was
-        derived from.
+FROZEN: every routing decision MUST bind to the exact `BenchmarkRun` from which its
+        measurement was consumed.
+```
+
+The binding therefore carries at least:
+
+```text
+run_id
+task_id
+source_sha
+workbench_sha
+verdict
+reason_code
+limitations
+```
+
+```text
+FROZEN: `task_id` alone is not evidence identity.
+FROZEN: `source_sha` alone is not evidence identity.
+FROZEN: `run_id` identifies the exact measured run.
+```
+
+```text
 FROZEN: a decision that cites no evidence is not a routing decision. It is a
         preference, and it MUST be represented as UNKNOWN rather than emitted as policy.
+FROZEN: where a campaign manifest is consumed, its digest MAY be recorded alongside the
+        binding. It does not replace `run_id`: a manifest identifies a batch, and a
+        decision is a claim about one run.
 ```
 
 ---
@@ -247,6 +334,34 @@ contract, and AI-12-B MUST NOT improvise it.
 ```text
 DEFERRED: the model-comparative policy, until per-model measurements exist under a
           contract that says how they are produced and attributed.
+```
+
+### 6.1 What AI-12-B may build while §6 is BLOCKED
+
+The prerequisite blocks a **claim**, not a codebase. This is the boundary:
+
+```text
+FROZEN: until the model-comparative prerequisite is satisfied, AI-12-B MAY implement:
+            policy schema
+            policy validation
+            evidence binding
+            falsifier / discrimination validation
+            rollback metadata
+            dormant policy artifacts
+FROZEN: until that prerequisite is satisfied, AI-12-B MUST NOT activate or ship a
+        model-comparative rule that claims one model is selected because it performed
+        better on AI-11.
+FROZEN: a policy artifact that contains no model-comparative evidence MUST remain
+        explicitly dormant / UNKNOWN if it would otherwise make a model-specific
+        selection claim.
+FROZEN: §6 remains BLOCKED until per-model measurements exist under a separate contract
+        defining their producer, attribution and measurement method.
+```
+
+```text
+FROZEN: implementing the infrastructure does NOT satisfy the prerequisite. A policy
+        schema that validates cleanly is not evidence that any model outperforms
+        another, and C7 stays unsatisfied until the measurements exist.
 ```
 
 ---
@@ -283,6 +398,12 @@ FROZEN: REVERSIBLE — every policy declares its rollback: the previous policy, 
         rollback MUST NOT be activated.
 FROZEN: no silent downgrade. A fallback is a DECLARED path with its own recorded
         reason; a decision that quietly becomes a different decision is not a fallback.
+FROZEN: REVERSIBLE does not mean AI-12 reverses anything itself. The rollback is
+        declared here and performed through the same caller-submitted path §5.2
+        describes; AI-12 holds no runtime state and grants no authorization.
+FROZEN: a declared fallback MUST NOT contradict AI-07's frozen boundary, and a policy
+        that would require AI-07 to retry, to remember a previous decision, or to
+        re-evaluate a request automatically MUST NOT be emitted.
 ```
 
 ---
@@ -299,11 +420,21 @@ no provider call
 no model execution
 no change to AI-04 Guard authority
 no change to AI-07's routing contract
+no automatic fallback, no retry, no hidden previous-decision state
+no widening of a candidate set or relaxation of a RouterRequest constraint
+no execution, retry or long-running recovery
 ```
 
 AI-07 remains the component that selects an eligible Agent / Provider / Model profile for
-an execution. AI-12 changes **which policy AI-07 is given**, and nothing about who is
-allowed to authorize what: Guard's authority is untouched.
+an execution, and it does so **once per caller-submitted request**, with no memory of a
+previous one. AI-12 changes **which policy AI-07 is given**, and nothing about who is
+allowed to authorize what: Guard's authority is untouched, and the no-automatic-fallback
+boundary AI-07 froze stays exactly where it is.
+
+```text
+FROZEN: AI-12 describes policy; it does not become a runtime. A fallback AI-12 declares
+        is realised by a caller submitting a new RouterRequest, not by AI-12 acting.
+```
 
 ---
 
@@ -311,7 +442,9 @@ allowed to authorize what: Guard's authority is untouched.
 
 ```text
 AI-07  Model Router v1 — AI-12 supplies policy; AI-07 still routes and still records why.
-       AI-12 does not amend AI-07.
+       AI-07 keeps its frozen no-automatic-fallback, no-retry, no-previous-decision-state
+       boundary. AI-12 does not amend AI-07, does not ask it to retry, and does not
+       execute a fallback on its behalf.
 AI-11  AI Security Benchmark — AI-12's only measurement source. Read-only.
 AI-05  Evidence — unchanged. This document is not an Evidence record and creates no
        producer token; AI-05 §28 remains OPEN.
@@ -324,7 +457,8 @@ AI-04  Guard — unchanged. AI-12 grants no authority and bypasses no check.
 
 ```text
 AI-12-A   contract / design freeze      this document, merged
-AI-12-B   the policy core               implementation against the frozen contract
+AI-12-B   the policy core               §6.1's infrastructure; the model-comparative
+                                        rule stays dormant while §6 is BLOCKED
 AI-12-C   the campaign over policies    optional; only if §6's prerequisite is met
 ```
 
@@ -340,12 +474,13 @@ FROZEN: AI-12-A changes this document and the closeout artifacts of AI-11 it car
 ```text
 C0   this document merged
 C1   every consumed input is either measured or explicitly UNKNOWN (§5.1)
-C2   no policy cites a verdict as success except PASS (§4.2)
-C3   the BLOCKED task is present, recorded as BLOCKED, and unweighted (§4.3)
+C2   no policy cites a verdict as success except PASS (§4.3)
+C3   the BLOCKED task is present, recorded as BLOCKED, and unweighted (§4.4)
 C4   every rule has a declared falsifier and a paired discrimination control (§7)
 C5   every decision is explainable from tracked artifacts (§8)
 C6   every policy declares its rollback (§8)
-C7   §6's prerequisite is recorded as BLOCKED, not worked around
+C7   §6's prerequisite is recorded as BLOCKED, not worked around — and stays BLOCKED
+     after §6.1's policy infrastructure is implemented, which does not satisfy it
 C8   no non-goal of §9 is violated
 ```
 
@@ -362,8 +497,9 @@ An amendment is REQUIRED for any change to:
 
 ```text
 the consumption contract over AI-11 records (§4)
-the promotability rule for non-PASS verdicts (§4.2)
-the treatment of a BLOCKED task (§4.3)
+the separation of REFERENCE evidence from model evidence (§4.2)
+the promotability rule for non-PASS verdicts (§4.3)
+the treatment of a BLOCKED task (§4.4)
 the routing decision's inputs, outputs or evidence binding (§5)
 the prerequisite in §6
 the non-vacuity requirement (§7)
