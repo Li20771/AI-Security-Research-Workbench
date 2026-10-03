@@ -48,11 +48,13 @@ from workflows.canonical import canonical_body
 from workflows.checkpoint import CHECKPOINT_DIGEST_FIELD, ArtifactRef, Checkpoint
 from workflows.definition import WorkflowDefinition, WorkflowStep
 from workflows.errors import InvalidRecord
-from workflows.instants import INSTANT_FORMAT
+from workflows.instants import INSTANT_FORMAT, is_instant, parse_instant, plus_seconds
 from workflows.policy import (
     attempt_request_digest,
     check_attempt_may_begin,
     check_may_retry,
+    effective_deadline,
+    effective_timeout_seconds,
     step_deadline_from,
 )
 from workflows.resume import verify_resume
@@ -95,11 +97,32 @@ class ExecutionOutcome:
     `request_digest` is the digest of the request the attempt ACTUALLY made, and
     `execution_id` is the execution it actually produced. Both are checked against what
     the definition declares before the attempt is recorded.
+
+    ### The timing is the EXECUTION's, not AI-13's
+
+    `started_at` and `ended_at` are REQUIRED, and the engine records what it is given.
+    It used to write `started_at = ended_at = <the instant the attempt was dispatched>`,
+    which recorded every attempt as instantaneous — a ledger that cannot show an
+    attempt consuming its bound, and one that would have made "did this attempt exceed
+    its step deadline?" unanswerable by construction. An execution that runs for a
+    minute and is recorded as taking none is a record that says the bound was never
+    reached.
+
+    ### What AI-13 does NOT verify here
+
+    `artifact_bytes` is a figure the executor REPORTS. AI-13 holds no artifact store and
+    reads no artifact, so it has nothing to measure the number against: an executor that
+    reported zero for artifacts it referenced would be believed. This is the trust
+    boundary of the execution seam, not an independent proof, and it is stated here so
+    that no reader mistakes the counter for a measurement. `execution_id` and
+    `request_digest` cross-checked against something; this one cannot be.
     """
 
     execution_id: str
     succeeded: bool
     request_digest: str
+    started_at: str
+    ended_at: str
     reason_code: str = ""
     failure_class: FailureClass | None = None
     artifact_refs: tuple[ArtifactRef, ...] = ()
@@ -109,12 +132,33 @@ class ExecutionOutcome:
     decision_id: str = ""
     #: The size of the artifacts this attempt referenced, so §12's declared artifact
     #: bound has a counter to be enforced from. A NUMBER, never content: §7.2 and §15.2
-    #: keep the bytes outside every record AI-13 writes.
+    #: keep the bytes outside every record AI-13 writes. See the trust note above.
     artifact_bytes: int = 0
+
+    def __post_init__(self) -> None:
+        if not is_instant(self.started_at) or not is_instant(self.ended_at):
+            raise InvalidRecord(
+                "an execution outcome reports when it began and ended, as §8.3 "
+                "instants; AI-13 records the execution's own timing rather than "
+                "assuming one"
+            )
+        if parse_instant(self.ended_at) < parse_instant(self.started_at):
+            raise InvalidRecord("an execution outcome ended before it began")
 
 
 class StepExecutor(Protocol):
-    """The seam through which a step reaches an execution. AI-13 composes it."""
+    """The seam through which a step reaches an execution. AI-13 composes it.
+
+    `timeout_seconds` is the COMPOSED outer bound from `effective_timeout_seconds`: the
+    step's declared per-invocation timeout, narrowed by whatever the step, the workflow
+    and the retry budget have left. It is the value the execution must be given, and it
+    is passed here rather than left for the executor to derive, because a bound an
+    executor computes for itself is a bound an executor can widen.
+
+    The executor forwards it to the AI-08 execution, which forwards it to AI-06's
+    per-invocation `timeout_seconds` (AI-06 §, "a timeout is always explicit"). AI-13
+    does not reach into that path and does not implement a second one.
+    """
 
     def execute(
         self,
@@ -124,6 +168,7 @@ class StepExecutor(Protocol):
         attempt_id: AttemptId,
         run: RunRecord,
         now: str,
+        timeout_seconds: int,
     ) -> ExecutionOutcome: ...
 
 
@@ -180,11 +225,17 @@ def start_run(
         created_at=created,
         updated_at=created,
         declared=definition.limits.to_body(),
-        # §8.3: computed ONCE, at run creation, and persisted as an ABSOLUTE instant.
-        # Resume reads it and never writes a new one, which is what makes a bound
-        # survive a restart rather than restarting with it.
-        workflow_deadline=definition.limits.workflow_deadline,
-        retry_deadline=policy.deadline if policy else None,
+        # §8.3: computed ONCE, HERE, from the runtimes the definition declares, and
+        # persisted as ABSOLUTE instants. Resume reads them and never writes new ones,
+        # which is what makes a bound survive a restart rather than restarting with it.
+        #
+        # The definition carries a RUNTIME and the record carries the ABSOLUTE. That
+        # split is the contract's: a bound is a fact about a run, and a tracked
+        # definition reviewed in Git cannot know when a run began.
+        workflow_deadline=plus_seconds(created, definition.limits.workflow_seconds),
+        retry_deadline=(
+            plus_seconds(created, policy.retry_seconds) if policy is not None else None
+        ),
         consumed_total_attempts=0,
         consumed_checkpoints=0,
         consumed_checkpoint_bytes=0,
@@ -222,6 +273,20 @@ def _refuse_attempt(
         updated_at=now,
         consumed_total_attempts=run.consumed_total_attempts + 1,
     )
+
+
+def _deadline_reached(run: RunRecord, step_deadline: str) -> str:
+    """§15.2. WHICH declared deadline an attempt ran into.
+
+    The narrowest is named, and a tie goes to the most specific — a step deadline that
+    coincides with its workflow's is still the step's bound being reached, and a reader
+    asking what stopped this run wants the innermost limit that did.
+    """
+    candidates = [(step_deadline, "STEP_DEADLINE_REACHED")]
+    if run.retry_deadline is not None:
+        candidates.append((run.retry_deadline, "RETRY_DEADLINE_REACHED"))
+    candidates.append((run.workflow_deadline, "WORKFLOW_DEADLINE_REACHED"))
+    return min(candidates, key=lambda candidate: parse_instant(candidate[0]))[1]
 
 
 def _terminal(
@@ -279,8 +344,20 @@ def advance(
     # the step has started.
     step_deadline = run.step_deadline or step_deadline_from(definition, moment)
 
+    # §11.1. The bound the execution must be GIVEN, composed from the step's declared
+    # per-invocation timeout and what the outer bounds have left. It is handed down
+    # rather than left for the executor to derive, because a bound an executor computes
+    # for itself is a bound an executor can widen.
+    timeout_seconds = effective_timeout_seconds(definition, run, step, moment)
+    outer_deadline = effective_deadline(definition, run, step.step_id, moment)
+
     outcome = executor.execute(
-        definition=definition, step=step, attempt_id=attempt_id, run=run, now=moment
+        definition=definition,
+        step=step,
+        attempt_id=attempt_id,
+        run=run,
+        now=moment,
+        timeout_seconds=timeout_seconds,
     )
 
     expected_request = attempt_request_digest(definition, step, run)
@@ -296,8 +373,8 @@ def advance(
                 execution_id=outcome.execution_id,
                 failure_class=FailureClass.TERMINAL_FAILURE,
                 reason_code="RETRY_WIDENED_REQUEST",
-                started_at=moment,
-                ended_at=moment,
+                started_at=outcome.started_at,
+                ended_at=outcome.ended_at,
                 succeeded=False,
                 decision_id=outcome.decision_id or None,
             ),
@@ -315,8 +392,8 @@ def advance(
                 execution_id=outcome.execution_id,
                 failure_class=FailureClass.TERMINAL_FAILURE,
                 reason_code="EXECUTION_ID_REUSED",
-                started_at=moment,
-                ended_at=moment,
+                started_at=outcome.started_at,
+                ended_at=outcome.ended_at,
                 succeeded=False,
                 decision_id=outcome.decision_id or None,
             ),
@@ -328,8 +405,9 @@ def advance(
         execution_id=outcome.execution_id,
         failure_class=None if outcome.succeeded else outcome.failure_class,
         reason_code=outcome.reason_code,
-        started_at=moment,
-        ended_at=moment,
+        # The EXECUTION's own timing, recorded rather than assumed (§15.2).
+        started_at=outcome.started_at,
+        ended_at=outcome.ended_at,
         succeeded=outcome.succeeded,
         artifact_refs=outcome.artifact_refs,
         decision_id=outcome.decision_id or None,
@@ -348,6 +426,25 @@ def advance(
         step_deadline=None if outcome.succeeded else step_deadline,
         updated_at=moment,
     )
+
+    if parse_instant(outcome.ended_at) >= parse_instant(outer_deadline):
+        # §11.1. The attempt ran TO or PAST the bound it was given, and that is
+        # TIMED_OUT — "did not finish in time" — rather than FAILED, because the two are
+        # different facts and a reader acts on them differently.
+        #
+        # This question is answerable only because the record carries the EXECUTION's
+        # timing. While the engine wrote the dispatch instant for both ends, every
+        # attempt was recorded as instantaneous and no attempt could ever have been
+        # found to exceed anything.
+        #
+        # `>=` and not `>`: §8.3 freezes "a bound is reached when the current time is >=
+        # the deadline", and a bound reached at its final instant is reached.
+        return _terminal(
+            record,
+            WorkflowState.TIMED_OUT,
+            moment,
+            bound=_deadline_reached(run, step_deadline),
+        )
 
     if spent_artifacts > definition.limits.max_artifact_bytes:
         # §12. Every other bound is evaluated BEFORE its attempt (§10.3.1) because it is
@@ -408,11 +505,38 @@ def resume_run(
     return advance(definition=definition, run=run, executor=executor, now=moment)
 
 
-def cancel(*, run: RunRecord, now: str | None = None, reason_code: str = "CANCELLED_BY_CALLER") -> RunRecord:
-    """§11.2. Cancellation is terminal, and is never retried."""
+def cancel(
+    *,
+    run: RunRecord,
+    cancelled_by: str,
+    reason: str,
+    now: str | None = None,
+) -> RunRecord:
+    """§11.2. Cancellation is terminal, RECORDED, and never retried.
+
+    ```text
+    FROZEN: cancellation is not a failure of the work, and a run cancelled by a human
+            MUST NOT be recorded as one. AI-13 records WHO cancelled and WHY as a
+            declared reference, and does not adjudicate whether the reason was good.
+    ```
+
+    Both are REQUIRED and both are REFERENCES: an identifier for the actor and for the
+    reason, never prose. A run that stopped with nobody named and nothing recorded is a
+    record that cannot answer why it stopped, which is the whole of what §11.2 asks the
+    record to be able to do.
+
+    Neither is judged. AI-13 does not decide whether the reason was good, whether the
+    actor was entitled, or whether the cancellation should have happened — `_reference`
+    checks the FORM of what was declared and nothing else.
+    """
     if run.is_terminal:
         return run
-    return _terminal(run, WorkflowState.CANCELLED, now or _utc_now())
+    return run.advance(
+        state=WorkflowState.CANCELLED,
+        updated_at=now or _utc_now(),
+        cancelled_by=cancelled_by,
+        cancelled_reason=reason,
+    )
 
 
 def checkpoint_for(

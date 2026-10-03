@@ -20,6 +20,20 @@ APPROVAL          REFUSED, by name. §18: AI-13-B implements no approval semanti
                   opens — is the unbounded state §16 forbids.
 ```
 
+### A declared bound is a RUNTIME, not a date
+
+```text
+Definition = tracked policy data    a duration, reviewed and versioned in Git
+RunRecord  = runtime authority      the ABSOLUTE deadline, computed once at creation
+```
+
+§8.3 makes the workflow deadline an absolute instant, computed ONCE and persisted. None
+of the bounds in this module is an instant: the limits say how long a run and a step may
+take, and the retry policy says how long its retries may take. A tracked definition
+carrying a date would hand a run a deadline it INHERITED rather than one it was GIVEN —
+and a definition amended after a run started could move that run's deadline underneath
+it, which is the opposite of what a bound that survives a resume means.
+
 ### Why the digest is computed here rather than accepted
 
 `definition_digest` is what a run binds to and what a resume is checked against (§8.1).
@@ -35,7 +49,6 @@ from typing import Any, Mapping, Sequence
 
 from workflows.canonical import digest_of
 from workflows.errors import InvalidDefinition
-from workflows.instants import is_instant
 from workflows.vocabulary import FailureClass
 
 __all__ = [
@@ -58,10 +71,10 @@ MAX_ARTIFACT_BYTES_CEILING = 1 << 40
 _DEFINITION_KEYS = frozenset(
     {"workflow_id", "revision", "steps", "limits", "retry_policy", DIGEST_FIELD}
 )
-_STEP_KEYS = frozenset({"step_id", "kind"})
+_STEP_KEYS = frozenset({"step_id", "kind", "timeout_seconds"})
 _LIMIT_KEYS = frozenset(
     {
-        "workflow_deadline",
+        "workflow_seconds",
         "step_seconds",
         "attempts_per_step",
         "attempts_total",
@@ -70,7 +83,7 @@ _LIMIT_KEYS = frozenset(
         "max_artifact_bytes",
     }
 )
-_RETRY_KEYS = frozenset({"policy_id", "applies_to", "max_attempts", "deadline"})
+_RETRY_KEYS = frozenset({"policy_id", "applies_to", "max_attempts", "retry_seconds"})
 
 
 class StepKind(StrEnum):
@@ -107,26 +120,22 @@ def _positive_int(value: object, where: str) -> int:
     return value
 
 
-def _instant(value: object, where: str) -> str:
-    """§8.3's timestamp shape: ISO-8601, UTC, trailing `Z`, second resolution."""
-    text = _text(value, where)
-    if not is_instant(text):
-        raise InvalidDefinition(
-            f"{where} is not an ISO-8601 UTC instant with second resolution and a "
-            "trailing Z (§8.3); an absolute bound is the only form that survives a "
-            "resume"
-        )
-    return text
-
-
 @dataclass(frozen=True, slots=True)
 class RetryPolicy:
-    """§10.3. Declared data. A workflow that declares none has no retries."""
+    """§10.3. Declared data. A workflow that declares none has no retries.
+
+    `retry_seconds` is a RUNTIME, not a date. §10.3 requires the policy to declare "a
+    maximum attempts bound AND a time bound", and the time bound is declared here as a
+    duration because a tracked definition cannot know when a run will start. The
+    absolute deadline is computed once at run creation and lives on the run record; a
+    date written into the definition would be one the run inherits rather than one the
+    run was given, and it could not be shorter than the definition's own age.
+    """
 
     policy_id: str
     applies_to: tuple[FailureClass, ...]
     max_attempts: int
-    deadline: str
+    retry_seconds: int
 
     @classmethod
     def from_mapping(cls, raw: object, where: str = "retry_policy") -> "RetryPolicy":
@@ -164,7 +173,9 @@ class RetryPolicy:
             policy_id=_text(data.get("policy_id"), f"{where}.policy_id"),
             applies_to=tuple(classes),
             max_attempts=max_attempts,
-            deadline=_instant(data.get("deadline"), f"{where}.deadline"),
+            retry_seconds=_positive_int(
+                data.get("retry_seconds"), f"{where}.retry_seconds"
+            ),
         )
 
     def covers(self, failure: FailureClass) -> bool:
@@ -175,15 +186,28 @@ class RetryPolicy:
             "policy_id": self.policy_id,
             "applies_to": [str(item) for item in self.applies_to],
             "max_attempts": self.max_attempts,
-            "deadline": self.deadline,
+            "retry_seconds": self.retry_seconds,
         }
 
 
 @dataclass(frozen=True, slots=True)
 class ResourceLimits:
-    """§12. Every bound is DECLARED. A workflow that declares none is refused."""
+    """§12. Every bound is DECLARED. A workflow that declares none is refused.
 
-    workflow_deadline: str
+    ```text
+    Definition = tracked policy data      -> a RUNTIME, declared once and versioned
+    RunRecord  = runtime authority        -> the ABSOLUTE deadline, computed once
+    ```
+
+    §12 names a "maximum workflow runtime", and that is what is declared here: a
+    duration. The definition is a tracked artifact reviewed in Git, so it cannot carry
+    the instant a particular run will end — a date written into it would be a bound the
+    run INHERITS rather than one it was GIVEN, and a definition amended after a run
+    started could move that run's deadline underneath it. §8.3 puts the absolute on the
+    run record, computed at creation, which is also what makes it survive a resume.
+    """
+
+    workflow_seconds: int
     step_seconds: int
     attempts_per_step: int
     attempts_total: int
@@ -215,7 +239,9 @@ class ResourceLimits:
             )
 
         return cls(
-            workflow_deadline=_instant(data.get("workflow_deadline"), f"{where}.workflow_deadline"),
+            workflow_seconds=_positive_int(
+                data.get("workflow_seconds"), f"{where}.workflow_seconds"
+            ),
             step_seconds=_positive_int(data.get("step_seconds"), f"{where}.step_seconds"),
             attempts_per_step=_positive_int(
                 data.get("attempts_per_step"), f"{where}.attempts_per_step"
@@ -232,7 +258,7 @@ class ResourceLimits:
 
     def to_body(self) -> dict[str, Any]:
         return {
-            "workflow_deadline": self.workflow_deadline,
+            "workflow_seconds": self.workflow_seconds,
             "step_seconds": self.step_seconds,
             "attempts_per_step": self.attempts_per_step,
             "attempts_total": self.attempts_total,
@@ -244,10 +270,19 @@ class ResourceLimits:
 
 @dataclass(frozen=True, slots=True)
 class WorkflowStep:
-    """§6.1. A step names a seam. It carries no state — that lives on the run."""
+    """§6.1. A step names a seam. It carries no state — that lives on the run.
+
+    `timeout_seconds` is the step's declared PER-INVOCATION timeout: the inner bound
+    AI-06 already requires of every invocation. It is declared here because AI-13 asks
+    for the invocation, and §11.1 makes AI-13's step deadline an OUTER bound that
+    composes with it — the engine hands the execution `min(this, the time the outer
+    bounds have left)`, so the inner timeout is never removed, never widened, and never
+    made optional by the outer one.
+    """
 
     step_id: str
     kind: StepKind
+    timeout_seconds: int
 
     @classmethod
     def from_mapping(cls, raw: object, where: str = "steps[]") -> "WorkflowStep":
@@ -272,10 +307,21 @@ class WorkflowStep:
                 "semantics and the trusted ingress does not exist yet (§13.3, §18)",
                 reason_code="APPROVAL_STEP_NOT_IMPLEMENTED",
             )
-        return cls(step_id=step_id, kind=kind)
+        # §11.1: "AI-13 does not make an inner one optional." A step that declared no
+        # per-invocation timeout would have only the OUTER bound, which is precisely the
+        # composition the contract refuses — so an omitted one is refused here rather
+        # than defaulted, for the same reason §12 refuses an omitted limit.
+        timeout_seconds = _positive_int(
+            data.get("timeout_seconds"), f"{where}.timeout_seconds"
+        )
+        return cls(step_id=step_id, kind=kind, timeout_seconds=timeout_seconds)
 
     def to_body(self) -> dict[str, Any]:
-        return {"step_id": self.step_id, "kind": str(self.kind)}
+        return {
+            "step_id": self.step_id,
+            "kind": str(self.kind),
+            "timeout_seconds": self.timeout_seconds,
+        }
 
 
 @dataclass(frozen=True, slots=True)

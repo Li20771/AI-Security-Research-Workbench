@@ -22,8 +22,10 @@ from typing import Any
 
 from workflows import vocabulary as _vocabulary
 from workflows.canonical import digest_of
+from workflows.checkpoint import ArtifactRef
 from workflows.definition import WorkflowDefinition
 from workflows.engine import ExecutionOutcome
+from workflows.instants import plus_seconds
 from workflows.policy import attempt_request_digest
 from workflows.vocabulary import FailureClass
 
@@ -31,7 +33,13 @@ from workflows.vocabulary import FailureClass
 T0 = "2026-10-03T10:00:00Z"
 T1 = "2026-10-03T10:00:10Z"
 T2 = "2026-10-03T10:00:20Z"
-FAR = "2030-01-01T00:00:00Z"
+
+#: The runtimes a definition may DECLARE. A definition carries a bound, never a date:
+#: §8.3 puts the absolute instant on the run record, computed once at creation.
+FAR_SECONDS = 365 * 24 * 3600
+NEAR_SECONDS = 60
+#: The per-invocation timeout a step declares — the INNER bound AI-06 requires.
+STEP_TIMEOUT_SECONDS = 30
 
 #: The package the boundary tests read, resolved from the module that was IMPORTED
 #: rather than from the working directory.
@@ -72,11 +80,26 @@ def module_roots(names: set[str]) -> set[str]:
     return {name.split(".")[0] for name in names}
 
 
+def a_step(step_id: str = "s1", **overrides: Any) -> dict[str, Any]:
+    """One declared step, with the per-invocation timeout §11.1 requires."""
+    step = {
+        "step_id": step_id,
+        "kind": "AGENT_EXECUTION",
+        "timeout_seconds": STEP_TIMEOUT_SECONDS,
+    }
+    step.update(overrides)
+    return step
+
+
 def limits(**overrides: Any) -> dict[str, Any]:
-    """A complete declared limit set. §12 refuses a definition that omits one."""
+    """A complete declared limit set. §12 refuses a definition that omits one.
+
+    Every time bound is a RUNTIME. The absolute deadline is computed at run creation
+    and lives on the run record (§8.3), so no definition carries a date.
+    """
     declared = {
-        "workflow_deadline": FAR,
-        "step_seconds": 60,
+        "workflow_seconds": FAR_SECONDS,
+        "step_seconds": NEAR_SECONDS,
         "attempts_per_step": 2,
         "attempts_total": 4,
         "max_checkpoints": 8,
@@ -87,15 +110,24 @@ def limits(**overrides: Any) -> dict[str, Any]:
     return declared
 
 
+def a_retry_policy(**overrides: Any) -> dict[str, Any]:
+    """A declared retry policy, with both bounds §10.3 requires."""
+    policy = {
+        "policy_id": "p",
+        "applies_to": ["RETRYABLE_FAILURE"],
+        "max_attempts": 2,
+        "retry_seconds": FAR_SECONDS,
+    }
+    policy.update(overrides)
+    return policy
+
+
 def definition_body(**overrides: Any) -> dict[str, Any]:
     """A definition mapping that validates, with a CORRECT digest."""
     body: dict[str, Any] = {
         "workflow_id": "wf-demo",
         "revision": "v1",
-        "steps": [
-            {"step_id": "s1", "kind": "AGENT_EXECUTION"},
-            {"step_id": "s2", "kind": "AGENT_EXECUTION"},
-        ],
+        "steps": [a_step("s1"), a_step("s2")],
         "limits": limits(),
         "retry_policy": None,
     }
@@ -110,7 +142,39 @@ def make_definition(**overrides: Any) -> WorkflowDefinition:
     return WorkflowDefinition.from_mapping(definition_body(**overrides))
 
 
-class RecordingExecutor:
+class _Executor:
+    """Shared plumbing: timing, the ExecutionId, and the faithful request digest.
+
+    `duration_seconds` is how a test says an execution TOOK TIME. It is reported as the
+    execution's own `started_at`/`ended_at`, because the engine records what the seam
+    reports — a double that always reported zero would make the step bound unreachable
+    and every timing assertion vacuous.
+    """
+
+    def __init__(self, *, duration_seconds: int = 0) -> None:
+        self.calls: list[dict[str, Any]] = []
+        self._duration_seconds = duration_seconds
+        self._token = uuid.uuid4().hex[:8]
+
+    def _timing(self, now: str) -> tuple[str, str]:
+        return now, plus_seconds(now, self._duration_seconds)
+
+    def _record(self, step, attempt_id, run, now, timeout_seconds):  # noqa: ANN001
+        self.calls.append(
+            {
+                "step_id": step.step_id,
+                "attempt_id": attempt_id,
+                "now": now,
+                "run_id": run.run_id,
+                # The composed OUTER bound the engine handed down (§11.1). Recorded so a
+                # test can assert the bound actually reaches execution rather than
+                # staying a value the engine computed and dropped.
+                "timeout_seconds": timeout_seconds,
+            }
+        )
+
+
+class RecordingExecutor(_Executor):
     """The seam. It reports the request the DEFINITION declares."""
 
     def __init__(
@@ -119,80 +183,83 @@ class RecordingExecutor:
         outcomes: list[bool] | None = None,
         decision_id: str = "",
         artifact_bytes: int = 0,
+        artifact_refs: tuple[ArtifactRef, ...] = (),
+        duration_seconds: int = 0,
     ) -> None:
-        self.calls: list[dict[str, Any]] = []
+        super().__init__(duration_seconds=duration_seconds)
         self._outcomes = list(outcomes or [])
-        self._counter = 0
         self._decision_id = decision_id
         self._artifact_bytes = artifact_bytes
-        # Distinct per instance, because an ExecutionId is opaque and globally unique
-        # (§6.3) and the engine refuses one that another attempt already produced.
-        self._token = uuid.uuid4().hex[:8]
+        self._artifact_refs = artifact_refs
 
-    def execute(self, *, definition, step, attempt_id, run, now):  # noqa: ANN001, ANN201
-        self.calls.append(
-            {"step_id": step.step_id, "attempt_id": attempt_id, "now": now, "run_id": run.run_id}
-        )
-        self._counter += 1
+    def execute(self, *, definition, step, attempt_id, run, now, timeout_seconds):  # noqa: ANN001, ANN201
+        self._record(step, attempt_id, run, now, timeout_seconds)
+        started_at, ended_at = self._timing(now)
         succeeded = self._outcomes.pop(0) if self._outcomes else True
         return ExecutionOutcome(
-            execution_id=f"exec-{self._token}-{self._counter}",
+            execution_id=f"exec-{self._token}-{len(self.calls)}",
             succeeded=succeeded,
             request_digest=attempt_request_digest(definition, step, run),
+            started_at=started_at,
+            ended_at=ended_at,
             failure_class=None if succeeded else FailureClass.RETRYABLE_FAILURE,
             reason_code="" if succeeded else "TRANSIENT",
             decision_id=self._decision_id,
             artifact_bytes=self._artifact_bytes,
+            artifact_refs=self._artifact_refs,
         )
 
 
-class WideningExecutor:
+class WideningExecutor(_Executor):
     """An executor that reports a request the definition did NOT declare."""
 
-    def __init__(self, *, widen_on_attempt: int = 1) -> None:
-        self.calls: list[str] = []
+    def __init__(self, *, widen_on_attempt: int = 1, duration_seconds: int = 0) -> None:
+        super().__init__(duration_seconds=duration_seconds)
         self._widen_on = widen_on_attempt
 
-    def execute(self, *, definition, step, attempt_id, run, now):  # noqa: ANN001, ANN201
-        self.calls.append(step.step_id)
+    def execute(self, *, definition, step, attempt_id, run, now, timeout_seconds):  # noqa: ANN001, ANN201
+        self._record(step, attempt_id, run, now, timeout_seconds)
+        started_at, ended_at = self._timing(now)
         faithful = attempt_request_digest(definition, step, run)
         return ExecutionOutcome(
-            execution_id=f"exec-widen-{len(self.calls)}",
+            execution_id=f"exec-widen-{self._token}-{len(self.calls)}",
             succeeded=True,
             request_digest="0" * 64 if len(self.calls) >= self._widen_on else faithful,
+            started_at=started_at,
+            ended_at=ended_at,
         )
 
 
-class ReusingExecutor:
+class ReusingExecutor(_Executor):
     """An executor that hands back one ExecutionId for every attempt."""
 
-    def __init__(self) -> None:
-        self.calls: list[str] = []
-
-    def execute(self, *, definition, step, attempt_id, run, now):  # noqa: ANN001, ANN201
-        self.calls.append(step.step_id)
+    def execute(self, *, definition, step, attempt_id, run, now, timeout_seconds):  # noqa: ANN001, ANN201
+        self._record(step, attempt_id, run, now, timeout_seconds)
+        started_at, ended_at = self._timing(now)
         return ExecutionOutcome(
             execution_id="exec-shared",
             succeeded=True,
             request_digest=attempt_request_digest(definition, step, run),
+            started_at=started_at,
+            ended_at=ended_at,
         )
 
 
-class FailOnceExecutor:
+class FailOnceExecutor(_Executor):
     """Fails the first attempt, succeeds afterwards. For the retry path."""
 
-    def __init__(self, failure: FailureClass | None = FailureClass.RETRYABLE_FAILURE) -> None:
-        self.calls: list[str] = []
+    def __init__(
+        self,
+        failure: FailureClass | None = FailureClass.RETRYABLE_FAILURE,
+        *,
+        duration_seconds: int = 0,
+    ) -> None:
+        super().__init__(duration_seconds=duration_seconds)
         self.failure = failure
-        # Unique per INSTANCE, for the same reason RecordingExecutor's is: two instances
-        # in one test are two executions, and an ExecutionId that repeats across them is
-        # not a double being convenient — it is the §6.3 reuse guard firing on a collision
-        # the test never meant to create, which makes an unrelated assertion fail for a
-        # reason it does not name.
-        self._token = uuid.uuid4().hex[:8]
 
-    def execute(self, *, definition, step, attempt_id, run, now):  # noqa: ANN001, ANN201
-        self.calls.append(step.step_id)
+    def execute(self, *, definition, step, attempt_id, run, now, timeout_seconds):  # noqa: ANN001, ANN201
+        self._record(step, attempt_id, run, now, timeout_seconds)
+        started_at, ended_at = self._timing(now)
         request = attempt_request_digest(definition, step, run)
         execution_id = f"exec-{self._token}-{len(self.calls)}"
         if len(self.calls) == 1:
@@ -200,28 +267,41 @@ class FailOnceExecutor:
                 execution_id=execution_id,
                 succeeded=False,
                 request_digest=request,
+                started_at=started_at,
+                ended_at=ended_at,
                 failure_class=self.failure,
                 reason_code="TRANSIENT",
             )
         return ExecutionOutcome(
-            execution_id=execution_id, succeeded=True, request_digest=request
+            execution_id=execution_id,
+            succeeded=True,
+            request_digest=request,
+            started_at=started_at,
+            ended_at=ended_at,
         )
 
 
-class AlwaysFailsExecutor:
+class AlwaysFailsExecutor(_Executor):
     """Every attempt fails with the same class. For the bound paths."""
 
-    def __init__(self, failure: FailureClass | None = FailureClass.RETRYABLE_FAILURE) -> None:
-        self.calls: list[str] = []
+    def __init__(
+        self,
+        failure: FailureClass | None = FailureClass.RETRYABLE_FAILURE,
+        *,
+        duration_seconds: int = 0,
+    ) -> None:
+        super().__init__(duration_seconds=duration_seconds)
         self.failure = failure
-        self._token = uuid.uuid4().hex[:8]
 
-    def execute(self, *, definition, step, attempt_id, run, now):  # noqa: ANN001, ANN201
-        self.calls.append(step.step_id)
+    def execute(self, *, definition, step, attempt_id, run, now, timeout_seconds):  # noqa: ANN001, ANN201
+        self._record(step, attempt_id, run, now, timeout_seconds)
+        started_at, ended_at = self._timing(now)
         return ExecutionOutcome(
             execution_id=f"exec-{self._token}-{len(self.calls)}",
             succeeded=False,
             request_digest=attempt_request_digest(definition, step, run),
+            started_at=started_at,
+            ended_at=ended_at,
             failure_class=self.failure,
             reason_code="AGAIN",
         )

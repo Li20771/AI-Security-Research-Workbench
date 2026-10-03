@@ -27,9 +27,9 @@ another is how two implementations produce two answers for one bound.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-__all__ = ["INSTANT_FORMAT", "is_instant", "parse_instant"]
+__all__ = ["INSTANT_FORMAT", "is_instant", "parse_instant", "plus_seconds"]
 
 #: §8.3's frozen format. The only shape any AI-13 instant may take.
 INSTANT_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
@@ -54,3 +54,14 @@ def is_instant(text: object) -> bool:
 def parse_instant(text: str) -> datetime:
     """§8.3's instant, parsed as UTC. Callers validate with `is_instant` first."""
     return datetime.strptime(text, INSTANT_FORMAT).replace(tzinfo=timezone.utc)
+
+
+def plus_seconds(instant: str, seconds: int) -> str:
+    """`instant` advanced by `seconds`, as an instant of the same shape.
+
+    This is the one place a DECLARED runtime becomes an ABSOLUTE deadline, and it is
+    called at run creation and nowhere else. §8.3: the absolute form is what survives a
+    resume, so it is computed once and then read — never re-derived from the duration,
+    which is what would hand a resumed run a fresh budget.
+    """
+    return (parse_instant(instant) + timedelta(seconds=seconds)).strftime(INSTANT_FORMAT)

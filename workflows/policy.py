@@ -36,12 +36,11 @@ prove what happens at a boundary instant rather than waiting for one.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import timedelta
 from typing import Any, Mapping
 
 from workflows.canonical import digest_of
 from workflows.definition import WorkflowDefinition, WorkflowStep
-from workflows.instants import INSTANT_FORMAT, parse_instant
+from workflows.instants import parse_instant, plus_seconds
 from workflows.run import RunRecord
 from workflows.vocabulary import NEVER_RETRIED, FailureClass, WorkflowState
 
@@ -52,6 +51,7 @@ __all__ = [
     "check_may_retry",
     "effective_attempt_bound",
     "effective_deadline",
+    "effective_timeout_seconds",
     "parse_instant",
     "seconds_remaining",
     "step_deadline_from",
@@ -127,9 +127,7 @@ def step_deadline_from(definition: WorkflowDefinition, now: str) -> str:
     escape §8.3 forbids. A step bounded at one hour would get a fresh hour every time the
     run was picked back up.
     """
-    return (parse_instant(now) + timedelta(seconds=definition.limits.step_seconds)).strftime(
-        INSTANT_FORMAT
-    )
+    return plus_seconds(now, definition.limits.step_seconds)
 
 
 def effective_deadline(
@@ -153,6 +151,44 @@ def effective_deadline(
         candidates.append(run.retry_deadline)
     candidates.append(run.workflow_deadline)
     return _earliest(candidates)
+
+
+def effective_timeout_seconds(
+    definition: WorkflowDefinition,
+    run: RunRecord,
+    step: WorkflowStep,
+    now: str,
+) -> int:
+    """§11.1. The timeout an attempt at this step must be GIVEN, composed.
+
+    ```text
+    effective timeout
+        = min( the step's declared per-invocation timeout,   <- the INNER bound
+               the step deadline's remaining time,           \
+               the workflow deadline's remaining time,        |  AI-13's OUTER bounds
+               the retry deadline's remaining time )         /
+    ```
+
+    The inner timeout is the BASE of the minimum and never one of its casualties.
+    §11.1 makes AI-13's deadline an OUTER bound that "COMPOSES WITH, and never replaces,
+    the per-invocation `timeout_seconds` AI-06 already requires ... it does not remove
+    the inner one, and it does not make an inner one optional." So this can only ever
+    narrow what the step declared, and the engine hands the result to the execution
+    rather than substituting a bound of its own.
+
+    A result of zero or less means no time remains. `check_attempt_may_begin` refuses
+    such an attempt before it begins, so a caller that has already asked that question
+    receives at least one second here.
+    """
+    step_deadline = run.step_deadline or step_deadline_from(definition, now)
+    candidates = [
+        step.timeout_seconds,
+        seconds_remaining(step_deadline, now),
+        seconds_remaining(run.workflow_deadline, now),
+    ]
+    if run.retry_deadline is not None:
+        candidates.append(seconds_remaining(run.retry_deadline, now))
+    return min(candidates)
 
 
 def check_attempt_may_begin(

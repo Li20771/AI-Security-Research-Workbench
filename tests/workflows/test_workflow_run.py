@@ -21,7 +21,9 @@ from workflows.errors import InvalidDefinition
 from workflows.vocabulary import NEVER_RETRIED, FailureClass, StepState, WorkflowState
 
 from tests.workflows.conftest import (
-    FAR,
+    a_step,
+    FAR_SECONDS,
+    STEP_TIMEOUT_SECONDS,
     T0,
     T1,
     T2,
@@ -30,6 +32,7 @@ from tests.workflows.conftest import (
     ReusingExecutor,
     RecordingExecutor,
     WideningExecutor,
+    a_retry_policy,
     definition_body,
     limits,
     make_definition,
@@ -86,12 +89,7 @@ def test_T13_every_attempt_produces_its_own_execution() -> None:
     """§6.3. A retry lineage is a sequence of AttemptIds at DISTINCT ExecutionIds."""
     definition = make_definition(
         limits=limits(attempts_per_step=3),
-        retry_policy={
-            "policy_id": "p",
-            "applies_to": ["RETRYABLE_FAILURE"],
-            "max_attempts": 3,
-            "deadline": FAR,
-        },
+        retry_policy=a_retry_policy(max_attempts=3),
     )
     executor = FailOnceExecutor()
     run = _run(definition)
@@ -108,8 +106,8 @@ def test_T13_every_attempt_produces_its_own_execution() -> None:
 def test_T13b_a_reused_execution_id_is_refused() -> None:
     """§6.3. Refused on what the executor REPORTED, not on a promise about it."""
     definition = make_definition(
-        steps=[{"step_id": "s1", "kind": "AGENT_EXECUTION"},
-               {"step_id": "s2", "kind": "AGENT_EXECUTION"}]
+        steps=[a_step("s1"),
+               a_step("s2")]
     )
     executor = ReusingExecutor()
     run = _run(definition)
@@ -185,7 +183,7 @@ def test_T14_an_unclassified_failure_stops_and_is_never_retried() -> None:
             "policy_id": "p",
             "applies_to": [str(c) for c in FailureClass],
             "max_attempts": 5,
-            "deadline": FAR,
+            "retry_seconds": FAR_SECONDS,
         }
     )
     executor = AlwaysFailsExecutor(failure=None)
@@ -212,7 +210,7 @@ def test_T15_a_never_retried_class_is_not_retried(failure: FailureClass) -> None
             "policy_id": "p",
             "applies_to": [str(c) for c in FailureClass],
             "max_attempts": 5,
-            "deadline": FAR,
+            "retry_seconds": FAR_SECONDS,
         }
     )
     executor = AlwaysFailsExecutor(failure=failure)
@@ -238,7 +236,7 @@ def test_T15c_a_retryable_class_a_policy_does_not_cover_is_not_retried() -> None
             "policy_id": "p",
             "applies_to": ["DEPENDENCY_FAILED"],
             "max_attempts": 3,
-            "deadline": FAR,
+            "retry_seconds": FAR_SECONDS,
         }
     )
     executor = AlwaysFailsExecutor(failure=FailureClass.RETRYABLE_FAILURE)
@@ -254,7 +252,7 @@ def test_T15d_a_class_a_policy_covers_IS_retried() -> None:
             "policy_id": "p",
             "applies_to": ["RETRYABLE_FAILURE"],
             "max_attempts": 3,
-            "deadline": FAR,
+            "retry_seconds": FAR_SECONDS,
         }
     )
     executor = FailOnceExecutor()
@@ -295,12 +293,7 @@ def test_T12_the_attempt_bound_stops_a_run_whose_policy_would_retry() -> None:
     """§10.3.1. The narrower bound governs — here, attempts_per_step."""
     definition = make_definition(
         limits=limits(attempts_per_step=2, attempts_total=99),
-        retry_policy={
-            "policy_id": "p",
-            "applies_to": ["RETRYABLE_FAILURE"],
-            "max_attempts": 99,
-            "deadline": FAR,
-        },
+        retry_policy=a_retry_policy(max_attempts=99),
     )
     executor = AlwaysFailsExecutor()
     run = _run(definition)
@@ -316,12 +309,7 @@ def test_T12b_the_total_attempt_bound_governs_across_steps() -> None:
     """§10.3.1: total attempts remaining is one of the bounds that can govern."""
     definition = make_definition(
         limits=limits(attempts_per_step=5, attempts_total=1),
-        retry_policy={
-            "policy_id": "p",
-            "applies_to": ["RETRYABLE_FAILURE"],
-            "max_attempts": 5,
-            "deadline": FAR,
-        },
+        retry_policy=a_retry_policy(max_attempts=5),
     )
     executor = RecordingExecutor()
     run = _run(definition)
@@ -336,7 +324,7 @@ def test_T12b_the_total_attempt_bound_governs_across_steps() -> None:
 def test_T25_an_attempt_at_or_after_the_workflow_deadline_does_not_begin() -> None:
     """§8.3, §10.3.1. Evaluated BEFORE the attempt, not discovered by overrunning it."""
     definition = make_definition(
-        limits=limits(workflow_deadline="2026-10-03T10:00:30Z", step_seconds=60)
+        limits=limits(workflow_seconds=31, step_seconds=60)
     )
     executor = RecordingExecutor()
     run = _run(definition)
@@ -349,7 +337,7 @@ def test_T25_an_attempt_at_or_after_the_workflow_deadline_does_not_begin() -> No
 def test_T25b_the_boundary_instant_itself_does_not_begin() -> None:
     """§8.3: a bound is reached when the current time is >= the deadline."""
     definition = make_definition(
-        limits=limits(workflow_deadline="2026-10-03T10:00:30Z", step_seconds=60)
+        limits=limits(workflow_seconds=30, step_seconds=60)
     )
     executor = RecordingExecutor()
     run = advance(
@@ -363,7 +351,7 @@ def test_T25b_the_boundary_instant_itself_does_not_begin() -> None:
 def test_T25c_an_attempt_inside_the_deadline_does_begin() -> None:
     """The control for the two above."""
     definition = make_definition(
-        limits=limits(workflow_deadline="2026-10-03T10:00:30Z", step_seconds=60)
+        limits=limits(workflow_seconds=30, step_seconds=60)
     )
     executor = RecordingExecutor()
     run = advance(
@@ -380,21 +368,84 @@ def test_T25c_an_attempt_inside_the_deadline_does_begin() -> None:
 
 
 def test_cancellation_is_terminal_and_is_not_retried() -> None:
-    definition = make_definition(
-        retry_policy={
-            "policy_id": "p",
-            "applies_to": ["RETRYABLE_FAILURE"],
-            "max_attempts": 3,
-            "deadline": FAR,
-        }
+    definition = make_definition(retry_policy=a_retry_policy(max_attempts=3))
+    run = cancel(
+        run=_run(definition), cancelled_by="operator-li", reason="SUPERSEDED", now=T1
     )
-    run = cancel(run=_run(definition), now=T1)
     assert run.state is WorkflowState.CANCELLED
 
     executor = RecordingExecutor()
     after = advance(definition=definition, run=run, executor=executor, now=T2)
     assert after == run
     assert len(executor.calls) == 0
+
+
+def test_cancellation_records_who_and_why_as_references() -> None:
+    """§11.2. A cancelled run can answer WHO cancelled it and WHY."""
+    definition = make_definition()
+    run = cancel(
+        run=_run(definition),
+        cancelled_by="operator-li",
+        reason="OPERATOR_REQUEST",
+        now=T1,
+    )
+    assert run.state is WorkflowState.CANCELLED
+    assert run.cancelled_by == "operator-li"
+    assert run.cancelled_reason == "OPERATOR_REQUEST"
+
+
+def test_cancellation_provenance_survives_serialization() -> None:
+    """§11.2, §15.2. Both are on the RECORD, so both survive a reload — a provenance
+    that only existed in the object that cancelled would be a provenance a reader of the
+    ledger could not find."""
+    from workflows.run import RunRecord
+
+    definition = make_definition()
+    run = cancel(
+        run=_run(definition), cancelled_by="operator-li", reason="SUPERSEDED", now=T1
+    )
+
+    restored = RunRecord.from_mapping(run.to_mapping())
+    assert restored.cancelled_by == "operator-li"
+    assert restored.cancelled_reason == "SUPERSEDED"
+    assert restored.verify_digest() is None
+
+
+def test_a_cancelled_run_cannot_advance_or_retry() -> None:
+    """§11.2, §9.2. Cancellation is a decision, not an accident — and CANCELLED is on
+    the never-retried list, so not even a policy covering it may spend another attempt."""
+    definition = make_definition(retry_policy=a_retry_policy(max_attempts=5))
+    executor = AlwaysFailsExecutor()
+    run = advance(definition=definition, run=_run(definition), executor=executor, now=T1)
+    assert run.state is WorkflowState.RUNNING
+
+    run = cancel(
+        run=run, cancelled_by="operator-li", reason="OPERATOR_REQUEST", now=T1
+    )
+    after = advance(definition=definition, run=run, executor=executor, now=T2)
+
+    assert after.state is WorkflowState.CANCELLED
+    assert len(executor.calls) == 1, "a cancelled run spent another attempt"
+
+
+@pytest.mark.parametrize(
+    "bad",
+    ["has space", "line\nbreak", "a" * 201, "", "semi;colon"],
+)
+def test_cancellation_refuses_free_form_provenance(bad: str) -> None:
+    """§11.2 asks for a declared REFERENCE, and the difference between a reference and
+    a sentence is the whole of the rule. A field that could hold a sentence is a field
+    that could hold a secret, a transcript, or a judgement AI-13 is not entitled to make.
+    """
+    from workflows.errors import InvalidRecord
+
+    definition = make_definition()
+    with pytest.raises(InvalidRecord):
+        cancel(
+            run=_run(definition), cancelled_by=bad, reason="OPERATOR_REQUEST", now=T1
+        )
+    with pytest.raises(InvalidRecord):
+        cancel(run=_run(definition), cancelled_by="operator-li", reason=bad, now=T1)
 
 
 # ---------------------------------------------------------------------------
@@ -437,12 +488,7 @@ def test_the_run_record_round_trips_through_its_canonical_form() -> None:
 
     definition = make_definition(
         limits=limits(step_seconds=60, max_checkpoints=2),
-        retry_policy={
-            "policy_id": "p",
-            "applies_to": ["RETRYABLE_FAILURE"],
-            "max_attempts": 2,
-            "deadline": FAR,
-        },
+        retry_policy=a_retry_policy(max_attempts=2),
     )
     run = _run(definition)
     run = advance(

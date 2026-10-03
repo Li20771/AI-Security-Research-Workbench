@@ -36,6 +36,7 @@ rule forbids.
 
 from __future__ import annotations
 
+import re
 import uuid
 from dataclasses import dataclass, replace
 from typing import Any, Mapping, Sequence
@@ -86,6 +87,35 @@ def _instant(value: object, where: str) -> str:
             "trailing Z (§8.3)"
         )
     return text
+
+
+#: §11.2. The alphabet a DECLARED reference may use, and its bound.
+_REFERENCE_RE = re.compile(r"^[A-Za-z0-9._:-]+$")
+MAX_REFERENCE_CHARS = 200
+
+
+def _reference(value: object, where: str) -> str:
+    """A DECLARED reference: an identifier, bounded, and never free-form text.
+
+    §11.2 records WHO cancelled and WHY "as a declared reference", and the difference
+    between a reference and a sentence is the whole of the rule. A field that could hold
+    a sentence is a field that could hold a secret, a transcript or a judgement, and the
+    run record is the artifact a reader trusts most — so the shape is enforced here
+    rather than promised in a comment.
+
+    This refuses to adjudicate nothing: it checks the FORM of what was declared, not
+    whether the reason was good, which §11.2 leaves alone.
+    """
+    if not isinstance(value, str) or not value:
+        raise InvalidRecord(f"{where} must be a non-empty string")
+    if len(value) > MAX_REFERENCE_CHARS:
+        raise InvalidRecord(f"{where} must be at most {MAX_REFERENCE_CHARS} characters")
+    if not _REFERENCE_RE.match(value):
+        raise InvalidRecord(
+            f"{where} may contain only A-Z a-z 0-9 . _ : - and no whitespace; §11.2 "
+            "records a declared REFERENCE, not free-form text"
+        )
+    return value
 
 
 def _counter(value: object, where: str) -> int:
@@ -233,6 +263,27 @@ class RunRecord:
     #: an unclassified failure. Naming a bound there would attribute the stop to a limit
     #: the run never touched.
     reached_bound: str | None = None
+    #: §11.2. WHO cancelled and WHY, as DECLARED REFERENCES.
+    #:
+    #: "Cancellation is not a failure of the work, and a run cancelled by a human MUST
+    #: NOT be recorded as one. AI-13 records WHO cancelled and WHY as a declared
+    #: reference, and does not adjudicate whether the reason was good." Both are
+    #: validated as bounded identifiers rather than free text: a reference is what the
+    #: contract asks for, and a field that could hold a sentence is a field that could
+    #: hold a transcript, a secret or a judgement AI-13 is not entitled to make.
+    #:
+    #: They are `None` on every run that was not cancelled, which is most of them.
+    cancelled_by: str | None = None
+    cancelled_reason: str | None = None
+
+    def __post_init__(self) -> None:
+        # §11.2. Validated at CONSTRUCTION rather than only at the parse boundary, so
+        # no path into this record — including `advance()` from a caller — can put free
+        # text where the contract asks for a declared reference.
+        for name in ("cancelled_by", "cancelled_reason"):
+            value = getattr(self, name)
+            if value is not None:
+                _reference(value, f"run.{name}")
 
     @property
     def is_terminal(self) -> bool:
@@ -276,6 +327,8 @@ class RunRecord:
             "consumed_checkpoint_bytes": self.consumed_checkpoint_bytes,
             "consumed_artifact_bytes": self.consumed_artifact_bytes,
             "reached_bound": self.reached_bound,
+            "cancelled_by": self.cancelled_by,
+            "cancelled_reason": self.cancelled_reason,
         }
 
     @property
@@ -421,6 +474,10 @@ class RunRecord:
                 if data.get("reached_bound")
                 else None
             ),
+            # Both are validated by `__post_init__`, so a parsed record and a
+            # constructed one are held to the same rule.
+            cancelled_by=data.get("cancelled_by") or None,
+            cancelled_reason=data.get("cancelled_reason") or None,
         )
         if verify:
             record.verify_digest()

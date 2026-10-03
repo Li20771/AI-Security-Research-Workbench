@@ -25,7 +25,9 @@ from workflows.resume import INHERITED_FIELDS
 from workflows.vocabulary import WorkflowState
 
 from tests.workflows.conftest import (
-    FAR,
+    a_retry_policy,
+    a_step,
+    FAR_SECONDS,
     T0,
     T1,
     T2,
@@ -86,7 +88,7 @@ def _advanced_once(definition: WorkflowDefinition, *, now=T1, **kwargs):  # noqa
 def test_T23_the_workflow_deadline_is_not_recomputed_on_resume() -> None:
     """§8.3. It is computed ONCE, at run creation, and persisted as an ABSOLUTE instant."""
     definition = make_definition(
-        limits=limits(workflow_deadline="2026-10-03T10:30:00Z", step_seconds=600)
+        limits=limits(workflow_seconds=1800, step_seconds=600)
     )
     run = _advanced_once(definition)
     checkpoint = checkpoint_for(definition=definition, run=run, now=T1)
@@ -109,7 +111,7 @@ def test_T23_the_workflow_deadline_is_not_recomputed_on_resume() -> None:
 def test_T23b_a_run_whose_deadline_has_passed_does_not_resume() -> None:
     """§8.3: "A run whose stored deadline has passed does not resume — it is TIMED_OUT." """
     definition = make_definition(
-        limits=limits(workflow_deadline="2026-10-03T10:30:00Z", step_seconds=600)
+        limits=limits(workflow_seconds=1800, step_seconds=600)
     )
     run = _advanced_once(definition)
     checkpoint = checkpoint_for(definition=definition, run=run, now=T1)
@@ -127,12 +129,7 @@ def test_T23c_the_attempt_counter_is_not_rebuilt_from_a_checkpoint() -> None:
     """§8.3. It is a PERSISTED COUNTER on the run record."""
     definition = make_definition(
         limits=limits(attempts_per_step=3, attempts_total=6),
-        retry_policy={
-            "policy_id": "p",
-            "applies_to": ["RETRYABLE_FAILURE"],
-            "max_attempts": 3,
-            "deadline": FAR,
-        },
+        retry_policy=a_retry_policy(max_attempts=3),
     )
     run = _started(definition)
     run = advance(definition=definition, run=run, executor=AlwaysFailsExecutor(), now=T1)
@@ -167,12 +164,7 @@ def test_T23d_discarding_the_checkpoint_does_not_restore_budget() -> None:
     """
     definition = make_definition(
         limits=limits(attempts_per_step=2, attempts_total=6),
-        retry_policy={
-            "policy_id": "p",
-            "applies_to": ["RETRYABLE_FAILURE"],
-            "max_attempts": 2,
-            "deadline": FAR,
-        },
+        retry_policy=a_retry_policy(max_attempts=2),
     )
     run = _started(definition)
     run = advance(definition=definition, run=run, executor=AlwaysFailsExecutor(), now=T1)
@@ -192,6 +184,68 @@ def test_T23d_discarding_the_checkpoint_does_not_restore_budget() -> None:
         "the run was still RUNNING after spending its second attempt, so the bound was "
         "read from somewhere other than the run record"
     )
+
+
+# ---------------------------------------------------------------------------
+# §8.3, §12 — the deadline is COMPUTED at creation and only ever READ
+# ---------------------------------------------------------------------------
+
+
+def test_the_workflow_deadline_is_computed_at_creation_from_the_declared_runtime() -> None:
+    """§8.3. The definition declares a RUNTIME; the run record holds the ABSOLUTE.
+
+    This is the split §12's "maximum workflow runtime" and §8.3's "persisted as an
+    ABSOLUTE instant" describe together, and it is why no definition carries a date: a
+    tracked artifact reviewed in Git cannot know when a run will begin, and a definition
+    amended after a run started must not be able to move that run's deadline.
+    """
+    definition = make_definition(limits=limits(workflow_seconds=1800, step_seconds=600))
+    run = _started(definition)
+
+    assert run.created_at == T0
+    assert run.workflow_deadline == "2026-10-03T10:30:00Z", "T0 plus the declared runtime"
+
+
+def test_the_retry_bound_is_computed_at_creation_and_covers_the_whole_run() -> None:
+    """§8.3. "The retry time bound is ABSOLUTE for the run, shared by every retry of
+    every step, not granted fresh per attempt."
+    """
+    definition = make_definition(
+        limits=limits(workflow_seconds=1800, step_seconds=600),
+        retry_policy=a_retry_policy(retry_seconds=600),
+    )
+    run = _started(definition)
+
+    assert run.retry_deadline == "2026-10-03T10:10:00Z", "T0 plus the declared retry runtime"
+
+
+def test_resume_reads_the_persisted_deadlines_and_creates_no_new_ones() -> None:
+    """§8.3. "resume reads the stored deadline... It never writes a new deadline."
+
+    Both absolutes are facts about the RUN, fixed when it began. A resume that wrote new
+    ones would hand the run a fresh budget every time it was picked back up — which is
+    the escape the clause exists to close, and the reason the deadline is a persisted
+    instant rather than a duration re-applied on each use.
+    """
+    definition = make_definition(
+        limits=limits(workflow_seconds=1800, step_seconds=600),
+        retry_policy=a_retry_policy(retry_seconds=900),
+    )
+    run = _advanced_once(definition)
+    assert run.retry_deadline == "2026-10-03T10:15:00Z"
+    checkpoint = checkpoint_for(definition=definition, run=run, now=T1)
+
+    resumed = resume_run(
+        definition=definition,
+        run=run,
+        checkpoint=checkpoint,
+        workspace_identity="ws-1",
+        executor=RecordingExecutor(),
+        now=T2,
+    )
+
+    assert resumed.workflow_deadline == run.workflow_deadline == "2026-10-03T10:30:00Z"
+    assert resumed.retry_deadline == run.retry_deadline == "2026-10-03T10:15:00Z"
 
 
 # ---------------------------------------------------------------------------
@@ -266,7 +320,7 @@ def test_a_changed_definition_digest_is_DEFINITION_CHANGED_even_at_the_same_revi
     run = _advanced_once(definition)
     checkpoint = checkpoint_for(definition=definition, run=run, now=T1)
 
-    changed = make_definition(steps=[{"step_id": "s1", "kind": "AGENT_EXECUTION"}])
+    changed = make_definition(steps=[a_step("s1")])
     assert changed.revision == definition.revision
     assert changed.definition_digest != definition.definition_digest
 

@@ -13,7 +13,7 @@ from workflows.checkpoint import CHECKPOINT_DIGEST_FIELD, Checkpoint
 from workflows.definition import DIGEST_FIELD, WorkflowDefinition
 from workflows.errors import InvalidCheckpoint, InvalidDefinition, InvalidRecord
 
-from tests.workflows.conftest import T0, definition_body, limits
+from tests.workflows.conftest import T0, a_step, definition_body, limits
 
 pytestmark = pytest.mark.layer1
 
@@ -105,7 +105,7 @@ def test_T22_an_approval_step_is_refused_by_name() -> None:
     """§18. AI-13-B's whole obligation toward the approval point, in one assertion."""
     with pytest.raises(InvalidDefinition) as raised:
         WorkflowDefinition.from_mapping(
-            definition_body(steps=[{"step_id": "approve-me", "kind": "APPROVAL"}])
+            definition_body(steps=[a_step("approve-me", kind="APPROVAL")])
         )
     assert raised.value.reason_code == "APPROVAL_STEP_NOT_IMPLEMENTED"
 
@@ -123,8 +123,8 @@ def test_T22b_the_refusal_names_which_step_it_refused() -> None:
         WorkflowDefinition.from_mapping(
             definition_body(
                 steps=[
-                    {"step_id": "fine", "kind": "AGENT_EXECUTION"},
-                    {"step_id": "needs-a-human", "kind": "APPROVAL"},
+                    a_step("fine"),
+                    a_step("needs-a-human", kind="APPROVAL"),
                 ]
             )
         )
@@ -137,7 +137,7 @@ def test_a_step_naming_no_known_seam_is_refused() -> None:
     """§6.1. A step that names nothing AI-13 may call is not a step."""
     with pytest.raises(InvalidDefinition):
         WorkflowDefinition.from_mapping(
-            definition_body(steps=[{"step_id": "s", "kind": "SOMETHING_ELSE"}])
+            definition_body(steps=[a_step("s", kind="SOMETHING_ELSE")])
         )
 
 
@@ -152,8 +152,8 @@ def test_a_duplicate_step_id_is_refused() -> None:
         WorkflowDefinition.from_mapping(
             definition_body(
                 steps=[
-                    {"step_id": "same", "kind": "AGENT_EXECUTION"},
-                    {"step_id": "same", "kind": "AGENT_EXECUTION"},
+                    a_step("same"),
+                    a_step("same"),
                 ]
             )
         )
@@ -191,7 +191,7 @@ def test_T8_a_changed_body_under_the_same_revision_is_caught_by_the_digest() -> 
     """§5. Two definitions can share a revision and differ; only the digest catches it."""
     first = WorkflowDefinition.from_mapping(definition_body())
     second = WorkflowDefinition.from_mapping(
-        definition_body(steps=[{"step_id": "s1", "kind": "AGENT_EXECUTION"}])
+        definition_body(steps=[a_step("s1")])
     )
 
     assert first.revision == second.revision, "the revision string is deliberately the same"

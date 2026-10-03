@@ -53,6 +53,7 @@ WORKFLOWS = REPO_ROOT / "workflows"
 CORE = "tests/workflows/test_workflow_core.py"
 RESUME = "tests/workflows/test_workflow_resume.py"
 RUN = "tests/workflows/test_workflow_run.py"
+LIMITS = "tests/workflows/test_workflow_limits.py"
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,7 +87,15 @@ MUTATIONS: tuple[Mutation, ...] = (
         new="    remaining_workflow = seconds_remaining(\n"
             "        run.workflow_deadline, run.created_at\n"
             "    )  # mutated: the budget is measured from creation, so it never runs out",
-        focused=(f"{RESUME}::test_T23_the_workflow_deadline_is_not_recomputed_on_resume",),
+        # BOTH halves, because the property has two mechanisms and the contract asks
+        # for both. `T23` catches a deadline that was recomputed; `T23b` catches one
+        # that was not consulted BEFORE the attempt, which the post-attempt overrun
+        # check would otherwise mask — an attempt that should never have begun would
+        # still end TIMED_OUT, and only the assertion that it did not RUN notices.
+        focused=(
+            f"{RESUME}::test_T23_the_workflow_deadline_is_not_recomputed_on_resume",
+            f"{RESUME}::test_T23b_a_run_whose_deadline_has_passed_does_not_resume",
+        ),
     ),
     Mutation(
         control="resumed retry budget",
@@ -153,6 +162,68 @@ MUTATIONS: tuple[Mutation, ...] = (
         old="    if remaining_workflow <= 0:",
         new="    if remaining_workflow <= 0 and False:  # mutated: a wider bound governs",
         focused=(f"{RUN}::test_T25_an_attempt_at_or_after_the_workflow_deadline_does_not_begin",),
+    ),
+    Mutation(
+        control="deadline computed at run creation",
+        guard="§8.3, §12 the definition declares a RUNTIME and the run record holds the "
+              "ABSOLUTE, computed once when the run is created",
+        path="workflows/engine.py",
+        old="        workflow_deadline=plus_seconds(created, definition.limits.workflow_seconds),",
+        new="        workflow_deadline=created,  # mutated: the declared runtime is dropped",
+        focused=(
+            f"{RESUME}::test_the_workflow_deadline_is_computed_at_creation_from_the_declared_runtime",
+        ),
+    ),
+    Mutation(
+        control="retry budget is run-wide, not refreshed",
+        guard="§8.3 the retry time bound is absolute for the run and shared by every "
+              "retry, so a resume does not grant a fresh one",
+        path="workflows/engine.py",
+        old="    return advance(definition=definition, run=run, executor=executor, now=moment)",
+        new="    # mutated: the retry budget is granted fresh on resume\n"
+            "    if definition.retry_policy is not None:\n"
+            "        run = run.advance(\n"
+            "            retry_deadline=plus_seconds(\n"
+            "                moment, definition.retry_policy.retry_seconds\n"
+            "            )\n"
+            "        )\n"
+            "    return advance(definition=definition, run=run, executor=executor, now=moment)",
+        focused=(
+            f"{RESUME}::test_resume_reads_the_persisted_deadlines_and_creates_no_new_ones",
+        ),
+    ),
+    Mutation(
+        control="effective timeout reaches the execution seam",
+        guard="§11.1 the composed outer bound is HANDED to the execution rather than "
+              "computed and dropped, and it composes with AI-06's inner timeout",
+        path="workflows/engine.py",
+        old="        timeout_seconds=timeout_seconds,",
+        new="        timeout_seconds=step.timeout_seconds,  # mutated: outer bounds dropped",
+        focused=(f"{LIMITS}::test_the_effective_timeout_is_handed_to_the_execution",),
+    ),
+    Mutation(
+        control="recorded timing is the execution's",
+        guard="§15.2 an attempt's started_at and ended_at are what the EXECUTION "
+              "reported, never the instant the engine dispatched it",
+        path="workflows/engine.py",
+        old="        # The EXECUTION's own timing, recorded rather than assumed (§15.2).\n"
+            "        started_at=outcome.started_at,\n"
+            "        ended_at=outcome.ended_at,",
+        new="        started_at=moment,  # mutated: the dispatch instant, twice\n"
+            "        ended_at=moment,",
+        focused=(
+            f"{LIMITS}::test_the_recorded_timing_is_the_executions_not_the_dispatch_instant",
+        ),
+    ),
+    Mutation(
+        control="cancellation provenance is persisted",
+        guard="§11.2 a cancelled run records WHO cancelled and WHY, as declared "
+              "references on the run record",
+        path="workflows/engine.py",
+        old="        cancelled_by=cancelled_by,\n        cancelled_reason=reason,",
+        new="        cancelled_by=None,  # mutated: who and why are dropped\n"
+            "        cancelled_reason=None,",
+        focused=(f"{RUN}::test_cancellation_records_who_and_why_as_references",),
     ),
 )
 

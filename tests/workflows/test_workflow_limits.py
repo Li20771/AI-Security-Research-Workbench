@@ -41,24 +41,25 @@ from workflows.engine import (
     resume_run,
     start_run,
 )
+from workflows.errors import InvalidDefinition
 from workflows.policy import check_attempt_may_begin
 from workflows.vocabulary import StepState, WorkflowState
 
 from tests.workflows.conftest import (
-    FAR,
+    FAR_SECONDS,
+    STEP_TIMEOUT_SECONDS,
     T0,
     T1,
     T2,
     AlwaysFailsExecutor,
     RecordingExecutor,
+    a_retry_policy,
+    definition_body,
     limits,
     make_definition,
 )
 
 pytestmark = pytest.mark.layer2
-
-#: Far enough out that only the bound under test can stop a run.
-NO_DEADLINE_PRESSURE = "2030-01-01T00:00:00Z"
 
 
 def _started(definition: WorkflowDefinition, **kwargs):  # noqa: ANN202
@@ -197,12 +198,7 @@ def test_T17e_a_reached_step_deadline_ends_the_run() -> None:
     """§11.1. The step's declared runtime is an absolute instant, and it governs."""
     definition = make_definition(
         limits=limits(step_seconds=30, attempts_per_step=5, attempts_total=10),
-        retry_policy={
-            "policy_id": "p",
-            "applies_to": ["RETRYABLE_FAILURE"],
-            "max_attempts": 5,
-            "deadline": NO_DEADLINE_PRESSURE,
-        },
+        retry_policy=a_retry_policy(max_attempts=5),
     )
     run = _started(definition)
     run = advance(definition=definition, run=run, executor=AlwaysFailsExecutor(), now=T0)
@@ -221,12 +217,7 @@ def test_T23e_the_step_deadline_is_anchored_once_and_survives_a_resume() -> None
     budget — so a step bounded at one minute could be resumed into an unbounded one."""
     definition = make_definition(
         limits=limits(step_seconds=60, attempts_per_step=5, attempts_total=10),
-        retry_policy={
-            "policy_id": "p",
-            "applies_to": ["RETRYABLE_FAILURE"],
-            "max_attempts": 5,
-            "deadline": NO_DEADLINE_PRESSURE,
-        },
+        retry_policy=a_retry_policy(max_attempts=5),
     )
     run = _started(definition)
     run = advance(definition=definition, run=run, executor=AlwaysFailsExecutor(), now=T1)
@@ -319,6 +310,161 @@ def test_an_attempt_that_rested_on_nothing_carries_no_decision() -> None:
         definition=definition, run=_started(definition), executor=RecordingExecutor(), now=T1
     )
     assert run.attempts_for("s1")[-1].decision_id is None
+
+
+# ---------------------------------------------------------------------------
+# The artifact byte counter, and the trust boundary it actually has
+# ---------------------------------------------------------------------------
+
+
+def test_artifact_bytes_are_REPORTED_by_the_execution_not_measured_by_ai13() -> None:
+    """§12's artifact bound, and the limit of what AI-13 can claim about it.
+
+    AI-13 holds no artifact store and reads no artifact, so `artifact_bytes` is a figure
+    the EXECUTION reports and AI-13 has nothing to check it against. This test pins that
+    fact rather than leaving it implied: an executor that reports zero bytes for
+    artifacts it did reference is believed, so the counter is a bound on what the
+    execution DECLARES, not an independent measurement of what it produced.
+
+    Stating it here is deliberate. A reader who assumed the number was verified would
+    overrate the bound, and the person who needs to know is whoever is deciding whether
+    to trust a workflow run's resource accounting — not whoever is attacking it.
+
+    Verifying it would need an artifact store or a reader AI-13 does not have and this
+    contract does not give it, so the honest move is to name the boundary rather than
+    to pretend the counter crosses it.
+    """
+    from workflows.checkpoint import ArtifactRef
+
+    declared = (ArtifactRef(reference="artifact://run/output", digest="a" * 64),)
+    definition = make_definition(limits=limits(max_artifact_bytes=1))
+    executor = RecordingExecutor(artifact_bytes=0, artifact_refs=declared)
+
+    run = advance(definition=definition, run=_started(definition), executor=executor, now=T0)
+
+    assert run.state is WorkflowState.RUNNING, (
+        "the run stopped for a reason this test does not describe"
+    )
+    assert run.consumed_artifact_bytes == 0, "what the execution declared is what is counted"
+    assert run.attempts_for("s1")[-1].artifact_refs == declared, (
+        "the references are recorded; only their SIZE is taken on the execution's word"
+    )
+
+
+def test_the_artifact_counter_is_a_number_and_never_content() -> None:
+    """§7.2, §15.2. What crosses the seam is a size and a reference — never the bytes.
+
+    This is the half of the rule AI-13 does enforce, and it is the half that matters for
+    every record AI-13 writes: whatever the execution reports, the ledger holds no
+    artifact content for a checkpoint or a reader to leak.
+    """
+    from workflows.checkpoint import ArtifactRef
+
+    declared = (ArtifactRef(reference="artifact://run/output", digest="b" * 64),)
+    definition = make_definition()
+    executor = RecordingExecutor(artifact_bytes=4096, artifact_refs=declared)
+
+    run = advance(definition=definition, run=_started(definition), executor=executor, now=T0)
+    carried = run.attempts_for("s1")[-1].artifact_refs[0]
+
+    assert set(carried.to_body()) == {"reference", "digest"}
+    assert run.consumed_artifact_bytes == 4096
+
+
+# ---------------------------------------------------------------------------
+# §11.1 — the outer bound reaches the EXECUTION, and composes with the inner one
+# ---------------------------------------------------------------------------
+
+
+def test_the_effective_timeout_is_handed_to_the_execution() -> None:
+    """§11.1. The composed outer bound REACHES the execution.
+
+    A bound the engine computes and then drops is a bound nobody is given, and a bound
+    nobody is given is a bound nobody honours. Here the step has five seconds of its
+    declared runtime left, the run has eight, and the step declared thirty — so five
+    governs and five is what the execution is told.
+    """
+    definition = make_definition(limits=limits(workflow_seconds=8, step_seconds=5))
+    executor = RecordingExecutor()
+    advance(definition=definition, run=_started(definition), executor=executor, now=T0)
+
+    assert executor.calls[0]["timeout_seconds"] == 5
+
+
+def test_the_outer_bound_never_widens_the_inner_timeout() -> None:
+    """§11.1. "It does not remove the inner one, and it does not make an inner one
+    optional."
+
+    With both outer bounds far away, the step's DECLARED per-invocation timeout is what
+    the execution is given. The composition can only ever narrow: an outer bound that is
+    wider must not become the value handed down, because that would replace AI-06's
+    inner timeout with a longer one.
+    """
+    definition = make_definition(
+        limits=limits(workflow_seconds=FAR_SECONDS, step_seconds=FAR_SECONDS)
+    )
+    executor = RecordingExecutor()
+    advance(definition=definition, run=_started(definition), executor=executor, now=T0)
+
+    assert executor.calls[0]["timeout_seconds"] == STEP_TIMEOUT_SECONDS
+
+
+def test_a_step_declaring_no_inner_timeout_is_refused() -> None:
+    """§11.1. The outer bound does not make the inner one optional, so a step that
+    declared only an outer one is not a step this contract admits."""
+    with pytest.raises(InvalidDefinition):
+        WorkflowDefinition.from_mapping(
+            definition_body(steps=[{"step_id": "s1", "kind": "AGENT_EXECUTION"}])
+        )
+
+
+def test_the_recorded_timing_is_the_executions_not_the_dispatch_instant() -> None:
+    """§15.2. An attempt that took forty-five seconds is recorded as taking forty-five.
+
+    The engine used to write the dispatch instant for BOTH ends, which recorded every
+    attempt as instantaneous — a ledger that could not show an attempt consuming its
+    bound, and that made "did this attempt exceed its deadline?" unanswerable by
+    construction.
+    """
+    definition = make_definition(
+        limits=limits(workflow_seconds=FAR_SECONDS, step_seconds=600)
+    )
+    executor = RecordingExecutor(duration_seconds=45)
+    run = advance(definition=definition, run=_started(definition), executor=executor, now=T0)
+
+    attempt = run.attempts_for("s1")[-1]
+    assert attempt.started_at == T0
+    assert attempt.ended_at == "2026-10-03T10:00:45Z"
+
+
+def test_an_attempt_that_overruns_its_effective_deadline_is_TIMED_OUT() -> None:
+    """§11.1. The bound governs AFTER the attempt as well as before it.
+
+    §11.1 makes exceeding a deadline TIMED_OUT rather than FAILED, "because 'did not
+    finish in time' and 'finished wrongly' are different facts and a reader acts on them
+    differently".
+    """
+    definition = make_definition(
+        limits=limits(workflow_seconds=FAR_SECONDS, step_seconds=30)
+    )
+    executor = RecordingExecutor(duration_seconds=30)
+    run = advance(definition=definition, run=_started(definition), executor=executor, now=T0)
+
+    assert run.state is WorkflowState.TIMED_OUT
+    assert run.reached_bound == "STEP_DEADLINE_REACHED"
+    assert len(run.attempts_for("s1")) == 1, "the attempt that overran was dropped"
+
+
+def test_an_attempt_that_stays_inside_its_bound_is_not_TIMED_OUT() -> None:
+    """The control. Without it the check above would pass on a run that always timed out."""
+    definition = make_definition(
+        limits=limits(workflow_seconds=FAR_SECONDS, step_seconds=30)
+    )
+    executor = RecordingExecutor(duration_seconds=29)
+    run = advance(definition=definition, run=_started(definition), executor=executor, now=T0)
+
+    assert run.state is WorkflowState.RUNNING
+    assert run.reached_bound is None
 
 
 # ---------------------------------------------------------------------------

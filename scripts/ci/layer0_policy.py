@@ -2612,8 +2612,18 @@ AI13_WORKFLOW_MODULES = (
 #: supplies, not through an import. There is therefore no permitted foreign module
 #: for a narrower rule to permit, and the absence is a property of the design
 #: rather than a coincidence.
+#:
+#: NOT every root here rests on the same thing, and the difference is worth
+#: keeping straight. The provider, tool, Evidence, Router/policy, review and
+#: benchmark roots are the AI-13 contract's own ownership rules (§4, §7.3, §10.4,
+#: §13.6, §16). `agents` is NOT: AI-13 §6.3 says an attempt IS an AI-08 execution,
+#: and nothing in the contract forbids the import. It is refused here as this
+#: repository's own defensive boundary -- the seam is a Protocol today, so the
+#: rule costs nothing now and closes an indirect path to the tool and evidence
+#: layers if one is ever opened. Widening it is a change to THIS file, not an
+#: amendment; narrowing the contract-backed roots would be an amendment (§20).
 AI13_FORBIDDEN_IMPORT_ROOTS = (
-    "agents",        # AI-08 -- an attempt IS an execution, composed not imported
+    "agents",        # repository boundary, not a contract rule -- see above
     "benchmarks",    # AI-11 -- measurement, untouched
     "evidence",      # AI-05 -- AI-13 writes no record
     "integrations",  # AI-09 -- the provider composition layer
@@ -2734,8 +2744,9 @@ def check_ai13_workflows(root: "Path | None" = None) -> list[str]:
             "review": "a workflow run is not a review case and resuming one is not a "
                       "review transition (§13.6, AI-10 §5.3)",
             "benchmarks": "AI-11 measurement is untouched (§4, §16)",
-            "agents": "an attempt IS an AI-08 execution, composed through the "
-                      "StepExecutor seam rather than imported (§6.3, §17)",
+            "agents": "this repository composes the AI-08 execution through the "
+                      "StepExecutor Protocol rather than an import; the seam is a "
+                      "structural boundary, not a contract requirement (§6.3)",
         }
         roots = {name.split(".")[0] for name in imported}
         for banned in AI13_FORBIDDEN_IMPORT_ROOTS:
