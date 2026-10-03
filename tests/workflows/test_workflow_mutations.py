@@ -409,6 +409,64 @@ MUTATIONS: tuple[Mutation, ...] = (
             f"{BOUNDARY}::test_a_failure_class_outside_the_nine_cannot_be_constructed",
         ),
     ),
+    Mutation(
+        control="an attempt's instants are §8.3 instants",
+        guard="§8.3 an attempt's started_at and ended_at are the phase's one timestamp "
+              "shape, so a record cannot be written that from_mapping then refuses",
+        path="workflows/run.py",
+        old="            if not is_instant(getattr(self, name)):",
+        new="            if False:  # mutated: the instant shape is not checked",
+        focused=(f"{BOUNDARY}::test_an_attempt_instant_must_be_an_8_3_instant",),
+    ),
+    Mutation(
+        control="an attempt cannot end before it began",
+        guard="§15.2 the two instants recorded for an attempt are ordered",
+        path="workflows/run.py",
+        old="        if parse_instant(self.ended_at) < parse_instant(self.started_at):",
+        new="        if False:  # mutated: the instants are not ordered",
+        focused=(f"{BOUNDARY}::test_an_attempt_cannot_end_before_it_began",),
+    ),
+    Mutation(
+        control="succeeded is a boolean, not a truthy value",
+        guard="§15.2 whether an attempt succeeded is not decided by truthiness — "
+              "`succeeded=1` and the non-empty string `true` are both refused",
+        path="workflows/run.py",
+        old="        if not isinstance(self.succeeded, bool):",
+        new="        if False:  # mutated: truthiness decides the outcome",
+        focused=(f"{BOUNDARY}::test_succeeded_must_be_a_boolean",),
+    ),
+    Mutation(
+        control="artifact_refs are ArtifactRefs",
+        guard="§7.2 an attempt's artifact_refs is a tuple of references, so a bare value "
+              "cannot survive construction and fail at to_body()",
+        path="workflows/run.py",
+        old="        if not isinstance(self.artifact_refs, tuple) or not all(",
+        new="        if False:  # mutated: any object may be an artifact reference",
+        focused=(f"{BOUNDARY}::test_artifact_refs_must_be_a_tuple_of_ArtifactRef",),
+    ),
+    Mutation(
+        control="execution_id is a non-empty string",
+        guard="§6.3 an attempt records the ExecutionId it produced, and an attempt that "
+              "produced none is not this record",
+        path="workflows/run.py",
+        old="        if not isinstance(self.execution_id, str) or not self.execution_id.strip():",
+        new="        if False:  # mutated: any value may be an ExecutionId",
+        focused=(f"{BOUNDARY}::test_execution_id_must_be_a_non_empty_string",),
+    ),
+    Mutation(
+        control="the parser does not coerce a boolean",
+        guard="§15.2 the parser reads `succeeded` strictly; `bool(value)` turns the "
+              "non-empty string `true` into True — an illegal value converted into a "
+              "legal one, which is the one thing both boundaries refuse to do",
+        path="workflows/run.py",
+        old="    if not isinstance(value, bool):\n"
+            "        raise InvalidRecord(f\"{where} must be a boolean (§15.2)\")\n"
+            "    return value",
+        new="    return bool(value)  # mutated: an illegal value becomes a legal one",
+        focused=(
+            f"{BOUNDARY}::test_the_typed_constructor_and_the_parser_refuse_the_same_records",
+        ),
+    ),
 )
 
 #: Named so a failure reads as "the harness cannot see the copy", not as an unrelated

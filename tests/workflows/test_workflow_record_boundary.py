@@ -25,6 +25,7 @@ import dataclasses
 import pytest
 
 from workflows.canonical import digest_of
+from workflows.checkpoint import ArtifactRef
 from workflows.definition import WorkflowDefinition
 from workflows.engine import (
     advance,
@@ -1037,25 +1038,170 @@ def test_an_attempt_identity_must_be_an_AttemptId() -> None:
         _raw_attempt(attempt_id="s1")
 
 
-def test_a_parsed_attempt_is_held_to_the_same_vocabulary() -> None:
-    """The two boundaries admit the same records.
 
-    A parsed attempt with a class outside the nine is refused by the parse, and a built
-    one by the constructor — so neither door is the way around the other.
+
+def _mapping_with_attempt(run: RunRecord, **attempt_overrides: object) -> dict:
+    """A run mapping whose first attempt carries `overrides`, with a VALID digest.
+
+    The digest is recomputed so the parse actually reaches the SCHEMA. Without that the
+    record would be refused for being self-inconsistent, and every test below would pass
+    without ever exercising the rule it names — a green test proving a different one.
     """
-    definition, run = _failed_once()
     mapping = run.to_mapping()
-    mapping["steps"][0]["attempts"] = [
-        {
-            "attempt_id": {"run_id": run.run_id, "step_id": "s1", "attempt_no": 1},
-            "execution_id": "exec-1",
-            "failure_class": "NOT_A_REAL_FAILURE_CLASS",
-            "reason_code": "X",
-            "started_at": T1,
-            "ended_at": T1,
-            "succeeded": False,
-        }
-    ]
+    attempt: dict = {
+        "attempt_id": {"run_id": run.run_id, "step_id": "s1", "attempt_no": 1},
+        "execution_id": "exec-1",
+        "failure_class": None,
+        "reason_code": "X",
+        "started_at": T1,
+        "ended_at": T1,
+        "succeeded": False,
+        "artifact_refs": [],
+    }
+    attempt.update(attempt_overrides)
+    mapping["steps"][0]["attempts"] = [attempt]
+    mapping[RUN_DIGEST_FIELD] = digest_of(
+        {**mapping, RUN_DIGEST_FIELD: ""}, digest_field=RUN_DIGEST_FIELD
+    )
+    return mapping
+
+
+# ---------------------------------------------------------------------------
+# §8.3, §15.2 — an attempt's timing
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("field_name", "bogus"),
+    [
+        ("started_at", "not-an-instant"),
+        ("started_at", "2026-10-03T10:00:00"),
+        ("started_at", "2026-1-3T10:00:00Z"),
+        ("started_at", "2026-10-03T10:00:00+00:00"),
+        ("ended_at", "not-an-instant"),
+        ("ended_at", "2026-10-03T10:00:00Z "),
+    ],
+)
+def test_an_attempt_instant_must_be_an_8_3_instant(field_name: str, bogus: str) -> None:
+    """§8.3. The record is written under this rule and read back under it.
+
+    Without the check at construction, the constructor produced records that could be
+    WRITTEN and never READ BACK: `from_mapping` validates through `_instant`, so the
+    ledger would have failed at the moment someone tried to use it.
+    """
+    with pytest.raises(InvalidRecord):
+        _raw_attempt(**{field_name: bogus})
+
+
+def test_an_attempt_cannot_end_before_it_began() -> None:
+    """§15.2. The two instants are ordered, and a record saying otherwise is describing
+    an attempt that cannot have happened."""
+    with pytest.raises(InvalidRecord):
+        _raw_attempt(started_at=T2, ended_at=T1)
+
+
+def test_an_ordered_instant_pair_is_accepted() -> None:
+    """The control. Equal is ordered too: an execution reporting no elapsed time is not
+    a lie, and refusing it would refuse every instantaneous double in the suite."""
+    assert _raw_attempt(started_at=T1, ended_at=T2).ended_at == T2
+    assert _raw_attempt(started_at=T1, ended_at=T1).ended_at == T1
+
+
+# ---------------------------------------------------------------------------
+# §15.2 — succeeded is a boolean
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("bogus", [1, 0, "true", "false", "yes", None, [], object()])
+def test_succeeded_must_be_a_boolean(bogus: object) -> None:
+    """§15.2. `succeeded=1` decides an outcome by a LANGUAGE rule rather than by what
+    the record says, and `"false"` — a non-empty string — would mean True."""
+    with pytest.raises(InvalidRecord):
+        _raw_attempt(succeeded=bogus)
+
+
+@pytest.mark.parametrize("value", [True, False])
+def test_a_boolean_succeeded_is_accepted(value: bool) -> None:
+    """The control, in both directions."""
+    assert _raw_attempt(succeeded=value).succeeded is value
+
+
+# ---------------------------------------------------------------------------
+# §6.3, §7.2 — the references an attempt carries
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "bogus",
+    [
+        ("a-bare-string",),
+        ({"reference": "r", "digest": "d"},),
+        (None,),
+        [ArtifactRef(reference="r", digest="d")],
+        "not-a-tuple",
+    ],
+)
+def test_artifact_refs_must_be_a_tuple_of_ArtifactRef(bogus: object) -> None:
+    """§7.2. Anything else used to survive construction and fail at `to_body()` — the
+    failure landing at serialization time instead of at the boundary that let it in."""
+    with pytest.raises(InvalidRecord):
+        _raw_attempt(artifact_refs=bogus)
+
+
+def test_a_tuple_of_ArtifactRef_is_accepted() -> None:
+    """The control."""
+    refs = (ArtifactRef(reference="artifact://run/out", digest="a" * 64),)
+    assert _raw_attempt(artifact_refs=refs).artifact_refs == refs
+
+
+@pytest.mark.parametrize("bogus", [42, None, "", "   ", b"exec-1"])
+def test_execution_id_must_be_a_non_empty_string(bogus: object) -> None:
+    """§6.3. It is what makes an attempt an attempt, and `from_mapping` requires a
+    non-empty string for it."""
+    with pytest.raises(InvalidRecord):
+        _raw_attempt(execution_id=bogus)
+
+
+# ---------------------------------------------------------------------------
+# The two boundaries admit the same records
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("field_name", "bogus"),
+    [
+        ("started_at", "not-an-instant"),
+        ("ended_at", "2026-1-3T10:00:00Z"),
+        ("succeeded", "true"),
+        ("execution_id", ""),
+        ("failure_class", "NOT_A_REAL_FAILURE_CLASS"),
+    ],
+)
+def test_the_typed_constructor_and_the_parser_refuse_the_same_records(
+    field_name: str, bogus: str
+) -> None:
+    """A record the constructor accepts and the parser refuses can be WRITTEN and never
+    READ BACK. One the parser accepts and the constructor refuses is the same defect
+    pointing the other way.
+
+    The parser half is asserted TWICE, and the second one is the load-bearing one:
+
+        verify=True    the real path, with the digest doing its job
+        verify=False   the SCHEMA alone, with the digest out of the way
+
+    Without the second, this test would pass on any input the digest happens to catch —
+    which is every value a coercion could produce, since `True` and `"true"` do not
+    canonicalise alike. A test that cannot tell a schema refusal from a digest refusal is
+    a test that proves neither.
+    """
+    with pytest.raises(InvalidRecord):
+        _raw_attempt(**{field_name: bogus})
+
+    _, run = _failed_once()
+    mapping = _mapping_with_attempt(run, **{field_name: bogus})
 
     with pytest.raises(InvalidRecord):
         RunRecord.from_mapping(mapping)
+
+    with pytest.raises(InvalidRecord):
+        RunRecord.from_mapping(mapping, verify=False)

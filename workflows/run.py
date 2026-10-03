@@ -45,7 +45,7 @@ from typing import Any, Mapping, Sequence
 from workflows.canonical import digest_of, verify_digest
 from workflows.checkpoint import ArtifactRef
 from workflows.errors import InvalidRecord
-from workflows.instants import is_instant
+from workflows.instants import is_instant, parse_instant
 from workflows.vocabulary import TERMINAL_STATES, FailureClass, StepState, WorkflowState
 
 __all__ = [
@@ -177,6 +177,19 @@ def _reference(value: object, where: str) -> str:
     return value
 
 
+def _boolean(value: object, where: str) -> bool:
+    """A JSON boolean, read back strictly.
+
+    `bool(value)` turns `"false"` into True — a non-empty string is truthy — and accepts
+    `1` as an outcome. That is an ILLEGAL value converted into a legal one, which is the
+    one thing this module's construction boundary refuses to do; the parser has to hold
+    the same line or the two boundaries disagree about what a record may say.
+    """
+    if not isinstance(value, bool):
+        raise InvalidRecord(f"{where} must be a boolean (§15.2)")
+    return value
+
+
 def _counter(value: object, where: str) -> int:
     """A consumed counter, read back strictly.
 
@@ -277,6 +290,15 @@ class AttemptRecord:
                 "outside the nine is not a class this record may carry"
             )
 
+        # §15.2. A boolean fact, and not a truthy one. `succeeded=1` decides an outcome
+        # by a language rule rather than by what the record says, and a reader comparing
+        # the record against the JSON it was written from would find them disagreeing.
+        if not isinstance(self.succeeded, bool):
+            raise InvalidRecord(
+                "an attempt's succeeded must be a boolean; whether an attempt succeeded "
+                "is not a truthiness question (§15.2)"
+            )
+
         # §9, §15.2. An outcome and a classification are one fact. A FailureClass
         # classifies a FAILURE, so an attempt recorded as having succeeded cannot carry
         # one; §9.1's "matched none of the nine" is the OTHER case — `failure_class is
@@ -285,6 +307,46 @@ class AttemptRecord:
             raise InvalidRecord(
                 "an attempt recorded as succeeded carries a failure class; §9's nine "
                 "classes classify failures, and this attempt had none"
+            )
+
+        # §8.3, §15.2. WHEN the attempt ran, in the one timestamp shape the phase has.
+        # `from_mapping` validates these through `_instant`; without the same check here
+        # the constructor produced records that could be WRITTEN and never READ BACK —
+        # a durable ledger that fails the moment someone tries to use it, which is the
+        # worst moment for it to fail.
+        for name in ("started_at", "ended_at"):
+            if not is_instant(getattr(self, name)):
+                raise InvalidRecord(
+                    f"an attempt's {name} must be an ISO-8601 UTC instant with second "
+                    "resolution and a trailing Z (§8.3); the record is written under that "
+                    "rule and read back under it"
+                )
+        if parse_instant(self.ended_at) < parse_instant(self.started_at):
+            raise InvalidRecord(
+                "an attempt ended before it began; §15.2 records when an attempt began "
+                "and when it ended, and those two instants are ordered"
+            )
+
+        # §6.3, §7.2. The artifacts the attempt referenced, as the tuple of references
+        # `from_mapping` builds. Anything else used to survive construction and fail at
+        # `to_body()` — which puts the failure at serialization time rather than at the
+        # boundary that admitted the value.
+        if not isinstance(self.artifact_refs, tuple) or not all(
+            isinstance(ref, ArtifactRef) for ref in self.artifact_refs
+        ):
+            raise InvalidRecord(
+                "an attempt's artifact_refs must be a tuple of ArtifactRef; §7.2 carries "
+                "an artifact as a reference and a digest, and the bytes live outside"
+            )
+
+        # §6.3. The execution this attempt produced, recorded as a REFERENCE. It is what
+        # makes an attempt an attempt, and `from_mapping` requires a non-empty string for
+        # it, so the constructor does too.
+        if not isinstance(self.execution_id, str) or not self.execution_id.strip():
+            raise InvalidRecord(
+                "an attempt's execution_id must be a non-empty string; §6.3 records the "
+                "ExecutionId the attempt produced, and an attempt that produced none is "
+                "not this record"
             )
 
     @property
@@ -924,7 +986,7 @@ class RunRecord:
                         reason_code=str(attempt.get("reason_code", "")),
                         started_at=_instant(attempt.get("started_at"), "attempt.started_at"),
                         ended_at=_instant(attempt.get("ended_at"), "attempt.ended_at"),
-                        succeeded=bool(attempt.get("succeeded")),
+                        succeeded=_boolean(attempt.get("succeeded"), "attempt.succeeded"),
                         artifact_refs=tuple(
                             ArtifactRef.from_mapping(ref, "attempt.artifact_refs[]")
                             for ref in attempt.get("artifact_refs", [])
