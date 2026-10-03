@@ -883,6 +883,93 @@ FROZEN: acceptance does NOT touch the gated step's deadline, the run's deadline,
         counter. It moves the run out of a wait it was already paying for.
 ```
 
+### 13.1.3 A retry re-enters the approval point
+
+```text
+AMENDMENT 3 (2026-10-04) — a retry needs a FRESH approval, and this is the only way to it.
+
+THE GAP AMENDMENTS 1 AND 2 LEFT
+    The gated step's attempt #1 ends in a RETRYABLE_FAILURE and the step returns to
+    READY. §13.2 is unambiguous that attempt #2 does not inherit the approval that let
+    attempt #1 start. But that approval's POINT had already SUCCEEDED, and nothing here
+    let a run go back to it — so a retry had no legal path to the approval it requires.
+    The only remaining routes were the two this contract forbids: reuse the old
+    approval, or start attempt #2 unauthorized.
+
+FROZEN: a retryable failure of the gated execution-seam step leaves THAT STEP READY.
+FROZEN: an EXPLICIT, CALLER-DRIVEN retry transition MAY re-enter the IMMEDIATELY
+        PRECEDING APPROVAL step. The only transition it performs is:
+
+            APPROVAL step    SUCCEEDED -> AWAITING_APPROVAL
+            run              RUNNING   -> AWAITING_APPROVAL
+
+FROZEN: that transition creates NO attempt and NO ExecutionId, and reuses NO previous
+        approval. Nothing about it is automatic: a retryable failure does NOT call the
+        ingress, and §13.4's "a new request requires a new human act or a new run"
+        governs the request it opens. Where §13.4 forbids RE-ASKING a human who has
+        ANSWERED, this forbids asking on the run's own initiative — an approval is
+        obtained because a caller asked, never because a failure occurred.
+FROZEN: it is permitted only when BOTH hold at once — the gated step is READY after a
+        RETRYABLE failure, AND the caller asked for the retry. Neither alone suffices: a
+        READY step may be waiting on nothing, and a caller's request may be about work
+        that did not fail.
+```
+
+```text
+FROZEN: it is the ONLY BACKWARD TRANSITION this contract admits, and it does not license
+        any other. It does NOT permit:
+
+            arbitrary SUCCEEDED -> AWAITING_APPROVAL
+            arbitrary backward movement between steps
+            a completed execution step returning to READY
+            a terminal state returning to a non-terminal one
+            resetting a counter, a deadline, or a bound
+
+        The one step it may move is the approval step that IMMEDIATELY PRECEDES its
+        gated execution step (§6.1), and only the pair above.
+
+FROZEN: re-entering creates a NEW ApprovalRequest, naming the same gated step and the
+        NEXT LEGAL attempt number for it:
+
+            first approval          attempt_no = 1
+            attempt #1 fails retryably
+            explicit retry
+            second request          attempt_no = 2
+
+        `attempt_no = 1` is NOT available again. The previous ApprovalRequest is not
+        reused and the previous WorkflowApproval authorizes nothing — §13.2's "changing
+        ANY ONE of the six produces a different scope_digest" is what makes that
+        arithmetic rather than a rule to remember.
+
+FROZEN: the existing bound semantics are evaluated BEFORE this wait and not after it.
+        Where the gated step's next attempt could not legally begin — a run or retry
+        bound is reached, an attempt bound is spent (§10.3.1, §12) — NO ApprovalRequest
+        is created, the wait is NOT entered, and the terminal semantics §8.3 and §12
+        already define apply. A request nobody could legally answer is not a request this
+        contract admits.
+
+FROZEN: acceptance after a re-entry is §13.1.2 unchanged — the wait becomes SUCCEEDED
+        with no attempt, the gated step stays READY and untouched, and the attempt that
+        follows is EXACTLY the number the new approval named.
+FROZEN: none of this touches `workflow_deadline`, `retry_deadline`, the step deadline, or
+        any counter. Waiting CONSUMES them; it does not pause, refresh, extend or
+        recompute any of them (§8.3).
+```
+
+```text
+AND THE OUTCOMES THAT ARE NOT AN APPROVAL, restated here because a re-entry is where
+they are most likely to be confused with one:
+
+    human denial                      APPROVAL_DENIED, terminal for the step, never
+                                      retried and never re-requested (§13.4)
+    the wait's deadline arriving      APPROVAL_DENIED, terminal, never retried (§13.4)
+    provenance that does not verify   REFUSED as INPUT: no approval is recorded, no
+                                      state transitions, and the run stays exactly
+                                      where it is — a forgery must not be written down
+                                      as a human decision (§13.3)
+    a scope that does not match       REFUSED the same way, and for the same reason
+```
+
 ### 13.2 It is not inheritable
 
 ```text
@@ -1519,6 +1606,75 @@ THIS AMENDMENT DOES NOT CHANGE
     The preimage remains EXACTLY workflow_id · revision · definition_digest · run_id ·
     step_id · attempt_no — unchanged byte for byte by this amendment. No field is added,
     no vocabulary member is added, and no section is renumbered.
+```
+
+```text
+AMENDMENT 3 — 2026-10-04 — a retry re-enters the approval point, and needs a fresh approval.
+
+CHANGED CLAUSES
+    §13.1.3  NEW — a retryable failure of the gated execution-seam step, plus an
+             explicit caller-driven retry, is the ONE permitted backward transition:
+             the immediately preceding APPROVAL step goes SUCCEEDED -> AWAITING_APPROVAL
+             and the run goes RUNNING -> AWAITING_APPROVAL. It creates no attempt, no
+             ExecutionId and no reuse; it opens a NEW ApprovalRequest naming the next
+             legal attempt number; and it is refused outright when the next attempt
+             could not legally begin.
+
+WHY AMENDMENT 2 WAS INSUFFICIENT
+    Amendment 2 closed the shared-scope gap by fixing the target relation at "the
+    immediately following execution-seam step". That made each approval point's subject
+    unique — and left the retry path with no legal way to obtain a second approval.
+
+        attempt #1 fails retryably  ->  gated step READY
+        §13.2                       ->  attempt #2 may NOT inherit approval #1
+        the approval point          ->  already SUCCEEDED, with no transition back
+
+    A retry therefore had no legal approval path at all, and the only remaining routes
+    were the two this contract forbids. Naming the wait step (§6.1) would have violated
+    §6.3, and adding an ApprovalPointId would have violated §13.1 — so the closure had to
+    be a declared STATE TRANSITION, which is what this amendment adds.
+
+WHY REUSE IS FORBIDDEN
+    §13.2's non-inheritance is not a preference: an approval is a human act answering a
+    named scope, and attempt #2 is a DIFFERENT scope — `attempt_no` is one of the six.
+    Reusing approval #1 would silently extend one human answer to work the human was
+    never shown, which is the escalation this phase exists to prevent.
+
+WHY AUTOMATIC RE-REQUEST IS FORBIDDEN
+    A failure is not a question. Letting RETRYABLE_FAILURE call the ingress would make
+    the run the author of its own requests, which is §13.4's "pressure, not process"
+    arrived at from the other side. The transition is CALLER-DRIVEN, and the human is
+    asked again only because something asked for the retry.
+
+WHY IT IS THE ONLY PERMITTED BACKWARD TRANSITION
+    A general "go back to a step" would reopen completed execution, reset counters and
+    re-enter satisfied waits — every one of them a §15.1 escape. This transition moves
+    exactly one step, the approval point immediately preceding its gated step, exactly
+    one way, and only while the gated step is READY after a retryable failure. It undoes
+    no work: the wait it re-enters authorizes an attempt that has not run.
+
+SECURITY IMPACT
+    Without this amendment: a retry either reused an approval the human never gave for
+    that attempt, or ran unauthorized — the first a silent widening of a human decision,
+    the second a boundary with no gate at all.
+    With this amendment: every attempt has an approval naming ITS number, no approval is
+    ever reused, and the request that obtains one is made by a caller rather than by a
+    failure.
+
+AUTHORITY IMPACT
+    None. Guard remains the authorization authority (§13.5); ApprovalPointId is still
+    forbidden; no approval becomes an ApprovalRef, an EvidenceRecord or an AI-10
+    decision.
+
+THIS AMENDMENT DOES NOT CHANGE
+    the six-field scope preimage          approval non-inheritance
+    Guard authority                       Evidence ownership
+    AI-08 execution identity              the failure vocabulary
+    the checkpoint boundary               the trusted-ingress boundary
+
+    The preimage remains EXACTLY workflow_id · revision · definition_digest · run_id ·
+    step_id · attempt_no — unchanged byte for byte. No field is added, no vocabulary
+    member is added, and no section is renumbered.
 ```
 
 ---
