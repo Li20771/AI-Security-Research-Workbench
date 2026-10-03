@@ -149,15 +149,75 @@ M6     activate without rollback metadata (§8)                   caught
 P9     let any verdict satisfy a PASS requirement (§4.3)         caught
 P10    stop reporting a task dropped from the scope (§4.4)       caught
 P13    audit that cannot notice a tampered resolution (§8)       caught
+PROV-1 let a caller label a record MODEL_EXECUTION (§4.2, §6)    caught
+PROV-2 the same, against the unreachability guard (§6.1)         caught
+CLS-1  let a REFERENCE record satisfy a MODEL_EXECUTION rule     caught
 PROJ-1 drop match_task_id from the rule projection (§8)          caught
 PROJ-2 drop requires_run_id from the rule projection (§8)        caught
 PROJ-3 drop the selection from the rule projection (§8)          caught
 PROJ-4 drop match_task_id, caught by the round-trip guard (§8)   caught
 ```
 
+Thirteen, and **two of them survived on the first run**. That is worth recording: the
+probes showed that two of the tests guarding the §6.1 line exercised only the CLASS
+COMPARISON in the resolver and never the input boundary, so removing the input guard
+left them passing. `P17` now asserts both mechanisms — a REFERENCE record cannot
+satisfy the requirement, and a record cannot become model evidence by claiming to be —
+and the third probe was retargeted at the mechanism that actually guards `N4`.
+
 Each of those tests fails if its check is removed, rather than only if the check was
 never written. The rest of the file names its own mutations inline (`M1`, `M2`,
 `M5`, `M7`, `M8`, `M9`, `M9b`).
+
+### 5.2 A review finding: the prerequisite could be fabricated
+
+The first revision admitted any record whose mapping said
+`evidence_class: MODEL_EXECUTION`. Nothing else was required — no producer identity,
+no measurement provenance. One field of caller-supplied YAML therefore produced:
+
+```text
+caller mapping:  evidence_class = MODEL_EXECUTION, verdict = PASS,
+                 limitations = ["NO_PROVIDER_CALL_IN_PATH"]
+        ->  AI-12 treated it as model evidence
+        ->  the model-comparative rule activated
+        ->  outcome SELECTED, model selected
+```
+
+The record's own limitations said no provider had been called. That is §4.2 and §6.1
+violated by caller input, and it made the §6 prerequisite satisfiable by anyone
+willing to type an enum value.
+
+**The fix is at the input boundary, and it invents no contract.** §4.2 requires
+model-specific routing evidence to come from "an execution record whose producer
+identifies the model / provider execution, under a contract that defines how that
+measurement is produced and attributed". That contract does not exist, so **no
+supplied record can be `MODEL_EXECUTION`**:
+
+```text
+SUPPLIABLE_EVIDENCE_CLASSES = (EvidenceClass.REFERENCE,)
+```
+
+The vocabulary keeps both members, because a POLICY may still REQUIRE
+`MODEL_EXECUTION` — the requirement is expressible and validated, which is what §6.1's
+"dormant policy artifacts" means. What is no longer expressible is a supplied record
+claiming to BE one. No `producer` field was invented: adding one would be writing the
+missing contract here, which §6 assigns to a separate act.
+
+```text
+UNREACHABLE TODAY, AND ASSERTED AS SUCH
+    PolicyOutcome.SELECTED           needs a record that may not be supplied
+    PolicyResolution.selected_rule   populated only by a selection
+```
+
+They remain in the mechanism so the policy a future contract makes decidable can be
+expressed and projected. A test fails if a change makes them reachable without that
+contract — which is the fabrication this round closed.
+
+**One outcome was added**, because closing the fabrication exposed an inaccuracy: an
+activatable rule today can only be one requiring `REFERENCE` evidence, and such a rule
+routes nothing. Reporting that as `NO_MATCH` would call a rule that fired one that did
+not. `CONDITION_MET` says what happened: the requirement held and the policy selected
+nothing.
 
 ### 5.1 A review finding: the rule projection was lossy
 
@@ -194,10 +254,10 @@ that selected — which is the claim's basis, in the claim.
 ## 6. Verification
 
 ```text
-tests/routing                                    211 passed   (run twice: 211 / 211)
-tests/routing/test_policy_core.py                 65 passed   (P1-P17, M1-M9b)
+tests/routing                                    216 passed   (run twice: 216 / 216)
+tests/routing/test_policy_core.py                 70 passed   (P1-P17, N1-N4, M1-M9b)
 tests/routing/test_policy_layer0.py               12 passed   (T40-T51)
-full offline suite                             3419 passed, 5 skipped, 5 deselected
+full offline suite                             3424 passed, 5 skipped, 5 deselected
 Layer 0                                         PASS (21 checks)
 compileall                                      exit 0
 providers.validate                              exit 0

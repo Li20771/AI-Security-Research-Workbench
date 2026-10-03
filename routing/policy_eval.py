@@ -14,13 +14,27 @@ data and supplied data and returns what the policy can currently say. A fallback
 declared in the policy is data on the artifact; it is not performed here, and
 `resolve_policy` has no path that could perform one.
 
-### Why a resolution is not a selection
+### Why a resolution cannot select today, and why the branch exists anyway
 
-Today every selecting rule this contract defines requires `MODEL_EXECUTION` evidence
-(§4.2 forbids justifying a selection with a REFERENCE run), and no such measurement
-exists (§6). A policy constructed today therefore resolves `DORMANT` — and that is the
-honest answer, not a gap to be filled by falling back to REFERENCE evidence or by
-treating a missing measurement as neutral (§4.3).
+Every selecting rule this contract defines requires `MODEL_EXECUTION` evidence (§4.2
+forbids justifying a selection with a REFERENCE run), and **no supplied record may be
+one** — that class needs a producer and an attribution contract that does not exist
+(§6), so `evidence.SUPPLIABLE_EVIDENCE_CLASSES` allows only `REFERENCE`. A
+model-comparative rule therefore always resolves `DORMANT`, which is §6.1's requirement
+rather than a shortfall: a policy that would make a model-specific selection claim
+stays explicitly dormant while the measurement is missing.
+
+The `SELECTED` branch and `PolicyResolution.selected_rule` are part of that dormant
+mechanism. They exist so the policy a future contract makes decidable can be expressed
+and projected, and they do not fire — a fact a test asserts, so that a change quietly
+making them reachable fails rather than passes unnoticed.
+
+What a resolution CAN conclude today is `CONDITION_MET`: a rule whose requirement is
+`REFERENCE` evidence — which AI-11 really produces — holds, and the policy routes
+nothing, because a rule that routes must require the class that cannot be supplied.
+
+A missing measurement is never filled by falling back to REFERENCE evidence, by
+treating it as neutral, or by a caller declaring the class it needs (§4.3).
 
 ### Evidence accounting
 
@@ -59,13 +73,23 @@ class PolicyOutcome(StrEnum):
 
     ```text
     SELECTED             a rule was activated and its selection is emitted
+                         DORMANT TODAY — see below
+    CONDITION_MET        a rule's requirement was met and the policy selected nothing
     DORMANT              rules exist, and the measurement they require does not
     NO_MATCH             no rule named anything the supplied records cover
     INCOMPLETE_EVIDENCE  a task in the policy's scope has no supplied record
     ```
+
+    `SELECTED` is unreachable with the evidence this contract currently allows, and
+    that is §6.1 working rather than a gap: a rule that selects must require
+    `MODEL_EXECUTION` (§4.2), no supplied record may be one
+    (`evidence.SUPPLIABLE_EVIDENCE_CLASSES`), so a model-comparative rule stays
+    explicitly dormant. The branch exists because the mechanism must be able to
+    express the policy that a future contract will make decidable; it does not fire.
     """
 
     SELECTED = "SELECTED"
+    CONDITION_MET = "CONDITION_MET"
     DORMANT = "DORMANT"
     NO_MATCH = "NO_MATCH"
     INCOMPLETE_EVIDENCE = "INCOMPLETE_EVIDENCE"
@@ -306,6 +330,11 @@ def resolve_policy(
         outcome = PolicyOutcome.INCOMPLETE_EVIDENCE
     elif selected is not None:
         outcome = PolicyOutcome.SELECTED
+    elif any(r.disposition is RuleDisposition.ACTIVATED for r in rule_resolutions):
+        # A requirement held and the policy routes nothing. That is a different fact
+        # from "no rule named anything the records cover", and calling it NO_MATCH
+        # would report a rule that fired as one that did not.
+        outcome = PolicyOutcome.CONDITION_MET
     elif any(r.disposition is RuleDisposition.DORMANT for r in rule_resolutions):
         outcome = PolicyOutcome.DORMANT
     else:

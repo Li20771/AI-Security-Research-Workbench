@@ -108,6 +108,34 @@ def a_rule(**overrides) -> dict:
     return rule
 
 
+def a_condition_rule(**overrides) -> dict:
+    """A rule whose requirement today's evidence CAN satisfy: REFERENCE + PASS.
+
+    It selects nothing, because a rule that selects must require MODEL_EXECUTION
+    (§4.2) and no supplied record may be one. This is the only activatable shape the
+    current evidence vocabulary admits.
+    """
+    rule = {
+        "rule_id": "can-measured-pass",
+        "priority": 10,
+        "reason_code": "CAN_MEASURED_PASS",
+        "match_task_id": CAN,
+        "requires_verdict": "PASS",
+        "requires_evidence_class": "REFERENCE",
+        "falsifier": {
+            "observation": "a controlled re-run of this task at the pinned source SHA",
+            "expected_if_rule_wrong": "the re-run does not pass, so the condition is false",
+        },
+        "discrimination": {
+            "input_a": "a REFERENCE record whose verdict is PASS",
+            "input_b": "a REFERENCE record whose verdict is FAIL",
+            "expected_distinction": "only the PASSing record makes the condition hold",
+        },
+    }
+    rule.update(overrides)
+    return rule
+
+
 def a_policy(**overrides) -> dict:
     policy = {
         "version": POLICY_VERSION,
@@ -246,35 +274,37 @@ def test_P4d_a_discrimination_control_whose_halves_are_equal_is_refused() -> Non
 # ---------------------------------------------------------------------------
 
 
-def _model_record(run_id: str = "run-model-0001", verdict: str = "PASS") -> dict:
-    return record(
-        run_id,
-        verdict=verdict,
-        evidence_class="MODEL_EXECUTION",
-        reason_code="" if verdict == "PASS" else "MODEL_TASK_FAILED",
-    )
+def test_P5_the_policy_schema_expresses_a_model_execution_requirement() -> None:
+    """§6.1's control, replacing one that proved a fabrication.
 
+    The mechanism must be able to SAY what a future contract will make decidable: a
+    rule that requires `MODEL_EXECUTION` evidence, scoped to a task, selecting a
+    model, with its falsifier, its discrimination control and its full projection.
+    That is expressible today and validated today.
 
-def test_P5_a_rule_whose_requirement_is_met_activates_and_selects() -> None:
-    """The control. Without it, every refusal below passes vacuously."""
+    What must NOT happen is the next step. The earlier version of this test supplied a
+    caller-authored record labelled `MODEL_EXECUTION` and required the resolution to
+    return SELECTED — which proved that a caller could manufacture the §6 prerequisite
+    by typing an enum value. The schema can express the requirement; the resolution
+    over real evidence cannot satisfy it.
+    """
     policy = Policy.from_mapping(a_policy())
-    records = supplied_records([_model_record()])
+    rule = policy.rules[0]
 
-    resolution = resolve_policy(policy, records)
+    assert rule.requires_evidence_class is EvidenceClass.MODEL_EXECUTION
+    assert rule.selects and rule.select_model_ref == "deepseek/deepseek-flash"
+    assert rule.to_mapping()["requires_evidence_class"] == "MODEL_EXECUTION"
+    assert rule.to_mapping()["select"]["model_ref"] == "deepseek/deepseek-flash"
 
-    assert resolution.outcome is PolicyOutcome.SELECTED
-    assert resolution.selected_model_ref == "deepseek/deepseek-flash"
-    assert resolution.selected_by_rule == "can-to-model"
-    fired = [r for r in resolution.rules if r.disposition is RuleDisposition.ACTIVATED]
-    assert [r.rule_id for r in fired] == ["can-to-model"]
-    assert fired[0].cited_run_id == "run-model-0001"
+    # And over the evidence AI-11 actually produces, it stays dormant.
+    resolution = resolve_policy(policy, supplied_records([record("run-ref-0001")]))
+    assert resolution.outcome is PolicyOutcome.DORMANT
+    assert resolution.selected_model_ref is None
 
 
 def test_P6_the_same_policy_is_dormant_without_the_measurement() -> None:
-    """The difference between P5 and P6 is the RECORD, not the code.
-
-    This is §6 today: the model-comparative prerequisite is BLOCKED, no
-    model-execution record exists, and the honest resolution is DORMANT.
+    """§6 today: the prerequisite is BLOCKED, no model-execution record exists, and
+    the honest resolution is DORMANT rather than a REFERENCE substitution.
     """
     policy = Policy.from_mapping(a_policy())
     reference_only = supplied_records([record("run-ref-0001", verdict="PASS")])
@@ -286,6 +316,27 @@ def test_P6_the_same_policy_is_dormant_without_the_measurement() -> None:
     assert resolution.evidence_for("run-ref-0001").disposition is (
         EvidenceDisposition.REJECTED_BY_EVIDENCE_CLASS
     )
+
+
+def test_P6b_a_condition_over_real_evidence_holds_and_routes_nothing() -> None:
+    """The control for the shape that CAN activate: a requirement over REFERENCE.
+
+    It selects nothing, so the resolution reports CONDITION_MET — the requirement
+    held — rather than a selection, and rather than NO_MATCH, which would report a
+    rule that fired as one that did not.
+    """
+    policy = Policy.from_mapping(a_policy(rules=[a_condition_rule()]))
+    records = supplied_records([record("run-ref-0001", verdict="PASS", digest="sha256:c")])
+
+    resolution = resolve_policy(policy, records)
+
+    assert resolution.outcome is PolicyOutcome.CONDITION_MET
+    assert resolution.selected_model_ref is None
+    assert resolution.selected_rule is None
+    fired = [r for r in resolution.rules if r.disposition is RuleDisposition.ACTIVATED]
+    assert [r.rule_id for r in fired] == ["can-measured-pass"]
+    assert fired[0].cited_run_id == "run-ref-0001"
+    assert resolution.evidence_for("run-ref-0001").disposition is EvidenceDisposition.CITED
 
 
 # ---------------------------------------------------------------------------
@@ -364,16 +415,9 @@ def test_P8d_a_pass_record_may_carry_an_empty_reason_code() -> None:
 @pytest.mark.parametrize("verdict", ["BLOCKED", "NOT_RUN", "UNKNOWN", "UNAVAILABLE"])
 def test_P9_a_non_pass_verdict_never_satisfies_a_pass_requirement(verdict: str) -> None:
     """§4.3. Read, accounted for, and not promotable — one verdict at a time."""
-    policy = Policy.from_mapping(a_policy())
+    policy = Policy.from_mapping(a_policy(rules=[a_condition_rule()]))
     records = supplied_records(
-        [
-            record(
-                "run-np-0001",
-                verdict=verdict,
-                evidence_class="MODEL_EXECUTION",
-                reason_code="SOMETHING_HAPPENED",
-            )
-        ]
+        [record("run-np-0001", verdict=verdict, reason_code="SOMETHING_HAPPENED")]
     )
 
     resolution = resolve_policy(policy, records)
@@ -552,13 +596,13 @@ def test_M7_fallback_and_escalation_are_data_and_nothing_executes_them() -> None
     assert len(policy.fallback) == 1
     assert len(policy.escalation) == 1
 
-    records = supplied_records([_model_record()])
+    records = supplied_records([record("run-ref-0001")])
     resolution = resolve_policy(policy, records)
 
-    # The resolution records the selection. It does not follow the fallback, does
-    # not retry, does not produce a second decision and does not read the previous
-    # one: there is no field on the resolution for any of those.
-    assert resolution.outcome is PolicyOutcome.SELECTED
+    # The resolution records what it found — here, a dormant selection rule — and
+    # follows no fallback, retries nothing, produces no second decision and reads no
+    # previous one: there is no field on the resolution for any of those.
+    assert resolution.outcome is PolicyOutcome.DORMANT
     mapping = resolution.to_mapping()
     for absent in ("fallback", "retry", "next_decision", "previous_decision", "escalated"):
         assert absent not in mapping
@@ -593,37 +637,38 @@ def test_M7c_a_fallback_target_must_be_a_model_reference() -> None:
 
 def test_M8_a_rule_pinned_to_a_wrong_run_id_does_not_activate() -> None:
     """The mutation is "same task, different run, treat it as the same evidence"."""
-    policy = Policy.from_mapping(a_policy(rules=[a_rule(requires_run_id="run-wanted")]))
-    records = supplied_records([_model_record("run-other")])
+    policy = Policy.from_mapping(
+        a_policy(rules=[a_condition_rule(requires_run_id="run-wanted")])
+    )
+    records = supplied_records([record("run-other", verdict="PASS")])
 
     resolution = resolve_policy(policy, records)
 
     assert resolution.outcome is PolicyOutcome.NO_MATCH
     assert resolution.selected_model_ref is None
+    assert resolution.rules[0].cited_run_id is None
+    assert resolution.evidence_for("run-other").disposition is (
+        EvidenceDisposition.NOT_NEEDED
+    )
 
 
 def test_P11_a_rule_pinned_to_the_right_run_id_activates() -> None:
-    policy = Policy.from_mapping(a_policy(rules=[a_rule(requires_run_id="run-wanted")]))
-    records = supplied_records([_model_record("run-wanted")])
+    """Same task, same verdict — a different run is a different record."""
+    policy = Policy.from_mapping(
+        a_policy(rules=[a_condition_rule(requires_run_id="run-wanted")])
+    )
+    records = supplied_records([record("run-wanted", verdict="PASS")])
 
     resolution = resolve_policy(policy, records)
 
-    assert resolution.outcome is PolicyOutcome.SELECTED
+    assert resolution.outcome is PolicyOutcome.CONDITION_MET
     assert resolution.rules[0].cited_run_id == "run-wanted"
 
 
 def test_P11b_the_resolution_cites_the_exact_record_it_read() -> None:
     """§8 AUDITABLE. Which run, which digest — not merely which task."""
-    policy = Policy.from_mapping(a_policy())
-    records = supplied_records([_model_record("run-cited").copy()])
-    records = supplied_records(
-        [
-            {
-                "record_digest": "sha256:cited",
-                "evidence": {**record("run-cited", evidence_class="MODEL_EXECUTION")["evidence"]},
-            }
-        ]
-    )
+    policy = Policy.from_mapping(a_policy(rules=[a_condition_rule()]))
+    records = supplied_records([record("run-cited", verdict="PASS", digest="sha256:cited")])
 
     resolution = resolve_policy(policy, records)
     use = resolution.evidence_for("run-cited")
@@ -632,7 +677,7 @@ def test_P11b_the_resolution_cites_the_exact_record_it_read() -> None:
     assert use.digest == "sha256:cited"
     assert use.ref.task_id == CAN
     assert use.ref.source_sha.startswith("efa836ff")
-    assert use.rule_id == "can-to-model"
+    assert use.rule_id == "can-measured-pass"
 
 
 # ---------------------------------------------------------------------------
@@ -641,22 +686,23 @@ def test_P11b_the_resolution_cites_the_exact_record_it_read() -> None:
 
 
 def test_P12_the_resolution_explains_which_rules_fired_and_what_they_read() -> None:
-    policy = Policy.from_mapping(a_policy())
-    resolution = resolve_policy(policy, supplied_records([_model_record()]))
+    policy = Policy.from_mapping(a_policy(rules=[a_condition_rule()]))
+    resolution = resolve_policy(policy, supplied_records([record("run-ref-0001")]))
     mapping = resolution.to_mapping()
 
-    assert mapping["outcome"] == "SELECTED"
-    assert mapping["selected_by_rule"] == "can-to-model"
+    assert mapping["outcome"] == "CONDITION_MET"
     fired = [r for r in mapping["rules"] if r["disposition"] == "ACTIVATED"]
-    assert fired and fired[0]["cited_run_id"] == "run-model-0001"
+    assert fired and fired[0]["rule_id"] == "can-measured-pass"
+    assert fired[0]["cited_run_id"] == "run-ref-0001"
     cited = [e for e in mapping["evidence"] if e["disposition"] == "CITED"]
-    assert cited and cited[0]["run_id"] == "run-model-0001"
+    assert cited and cited[0]["run_id"] == "run-ref-0001"
+    assert cited[0]["rule_id"] == "can-measured-pass"
 
 
 def test_P13_the_audit_re_derives_from_the_policy_and_the_records_alone() -> None:
     """§8. A reader with the artifact and the records reaches the same answer."""
-    policy = Policy.from_mapping(a_policy())
-    records = supplied_records([_model_record(), record("run-ref-0001")])
+    policy = Policy.from_mapping(a_policy(rules=[a_condition_rule()]))
+    records = supplied_records([record("run-ref-0001"), record("run-ref-0002", digest="sha256:2")])
     resolution = resolve_policy(policy, records)
 
     assert verify_resolution(policy, records, resolution)
@@ -722,14 +768,14 @@ def test_P14_todays_whole_ai_11_campaign_resolves_dormant() -> None:
 
 def test_P14b_no_path_promotes_a_non_pass_verdict() -> None:
     """Every non-PASS verdict, in one policy, over one rule — none activates."""
-    policy = Policy.from_mapping(a_policy(rules=[a_rule(match_task_id=None)]))
+    policy = Policy.from_mapping(a_policy(rules=[a_condition_rule(match_task_id=None)]))
     records = supplied_records(
         [
-            record("run-b", verdict="BLOCKED", evidence_class="MODEL_EXECUTION", reason_code="R1"),
-            record("run-n", verdict="NOT_RUN", evidence_class="MODEL_EXECUTION", reason_code="R2"),
-            record("run-u", verdict="UNKNOWN", evidence_class="MODEL_EXECUTION", reason_code="R3"),
-            record("run-x", verdict="UNAVAILABLE", evidence_class="MODEL_EXECUTION", reason_code="R4"),
-            record("run-f", verdict="FAIL", evidence_class="MODEL_EXECUTION", reason_code="R5"),
+            record("run-b", verdict="BLOCKED", reason_code="R1", digest="sha256:1"),
+            record("run-n", verdict="NOT_RUN", reason_code="R2", digest="sha256:2"),
+            record("run-u", verdict="UNKNOWN", reason_code="R3", digest="sha256:3"),
+            record("run-x", verdict="UNAVAILABLE", reason_code="R4", digest="sha256:4"),
+            record("run-f", verdict="FAIL", reason_code="R5", digest="sha256:5"),
         ]
     )
 
@@ -740,6 +786,93 @@ def test_P14b_no_path_promotes_a_non_pass_verdict() -> None:
     assert all(
         use.disposition is EvidenceDisposition.REJECTED_BY_VERDICT
         for use in resolution.evidence
+    )
+
+
+# ---------------------------------------------------------------------------
+# N1-N3 — the fabrication paths, refused at the input boundary
+# ---------------------------------------------------------------------------
+
+
+def test_N1_reference_shaped_data_cannot_be_labelled_model_evidence() -> None:
+    """§4.2, §6. One field must not manufacture the prerequisite.
+
+    The record below is an AI-11 REFERENCE run in every respect but the label. The
+    label is not a measurement, and the contract that would define what a model
+    measurement must carry does not exist.
+    """
+    forged = record("run-forged", verdict="PASS")
+    forged["evidence"]["evidence_class"] = "MODEL_EXECUTION"
+
+    with pytest.raises(InvalidEvidence) as raised:
+        supplied_records([forged])
+
+    assert "no supplied record" in str(raised.value)
+    assert "MODEL_EXECUTION" in str(raised.value)
+
+
+def test_N2_model_evidence_without_attribution_is_not_accepted() -> None:
+    """There is no producer field to add, because §6 says the contract that defines
+    one is a separate act. A record cannot carry it, so it cannot be admitted."""
+    forged = record("run-forged", verdict="PASS")
+    forged["evidence"].update(
+        {"evidence_class": "MODEL_EXECUTION", "producer": "some-provider/some-model"}
+    )
+
+    with pytest.raises(InvalidEvidence):
+        supplied_records([forged])
+
+
+def test_N3_a_record_that_admits_no_provider_call_cannot_be_model_evidence() -> None:
+    """The sharpest form: the record says so itself, in its own limitations.
+
+    `NO_PROVIDER_CALL_IN_PATH` is what AI-11 writes on a run where no provider was
+    called. A record carrying it and claiming to be a model execution contradicts
+    itself, and the input boundary refuses the claim rather than resolving the
+    contradiction in the caller's favour.
+    """
+    forged = record("run-forged", verdict="PASS")  # limitations: NO_PROVIDER_CALL_IN_PATH
+    assert "NO_PROVIDER_CALL_IN_PATH" in forged["evidence"]["limitations"]
+    forged["evidence"]["evidence_class"] = "MODEL_EXECUTION"
+
+    with pytest.raises(InvalidEvidence):
+        supplied_records([forged])
+
+
+def test_N4_the_whole_campaign_cannot_select_a_model() -> None:
+    """The end-to-end statement: five PASS and one BLOCKED, all REFERENCE, no model.
+
+    Every rule shape the current evidence can satisfy is a condition; every rule that
+    would select is dormant; nothing emits a selection.
+    """
+    policy = Policy.from_mapping(
+        a_policy(rules=[a_rule(), a_condition_rule(priority=20)])
+    )
+    tasks = [
+        ("ai11-v1-can-dbc-decode", "PASS", ""),
+        ("ai11-v1-uds-nrc-triage", "PASS", ""),
+        ("ai11-v1-yara-rule-author", "PASS", ""),
+        ("ai11-v1-firmware-syn-ecu-inventory", "PASS", ""),
+        ("ai11-v1-reverse-arm64-triage", "PASS", ""),
+        (FUZZ, "BLOCKED", BLOCKED_REASON),
+    ]
+    records = supplied_records(
+        [
+            record(f"run-{index:04d}", task_id=task_id, verdict=verdict,
+                   reason_code=reason, digest=f"sha256:{index}")
+            for index, (task_id, verdict, reason) in enumerate(tasks)
+        ]
+    )
+
+    resolution = resolve_policy(policy, records)
+
+    assert resolution.outcome is PolicyOutcome.CONDITION_MET
+    assert resolution.selected_model_ref is None
+    assert resolution.selected_rule is None
+    blocked = [e for e in resolution.evidence if e.ref.verdict is OracleVerdict.BLOCKED]
+    assert len(blocked) == 1 and blocked[0].ref.reason_code == BLOCKED_REASON
+    assert all(
+        e.ref.evidence_class is EvidenceClass.REFERENCE for e in resolution.evidence
     )
 
 
@@ -859,26 +992,46 @@ def test_M9b_dropping_the_selection_from_the_projection_breaks_the_round_trip() 
     assert rebuilt != rule, "dropping `select` is undetectable, so P16 does not guard it"
 
 
-def test_P17_the_resolution_carries_the_rule_that_selected() -> None:
-    """§8. The artifact makes a selection claim, so it carries the claim's basis.
+def test_P17_a_selection_is_unreachable_with_the_evidence_this_contract_admits() -> None:
+    """§6.1's line, asserted rather than assumed.
 
-    `selected_by_rule` names the rule; `selected_rule` is the rule, so a reader can
-    answer "why this model" without leaving the resolution.
+    A rule that selects must require `MODEL_EXECUTION` (§4.2), and no supplied record
+    may be one, so no policy over real evidence can select. `SELECTED` and
+    `selected_rule` are the dormant mechanism a future contract makes decidable; this
+    test fails if a change makes them reachable without that contract, which is
+    exactly the fabrication this sub-phase had to close.
+
+    Every other test in this file would still pass if the protection were removed and
+    a caller could label its way to a selection. This one would not.
     """
-    policy = Policy.from_mapping(a_policy())
-    resolution = resolve_policy(policy, supplied_records([_model_record()]))
-    mapping = resolution.to_mapping()
+    selecting = Policy.from_mapping(a_policy())
 
-    assert mapping["outcome"] == "SELECTED"
-    assert mapping["selected_rule"] is not None
-    assert mapping["selected_rule"]["rule_id"] == mapping["selected_by_rule"]
-    assert mapping["selected_rule"]["match_task_id"] == CAN
-    assert mapping["selected_rule"]["select"]["model_ref"] == (
-        mapping["selected_model_ref"]
-    )
-    assert mapping["selected_rule"]["falsifier"] and mapping["selected_rule"][
-        "discrimination"
-    ]
+    # Two mechanisms keep this line, and BOTH are asserted, because either alone
+    # would leave a path open and a test that exercises only one would pass while the
+    # other was removed.
+    #
+    # 1. A REFERENCE record cannot satisfy a MODEL_EXECUTION requirement: the resolver
+    #    compares the classes, so the closest real evidence falls short.
+    records = supplied_records([record("run-ref-0001", verdict="PASS")])
+    resolution = resolve_policy(selecting, records)
+
+    assert resolution.outcome is not PolicyOutcome.SELECTED
+    assert resolution.selected_model_ref is None
+    assert resolution.selected_rule is None
+    assert resolution.to_mapping()["selected_rule"] is None
+
+    # 2. A record cannot become model evidence by SAYING it is: the input boundary
+    #    refuses the claim, so there is nothing for the resolver to compare.
+    forged = record("run-forged", verdict="PASS")
+    forged["evidence"]["evidence_class"] = "MODEL_EXECUTION"
+    with pytest.raises(InvalidEvidence):
+        supplied_records([forged])
+
+    # The mechanism is still expressible: the rule declares the requirement and the
+    # selection, and projects both, so a future contract has something to activate.
+    rule = selecting.rules[0]
+    assert rule.requires_evidence_class is EvidenceClass.MODEL_EXECUTION
+    assert rule.to_mapping()["select"]["model_ref"] == "deepseek/deepseek-flash"
 
 
 def test_P17b_a_resolution_that_selected_nothing_carries_no_rule() -> None:

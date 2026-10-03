@@ -10,10 +10,15 @@
 #
 #   it requires `MODEL_EXECUTION` evidence — a record whose producer identifies the
 #   model/provider execution under a contract that defines how that measurement is
-#   produced and attributed. No such record exists (§6). AI-11's records are all
-#   `REFERENCE`, and §4.2 forbids selecting a model because a REFERENCE run passed,
-#   so the rule cannot be pointed at them either. It resolves DORMANT, which is the
-#   honest answer rather than a gap to fill with a default, a weight or a prior.
+#   produced and attributed. No such record exists (§6), and none can be SUPPLIED:
+#   `routing/evidence.py` admits only `REFERENCE` records, because the only thing
+#   that would make a record a model execution is the contract that does not exist.
+#   A caller cannot manufacture the prerequisite by typing the class into a mapping.
+#
+#   AI-11's records are all `REFERENCE`, and §4.2 forbids selecting a model because a
+#   REFERENCE run passed, so the rule cannot be pointed at those either. It resolves
+#   DORMANT — the honest answer rather than a gap to fill with a default, a weight or
+#   a prior.
 #
 # Schema (contract §5, §7), and nothing here is optional except the pieces marked:
 #

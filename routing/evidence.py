@@ -60,10 +60,48 @@ __all__ = [
 #:                  attributed. None exists yet (§6).
 #: ```
 class EvidenceClass(StrEnum):
-    """§4.2. Closed. Two members, and the difference is the whole point."""
+    """§4.2. Closed. Two members, and the difference is the whole point.
+
+    ```text
+    REFERENCE        a `BenchmarkRun` with `executor_kind = REFERENCE`.
+    MODEL_EXECUTION  a record whose producer identifies the model / provider
+                     execution, under a contract that defines how that measurement is
+                     produced and attributed. NO SUCH CONTRACT EXISTS (§6), so no
+                     supplied record can be one — see SUPPLIABLE_EVIDENCE_CLASSES.
+    ```
+
+    The member exists because a POLICY may REQUIRE it: a rule that selects a model
+    declares that it needs that measurement, and the requirement is expressible today.
+    What is not expressible is a supplied record claiming to BE one.
+    """
 
     REFERENCE = "REFERENCE"
     MODEL_EXECUTION = "MODEL_EXECUTION"
+
+
+#: The evidence classes a SUPPLIED record may carry. One of the two, and that is the
+#: whole point.
+#:
+#: ```text
+#: FROZEN: model-specific routing evidence requires an execution record whose producer
+#:         identifies the model / provider execution, under a contract that defines
+#:         how that measurement is produced and attributed.
+#: ```
+#:
+#: No such contract exists (§6, and §6.1 says implementing this infrastructure does not
+#: satisfy it). A supplied record therefore CANNOT be `MODEL_EXECUTION`, because the
+#: only thing that could make it one is the contract that does not exist — and a caller
+#: who types the word into a mapping has supplied a LABEL, not a measurement.
+#:
+#: This is the boundary §4.2 needs and cannot get from an enum alone. Without it, a
+#: single caller-supplied field — `evidence_class: MODEL_EXECUTION` — manufactured the
+#: §6 prerequisite, activated a model-comparative rule and emitted a model selection,
+#: from a record whose own `limitations` said `NO_PROVIDER_CALL_IN_PATH`. The
+#: prerequisite is BLOCKED, and a caller does not unblock it by declaring it unblocked.
+#:
+#: When a separate contract defines that producer and attribution, it amends this tuple
+#: and states what a record must carry to qualify — not before.
+SUPPLIABLE_EVIDENCE_CLASSES: tuple[EvidenceClass, ...] = (EvidenceClass.REFERENCE,)
 
 
 _EVIDENCE_KEYS = frozenset(
@@ -154,6 +192,21 @@ class EvidenceRef:
                 f"{where}.evidence_class is not one of "
                 f"{', '.join(m.value for m in EvidenceClass)}"
             ) from None
+
+        if evidence_class not in SUPPLIABLE_EVIDENCE_CLASSES:
+            # §4.2, §6. A record is not model evidence because it says so. The thing
+            # that would make it one — a contract defining the producer, the
+            # attribution and the measurement method — does not exist, and the
+            # prerequisite is not satisfied by a caller declaring it satisfied.
+            raise InvalidEvidence(
+                f"{where}.evidence_class is {evidence_class}, which no supplied record "
+                "may be: model-specific routing evidence requires an execution record "
+                "whose producer identifies the model / provider execution under a "
+                "contract that defines how that measurement is produced and attributed "
+                "(§4.2), and no such contract exists (§6). A caller cannot satisfy the "
+                "prerequisite by labelling a record; the label is what the missing "
+                "contract would define"
+            )
 
         # AI-11 records an EMPTY reason_code on a PASS — there is no refusal to name.
         # A non-PASS verdict without one is a different thing: a reader cannot act on
