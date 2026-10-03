@@ -396,6 +396,19 @@ MUTATIONS: tuple[Mutation, ...] = (
             f"{BOUNDARY}::test_the_declared_bounds_cannot_be_edited_in_place",
         ),
     ),
+    Mutation(
+        control="the failure vocabulary is closed at construction",
+        guard="§9.1 FailureClass is exactly the nine members; a constructed attempt may "
+              "not carry a value outside them, and nothing is coerced into one",
+        path="workflows/run.py",
+        old="        if self.failure_class is not None and not isinstance(\n"
+            "            self.failure_class, FailureClass\n"
+            "        ):",
+        new="        if False:  # mutated: the vocabulary is not checked",
+        focused=(
+            f"{BOUNDARY}::test_a_failure_class_outside_the_nine_cannot_be_constructed",
+        ),
+    ),
 )
 
 #: Named so a failure reads as "the harness cannot see the copy", not as an unrelated

@@ -243,13 +243,44 @@ class AttemptRecord:
     decision_id: str | None = None
 
     def __post_init__(self) -> None:
-        """§9, §15.2. An attempt's outcome and its classification are one fact.
+        """§6.3, §9, §15.2. The CONSTRUCTION boundary: what an attempt may BE.
 
-        A FailureClass classifies a FAILURE. An attempt recorded as having succeeded and
-        carrying one is describing two different runs of itself, and §9.1's "no class"
-        case is the opposite one — `failure_class is None`, which `unclassified` reports
-        and which stays the only way to say "matched none of the nine".
+        `from_mapping` validates a parsed attempt; this validates a BUILT one, so the
+        two boundaries admit the same records. That symmetry is the project's rule —
+        "a digest proves a record is self-consistent, a construction/successor boundary
+        proves it is legal" — and a direct constructor is precisely the path that
+        reaches a record without passing a parser.
+
+        The type annotations above are documentation. They are not a check, and a caller
+        is not obliged to read them.
         """
+        # §6.3. An attempt's identity is (run_id, step_id, attempt_no). A value that is
+        # not an AttemptId carries no identity for the run record to verify against —
+        # and `RunRecord.__post_init__` verifies exactly that.
+        if not isinstance(self.attempt_id, AttemptId):
+            raise InvalidRecord(
+                "an attempt's identity must be an AttemptId; §6.3 makes it (run_id, "
+                "step_id, attempt_no), and a value that is not one has no identity to "
+                "be checked"
+            )
+
+        # §9. The vocabulary is CLOSED. A class outside the nine is not a class: §9.1 has
+        # no UNKNOWN member, nothing is coerced into TERMINAL_FAILURE, and a value that
+        # merely compares equal to a member — a bare `"TERMINAL_FAILURE"` string — is
+        # not one. `isinstance` against the enum is what separates them.
+        if self.failure_class is not None and not isinstance(
+            self.failure_class, FailureClass
+        ):
+            raise InvalidRecord(
+                "an attempt carries a failure class that is not one of AI-13's nine; "
+                "§9.1 closes the vocabulary, there is no UNKNOWN member, and a value "
+                "outside the nine is not a class this record may carry"
+            )
+
+        # §9, §15.2. An outcome and a classification are one fact. A FailureClass
+        # classifies a FAILURE, so an attempt recorded as having succeeded cannot carry
+        # one; §9.1's "matched none of the nine" is the OTHER case — `failure_class is
+        # None`, which `unclassified` reports and which stays the only way to say it.
         if self.succeeded and self.failure_class is not None:
             raise InvalidRecord(
                 "an attempt recorded as succeeded carries a failure class; §9's nine "

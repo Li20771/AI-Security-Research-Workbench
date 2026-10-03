@@ -958,3 +958,104 @@ def test_the_declared_bounds_are_copied_away_from_their_source() -> None:
     assert built.declared_limit("attempts_total") == 4, (
         "the record's bounds followed a mapping it does not own"
     )
+
+
+# ---------------------------------------------------------------------------
+# §6.3, §9 — the CONSTRUCTION boundary of an attempt
+# ---------------------------------------------------------------------------
+
+
+def _raw_attempt(**overrides: object) -> AttemptRecord:
+    """An AttemptRecord built DIRECTLY, the way any caller can.
+
+    `from_mapping` validates a parsed attempt. This is the other door into the same
+    class, and the one this section is about: a record that never passed a parser.
+    """
+    fields: dict[str, object] = {
+        "attempt_id": AttemptId(run_id="run-1", step_id="s1", attempt_no=1),
+        "execution_id": "exec-1",
+        "failure_class": None,
+        "reason_code": "TRANSIENT",
+        "started_at": T1,
+        "ended_at": T1,
+        "succeeded": False,
+    }
+    fields.update(overrides)
+    return AttemptRecord(**fields)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "bogus",
+    [
+        "NOT_A_REAL_FAILURE_CLASS",
+        "UNKNOWN",
+        "",
+        # Equal to `FailureClass.TERMINAL_FAILURE` — because it IS a str with that value,
+        # which is exactly why an equality check would admit it. `isinstance` against the
+        # enum is what separates a member from a string that spells one, and a reader
+        # would never see the difference on the record.
+        "TERMINAL_FAILURE",
+    ],
+)
+def test_a_failure_class_outside_the_nine_cannot_be_constructed(bogus: str) -> None:
+    """§9.1. "FailureClass is exactly the nine members above. It has NO `UNKNOWN` member."
+
+    The type annotation is documentation and a caller is not obliged to read it, so the
+    closed vocabulary is enforced where a record is BUILT and not only where it is
+    parsed.
+    """
+    with pytest.raises(InvalidRecord):
+        _raw_attempt(failure_class=bogus)
+
+
+@pytest.mark.parametrize("member", sorted(FailureClass, key=str))
+def test_every_one_of_the_nine_can_still_be_constructed(member: FailureClass) -> None:
+    """The control. A guard that refused everything would pass the test above."""
+    attempt = _raw_attempt(failure_class=member)
+    assert attempt.failure_class is member
+
+
+def test_an_unclassified_attempt_is_still_constructible() -> None:
+    """§9.1. `failure_class is None` IS the UNCLASSIFIED case.
+
+    Nothing about closing the vocabulary may turn "we could not classify this" into a
+    value: it stays the ABSENCE of a class, reported by `unclassified`, and there is no
+    tenth member to carry it.
+    """
+    attempt = _raw_attempt(failure_class=None)
+
+    assert attempt.failure_class is None
+    assert attempt.unclassified
+    assert "UNKNOWN" not in {member.value for member in FailureClass}
+    assert len(FailureClass) == 9
+
+
+def test_an_attempt_identity_must_be_an_AttemptId() -> None:
+    """§6.3. An AttemptId is (run_id, step_id, attempt_no), and a value that is not one
+    carries no identity for the run record to check it against."""
+    with pytest.raises(InvalidRecord):
+        _raw_attempt(attempt_id="s1")
+
+
+def test_a_parsed_attempt_is_held_to_the_same_vocabulary() -> None:
+    """The two boundaries admit the same records.
+
+    A parsed attempt with a class outside the nine is refused by the parse, and a built
+    one by the constructor — so neither door is the way around the other.
+    """
+    definition, run = _failed_once()
+    mapping = run.to_mapping()
+    mapping["steps"][0]["attempts"] = [
+        {
+            "attempt_id": {"run_id": run.run_id, "step_id": "s1", "attempt_no": 1},
+            "execution_id": "exec-1",
+            "failure_class": "NOT_A_REAL_FAILURE_CLASS",
+            "reason_code": "X",
+            "started_at": T1,
+            "ended_at": T1,
+            "succeeded": False,
+        }
+    ]
+
+    with pytest.raises(InvalidRecord):
+        RunRecord.from_mapping(mapping)
