@@ -226,22 +226,26 @@ FROZEN: a step declares what it does by naming an EXISTING seam — an Agent exe
 ```
 
 ```text
-AMENDMENT 1 (2026-10-04) — the approval point GATES a step; it is not one.
+AMENDMENT 1 (2026-10-04), TIGHTENED BY AMENDMENT 2 (2026-10-04)
+— the approval point GATES a step; it is not one.
 
 FROZEN: an APPROVAL step is a declared WAIT on an approval. It is NOT an execution-seam
         step: it reaches no seam, runs nothing, and produces nothing.
 FROZEN: an APPROVAL step therefore has no AttemptId and no ExecutionId of its own, and
         creates no attempt however long it waits.
-FROZEN: an APPROVAL step gates the NEXT declared execution-seam step in workflow order.
-        A definition whose APPROVAL step has no subsequent execution-seam step is
-        REFUSED: an approval that authorizes nothing is not an approval this contract
-        admits, and a wait with nothing behind it is the unbounded state §16 forbids.
+FROZEN: an APPROVAL step MUST be IMMEDIATELY followed in declared workflow order by
+        exactly one execution-seam step, and THAT immediately following step is the
+        GATED step.
+FROZEN: a definition whose APPROVAL step is not immediately followed by an execution-seam
+        step is REFUSED. An APPROVAL step followed by another APPROVAL step is therefore
+        INVALID: the first would gate a wait, and a wait is not an execution-seam step.
 FROZEN: "execution-seam step" means a step naming an Agent execution or a tool
         invocation through AI-06's path. An APPROVAL step is not one.
-FROZEN: the target is the NEXT one in DECLARED order and nothing else. There is no
-        selector, no name, no index and no second mechanism for choosing which step an
-        approval point gates — a target a definition could point anywhere would be a
-        target an approval could be moved between.
+FROZEN: the target is the IMMEDIATELY FOLLOWING step in declared order and nothing else.
+        There is no selector, no name, no index, NO SKIPPING OF AN INTERVENING WAIT, and
+        no second mechanism for choosing which step an approval point gates — a target a
+        definition could point anywhere, or reach past, would be a target two approval
+        points could share.
 ```
 
 ```text
@@ -810,6 +814,21 @@ FROZEN: the preimage above is UNCHANGED. It remains exactly those six fields, an
 FROZEN: still excluded, now and always — ApprovalPointId, an AttemptId object, an
         ExecutionId, workspace_identity, the approver, the timestamp, the artifact
         reference and the artifact's bytes.
+```
+
+```text
+AMENDMENT 2 (2026-10-04) — one approval point, one scope, and no sharing.
+
+FROZEN: an approval point has exactly ONE immediate execution subject (§6.1), and no
+        second approval point can share it.
+FROZEN: the reason is identity, not tidiness. With an ApprovalPointId forbidden and this
+        preimage fixed at six fields, two approval waits naming one (step_id, attempt_no)
+        would have IDENTICAL scope identity — and an approval accepted at one would be an
+        approval for the other, with nothing in the six fields able to tell them apart.
+FROZEN: the rule that an approval wait may not skip another approval wait (§6.1) is what
+        makes that impossible rather than merely unlikely. It is the only closure
+        available that does not add a seventh field: a convention that told two of them
+        apart would BE a seventh field wearing another name.
 ```
 
 ### 13.1.1 The ApprovalRequest
@@ -1452,6 +1471,54 @@ THIS AMENDMENT DOES NOT CHANGE
 
     No field is added to the scope. No vocabulary member is added anywhere. An
     ApprovalPointId is still refused: the scope IS the identity.
+```
+
+```text
+AMENDMENT 2 — 2026-10-04 — an approval wait may not skip another approval wait.
+
+CHANGED CLAUSES
+    §6.1   the gated step is the IMMEDIATELY FOLLOWING declared step, not the next
+           execution-seam step in workflow order; an APPROVAL step followed by another
+           APPROVAL step is INVALID, and a definition containing one is REFUSED
+    §13.1  stated consequence: an approval point has exactly one immediate execution
+           subject, and no second approval point can share it
+
+WHY AMENDMENT 1 WAS INSUFFICIENT
+    Amendment 1 resolved "an approval step is not an execution step" and left this legal:
+
+        APPROVAL -> APPROVAL -> EXECUTION
+
+    because "the next execution-seam step" reaches PAST an intervening approval wait.
+    Both waits would then target the same (step_id, attempt_no) — and with an
+    ApprovalPointId forbidden and the preimage fixed at six frozen fields, the two would
+    have IDENTICAL scope identity. An approval accepted at one point would be an approval
+    for the other, at the layer whose whole job is to tell them apart.
+
+    The gap could not be closed by an implementation convention. The six fields ARE the
+    identity; a convention that distinguished two of them would be a seventh field
+    wearing another name, which is exactly what §13.1 forbids and what this amendment
+    declines to smuggle in.
+
+SECURITY IMPACT
+    Without this amendment: two distinct approval waits could name one scope, so one
+    accepted approval would be indistinguishable from another, and a reader could not
+    tell which human act authorized which wait.
+    With this amendment: each approval wait has exactly one immediate execution subject,
+    and no second approval point can silently share it.
+
+AUTHORITY IMPACT
+    None. Guard remains the authorization authority; ApprovalPointId is still forbidden;
+    no approval becomes an ApprovalRef, an EvidenceRecord or an AI-10 decision.
+
+THIS AMENDMENT DOES NOT CHANGE
+    the six-field scope preimage          approval non-inheritance
+    Guard authority                       Evidence ownership
+    AI-08 execution identity              the failure vocabulary
+    the checkpoint boundary               the trusted-ingress boundary
+
+    The preimage remains EXACTLY workflow_id · revision · definition_digest · run_id ·
+    step_id · attempt_no — unchanged byte for byte by this amendment. No field is added,
+    no vocabulary member is added, and no section is renumbered.
 ```
 
 ---
