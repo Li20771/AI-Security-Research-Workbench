@@ -193,8 +193,18 @@ FROZEN: a dimension with no measurement is UNKNOWN. UNKNOWN MUST be represented 
 ```
 
 ```text
-FROZEN: the ONLY path from a record to a routing weight is a recorded verdict. A policy
-        that cites a task MUST cite the verdict it was derived from.
+FROZEN: the ONLY admissible use of an AI-11 verdict in a routing policy is an
+        explicitly declared policy condition that cites the exact verdict from the
+        exact supplied `BenchmarkRun`.
+FROZEN: AI-12 MUST NOT derive a numeric weight, score, prior, ranking, aggregate or
+        other synthetic value from an AI-11 verdict.
+FROZEN: a verdict is a fact consumed by policy; it is not a numeric quantity from which
+        policy weights are calculated.
+```
+
+```text
+admissible:      AI-11 verdict  ->  declared policy condition
+FORBIDDEN:       AI-11 verdict  ->  score / weight  ->  model ranking
 ```
 
 ### 4.4 A BLOCKED task is not a task to delete
@@ -395,7 +405,13 @@ FROZEN: EXPLAINABLE — every decision names the rules that fired and the eviden
         rule read. A decision that cannot be explained from tracked artifacts is not
         emitted.
 FROZEN: AUDITABLE — a reader MUST be able to re-derive any decision from the tracked
-        policy and the tracked records, without asking the component that made it.
+        policy, the exact supplied records it cites, and their recorded provenance,
+        without asking the component that made it.
+FROZEN: auditability does NOT require AI-12 to make AI-11 run data durable, and does
+        NOT permit assuming `benchmarks/results/` exists or holds the record.
+FROZEN: if the exact supplied record a decision cites is unavailable, the decision
+        cannot be independently re-derived and MUST NOT be treated as a complete
+        auditable decision.
 FROZEN: REVERSIBLE — every policy declares its rollback: the previous policy, the
         condition that triggers rollback, and who decides. A policy with no declared
         rollback MUST NOT be activated.
@@ -408,6 +424,17 @@ FROZEN: a declared fallback MUST NOT contradict AI-07's frozen boundary, and a p
         that would require AI-07 to retry, to remember a previous decision, or to
         re-evaluate a request automatically MUST NOT be emitted.
 ```
+
+```text
+tracked policy
+    + the exact supplied BenchmarkRun it cites
+    + that record's recorded provenance
+    = an auditable decision
+```
+
+An audit does not need AI-11 to have stored anything; it needs the record the decision
+cites to be producible again, and it needs the decision to say which record that is
+(§5.3).
 
 ---
 
