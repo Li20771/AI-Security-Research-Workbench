@@ -104,11 +104,14 @@ FROZEN: AI-12 v1 does not modify AI-11, AI-07, AI-04 or any other phase's contra
 FROZEN: AI-12 v1 does not produce a composite score across tasks or across axes.
 FROZEN: AI-12 v1 does not remove a task from the corpus, for any reason, including
         that the task is BLOCKED.
+FROZEN: AI-12 v1 does not execute a fallback, retry a model, hold runtime decision
+        state, or perform any long-running recovery. Its fallback and escalation are
+        declared data (§5.2).
 ```
 
 ---
 
-## 4. What AI-12 consumes — AI-11's measured facts, read-only
+## 4. What AI-12 consumes — AI-11's measured facts, supplied and read-only
 
 ### 4.1 The record — an explicitly supplied, immutable input
 
