@@ -795,6 +795,50 @@ AI-12 不修改 AI-07 / AI-11 / AI-05
 - 无限制后台执行
 - 绕过 Guard 获得更高权限
 
+### Status: AI-13-A DRAFT / FREEZE PROPOSAL · AI-13 NOT COMPLETE
+
+```text
+contract = docs/AI-13_LONG_RUNNING_WORKFLOWS_EXECUTION_PLAN.md
+AI-13-A  = DRAFT / FREEZE PROPOSAL   contract / design freeze   (PR open, not merged)
+AI-13-B  = NOT STARTED               the workflow core
+AI-13-C  = NOT STARTED               the approval point
+AI-13    = NOT COMPLETE
+AI-13 home = workflows/  (definitions · checkpoints · runs · policies)
+```
+
+本轮（AI-13-A）只冻结契约，不实现。契约承接了四个阶段**点名**交给 AI-13 的遗留项：
+
+```text
+AI-08 §7.2   无 parent-execution、无 retry lineage、无 resumption lineage；
+             第二次尝试是**另一条 execution**，有自己的 ExecutionId
+AI-08 §11.4  Agent 层不得发明 retry / cancellation / resume / fallback / escalation
+AI-08 T32    TIMED_OUT / CANCELLED / RETRYING / RETRIED / FALLBACK / ESCALATED
+             这些词被禁止于 AI-08，因为属于 AI-13
+AI-02 §5.11  max_retries 默认 0；retry policy 是 AI-13 的事
+AI-02 §9.1   retry_count 保留给 AI-13，AI-02 里恒为 0
+AI-10 §5.3   "resume of a closed case ... is AI-13's boundary and does not exist in v1"
+```
+
+已冻结的核心边界：
+
+```text
+resume 只继承 DECLARED STATE；不继承 authorization / approval / context / tool state
+每一次 attempt 独立授权；上一次 decision 不给下一次任何授权
+retry ≠ 提权 ≠ 扩大候选集 ≠ 放宽能力 ≠ 自动模型 fallback
+每个 bound 都是 DECLARED；达到 bound 是具名 terminal state，不是静默停止
+checkpoint 是 disposable workflow state，不是 AI-05 Evidence，且不得当成 Evidence
+human approval 只开 workflow 的门；Guard 的门仍然独立 BLOCKED（AI-04 §8 / D-12 / Q-3）
+AI-13 v1 无 DAG scheduler、无后台 daemon、无并发、无跨进程保持
+```
+
+仍 BLOCKED / 未解决，不得借 AI-13 绕过：
+
+```text
+AI-12 §6 model-comparative prerequisite = BLOCKED（AI-13 不执行 AI-12 policy）
+AI-12-C = BLOCKED / NOT STARTED
+AI-05 = INCOMPLETE（C-1 DEFERRED；AI-13 不注册 producer、不写 Evidence、不解决 C-1）
+```
+
 ---
 
 ## AI-14 — Long-term AI Workbench
@@ -933,7 +977,7 @@ SecurityLab
 | AI-10 | **COMPLETE** — contract `3613896d` (PR #56), Amendments 1 and 2 (`fbf1e1b0` PR #58, `32126416` PR #59), implementation `d22fe25c5fe94ae697083fd9fbdfaf3976785703` (PR #60) merged; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-11 | **COMPLETE / CLOSED** — contract `6f7548a1` (PR #62 + Amendment 1), benchmark core `ce880282` (PR #63), measured campaign `6bbe526b5bedeb29fb138f8979f0a4cb6df1b3ce` (PR #65); five tasks PASS, A.6 BLOCKED by `PRECONDITION_UNMET:environment:vcan0-exclusive`; see [AI-11_EVIDENCE_2026-10-03.md](AI-11_EVIDENCE_2026-10-03.md) |
 | AI-12 | **AI-12-A COMPLETE / MERGED** (`60c630d8`), **AI-12-B COMPLETE / MERGED** (`fa892eb1`, PR #67) — the policy core; **AI-12-C BLOCKED / NOT STARTED**, **AI-12 NOT CLOSED**, model-comparative prerequisite BLOCKED; see [AI-12-B_EVIDENCE_2026-10-03.md](AI-12-B_EVIDENCE_2026-10-03.md) |
-| AI-13 | NOT STARTED |
+| AI-13 | **AI-13-A DRAFT / FREEZE PROPOSAL** — contract/design freeze, PR open, not merged; **AI-13 NOT COMPLETE**, AI-13-B/C not started; see [AI-13_LONG_RUNNING_WORKFLOWS_EXECUTION_PLAN.md](AI-13_LONG_RUNNING_WORKFLOWS_EXECUTION_PLAN.md) |
 | AI-14 | NOT STARTED |
 
 ---

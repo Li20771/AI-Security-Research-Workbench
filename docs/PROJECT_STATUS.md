@@ -69,7 +69,42 @@ This file is the single entry point for deciding what to do next.
 
 ### Current work item
 
-**AI-12 — Model Routing v2 — AI-12-B COMPLETE / MERGED.**
+**AI-13 — Long-running Workflows — AI-13-A DRAFT / FREEZE PROPOSAL.**
+
+```text
+AI-13-A  = DRAFT / FREEZE PROPOSAL   contract / design freeze   (PR open, not merged)
+AI-13-B  = NOT STARTED               the workflow core
+AI-13-C  = NOT STARTED               the approval point
+AI-13    = NOT COMPLETE
+contract = docs/AI-13_LONG_RUNNING_WORKFLOWS_EXECUTION_PLAN.md
+home     = workflows/  (definitions · checkpoints · runs · policies)
+```
+
+The contract freezes the boundaries and nothing is implemented. It picks up four
+deferrals recorded by name in earlier phases: AI-08 §7.2 (no retry or resumption
+lineage; a second attempt is a second execution), AI-08 §11.4 and T32 (the vocabulary
+`TIMED_OUT / CANCELLED / RETRYING / RETRIED / FALLBACK / ESCALATED` is AI-13's), AI-02
+§5.11 and §9.1 (`max_retries` defaults to 0; `retry_count` reserved for AI-13), and
+AI-10 §5.3 (resume of a closed case is AI-13's boundary).
+
+```text
+FROZEN by AI-13-A, and not implemented yet:
+    resume inherits DECLARED STATE and nothing else — no authorization, no approval,
+    no context, no tool state
+    every attempt is authorized on its own; a previous decision grants nothing
+    retry is not escalation, widening, relaxation or automatic model fallback
+    every bound is declared; reaching one is a named terminal state
+    a checkpoint is disposable workflow state, never an AI-05 EvidenceRecord
+    a workflow approval opens a WORKFLOW gate only; Guard's gate stays independently
+    BLOCKED (AI-04 §8, D-12, Q-3)
+```
+
+**AI-13 does not unblock anything it does not own.** AI-12 §6's model-comparative
+prerequisite remains BLOCKED, AI-12-C remains BLOCKED / NOT STARTED, and AI-05 remains
+INCOMPLETE with C-1 DEFERRED — AI-13 registers no producer, writes no Evidence record,
+and does not resolve C-1.
+
+**AI-12 — Model Routing v2 — AI-12-B COMPLETE / MERGED; AI-12 NOT CLOSED.**
 
 ```text
 AI-12-A  = COMPLETE / MERGED          contract frozen   (PR #66, 60c630d8)
@@ -100,10 +135,6 @@ by implementing the infrastructure. No score, weight, ranking or aggregate exist
 ```
 
 Evidence: [AI-12-B_EVIDENCE_2026-10-03.md](AI-12-B_EVIDENCE_2026-10-03.md).
-
-**AI-11 — AI Security Benchmark — COMPLETE / MERGED / CLOSED.**
-
-**AI-10 — Cross-Agent Review — COMPLETE / CLOSED.**
 
 **AI-11 — AI Security Benchmark — COMPLETE / MERGED / CLOSED.**
 
@@ -146,6 +177,8 @@ AI-05 §28 remains OPEN: no AI-11-admissible Evidence producer token exists.
 ```
 
 Evidence: [AI-11_EVIDENCE_2026-10-03.md](AI-11_EVIDENCE_2026-10-03.md).
+
+**AI-10 — Cross-Agent Review — COMPLETE / MERGED / CLOSED.**
 
 ```text
 AI-10-A     = COMPLETE / MERGED    contract frozen           (PR #56, 3613896d)
@@ -357,9 +390,8 @@ AI-11   AI Security Benchmark                 CLOSED    merged 6bbe526b (PR #65)
 AI-12   Model Routing v2                      ACTIVE    AI-12-A MERGED
                                                         AI-12-B MERGED (PR #67)
                                                         AI-12-C BLOCKED
-AI-13   retry / timeout / cancellation /
-        checkpoint / resume /
-        failure classification                queued    NOT STARTED
+AI-13   Long-running Workflows                  ACTIVE    AI-13-A freeze proposal
+                                                        (PR open, not merged)
 ```
 
 - **AI-11 — AI Security Benchmark — CLOSED.** Merged to `main` as
