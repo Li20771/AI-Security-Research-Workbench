@@ -69,22 +69,29 @@ This file is the single entry point for deciding what to do next.
 
 ### Current work item
 
-**AI-12 — Model Routing v2 — AI-12-B IMPLEMENTATION COMPLETE / PR OPEN.**
+**AI-12 — Model Routing v2 — AI-12-B COMPLETE / MERGED.**
 
 ```text
 AI-12-A  = COMPLETE / MERGED          contract frozen   (PR #66, 60c630d8)
-AI-12-B  = IMPLEMENTATION COMPLETE    the policy core   (PR open, not merged)
+AI-12-B  = COMPLETE / MERGED          the policy core   (PR #67, fa892eb1)
 AI-12    = NOT CLOSED
 AI-12-C  = BLOCKED / NOT STARTED      §6's prerequisite is unmet
 contract blob = b6e3cc8bd3a54b61e88c1f45c080bfd44965a462
 ```
 
-The policy core is implemented and offline verified: a policy artifact and its
+The policy core is implemented, offline verified and merged: a policy artifact and its
 validator, the supplied-evidence input with exact `run_id` identity, and an
 explainable, auditable resolution under `routing/`. Every selecting rule requires
 model-execution evidence (§4.2 forbids justifying a selection with a REFERENCE run),
 no such measurement exists, and every policy over AI-11's records therefore resolves
 **DORMANT** — which is the honest answer, not a gap to fill.
+
+Three defects were found in review and closed before the merge: a rule projection that
+dropped `match_task_id`, `requires_run_id` and `select`; a caller-supplied mapping that
+could label itself `MODEL_EXECUTION` and manufacture the missing prerequisite; and a
+typed-object constructor that could do the same while bypassing the mapping boundary.
+The §4.2/§6 rule is now an invariant of `EvidenceRef` itself, so no synthetic
+model-evidence path remains.
 
 ```text
 NO model has been measured, no provider has been called, and no policy selects a
@@ -348,7 +355,8 @@ PROJECT_STATUS.md
 ```text
 AI-11   AI Security Benchmark                 CLOSED    merged 6bbe526b (PR #65)
 AI-12   Model Routing v2                      ACTIVE    AI-12-A MERGED
-                                                        AI-12-B PR OPEN
+                                                        AI-12-B MERGED (PR #67)
+                                                        AI-12-C BLOCKED
 AI-13   retry / timeout / cancellation /
         checkpoint / resume /
         failure classification                queued    NOT STARTED
