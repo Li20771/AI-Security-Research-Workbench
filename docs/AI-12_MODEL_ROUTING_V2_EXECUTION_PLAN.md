@@ -182,19 +182,23 @@ input                      exists in AI-11's campaign today?
 task type / task family    YES — every corpus task declares one
 task_status                YES
 regression_status          YES
-tool-call facts            YES, as recorded per run
 test / execution counts    YES
 environment facts          YES — host record, limitations, source_sha
 failure patterns           YES, as reason codes
+tool-call facts            NO  — `tool_trace` exists on every record and is EMPTY on
+                                 all six: the REFERENCE executor makes no tool calls
 cost                       NO  — token_usage is null on every record (no provider call)
-latency                    NO  — not a recorded benchmark field
+latency                    NO  — `duration_ms` records the HARNESS's own run duration
+                                 and is excluded as operational; no model latency exists
 per-model success history  NO  — the campaign ran executor_kind = REFERENCE
 ```
 
 ```text
-FROZEN: the three rows marked NO are UNKNOWN inputs. AI-12 v1 MUST NOT synthesise them,
-        and MUST NOT ship a policy that would read differently if they had been
-        synthesised.
+FROZEN: every row marked NO is an UNKNOWN input. AI-12 v1 MUST NOT synthesise one, and
+        MUST NOT ship a policy that would read differently if one had been synthesised.
+FROZEN: an empty field is NOT a measured zero. `tool_trace` being present and empty means
+        no tool call was made in a run where none was possible — it is not evidence that
+        a model uses tools correctly, and MUST NOT be read as a success rate of 0 or 1.
 ```
 
 ### 5.2 Outputs
