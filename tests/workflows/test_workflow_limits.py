@@ -391,6 +391,50 @@ def test_the_effective_timeout_is_handed_to_the_execution() -> None:
     assert executor.calls[0]["timeout_seconds"] == 5
 
 
+def test_the_workflow_deadline_remains_the_outer_bound() -> None:
+    """§10.3.1. "effective step deadline = min(step deadline, the workflow deadline's
+    REMAINING time)".
+
+    The step declared ten minutes and has them; the WORKFLOW has five seconds left. The
+    workflow is the narrower bound, so the workflow is what the execution is given — an
+    outer bound that a wider inner one could override would not be an outer bound.
+    """
+    definition = make_definition(limits=limits(workflow_seconds=5, step_seconds=600))
+    executor = RecordingExecutor()
+    advance(definition=definition, run=_started(definition), executor=executor, now=T0)
+
+    assert executor.calls[0]["timeout_seconds"] == 5
+
+
+def test_the_step_bound_survives_a_retry() -> None:
+    """§8.3 by way of §12. A retry spends the budget the STEP was given.
+
+    The step deadline is anchored at the step's first attempt and persisted from there,
+    so a retry inside that step inherits what is left rather than being handed a fresh
+    step runtime — the same rule that keeps the workflow and retry budgets from
+    restarting, applied to the bound in between them.
+    """
+    definition = make_definition(
+        limits=limits(step_seconds=30, attempts_per_step=5, attempts_total=10),
+        retry_policy=a_retry_policy(max_attempts=5),
+    )
+    executor = AlwaysFailsExecutor(duration_seconds=5)
+    run = _started(definition)
+
+    run = advance(definition=definition, run=run, executor=executor, now=T0)
+    anchored = run.step_deadline
+    assert anchored == "2026-10-03T10:00:30Z"
+
+    run = advance(
+        definition=definition,
+        run=run,
+        executor=executor,
+        now="2026-10-03T10:00:20Z",
+    )
+    assert run.step_deadline == anchored, "the retry was handed a fresh step budget"
+    assert len(run.attempts_for("s1")) == 2, "the retry did not happen"
+
+
 def test_the_outer_bound_never_widens_the_inner_timeout() -> None:
     """§11.1. "It does not remove the inner one, and it does not make an inner one
     optional."
