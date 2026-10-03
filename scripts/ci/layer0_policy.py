@@ -2580,6 +2580,202 @@ def check_ai11_benchmark_layer(root: "Path | None" = None) -> list[str]:
     return problems
 
 
+#: AI-13's own top-level package. NOT `.github/workflows` -- that is
+#: WORKFLOW_DIR above, and the two are unrelated despite the shared word.
+AI13_WORKFLOWS_DIR = "workflows"
+
+#: The modules AI-13-B ships. A package missing one of these is incomplete rather
+#: than merely smaller.
+AI13_WORKFLOW_MODULES = (
+    "canonical.py",
+    "checkpoint.py",
+    "definition.py",
+    "engine.py",
+    "errors.py",
+    "instants.py",
+    "policy.py",
+    "resume.py",
+    "run.py",
+    "vocabulary.py",
+)
+
+#: The import roots a workflow module MUST NOT reach.
+#:
+#: The top-level `workflows/` directory was unchecked before AI-13: the only
+#: `workflows` Layer 0 knew about was `.github/workflows`, so a module here could
+#: have reached a provider, written an Evidence record or started a process with
+#: nothing to stop it (AI-13 §21.3).
+#:
+#: Every root below is refused outright rather than allowlisted down to one
+#: permitted module, because the workflow package imports NOTHING outside itself:
+#: it reaches the execution seam through the `StepExecutor` Protocol its caller
+#: supplies, not through an import. There is therefore no permitted foreign module
+#: for a narrower rule to permit, and the absence is a property of the design
+#: rather than a coincidence.
+AI13_FORBIDDEN_IMPORT_ROOTS = (
+    "agents",        # AI-08 -- an attempt IS an execution, composed not imported
+    "benchmarks",    # AI-11 -- measurement, untouched
+    "evidence",      # AI-05 -- AI-13 writes no record
+    "integrations",  # AI-09 -- the provider composition layer
+    "plugins",       # guard (AI-04), evidence (AI-05), security_tools (AI-06)
+    "providers",     # AI-02, AI-09 -- AI-13 reaches no provider
+    "review",        # AI-10 -- a run is not a review case
+    "routing",       # AI-07's Router and AI-12's policy core
+    "tools",         # AI-06 -- the single tool-invocation path
+)
+
+#: Standard-library roots that would mean the package had acquired an execution,
+#: a transport or a second process. AI-13 v1 starts no daemon, holds no execution
+#: open between process lifetimes, and reaches nothing over a network (§12, §16).
+AI13_FORBIDDEN_STDLIB_ROOTS = (
+    "asyncio",
+    "ctypes",
+    "http",
+    "multiprocessing",
+    "requests",
+    "selectors",
+    "shutil",
+    "signal",
+    "socket",
+    "subprocess",
+    "threading",
+    "urllib",
+)
+
+#: Callables that would mean AI-13 had become the executor AI-12 deliberately is
+#: not. AI-12 declares fallback and escalation as DATA and AI-13 executes none of
+#: it (§10.4, §16).
+AI13_FORBIDDEN_CALLABLES = (
+    "apply_fallback",
+    "escalate",
+    "execute_fallback",
+    "fallback_to",
+)
+
+
+def check_ai13_workflows(root: "Path | None" = None) -> list[str]:
+    """AI-13 §4, §12, §16, §21.3: the workflow layer, as a gate.
+
+    ```text
+    identity   a top-level package, not a plugin and not a second execution engine
+    reach      no provider, no tool, no Evidence, no Router or policy core, no review
+               and no benchmark -- the execution seam is a Protocol, not an import
+    no process no subprocess, no socket, no thread, no signal, no transport
+    no fallback no callable that would execute AI-12's declared fallback or escalation
+    ```
+
+    `root` defaults to the repository, and is a parameter so the test suite can run
+    this check against a scratch tree carrying a violation: a check that cannot fail
+    proves nothing, and the only way to show this one CAN fail is to make it fail on
+    purpose.
+    """
+    import ast
+
+    base = ROOT if root is None else root
+    problems: list[str] = []
+
+    # (1) Identity: a top-level package, not a plugin and not a second engine.
+    for forbidden in ("plugins/workflows", "plugins/workflow", "plugins/ai13"):
+        if (base / forbidden).exists():
+            problems.append(
+                f"{forbidden}/ exists; AI-13 is a top-level layer and not a DSH plugin "
+                "(contract §3.1, §4)"
+            )
+
+    workflows = base / AI13_WORKFLOWS_DIR
+    if not workflows.is_dir():
+        return problems + [
+            f"{AI13_WORKFLOWS_DIR}/ is absent; the workflow layer has no home"
+        ]
+
+    if (workflows / "__init__.py").exists():
+        problems.append(
+            f"{AI13_WORKFLOWS_DIR}/__init__.py exists; this repository's core layers "
+            "are namespace packages and a package __init__ is how a layer acquires an "
+            "import side effect (contract §4)"
+        )
+
+    for name in AI13_WORKFLOW_MODULES:
+        if not (workflows / name).is_file():
+            problems.append(
+                f"{AI13_WORKFLOWS_DIR}/{name} is absent; the workflow core is incomplete"
+            )
+
+    for path in sorted(workflows.rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        except SyntaxError as exc:  # pragma: no cover - surfaced as a failure
+            problems.append(f"{_display(path)} does not parse: {exc}")
+            continue
+
+        imported: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imported.add(node.module)
+
+        # (2) Reach. Every foreign root is refused, and the message names which
+        # ownership rule the import would have crossed rather than only the root.
+        reach_reason = {
+            "providers": "AI-13 reaches no provider (§4, §16)",
+            "integrations": "AI-13 reaches no provider (§4, §16)",
+            "tools": "tool invocation stays on AI-06's single path (§4, §17)",
+            "plugins": (
+                "AI-13 writes no Evidence record, asks Guard nothing directly and "
+                "invokes no tool (§4, §16)"
+            ),
+            "evidence": "AI-13 writes no AI-05 EvidenceRecord and registers no "
+                        "producer (§7.3, §16)",
+            "routing": "AI-13 executes no AI-12 policy and reuses no RouterDecision "
+                       "(§10.2, §10.4)",
+            "review": "a workflow run is not a review case and resuming one is not a "
+                      "review transition (§13.6, AI-10 §5.3)",
+            "benchmarks": "AI-11 measurement is untouched (§4, §16)",
+            "agents": "an attempt IS an AI-08 execution, composed through the "
+                      "StepExecutor seam rather than imported (§6.3, §17)",
+        }
+        roots = {name.split(".")[0] for name in imported}
+        for banned in AI13_FORBIDDEN_IMPORT_ROOTS:
+            if banned in roots:
+                problems.append(
+                    f"{_display(path)} imports {banned!r}; {reach_reason[banned]}"
+                )
+
+        # (3) No process, no transport, no second thread.
+        for banned in AI13_FORBIDDEN_STDLIB_ROOTS:
+            if banned in roots:
+                problems.append(
+                    f"{_display(path)} imports {banned!r}; AI-13 v1 starts no process, "
+                    "holds no execution open between process lifetimes and reaches "
+                    "nothing over a network (§12, §16)"
+                )
+
+        # (4) No fallback execution, as CODE. AI-12 declares fallback and escalation
+        # as data and performs neither; AI-13 must not become its executor (§10.4).
+        defined: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                defined.add(node.name)
+            elif isinstance(node, ast.Name):
+                defined.add(node.id)
+            elif isinstance(node, ast.Attribute):
+                defined.add(node.attr)
+            elif isinstance(node, ast.arg):
+                defined.add(node.arg)
+
+        for identifier in sorted(defined):
+            if identifier.lower() in AI13_FORBIDDEN_CALLABLES:
+                problems.append(
+                    f"{_display(path)} defines {identifier!r}; AI-13 executes no AI-12 "
+                    "policy and performs no model fallback or escalation (§10.4, §16)"
+                )
+
+    return problems
+
+
 def main() -> int:
     print("Layer 0 - repository policy")
     report = Report()
@@ -2642,6 +2838,10 @@ def main() -> int:
     report.check(
         "policy core boundary and scoring absence",
         check_ai12_policy_core(),
+    )
+    report.check(
+        "workflow layer boundary and execution absence",
+        check_ai13_workflows(),
     )
 
     if report.failures:

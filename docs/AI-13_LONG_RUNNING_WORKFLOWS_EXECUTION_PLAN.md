@@ -1,6 +1,6 @@
 # AI-13 — Long-running Workflows — Execution Plan
 
-> Status: **DRAFT — FREEZE PROPOSAL** (AI-13-A, 2026-10-03)
+> Status: **FROZEN** (AI-13-A, 2026-10-03 — frozen by the merge of PR #69)
 > Phase: AI-13 — Long-running Workflows
 > Sub-phase: **AI-13-A — Contract / Design Freeze**
 > Base: `main` @ `2c23bab866ce20595fccfde2ff1f563ce0a07086`
@@ -8,13 +8,17 @@
 > may deviate from a frozen contract without amending this document first (§20).
 
 ```text
-THIS DOCUMENT IS NOT YET FROZEN.
+THIS DOCUMENT IS FROZEN.
 
-The freeze act is human review followed by the merge of PR 1.
-Until that merge, this is a proposal. C0 (§19) is NOT satisfied by this document's
-existence — it is satisfied by its merge.
+The freeze act was human review followed by the merge of PR #69 into `main`, at merge
+commit `1e0a7fd`. C0 (§19) is satisfied by that merge — as the block here said it would
+be — and not by this document's existence.
 
-No code exists. No workflow has run. No checkpoint exists.
+This block is a STATUS record and nothing more. It changes no clause of §0–§21: those
+are as merged, and a change to any of them is an amendment (§20), never a status edit.
+
+At the freeze no workflow code existed, no workflow had run and no checkpoint existed.
+AI-13-B implements the workflow core against this document (§18).
 ```
 
 ---
@@ -1253,7 +1257,8 @@ FROZEN: AI-13-B MUST add a Layer 0 boundary for workflows/. The top-level workfl
 ## 22. Amendment Log
 
 ```text
-(none yet — this document is a freeze proposal and no amendment has been applied)
+(none — no amendment has been applied. This document was frozen by the merge of
+PR #69; a change to any FROZEN clause is an amendment (§20) and is logged here.)
 ```
 
 ---
@@ -1261,8 +1266,8 @@ FROZEN: AI-13-B MUST add a Layer 0 boundary for workflows/. The top-level workfl
 ## Status
 
 ```text
-AI-13-A  = DRAFT / FREEZE PROPOSAL   this document
-AI-13-B  = NOT STARTED               the workflow core
+AI-13-A  = FROZEN / MERGED           this document (PR #69 @ 1e0a7fd)
+AI-13-B  = IMPLEMENTED               the workflow core — this revision of the document
 AI-13-C  = NOT STARTED               the approval point
 AI-13    = NOT COMPLETE
 
