@@ -138,32 +138,66 @@ or a weight.
 
 ## 5. The mutation controls
 
-Six documented mutation controls, each taken from a WORKING artifact, mutated into
-the shape under test, with the focused test required to notice. Run as a harness
-against the real modules:
+Ten documented mutation controls, each taken from a WORKING artifact, mutated into the
+shape under test, with the focused test required to notice. Run as a harness against
+the real modules:
 
 ```text
-M3  let a REFERENCE run justify a model selection (§4.2)        caught
-M4  stop refusing score/weight fields (§4.3, §9)                caught
-M6  activate without rollback metadata (§8)                     caught
-P9  let any verdict satisfy a PASS requirement (§4.3)           caught
-P10 stop reporting a task dropped from the scope (§4.4)         caught
-P13 audit that cannot notice a tampered resolution (§8)         caught
+M3     let a REFERENCE run justify a model selection (§4.2)      caught
+M4     stop refusing score/weight fields (§4.3, §9)              caught
+M6     activate without rollback metadata (§8)                   caught
+P9     let any verdict satisfy a PASS requirement (§4.3)         caught
+P10    stop reporting a task dropped from the scope (§4.4)       caught
+P13    audit that cannot notice a tampered resolution (§8)       caught
+PROJ-1 drop match_task_id from the rule projection (§8)          caught
+PROJ-2 drop requires_run_id from the rule projection (§8)        caught
+PROJ-3 drop the selection from the rule projection (§8)          caught
+PROJ-4 drop match_task_id, caught by the round-trip guard (§8)   caught
 ```
 
 Each of those tests fails if its check is removed, rather than only if the check was
 never written. The rest of the file names its own mutations inline (`M1`, `M2`,
-`M5`, `M7`, `M8`).
+`M5`, `M7`, `M8`, `M9`, `M9b`).
+
+### 5.1 A review finding: the rule projection was lossy
+
+Review of the first revision found that `PolicyRule.to_mapping()` emitted only
+identity, requirements, falsifier and discrimination — and dropped `match_task_id`,
+`requires_run_id` and the whole `select`. Those are not decoration: a rule declaring
+
+```yaml
+match_task_id: ai11-v1-can-dbc-decode
+requires_run_id: run-wanted
+select:
+  model_ref: deepseek/deepseek-flash
+  agent: codex
+```
+
+projected to a rule that scoped to everything, pinned nothing and selected nothing.
+`from_mapping -> to_mapping -> from_mapping` did not return the same rule, which is
+the §8 AUDITABLE failure in its plainest form: an artifact whose projection loses what
+decides the decision cannot support a reconstruction of it.
+
+The projection now carries every semantic field, with a canonical form for the absent
+case — an undeclared optional scalar projects as `null`, and `select` is always an
+object whose members may be null — so "not declared" is distinguishable from "not
+carried", and the round trip is exact for both a fully-declared rule and a bare one.
+
+The same round found the resolution had the matching gap at one remove:
+`PolicyResolution` named `selected_by_rule` but carried no rule, so the artifact that
+makes a selection claim could not answer "why this model" without sending a reader to
+another file. It now carries `selected_rule` — the complete projection of the rule
+that selected — which is the claim's basis, in the claim.
 
 ---
 
 ## 6. Verification
 
 ```text
-tests/routing                                    204 passed
-tests/routing/test_policy_core.py                 58 passed   (P1-P15, M1-M8)
+tests/routing                                    211 passed   (run twice: 211 / 211)
+tests/routing/test_policy_core.py                 65 passed   (P1-P17, M1-M9b)
 tests/routing/test_policy_layer0.py               12 passed   (T40-T51)
-full offline suite                             3412 passed, 5 skipped, 5 deselected
+full offline suite                             3419 passed, 5 skipped, 5 deselected
 Layer 0                                         PASS (21 checks)
 compileall                                      exit 0
 providers.validate                              exit 0

@@ -465,12 +465,34 @@ class PolicyRule:
         return rule
 
     def to_mapping(self) -> dict[str, Any]:
+        """The COMPLETE rule, not a summary of it.
+
+        An earlier projection emitted only identity, requirements, falsifier and
+        discrimination, and dropped `match_task_id`, `requires_run_id` and the whole
+        `select` — three things that DECIDE what a rule does. A projection that loses
+        them cannot round-trip, and a reader auditing a selection could not see which
+        task the rule scoped to, which run it pinned, or what it selected: exactly the
+        reconstruction §8 requires the artifact to support.
+
+        The canonical form is stable and matches how a rule is authored:
+
+        ```text
+        an undeclared optional scalar   -> null      (a real value, honestly absent)
+        `select`                        -> always an object, with null members
+        ```
+        """
         return {
             "rule_id": self.rule_id,
             "priority": self.priority,
             "reason_code": self.reason_code,
+            "match_task_id": self.match_task_id,
             "requires_verdict": str(self.requires_verdict),
             "requires_evidence_class": str(self.requires_evidence_class),
+            "requires_run_id": self.requires_run_id,
+            "select": {
+                "model_ref": self.select_model_ref,
+                "agent": self.select_agent,
+            },
             "falsifier": self.falsifier.to_mapping(),
             "discrimination": self.discrimination.to_mapping(),
         }

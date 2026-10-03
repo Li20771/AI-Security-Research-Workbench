@@ -42,6 +42,7 @@ from routing.policy import (
     POLICY_VERSION,
     FORBIDDEN_POLICY_FIELDS,
     Policy,
+    PolicyRule,
     PolicyState,
 )
 from routing.policy_eval import (
@@ -769,6 +770,124 @@ def test_P15_the_policy_core_imports_only_the_verdict_vocabulary_from_benchmarks
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     assert not alias.name.startswith("benchmarks."), f"{name} imports {alias.name}"
+
+
+def test_P16_the_rule_projection_carries_every_semantic_field() -> None:
+    """§8 AUDITABLE. The positive control for the projection.
+
+    A rule whose optional fields are ALL declared. The projection must carry every one
+    of them, and the rule must survive `from_mapping -> to_mapping -> from_mapping`
+    unchanged. A projection that emits only a summary of a rule cannot round-trip, and
+    a reader auditing a selection could not see what the rule scoped to, what it
+    pinned, or what it selected.
+    """
+    full = a_rule(
+        match_task_id=CAN,
+        requires_run_id="run-wanted",
+        select={"model_ref": "deepseek/deepseek-flash", "agent": "codex"},
+    )
+    rule = PolicyRule.from_mapping(full)
+    projection = rule.to_mapping()
+
+    assert projection["match_task_id"] == CAN
+    assert projection["requires_run_id"] == "run-wanted"
+    assert projection["select"] == {
+        "model_ref": "deepseek/deepseek-flash",
+        "agent": "codex",
+    }
+    assert PolicyRule.from_mapping(projection) == rule
+    assert PolicyRule.from_mapping(projection).to_mapping() == projection
+
+
+def test_P16b_an_undeclared_optional_field_projects_as_null_and_round_trips() -> None:
+    """The canonical form for absent: `null`, and `select` always an object.
+
+    A projection that OMITTED an undeclared field would be indistinguishable from one
+    written before the field existed, and a consumer could not tell "not declared"
+    from "not carried".
+    """
+    bare = a_rule(match_task_id=None, select={})
+    rule = PolicyRule.from_mapping(bare)
+    projection = rule.to_mapping()
+
+    assert "match_task_id" in projection and projection["match_task_id"] is None
+    assert "requires_run_id" in projection and projection["requires_run_id"] is None
+    assert projection["select"] == {"model_ref": None, "agent": None}
+    assert PolicyRule.from_mapping(projection) == rule
+
+
+@pytest.mark.parametrize("dropped", ["match_task_id", "requires_run_id"])
+def test_M9_dropping_a_scalar_from_the_projection_breaks_the_round_trip(
+    dropped: str,
+) -> None:
+    """The mutation is "emit the rule without this field".
+
+    The round trip is the guard: if a projection loses a semantic field, the rule
+    rebuilt from it is a DIFFERENT rule, and P16 fails. This test shows that the
+    difference is detectable rather than merely asserted.
+    """
+    rule = PolicyRule.from_mapping(
+        a_rule(match_task_id=CAN, requires_run_id="run-wanted")
+    )
+    projection = rule.to_mapping()
+
+    # This test's own precondition, asserted rather than assumed: it can only show
+    # that a LOSS is detectable if the projection carries the field to lose. Without
+    # this line the test still passes when the projection drops the field — it builds
+    # the loss itself — and it would be silently testing nothing about the projection.
+    assert dropped in projection, (
+        f"the projection does not carry {dropped!r}, so this test cannot show that "
+        "losing it is detectable; P16 is the guard for the field being there at all"
+    )
+
+    mutated = {key: value for key, value in projection.items() if key != dropped}
+
+    assert PolicyRule.from_mapping(mutated) != rule, (
+        f"dropping {dropped!r} from the projection is undetectable, so P16 does not "
+        "guard it"
+    )
+
+
+def test_M9b_dropping_the_selection_from_the_projection_breaks_the_round_trip() -> None:
+    """The mutation is "emit the rule without its `select`"."""
+    rule = PolicyRule.from_mapping(a_rule())
+    projection = rule.to_mapping()
+    mutated = {key: value for key, value in projection.items() if key != "select"}
+
+    rebuilt = PolicyRule.from_mapping(mutated)
+    assert rebuilt.select_model_ref is None
+    assert rebuilt != rule, "dropping `select` is undetectable, so P16 does not guard it"
+
+
+def test_P17_the_resolution_carries_the_rule_that_selected() -> None:
+    """§8. The artifact makes a selection claim, so it carries the claim's basis.
+
+    `selected_by_rule` names the rule; `selected_rule` is the rule, so a reader can
+    answer "why this model" without leaving the resolution.
+    """
+    policy = Policy.from_mapping(a_policy())
+    resolution = resolve_policy(policy, supplied_records([_model_record()]))
+    mapping = resolution.to_mapping()
+
+    assert mapping["outcome"] == "SELECTED"
+    assert mapping["selected_rule"] is not None
+    assert mapping["selected_rule"]["rule_id"] == mapping["selected_by_rule"]
+    assert mapping["selected_rule"]["match_task_id"] == CAN
+    assert mapping["selected_rule"]["select"]["model_ref"] == (
+        mapping["selected_model_ref"]
+    )
+    assert mapping["selected_rule"]["falsifier"] and mapping["selected_rule"][
+        "discrimination"
+    ]
+
+
+def test_P17b_a_resolution_that_selected_nothing_carries_no_rule() -> None:
+    policy = Policy.from_mapping(a_policy())
+    resolution = resolve_policy(policy, supplied_records([record("run-ref-0001")]))
+
+    assert resolution.outcome is PolicyOutcome.DORMANT
+    assert resolution.selected_rule is None
+    assert resolution.to_mapping()["selected_rule"] is None
 
 
 def test_P14c_the_tracked_example_policy_validates_and_stays_dormant() -> None:

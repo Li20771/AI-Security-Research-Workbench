@@ -164,6 +164,14 @@ class PolicyResolution:
     selected_model_ref: str | None = None
     selected_agent: str | None = None
     selected_by_rule: str | None = None
+    #: The COMPLETE projection of the rule that selected, when one did.
+    #:
+    #: §8 makes the audit triple "tracked policy + exact supplied records + recorded
+    #: provenance", so a rule id is technically enough — a reader can look the rule up.
+    #: But this artifact MAKES a selection claim, and a claim whose own basis is not in
+    #: it asks a reader to go and find one. Carrying the rule's semantics here means
+    #: the artifact can answer "why this model" without leaving the page.
+    selected_rule: Mapping[str, Any] | None = None
 
     @property
     def is_dormant(self) -> bool:
@@ -184,6 +192,7 @@ class PolicyResolution:
             "selected_model_ref": self.selected_model_ref,
             "selected_agent": self.selected_agent,
             "selected_by_rule": self.selected_by_rule,
+            "selected_rule": dict(self.selected_rule) if self.selected_rule else None,
             "missing_scope_tasks": list(self.missing_scope_tasks),
             "rules": [rule.to_mapping() for rule in self.rules],
             "evidence": [use.to_mapping() for use in self.evidence],
@@ -324,6 +333,7 @@ def resolve_policy(
         selected_model_ref=selected[0].select_model_ref if selected else None,
         selected_agent=selected[0].select_agent if selected else None,
         selected_by_rule=selected[0].rule_id if selected else None,
+        selected_rule=selected[0].to_mapping() if selected else None,
     )
 
 
