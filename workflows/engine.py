@@ -62,11 +62,14 @@ from workflows.run import AttemptId, AttemptRecord, RunRecord, StepRecord, new_r
 from workflows.vocabulary import FailureClass, StepState, WorkflowState
 
 __all__ = [
+    "AttemptPlan",
     "ExecutionOutcome",
     "StepExecutor",
     "advance",
+    "begin_attempt",
     "cancel",
     "checkpoint_for",
+    "complete_attempt",
     "record_checkpoint",
     "resume_run",
     "start_run",
@@ -134,6 +137,13 @@ class ExecutionOutcome:
     #: bound has a counter to be enforced from. A NUMBER, never content: §7.2 and §15.2
     #: keep the bytes outside every record AI-13 writes. See the trust note above.
     artifact_bytes: int = 0
+    #: §11.2. WHO cancelled an in-flight attempt and WHY, when the execution reports
+    #: `CANCELLED`. AI-13 v1 "cancels between attempts, never inside one", so a
+    #: cancellation the engine learns about from an outcome is the attempt owner's act —
+    #: and the owner is the only thing that can name it. Required with `CANCELLED` and
+    #: refused without it, so a cancelled run cannot reach the record unable to say why.
+    cancelled_by: str = ""
+    cancelled_reason: str = ""
 
     def __post_init__(self) -> None:
         if not is_instant(self.started_at) or not is_instant(self.ended_at):
@@ -144,6 +154,24 @@ class ExecutionOutcome:
             )
         if parse_instant(self.ended_at) < parse_instant(self.started_at):
             raise InvalidRecord("an execution outcome ended before it began")
+
+        # §11.2. The same invariant the RunRecord enforces, one layer out: a CANCELLED
+        # outcome names who and why, and an outcome that is not CANCELLED carries
+        # neither. Checked here so the engine cannot be handed a cancellation it would
+        # have to invent a provenance for.
+        cancelling = self.failure_class is FailureClass.CANCELLED
+        named = bool(self.cancelled_by) and bool(self.cancelled_reason)
+        if cancelling and not named:
+            raise InvalidRecord(
+                "an execution reported CANCELLED without naming who cancelled it and "
+                "why; §11.2 records both, and AI-13 does not mint a provenance for a "
+                "cancellation it did not perform"
+            )
+        if named and not cancelling:
+            raise InvalidRecord(
+                "an execution reported cancellation provenance for an outcome that is "
+                "not CANCELLED; §11.2 records WHO and WHY on a cancellation"
+            )
 
 
 class StepExecutor(Protocol):
@@ -259,10 +287,10 @@ def _refuse_attempt(
 ) -> RunRecord:
     """Record an attempt the engine REFUSED, and end the run (§10.1, §6.3).
 
-    The attempt is COUNTED. An execution ran and produced an ExecutionId, and §15.1 makes
-    the record the account of what the run did — a refusal that left the counter untouched
-    would be a ledger that omits a spend. Both callers are terminal, so the count is not
-    what stops anything; it is what makes the stop readable afterwards.
+    The attempt was already COUNTED, in `begin_attempt`, before the execution was
+    entered — so this does not count it again. §15.1 makes the record the account of what
+    the run did, and a run that begins an attempt has spent it whether or not the attempt
+    comes back to be described.
     """
     return run.with_step(
         step_id,
@@ -271,7 +299,7 @@ def _refuse_attempt(
     ).advance(
         state=WorkflowState.FAILED,
         updated_at=now,
-        consumed_total_attempts=run.consumed_total_attempts + 1,
+        inflight_attempt_no=None,
     )
 
 
@@ -290,52 +318,131 @@ def _deadline_reached(run: RunRecord, step_deadline: str) -> str:
 
 
 def _terminal(
-    run: RunRecord, state: WorkflowState, now: str, *, bound: str | None = None
+    run: RunRecord,
+    state: WorkflowState,
+    now: str,
+    *,
+    bound: str | None = None,
+    cancelled_by: str | None = None,
+    cancelled_reason: str | None = None,
 ) -> RunRecord:
     """End the run. `bound` names the declared bound it reached, when one stopped it (§15.2).
 
     A run that ends for a reason that is not a bound — an unclassified failure, a
     cancelled run, a refused resume — passes none, because naming a bound there would
     attribute the stop to a limit the run never touched.
+
+    `cancelled_by` and `cancelled_reason` are passed only for a CANCELLED run, and
+    `RunRecord.__post_init__` refuses the record if they are missing — so a cancellation
+    that cannot name WHO and WHY does not become a terminal state at all.
     """
-    return run.advance(state=state, updated_at=now, reached_bound=bound)
+    return run.advance(
+        state=state,
+        updated_at=now,
+        reached_bound=bound,
+        inflight_attempt_no=None,
+        cancelled_by=cancelled_by,
+        cancelled_reason=cancelled_reason,
+    )
 
 
-def advance(
+@dataclass(frozen=True, slots=True)
+class AttemptPlan:
+    """What an attempt begins from, decided BEFORE the execution is entered.
+
+    ```text
+    Definition = tracked policy data
+    RunRecord  = runtime authority
+    ```
+
+    §8.3 requires the step deadline to be anchored once and persisted, and a value
+    persisted AFTER an execution returns is a value that a process dying mid-attempt
+    never wrote — so the next resume derives a fresh full step budget, which is the
+    escape the clause exists to close. The two phases are therefore separate functions,
+    and this is the handover between them:
+
+    ```text
+    plan = begin_attempt(definition=..., run=..., now=...)
+    persist(plan.run)                 <- the caller's persistence boundary
+    if plan.admitted:
+        result = complete_attempt(definition=..., plan=plan, executor=...)
+    ```
+
+    `run` is the successor record in BOTH cases. When `admitted` is False a bound or a
+    terminal state refused the attempt, and `run` is the terminal successor. When it is
+    True, `run` already carries every fact that must outlive a process ending during the
+    execution:
+
+    ```text
+    step_deadline          anchored once, at the step's first attempt
+    inflight_attempt_no    the attempt number this attempt is using
+    consumed_total_attempts  the attempt, counted because the run began it
+    workflow_deadline · retry_deadline   untouched, and already persisted
+    ```
+    """
+
+    run: RunRecord
+    admitted: bool
+    step: WorkflowStep | None = None
+    attempt_id: AttemptId | None = None
+    timeout_seconds: int = 0
+    deadline: str = ""
+    refusal: str = ""
+    #: The instant the attempt was admitted at. Phase two uses it, so one attempt reads
+    #: the clock once and its two halves cannot disagree about when it happened.
+    moment: str = ""
+
+
+def begin_attempt(
     *,
     definition: WorkflowDefinition,
     run: RunRecord,
-    executor: StepExecutor,
     now: str | None = None,
-) -> RunRecord:
-    """§6, §12. Run ONE attempt at the next step, and return the successor record.
+) -> AttemptPlan:
+    """§6, §8.3, §10.3.1, §11.1, §12. Phase ONE — everything true BEFORE execution.
 
-    Returns the run unchanged when it is already terminal, and a completed run when
-    every step has succeeded. A failed attempt that a declared policy may retry leaves
-    the run RUNNING with the step READY; the caller advances again to spend the retry,
-    which is what makes each attempt separately authorized and separately recorded.
+    It returns the record rather than writing it, because AI-13-B holds no store: the
+    CALLER owns the persistence boundary, and this is the state it must write before the
+    execution starts. `advance` calls this and completes it in one go for callers that
+    do not need to survive a crash; the bounds behave identically either way, and the
+    only difference is whether the caller wrote the record down in time.
     """
     moment = now or _utc_now()
 
     if run.is_terminal:
-        return run
+        return AttemptPlan(
+            run=run, admitted=False, refusal=f"RUN_ALREADY_TERMINAL:{run.state}", moment=moment
+        )
 
     step = _next_step(definition, run)
     if step is None:
-        return _terminal(run, WorkflowState.COMPLETED, moment)
+        return AttemptPlan(
+            run=_terminal(run, WorkflowState.COMPLETED, moment),
+            admitted=False,
+            refusal="ALL_STEPS_SUCCEEDED",
+            moment=moment,
+        )
 
     # The bound is evaluated BEFORE the attempt begins (§10.3.1), so an overrun is a
     # refusal rather than something discovered halfway through.
     decision = check_attempt_may_begin(definition, run, step.step_id, moment)
     if not decision.allowed:
-        return _terminal(
-            run,
-            decision.terminal_state or WorkflowState.FAILED,
-            moment,
-            bound=decision.reason_code,
+        return AttemptPlan(
+            run=_terminal(
+                run,
+                decision.terminal_state or WorkflowState.FAILED,
+                moment,
+                bound=decision.reason_code,
+            ),
+            admitted=False,
+            refusal=decision.reason_code,
+            moment=moment,
         )
 
-    attempt_no = len(run.attempts_for(step.step_id)) + 1
+    # §6.3. The number is derived from what the run has BEGUN, not from what it has
+    # finished, so an attempt whose process died still holds its number and a resume
+    # cannot hand the same one out twice.
+    attempt_no = max(len(run.attempts_for(step.step_id)), run.inflight_attempt_no or 0) + 1
     attempt_id = AttemptId(run_id=run.run_id, step_id=step.step_id, attempt_no=attempt_no)
 
     # §11.1, §12. Anchored at the step's FIRST attempt and persisted from there, so a
@@ -344,12 +451,55 @@ def advance(
     # the step has started.
     step_deadline = run.step_deadline or step_deadline_from(definition, moment)
 
+    prepared = run.advance(
+        step_deadline=step_deadline,
+        inflight_attempt_no=attempt_no,
+        # §15.1. The attempt is spent the moment it BEGINS. A run that started an
+        # execution has spent it whether or not the execution returns to be described,
+        # and a counter that only moved on the way back would let a crash loop spend
+        # without limit — which is what "no resume grants a new budget" forbids.
+        consumed_total_attempts=run.consumed_total_attempts + 1,
+        updated_at=moment,
+    )
+
     # §11.1. The bound the execution must be GIVEN, composed from the step's declared
     # per-invocation timeout and what the outer bounds have left. It is handed down
     # rather than left for the executor to derive, because a bound an executor computes
     # for itself is a bound an executor can widen.
-    timeout_seconds = effective_timeout_seconds(definition, run, step, moment)
-    outer_deadline = effective_deadline(definition, run, step.step_id, moment)
+    return AttemptPlan(
+        run=prepared,
+        admitted=True,
+        step=step,
+        attempt_id=attempt_id,
+        timeout_seconds=effective_timeout_seconds(definition, prepared, step, moment),
+        deadline=effective_deadline(definition, prepared, step.step_id, moment),
+        moment=moment,
+    )
+
+
+def complete_attempt(
+    *,
+    definition: WorkflowDefinition,
+    plan: AttemptPlan,
+    executor: StepExecutor,
+) -> RunRecord:
+    """§6, §10, §11, §12, §15. Phase TWO — enter the execution and record what came back.
+
+    It takes the PLAN rather than the original run, so the state the execution is handed
+    is the state the caller was told to persist: the anchored step deadline, the counted
+    attempt, and the composed timeout all come from one place.
+    """
+    if not plan.admitted:
+        return plan.run
+
+    step = plan.step
+    assert step is not None and plan.attempt_id is not None  # noqa: S101 - set with admitted
+    run = plan.run
+    attempt_id = plan.attempt_id
+    moment = plan.moment
+    step_deadline = run.step_deadline
+    assert step_deadline is not None  # noqa: S101 - anchored by begin_attempt
+    outer_deadline = plan.deadline
 
     outcome = executor.execute(
         definition=definition,
@@ -357,7 +507,7 @@ def advance(
         attempt_id=attempt_id,
         run=run,
         now=moment,
-        timeout_seconds=timeout_seconds,
+        timeout_seconds=plan.timeout_seconds,
     )
 
     expected_request = attempt_request_digest(definition, step, run)
@@ -418,12 +568,13 @@ def advance(
         state=StepState.SUCCEEDED if outcome.succeeded else StepState.READY,
         attempts=run.attempts_for(step.step_id) + (attempt,),
     ).advance(
-        consumed_total_attempts=run.consumed_total_attempts + 1,
+        # The attempt was counted in `begin_attempt`; this records what it DID.
         consumed_artifact_bytes=spent_artifacts,
         # A step that SUCCEEDED releases its bound, so the next step is anchored on its
         # own first attempt. A step that did not keeps the one it was given, which is
         # what makes the retry spend the same budget.
         step_deadline=None if outcome.succeeded else step_deadline,
+        inflight_attempt_no=None,
         updated_at=moment,
     )
 
@@ -446,11 +597,15 @@ def advance(
             bound=_deadline_reached(run, step_deadline),
         )
 
-    if spent_artifacts > definition.limits.max_artifact_bytes:
+    if spent_artifacts >= definition.limits.max_artifact_bytes:
         # §12. Every other bound is evaluated BEFORE its attempt (§10.3.1) because it is
         # knowable then; the bytes an attempt references are knowable only once it has
         # run. So this one is met here — and it is still TERMINAL and NAMED rather than a
         # silent stop, and the attempt that reached it stays on the ledger.
+        #
+        # `>=` and not `>`: §12 says REACHING a limit is terminal, and the other three
+        # counters are checked at `>=`. A bound that only bit one byte past its declared
+        # value would be a limit of "maximum plus one".
         return _terminal(
             record,
             WorkflowState.RESOURCE_EXHAUSTED,
@@ -475,7 +630,46 @@ def advance(
         if retry.terminal_state is not None
         else (terminal_state_for(failure) if failure is not None else WorkflowState.FAILED)
     )
+    if state is WorkflowState.CANCELLED:
+        # §11.2. A cancelled run records WHO cancelled and WHY, and the only thing that
+        # knows is the execution that observed the cancellation: AI-13 v1 "cancels
+        # between attempts, never inside one", so an in-flight cancellation is the
+        # attempt owner's act and reaches the record as the owner declared it. AI-13
+        # invents nothing here — it carries a reference it was given.
+        return _terminal(
+            record,
+            state,
+            moment,
+            cancelled_by=outcome.cancelled_by,
+            cancelled_reason=outcome.cancelled_reason,
+        )
     return _terminal(record, state, moment)
+
+
+def advance(
+    *,
+    definition: WorkflowDefinition,
+    run: RunRecord,
+    executor: StepExecutor,
+    now: str | None = None,
+) -> RunRecord:
+    """§6, §12. Run ONE attempt at the next step, in one call.
+
+    This is `begin_attempt` then `complete_attempt`, and it is a CONVENIENCE. It does not
+    hand the pre-execution record to a persistence boundary, so a process ending while
+    the execution runs leaves whatever the caller last wrote — which, for a caller using
+    this function, is the record from BEFORE the attempt.
+
+    Nothing about the bounds depends on which shape is used: `begin_attempt` anchors the
+    step deadline, counts the attempt and fixes the attempt number either way. The
+    difference is only whether the caller wrote the record down in time, so a caller
+    that must survive a crash uses the two phases directly and persists `plan.run`
+    between them.
+    """
+    plan = begin_attempt(definition=definition, run=run, now=now)
+    if not plan.admitted:
+        return plan.run
+    return complete_attempt(definition=definition, plan=plan, executor=executor)
 
 
 def resume_run(
@@ -603,10 +797,36 @@ def record_checkpoint(
     record so that discarding every checkpoint a run wrote cannot restore the budget to
     write more — and so that `check_attempt_may_begin` can end the run when the bound is
     reached, rather than the bound being declared, validated, and never reachable.
+
+    §12 makes REACHING a limit terminal, so the write that reaches one ends the run
+    HERE rather than at whatever asks it to advance next. Waiting would leave a record
+    that is over its declared bound and still says RUNNING, which is a state §12 does
+    not define. The count is named before the bytes, matching the order
+    `check_attempt_may_begin` checks them, so the name a reader sees does not depend on
+    which function happened to notice the same fact.
     """
     moment = now or _utc_now()
-    return run.advance(
-        consumed_checkpoints=run.consumed_checkpoints + 1,
-        consumed_checkpoint_bytes=run.consumed_checkpoint_bytes + _checkpoint_bytes(checkpoint),
+    spent_count = run.consumed_checkpoints + 1
+    spent_bytes = run.consumed_checkpoint_bytes + _checkpoint_bytes(checkpoint)
+
+    successor = run.advance(
+        consumed_checkpoints=spent_count,
+        consumed_checkpoint_bytes=spent_bytes,
         updated_at=moment,
     )
+
+    if spent_count >= run.declared_limit("max_checkpoints"):
+        return _terminal(
+            successor,
+            WorkflowState.RESOURCE_EXHAUSTED,
+            moment,
+            bound="CHECKPOINT_COUNT_BOUND_REACHED",
+        )
+    if spent_bytes >= run.declared_limit("max_checkpoint_bytes"):
+        return _terminal(
+            successor,
+            WorkflowState.RESOURCE_EXHAUSTED,
+            moment,
+            bound="CHECKPOINT_BYTES_BOUND_REACHED",
+        )
+    return successor

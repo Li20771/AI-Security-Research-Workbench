@@ -97,17 +97,23 @@ def test_T17b_a_reached_checkpoint_byte_bound_ends_the_run() -> None:
     snapshot = checkpoint_for(definition=definition, run=run, now=T1)
     assert run.consumed_checkpoint_bytes == 0
 
-    refusal = None
+    reached = None
+    previous = run
     for _ in range(200):
-        decision = check_attempt_may_begin(definition, run, "s1", T1)
-        if not decision.allowed:
-            refusal = decision
-            break
+        previous = run
         run = record_checkpoint(run=run, checkpoint=snapshot, now=T1)
+        if run.state is WorkflowState.RESOURCE_EXHAUSTED:
+            reached = run
+            break
+    assert previous.state is WorkflowState.RUNNING, (
+        "the run was already terminal before the write that reached the bound, so this "
+        "test cannot tell which write did it"
+    )
 
-    assert refusal is not None, "the byte bound was never reached, so it bounds nothing"
-    assert refusal.reason_code == "CHECKPOINT_BYTES_BOUND_REACHED"
-    assert refusal.terminal_state is WorkflowState.RESOURCE_EXHAUSTED
+    # §12. The WRITE that reaches the bound ends the run — not the next `advance`, which
+    # would leave a record that is over its declared bound and still says RUNNING.
+    assert reached is not None, "the byte bound was never reached, so it bounds nothing"
+    assert reached.reached_bound == "CHECKPOINT_BYTES_BOUND_REACHED"
 
 
 def test_T24c_discarding_checkpoints_does_not_restore_the_checkpoint_budget() -> None:
@@ -131,6 +137,42 @@ def test_T24c_discarding_checkpoints_does_not_restore_the_checkpoint_budget() ->
     assert after.reached_bound == "CHECKPOINT_COUNT_BOUND_REACHED"
 
 
+def test_the_checkpoint_count_bound_is_terminal_AT_the_write_that_reaches_it() -> None:
+    """§12. "reaching any limit is a TERMINAL state" — at the WRITE, not at whatever
+    asks the run to advance next.
+
+    Waiting leaves a record that is at its declared bound and still says RUNNING, which
+    is a state §12 does not define and a reader would have to interpret.
+    """
+    definition = make_definition(limits=limits(max_checkpoints=3))
+    run = _started(definition)
+    snapshot = checkpoint_for(definition=definition, run=run, now=T1)
+
+    for expected in (1, 2):
+        run = record_checkpoint(run=run, checkpoint=snapshot, now=T1)
+        assert run.consumed_checkpoints == expected
+        assert run.state is WorkflowState.RUNNING, (
+            f"the run went terminal at {expected} of its declared three checkpoints"
+        )
+
+    run = record_checkpoint(run=run, checkpoint=snapshot, now=T1)
+    assert run.consumed_checkpoints == 3
+    assert run.state is WorkflowState.RESOURCE_EXHAUSTED
+    assert run.reached_bound == "CHECKPOINT_COUNT_BOUND_REACHED"
+
+
+def test_the_artifact_bound_is_terminal_AT_the_declared_maximum() -> None:
+    """§12. A bound of "maximum N" that only bit at N plus one would be a bound of N
+    plus one, and the three other counters are checked at `>=`."""
+    definition = make_definition(limits=limits(max_artifact_bytes=1000))
+    executor = RecordingExecutor(artifact_bytes=1000)
+    run = advance(definition=definition, run=_started(definition), executor=executor, now=T1)
+
+    assert run.consumed_artifact_bytes == 1000
+    assert run.state is WorkflowState.RESOURCE_EXHAUSTED
+    assert run.reached_bound == "ARTIFACT_BOUND_REACHED"
+
+
 # ---------------------------------------------------------------------------
 # T17 — the artifact bound, which nothing checked before
 # ---------------------------------------------------------------------------
@@ -150,14 +192,18 @@ def test_T17c_a_reached_artifact_bound_ends_the_run() -> None:
 
 
 def test_T17d_an_attempt_under_the_artifact_bound_is_recorded_and_continues() -> None:
-    """The control: the same path accepts an attempt that stays inside the bound."""
+    """The control: the same path accepts an attempt that stays UNDER the bound.
+
+    Under, and not merely at it: §12 makes reaching a limit terminal, so the run that
+    spends exactly the declared maximum has reached it.
+    """
     definition = make_definition(limits=limits(max_artifact_bytes=1000))
-    executor = RecordingExecutor(artifact_bytes=1000)
+    executor = RecordingExecutor(artifact_bytes=999)
     run = advance(definition=definition, run=_started(definition), executor=executor, now=T1)
 
     assert run.state is WorkflowState.RUNNING
     assert run.reached_bound is None
-    assert run.consumed_artifact_bytes == 1000
+    assert run.consumed_artifact_bytes == 999
 
 
 def test_T24d_the_artifact_bound_is_enforced_from_the_record_across_a_resume() -> None:

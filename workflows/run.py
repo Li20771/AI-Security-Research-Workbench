@@ -263,6 +263,16 @@ class RunRecord:
     #: an unclassified failure. Naming a bound there would attribute the stop to a limit
     #: the run never touched.
     reached_bound: str | None = None
+    #: §6.3, §8.3. The attempt at the CURRENT step that has BEGUN and has not been
+    #: recorded as finished. `None` when no attempt is in flight.
+    #:
+    #: It exists so that `attempt_no` can never be REUSED across a crash. §6.3 freezes
+    #: "never reused, never renumbered", and an attempt whose process died is still an
+    #: attempt this run began: without this, a resume would derive the next number from
+    #: the COMPLETED attempts alone and hand out the same number a second time. It is
+    #: written before the execution starts, for the same reason the step deadline is —
+    #: a fact the run spent must not depend on the execution coming back to say so.
+    inflight_attempt_no: int | None = None
     #: §11.2. WHO cancelled and WHY, as DECLARED REFERENCES.
     #:
     #: "Cancellation is not a failure of the work, and a run cancelled by a human MUST
@@ -277,13 +287,40 @@ class RunRecord:
     cancelled_reason: str | None = None
 
     def __post_init__(self) -> None:
-        # §11.2. Validated at CONSTRUCTION rather than only at the parse boundary, so
-        # no path into this record — including `advance()` from a caller — can put free
-        # text where the contract asks for a declared reference.
+        """The construction boundary. Every invariant holds for a PARSED record and a
+        CONSTRUCTED one alike, which is the only reason it lives here.
+
+        A rule enforced in `cancel()` alone is a rule that a caller reaches around by
+        calling `RunRecord(...)` directly — the typed-object bypass, which is the same
+        defect class AI-12-B's review found when a caller labelled its own record
+        `MODEL_EXECUTION` and manufactured the prerequisite. The helper is a
+        convenience; this is the boundary.
+        """
+        # §11.2. Format first, so a malformed reference is named as malformed rather
+        # than reported as a missing one.
         for name in ("cancelled_by", "cancelled_reason"):
             value = getattr(self, name)
             if value is not None:
                 _reference(value, f"run.{name}")
+
+        # §11.2. A CANCELLED run records WHO cancelled and WHY. The converse is refused
+        # too: provenance on a run that was never cancelled is a field that means
+        # nothing sitting beside records where the same names mean something.
+        cancelled = self.state is WorkflowState.CANCELLED
+        named = self.cancelled_by is not None and self.cancelled_reason is not None
+        if cancelled and not named:
+            raise InvalidRecord(
+                "a run recorded as CANCELLED carries no cancelled_by and "
+                "cancelled_reason; §11.2 records WHO cancelled and WHY as declared "
+                "references, and a cancelled run that names neither cannot answer why "
+                "it stopped"
+            )
+        if named and not cancelled:
+            raise InvalidRecord(
+                f"a run in state {self.state} carries cancellation provenance; §11.2 "
+                "records WHO cancelled and WHY on a CANCELLED run, and elsewhere those "
+                "fields describe an act that did not happen"
+            )
 
     @property
     def is_terminal(self) -> bool:
@@ -299,6 +336,23 @@ class RunRecord:
         """§15.1. Where a per-step attempt bound is enforced from."""
         record = self.step(step_id)
         return record.attempts if record else ()
+
+    def declared_limit(self, name: str) -> int:
+        """§15.2. One declared bound, read from the RECORD.
+
+        The record carries the bounds the run was CREATED under, so a bound enforced
+        from here is the one this run declared rather than whatever a definition says
+        today. That matters wherever the caller has only the record — which is exactly
+        the case for anything charging a counter, and it is why a bound is a fact about
+        the run rather than a lookup into a tracked file.
+        """
+        value = self.declared.get(name)
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise InvalidRecord(
+                f"run.declared.{name} is not an integer bound; §15.2 records every bound "
+                "the run declared, and a bound that is not a number bounds nothing"
+            )
+        return value
 
     def execution_ids(self) -> tuple[str, ...]:
         """Every ExecutionId this run has already produced, in order."""
@@ -327,6 +381,7 @@ class RunRecord:
             "consumed_checkpoint_bytes": self.consumed_checkpoint_bytes,
             "consumed_artifact_bytes": self.consumed_artifact_bytes,
             "reached_bound": self.reached_bound,
+            "inflight_attempt_no": self.inflight_attempt_no,
             "cancelled_by": self.cancelled_by,
             "cancelled_reason": self.cancelled_reason,
         }
@@ -472,6 +527,11 @@ class RunRecord:
             reached_bound=(
                 _text(data.get("reached_bound"), "run.reached_bound")
                 if data.get("reached_bound")
+                else None
+            ),
+            inflight_attempt_no=(
+                _counter(data.get("inflight_attempt_no"), "run.inflight_attempt_no")
+                if data.get("inflight_attempt_no")
                 else None
             ),
             # Both are validated by `__post_init__`, so a parsed record and a

@@ -151,13 +151,34 @@ class _Executor:
     and every timing assertion vacuous.
     """
 
-    def __init__(self, *, duration_seconds: int = 0) -> None:
+    def __init__(
+        self,
+        *,
+        duration_seconds: int = 0,
+        failure: FailureClass | None = None,
+        cancelled_by: str = "attempt-owner",
+        cancel_reason: str = "EXTERNAL_STOP",
+    ) -> None:
         self.calls: list[dict[str, Any]] = []
         self._duration_seconds = duration_seconds
+        self.failure = failure
+        self._cancelled_by = cancelled_by
+        self._cancel_reason = cancel_reason
         self._token = uuid.uuid4().hex[:8]
 
     def _timing(self, now: str) -> tuple[str, str]:
         return now, plus_seconds(now, self._duration_seconds)
+
+    def _cancellation(self) -> dict[str, str]:
+        """§11.2. An execution that reports CANCELLED names WHO and WHY.
+
+        AI-13 v1 cancels between attempts and never inside one, so a cancellation an
+        outcome reports is the attempt owner's act — and `ExecutionOutcome` refuses the
+        outcome outright if the owner does not name it.
+        """
+        if self.failure is not FailureClass.CANCELLED:
+            return {}
+        return {"cancelled_by": self._cancelled_by, "cancelled_reason": self._cancel_reason}
 
     def _record(self, step, attempt_id, run, now, timeout_seconds):  # noqa: ANN001
         self.calls.append(
@@ -170,6 +191,10 @@ class _Executor:
                 # test can assert the bound actually reaches execution rather than
                 # staying a value the engine computed and dropped.
                 "timeout_seconds": timeout_seconds,
+                # The STATE the execution was handed. Recorded because §8.3's rule is
+                # about what a caller could have persisted BEFORE the execution ran, and
+                # the only place that is visible is what the execution was given.
+                "run": run,
             }
         )
 
@@ -253,9 +278,15 @@ class FailOnceExecutor(_Executor):
         failure: FailureClass | None = FailureClass.RETRYABLE_FAILURE,
         *,
         duration_seconds: int = 0,
+        cancelled_by: str = "attempt-owner",
+        cancel_reason: str = "EXTERNAL_STOP",
     ) -> None:
-        super().__init__(duration_seconds=duration_seconds)
-        self.failure = failure
+        super().__init__(
+            duration_seconds=duration_seconds,
+            failure=failure,
+            cancelled_by=cancelled_by,
+            cancel_reason=cancel_reason,
+        )
 
     def execute(self, *, definition, step, attempt_id, run, now, timeout_seconds):  # noqa: ANN001, ANN201
         self._record(step, attempt_id, run, now, timeout_seconds)
@@ -271,6 +302,7 @@ class FailOnceExecutor(_Executor):
                 ended_at=ended_at,
                 failure_class=self.failure,
                 reason_code="TRANSIENT",
+                **self._cancellation(),
             )
         return ExecutionOutcome(
             execution_id=execution_id,
@@ -289,9 +321,15 @@ class AlwaysFailsExecutor(_Executor):
         failure: FailureClass | None = FailureClass.RETRYABLE_FAILURE,
         *,
         duration_seconds: int = 0,
+        cancelled_by: str = "attempt-owner",
+        cancel_reason: str = "EXTERNAL_STOP",
     ) -> None:
-        super().__init__(duration_seconds=duration_seconds)
-        self.failure = failure
+        super().__init__(
+            duration_seconds=duration_seconds,
+            failure=failure,
+            cancelled_by=cancelled_by,
+            cancel_reason=cancel_reason,
+        )
 
     def execute(self, *, definition, step, attempt_id, run, now, timeout_seconds):  # noqa: ANN001, ANN201
         self._record(step, attempt_id, run, now, timeout_seconds)
@@ -304,4 +342,5 @@ class AlwaysFailsExecutor(_Executor):
             ended_at=ended_at,
             failure_class=self.failure,
             reason_code="AGAIN",
+            **self._cancellation(),
         )

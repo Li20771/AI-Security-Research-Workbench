@@ -449,6 +449,110 @@ def test_cancellation_refuses_free_form_provenance(bad: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# §11.2 — the invariant at the CONSTRUCTION boundary, not only in `cancel()`
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "missing",
+    ["cancelled_by", "cancelled_reason"],
+)
+def test_a_CANCELLED_record_cannot_be_constructed_without_who_and_why(missing: str) -> None:
+    """§11.2 at the typed-object boundary.
+
+    `cancel()` is a convenience; a rule that lived only there would be a rule a caller
+    reaches around by constructing the record directly — the same bypass AI-12-B's
+    review found when a caller labelled its own record `MODEL_EXECUTION` and
+    manufactured the prerequisite it was supposed to satisfy.
+    """
+    from dataclasses import replace
+
+    from workflows.errors import InvalidRecord
+
+    definition = make_definition()
+    run = _run(definition)
+    supplied = {"cancelled_by": "operator-li", "cancelled_reason": "SUPERSEDED"}
+    del supplied[missing]
+
+    with pytest.raises(InvalidRecord):
+        replace(run, state=WorkflowState.CANCELLED, **supplied)
+
+    # The same refusal through `advance`, which is the path the engine uses.
+    with pytest.raises(InvalidRecord):
+        run.advance(state=WorkflowState.CANCELLED, **supplied)
+
+
+def test_a_CANCELLED_record_with_both_is_accepted_and_digests() -> None:
+    """The control. Without it the refusals above could be a record that never works."""
+    definition = make_definition()
+    run = _run(definition)
+
+    cancelled = run.advance(
+        state=WorkflowState.CANCELLED,
+        cancelled_by="operator-li",
+        cancelled_reason="SUPERSEDED",
+    )
+
+    assert cancelled.state is WorkflowState.CANCELLED
+    assert cancelled.verify_digest() is None
+
+
+def test_a_record_that_was_not_cancelled_cannot_carry_cancellation_provenance() -> None:
+    """The converse. Provenance on a run that was never cancelled is a field that means
+    nothing, sitting beside records where the same names mean something."""
+    from workflows.errors import InvalidRecord
+
+    definition = make_definition()
+    run = _run(definition)
+
+    with pytest.raises(InvalidRecord):
+        run.advance(cancelled_by="operator-li", cancelled_reason="SUPERSEDED")
+
+
+# ---------------------------------------------------------------------------
+# §8.3 — the step deadline is anchored BEFORE the execution is entered
+# ---------------------------------------------------------------------------
+
+
+def test_begin_attempt_anchors_the_step_deadline_before_any_execution() -> None:
+    """§8.3. Phase one produces a record that already carries the bound.
+
+    `advance` computes the deadline, enters the execution and only then writes the
+    successor — so a process ending mid-attempt leaves a record with NO step deadline,
+    and the next resume derives a fresh full one. Anchoring it in phase one is what
+    makes the record a caller persists before executing already complete.
+    """
+    from workflows.engine import begin_attempt
+
+    definition = make_definition(limits=limits(step_seconds=30))
+    run = _run(definition)
+    assert run.step_deadline is None
+
+    plan = begin_attempt(definition=definition, run=run, now=T0)
+
+    assert plan.admitted
+    assert plan.run.step_deadline == "2026-10-03T10:00:30Z"
+    assert plan.run.inflight_attempt_no == 1
+    assert plan.run.consumed_total_attempts == 1, "the attempt was not counted at its start"
+    # The other two absolutes are the ones creation fixed, untouched by phase one.
+    assert plan.run.workflow_deadline == run.workflow_deadline
+    assert plan.run.retry_deadline == run.retry_deadline
+
+
+def test_the_state_handed_to_the_execution_already_carries_the_bound() -> None:
+    """The same fact from the execution's side: there is no window in which the attempt
+    is running and the step deadline exists only in a local variable."""
+    definition = make_definition(limits=limits(step_seconds=30))
+    executor = RecordingExecutor()
+    advance(definition=definition, run=_run(definition), executor=executor, now=T0)
+
+    handed = executor.calls[0]["run"]
+    assert handed.step_deadline == "2026-10-03T10:00:30Z"
+    assert handed.inflight_attempt_no == 1
+    assert handed.consumed_total_attempts == 1
+
+
+# ---------------------------------------------------------------------------
 # §7, §15 — the run record is the ledger
 # ---------------------------------------------------------------------------
 

@@ -197,7 +197,7 @@ MUTATIONS: tuple[Mutation, ...] = (
         guard="§11.1 the composed outer bound is HANDED to the execution rather than "
               "computed and dropped, and it composes with AI-06's inner timeout",
         path="workflows/engine.py",
-        old="        timeout_seconds=timeout_seconds,",
+        old="        timeout_seconds=plan.timeout_seconds,",
         new="        timeout_seconds=step.timeout_seconds,  # mutated: outer bounds dropped",
         focused=(f"{LIMITS}::test_the_effective_timeout_is_handed_to_the_execution",),
     ),
@@ -224,6 +224,50 @@ MUTATIONS: tuple[Mutation, ...] = (
         new="        cancelled_by=None,  # mutated: who and why are dropped\n"
             "        cancelled_reason=None,",
         focused=(f"{RUN}::test_cancellation_records_who_and_why_as_references",),
+    ),
+    Mutation(
+        control="step deadline anchored before execution",
+        guard="§8.3 the step deadline is anchored in phase ONE and written to the "
+              "record a caller persists BEFORE the execution is entered",
+        path="workflows/engine.py",
+        old="    step_deadline = run.step_deadline or step_deadline_from(definition, moment)",
+        new="    step_deadline = run.step_deadline  # mutated: not anchored at phase one",
+        focused=(
+            f"{RUN}::test_begin_attempt_anchors_the_step_deadline_before_any_execution",
+        ),
+    ),
+    Mutation(
+        control="CANCELLED construction invariant",
+        guard="§11.2 a record in state CANCELLED names WHO and WHY at the construction "
+              "boundary, so no caller reaches around `cancel()`",
+        path="workflows/run.py",
+        old="        if cancelled and not named:",
+        new="        if cancelled and not named and False:  # mutated: the invariant is off",
+        focused=(
+            f"{RUN}::test_a_CANCELLED_record_cannot_be_constructed_without_who_and_why",
+        ),
+    ),
+    Mutation(
+        control="exact checkpoint-count limit is terminal",
+        guard="§12 reaching a limit is terminal — at the WRITE that reaches it, not at "
+              "whatever asks the run to advance next",
+        path="workflows/engine.py",
+        old='    if spent_count >= run.declared_limit("max_checkpoints"):',
+        new='    if spent_count > run.declared_limit("max_checkpoints"):  # mutated',
+        focused=(
+            f"{LIMITS}::test_the_checkpoint_count_bound_is_terminal_AT_the_write_that_reaches_it",
+        ),
+    ),
+    Mutation(
+        control="exact artifact limit is terminal",
+        guard="§12 the artifact bound binds AT its declared value; a bound that only "
+              "bit one byte later would be a limit of maximum plus one",
+        path="workflows/engine.py",
+        old="    if spent_artifacts >= definition.limits.max_artifact_bytes:",
+        new="    if spent_artifacts > definition.limits.max_artifact_bytes:  # mutated",
+        focused=(
+            f"{LIMITS}::test_the_artifact_bound_is_terminal_AT_the_declared_maximum",
+        ),
     ),
 )
 

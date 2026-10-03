@@ -248,6 +248,69 @@ def test_resume_reads_the_persisted_deadlines_and_creates_no_new_ones() -> None:
     assert resumed.retry_deadline == run.retry_deadline == "2026-10-03T10:15:00Z"
 
 
+def test_resume_never_derives_a_fresh_step_deadline() -> None:
+    """§8.3. The crash case, and the reason phase one exists.
+
+    An attempt begins, the process ends before the execution returns, and the run is
+    picked back up. The state that survived is the one `begin_attempt` produced — the
+    record a caller was told to persist BEFORE executing — and the step bound in it is
+    the ORIGINAL one, not `resume_now + step_seconds`.
+    """
+    from workflows.engine import begin_attempt
+    from workflows.instants import plus_seconds
+
+    definition = make_definition(
+        limits=limits(step_seconds=30, attempts_per_step=5, attempts_total=10),
+        retry_policy=a_retry_policy(max_attempts=5),
+    )
+    start = _started(definition)
+
+    interrupted = begin_attempt(definition=definition, run=start, now=T0)
+    assert interrupted.run.step_deadline == "2026-10-03T10:00:30Z"
+
+    resume_at = "2026-10-03T10:00:10Z"
+    resumed = begin_attempt(definition=definition, run=interrupted.run, now=resume_at)
+
+    assert resumed.run.step_deadline == "2026-10-03T10:00:30Z", (
+        "the step deadline was re-derived from the resume instant instead of read"
+    )
+    assert resumed.run.step_deadline != plus_seconds(resume_at, 30), (
+        "the resumed attempt was handed a whole new step budget"
+    )
+    # §6.3. The interrupted attempt keeps its number, so the resumed one takes the next.
+    assert interrupted.attempt_id.attempt_no == 1
+    assert resumed.attempt_id.attempt_no == 2, "the interrupted attempt number was reused"
+    # §15.1. Both attempts were begun, so both were spent.
+    assert resumed.run.consumed_total_attempts == 2
+
+
+def test_a_resumed_run_hands_the_execution_the_ORIGINAL_step_bound() -> None:
+    """The same property through the whole `resume_run` path."""
+    from workflows.engine import begin_attempt
+
+    definition = make_definition(
+        limits=limits(step_seconds=30, attempts_per_step=5, attempts_total=10),
+        retry_policy=a_retry_policy(max_attempts=5),
+    )
+    start = _started(definition)
+    interrupted = begin_attempt(definition=definition, run=start, now=T0)
+    checkpoint = checkpoint_for(definition=definition, run=interrupted.run, now=T0)
+
+    executor = RecordingExecutor()
+    resume_run(
+        definition=definition,
+        run=interrupted.run,
+        checkpoint=checkpoint,
+        workspace_identity="ws-1",
+        executor=executor,
+        now="2026-10-03T10:00:20Z",
+    )
+
+    handed = executor.calls[0]["run"]
+    assert handed.step_deadline == "2026-10-03T10:00:30Z"
+    assert handed.consumed_total_attempts == 2
+
+
 # ---------------------------------------------------------------------------
 # T9 — the workspace binding, with no re-derivation path
 # ---------------------------------------------------------------------------
