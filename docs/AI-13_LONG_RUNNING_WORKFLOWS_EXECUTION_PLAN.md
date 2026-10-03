@@ -187,13 +187,22 @@ FROZEN: a revision mismatch is a TERMINAL state for the run, named
 ```
 
 ```text
-FROZEN: a run records the WORKSPACE IDENTITY it started under, and resume requires the
-        same workspace identity. The repository already treats a workspace identity as
-        part of what a measurement means (AI-08 records it; AI-11 binds a manifest
-        digest into a run); a workflow that resumed into a different tree would be
-        continuing work in a place the earlier steps never saw.
-FROZEN: where a run declares that its workspace is re-derived, the re-derivation is
-        recorded with its own digest, and a mismatch is `WORKSPACE_CHANGED`.
+FROZEN: a run records the WORKSPACE IDENTITY it started under, and resume requires an
+        EXACT match. The repository already treats a workspace identity as part of what
+        a measurement means (AI-08 records it; AI-11 binds a manifest digest into a
+        run); a workflow that resumed into a different tree would be continuing work in
+        a place the earlier steps never saw.
+FROZEN: v1 has NO re-derivation. A workspace identity that differs in any way is
+        `WORKSPACE_CHANGED` and the run is terminal. There is no "re-derived and
+        therefore equivalent" path, because defining what would make two workspaces
+        equivalent is a mechanism with no requirement behind it yet — and a v1 that
+        invented one would be a rule nobody asked for and nobody could check.
+```
+
+```text
+DEFERRED: workspace re-derivation, as an artifact with its own digest, authority and
+          validation. It becomes a contract question the first time a run genuinely
+          needs to continue in a re-derived tree, and not before.
 ```
 
 ---
@@ -276,6 +285,60 @@ FROZEN: anything large or raw is stored OUTSIDE the checkpoint and referenced fr
         a rule rather than advice.
 ```
 
+### 7.4 The canonical form — ONE definition, for every digest AI-13 computes
+
+An earlier revision said a checkpoint "carries a digest of its own bytes". That is
+circular: the digest field is part of the bytes it would cover, so no value satisfies it.
+The preimage is frozen here, and **every digest in this contract uses this section** —
+the checkpoint digest (§7.1), the approval scope digest (§13.2), the run record digest
+(§15) and the definition digest (§5) alike. One definition, so two of them cannot drift
+apart.
+
+```text
+PREIMAGE   the UTF-8 bytes of the canonical JSON object formed from the record's
+           fields EXCLUDING the record's own digest field.
+
+CANONICAL JSON
+    object keys sorted ascending by Unicode code point
+    no whitespace between tokens, no trailing newline
+    strings UTF-8, minimal JSON escaping (quote, backslash, control characters)
+    integers only — no floats, no exponent notation
+    a field whose value is null is OMITTED from the body
+    an empty list or empty object is PRESENT, as [] or {}
+
+DIGEST     SHA-256 over the PREIMAGE, lowercase hexadecimal
+
+EXCLUDED   the digest field itself, and NOTHING else. Each record names that field in
+           its own schema; a record with two digest-shaped fields is invalid.
+```
+
+```text
+FROZEN: null and absent are the SAME in the canonical body, and an empty list is NOT
+        absent. The distinction is frozen because the alternative — a digest that turns
+        on whether a writer emitted `null` or omitted a key — makes two byte-different
+        records canonicalise equal, or two equivalent records canonicalise differently,
+        and a reader cannot tell which happened.
+FROZEN: integers only. A float in a digest-covered field is REFUSED at validation: two
+        implementations that disagree about `1.0` versus `1` produce two digests for one
+        fact, and the disagreement is invisible until it matters.
+FROZEN: the algorithm is SHA-256 and the encoding lowercase hexadecimal. A record whose
+        digest is not exactly that is invalid, not merely unverifiable.
+```
+
+```text
+T10, MECHANICALLY
+    take a valid checkpoint
+    modify ONE byte of any covered field
+    recompute -> a different digest
+    verify   -> mismatch -> CHECKPOINT_CORRUPT, and the run is terminal
+```
+
+```text
+FROZEN: changing this section changes every digest in the phase. It is an amendment
+        (§20), never an implementation choice, and AI-13-B MUST NOT pick its own
+        ordering, encoding or algorithm.
+```
+
 ### 7.3 Durability, and the relationship to AI-05
 
 ```text
@@ -300,8 +363,8 @@ FROZEN: promotion of workflow state into durable evidence is NOT an AI-13 operat
 FROZEN: resume requires ALL of, verified before an attempt is created:
             workflow_id and revision match
             definition_digest matches
-            workspace identity matches, or a declared re-derivation matches
-            the checkpoint's own digest is intact
+            workspace identity matches EXACTLY (§5)
+            the checkpoint's own digest is intact (§7.4)
 FROZEN: any mismatch is a terminal state for the run, named for the mismatch
         (`DEFINITION_CHANGED`, `WORKSPACE_CHANGED`, `CHECKPOINT_CORRUPT`). None is
         retryable and none is repaired by choosing the closer of two values.
@@ -332,6 +395,62 @@ FROZEN: every Guard-bound invocation in a resumed attempt carries a FRESH GuardR
         "one ALLOW authorizes one Guard-bound invocation. A second invocation asks
         again. There is no decision store, and AI-08 MUST NOT create one." A checkpoint
         is not a decision store, and AI-13 MUST NOT create one either.
+```
+
+### 8.3 A BOUND MUST SURVIVE RESUME
+
+This contract says both that nothing is held open between process lifetimes (§12) and
+that a run has a maximum runtime (§11, §12). Together those would be escapable: an
+attempt runs, the process exits, the run resumes, and a duration that restarted would
+let a run with a one-hour bound run for a week.
+
+```text
+FROZEN: a bound MUST SURVIVE RESUME. A resumed run inherits the budget already
+        consumed, and no resume, restart or wait grants a new one.
+```
+
+The model is a **persisted absolute deadline**, not a duration:
+
+```text
+FROZEN: the workflow deadline is computed ONCE, at run creation, and persisted as an
+        ABSOLUTE instant. It is never recomputed, never moved and never re-derived from
+        a duration.
+FROZEN: resume reads the stored deadline and computes what REMAINS from the current
+        time. It never writes a new deadline. A run whose stored deadline has passed
+        does not resume — it is TIMED_OUT.
+FROZEN: the retry time bound is ABSOLUTE for the run, shared by every retry of every
+        step, not granted fresh per attempt. An attempt that would BEGIN after the retry
+        deadline MUST NOT begin; reaching it is RESOURCE_EXHAUSTED.
+FROZEN: the attempt bound is a PERSISTED COUNTER on the run record (§15), not a counter
+        reconstructed from checkpoints. Discarding a checkpoint MUST NOT reduce the
+        number of attempts a run has already spent.
+```
+
+```text
+TIMESTAMPS, FROZEN
+    format       ISO-8601, UTC, trailing `Z`, second resolution
+    a bound is reached when the current time is >= the deadline
+```
+
+```text
+FROZEN: a bound that must survive a resume MUST NOT be persisted as a MONOTONIC reading.
+        A monotonic clock is meaningful only within the process that read it, so a
+        stored one says nothing after a restart — it would look like a very large
+        remaining budget. A monotonic reading MAY be used inside one attempt as an
+        implementation detail, and MUST NOT be persisted as if it were a deadline.
+```
+
+```text
+FROZEN: PROCESS RESTART, CHECKPOINT RESUME, and TIME SPENT AWAITING AN APPROVAL all
+        consume the run's deadline. None of them pauses it. An approval that could pause
+        the clock would be a way to run forever by asking a human slowly; the approval
+        has its own deadline (§13.4) and the run's keeps running.
+```
+
+```text
+FROZEN: reaching the workflow deadline is TIMED_OUT. Reaching the retry time bound or
+        the attempt bound is RESOURCE_EXHAUSTED. Neither is retried, and neither is a
+        silent stop (§12).
 ```
 
 ---
@@ -373,9 +492,30 @@ FROZEN: retryability is a property of WORKFLOW EXECUTION POLICY over a classifie
 FROZEN: a non-PASS verdict — BLOCKED, NOT_RUN, UNKNOWN, UNAVAILABLE — MUST NOT be
         converted into a retryable state, a success, or a failure by AI-13. Those words
         mean what their owning phase says they mean.
-FROZEN: where a failure's class is not one this contract names, the classification is
-        UNKNOWN and the ONLY permitted action is to stop. An unclassified failure MUST
-        NOT be retried.
+FROZEN: where a failure matches none of the nine, it is UNCLASSIFIED: NO FailureClass
+        is assigned, the execution STOPS, and no retry is permitted. The run record says
+        the failure was unclassified rather than naming a class it does not have.
+```
+
+```text
+FROZEN: FailureClass is exactly the nine members above. It has NO `UNKNOWN` member, and
+        adding one is an amendment (§20).
+```
+
+```text
+FROZEN: "unclassified" is AI-13's own fact about its own classification. It is NOT
+        `StatusValue.UNKNOWN`, NOT `GuardDecision.UNKNOWN`, NOT `OracleVerdict.UNKNOWN`
+        and NOT AI-05's admission `UNKNOWN`. None of those vocabularies gains a member,
+        none is passed into AI-13's, and an unclassified failure is not a value that
+        could be compared with one of them.
+```
+
+```text
+WHY NO MEMBER. A tenth member would make "we could not classify this" a CLASS — a value
+that sits in the same field as the nine and that a policy could be written against. It
+is not a kind of failure; it is the absence of a classification, and the only honest
+action on an absence is to stop. The mutation control is exact: make an unclassified
+failure assignable, and T14 must fail.
 ```
 
 ### 9.2 What is never retried — FROZEN
@@ -437,6 +577,43 @@ FROZEN: a retry policy MUST declare a maximum attempts bound AND a time bound. A
         bound.
 FROZEN: a workflow therefore has a MAXIMUM total attempts figure, derived from its
         declared policy, and no execution path may exceed it.
+```
+
+### 10.3.1 Effective bounds — the precedence, frozen
+
+Several bounds can apply to one decision at once. Which one governs MUST NOT be left to
+an implementation, because two implementations that differ would disagree about whether
+a run may take another attempt — and the disagreement would be invisible until a run
+went too far.
+
+```text
+FROZEN: where more than one declared bound applies, the NARROWER one governs. Never the
+        wider, and never a value an implementation chose.
+
+effective attempts for a step
+    = min( attempts declared for that step,
+           total attempts remaining for the run,
+           the retry policy's attempts bound, where that policy covers this failure )
+
+effective deadline
+    = min( workflow deadline,
+           retry policy deadline, where that policy covers this failure,
+           step deadline )
+
+effective step deadline
+    = min( step deadline, the workflow deadline's REMAINING time )
+```
+
+```text
+FROZEN: the absence of a bound is not "unlimited". A definition that omits one does not
+        validate (§12) — so there is no case in which one bound's silence widens
+        another.
+FROZEN: a bound is evaluated BEFORE an attempt begins. An attempt that would begin at or
+        after any effective deadline MUST NOT begin, and one that would exceed any
+        effective attempt bound MUST NOT begin. Bounds are not discovered by overrunning
+        them.
+FROZEN: a step deadline that is not narrower than its workflow's remaining time is not a
+        step deadline — it is a number that never governs.
 ```
 
 ### 10.4 AI-13 does not execute AI-12
@@ -505,6 +682,9 @@ FROZEN: these are DECLARED, not defaulted. A workflow that declares no limit is 
         run time, and only one of them is honest.
 FROZEN: reaching any limit is a TERMINAL state with its own name
         (`RESOURCE_EXHAUSTED`), and never a silent stop.
+FROZEN: every counter a limit is enforced from lives on the RUN RECORD (§15), never on a
+        checkpoint. That is what makes a limit survive a resume (§8.3) and what makes it
+        unescapable by discarding one.
 FROZEN: AI-13 v1 runs ONE step at a time. There is no concurrency, no parallelism and
         no worker pool, so there is no concurrency limit to declare. Adding one is a
         contract change (§20), not a configuration change.
@@ -527,6 +707,32 @@ FROZEN: it binds to (workflow_id, revision, definition_digest, run_id, step_id,
 FROZEN: it records the human actor, a timestamp, the scope digest, and an artifact
         reference for whatever the human actually signed. The artifact's bytes are
         stored outside it (§7.2).
+```
+
+```text
+SCOPE PREIMAGE, FROZEN — exactly these six fields and nothing else:
+
+    scope_digest = SHA-256 ( §7.4's canonical form )
+        over the canonical JSON object of
+            workflow_id
+            revision
+            definition_digest
+            run_id
+            step_id
+            attempt_no
+```
+
+```text
+FROZEN: nothing else enters the scope preimage — not the approver, not the timestamp,
+        not the artifact reference, and NOT the artifact's bytes. The first three are
+        properties of the APPROVAL while the digest is a property of the SCOPE, and an
+        approver or a time in the preimage would give one scope as many digests as it
+        had approvers. The artifact is excluded because its bytes are the one thing this
+        contract deliberately keeps out of the record (§7.2); a scope that turned on
+        them could not be computed from the record alone.
+FROZEN: changing ANY ONE of the six produces a different scope_digest, and an approval
+        whose scope_digest does not match the scope under evaluation is REFUSED. That is
+        what makes non-inheritance mechanical rather than a matter of careful reading.
 ```
 
 ### 13.2 It is not inheritable
@@ -631,19 +837,61 @@ FROZEN: `BLOCKED` appears in AI-13's vocabularies as its own type, as it already
 
 ---
 
-## 15. Auditability and provenance — FROZEN
+## 15. The run record, and its boundary with the checkpoint — FROZEN
+
+### 15.1 Two artifacts, two jobs
 
 ```text
-FROZEN: a workflow run produces a RUN RECORD that names, at minimum:
-            workflow_id, revision, definition_digest
-            run_id
-            the workspace identity the run started under
-            each step, its state, and each attempt with its own AttemptId and the
-            ExecutionId that attempt produced
-            the failure classification of every attempt that did not succeed
-            every approval, by scope digest and artifact reference
-            every bound the run declared, and which one it reached if it reached one
-            a terminal state, or an explicit statement that the run is not terminal
+RunRecord    the workflow execution LEDGER: the account of what a run has done.
+             Authority for BOUNDS, because a bound is a fact about the whole run.
+
+Checkpoint   a disposable RESUME SNAPSHOT: what is needed to continue.
+             Authority for nothing. It may be discarded at any time.
+```
+
+```text
+FROZEN: the separation is load-bearing. A bound enforced from a checkpoint would be
+        escapable by discarding one: spend three attempts, delete the checkpoint, resume,
+        and a "maximum three attempts" rule has spent none. Every counter a bound is
+        enforced from lives on the RUN RECORD.
+FROZEN: discarding a checkpoint MUST NOT lose, and MUST NOT alter: the attempt count,
+        the elapsed or remaining runtime budget, the terminal state, the approvals
+        recorded, the resource consumption, or the run's lineage.
+FROZEN: the run record of a NON-TERMINAL run MUST NOT be discarded. Once a run is
+        terminal its record MAY be discarded like any other disposable state — but
+        discarding it discards the run's auditability, so it is a declared operator act
+        and it is not something a resume or a checkpoint operation may do.
+```
+
+### 15.2 The minimum a RunRecord carries
+
+```text
+run identity
+    run_id · workflow_id · revision · definition_digest
+    the workspace identity the run started under
+
+step and attempt ledger, ORDERED
+    every step and its StepState
+    every attempt, with
+        AttemptId            (run_id, step_id, attempt_no)
+        the ExecutionId it produced          — a REFERENCE, never content
+        the FailureClass it ended with, or an explicit "unclassified" (§9.1)
+        when it began and when it ended
+
+failure and authorization provenance, as REFERENCES
+    for each non-succeeding attempt: the reason code and the decision id it rests on
+    every approval: its scope_digest and its artifact reference
+
+bounds
+    every bound the run DECLARED
+    every bound's CONSUMED counter and its ABSOLUTE deadline (§8.3)
+    which bound the run reached, if it reached one
+
+state
+    a terminal state, or an explicit statement that the run is not terminal
+```
+
+```text
 FROZEN: an attempt's classification records the EVIDENCE it rests on as a REFERENCE —
         an execution id, a reason code, a decision id — never as content.
 FROZEN: no raw tool output, model output, prompt, completion, provider body, credential,
@@ -653,6 +901,11 @@ FROZEN: no raw tool output, model output, prompt, completion, provider body, cre
 FROZEN: a run record MUST be sufficient for a reader to answer "what did this run do,
         under which definition, within which bounds, and who authorized it" WITHOUT
         asking the component that ran it.
+FROZEN: the run record is NOT an AI-05 EvidenceRecord, MUST NOT be written as one, and
+        MUST NOT be reshaped into one. AI-13 registers no producer (§16).
+FROZEN: where a run record carries its own digest, it uses §7.4's canonical form with
+        the digest field excluded — the same rule as every other digest here, so a
+        second self-digest ambiguity cannot appear in the artifact a reader trusts most.
 ```
 
 ---
@@ -728,13 +981,31 @@ FROZEN: no previous decision — from this attempt, an earlier attempt, an earli
 
 ---
 
-## 18. Delivery
+## 18. Delivery — and who owns which semantics
 
 ```text
-AI-13-A   contract / design freeze        this document, merged
-AI-13-B   the workflow core               definition, run, step, attempt, checkpoint,
-                                          classification, bounds
-AI-13-C   the approval point              the human approval record and its gate
+AI-13-A   contract / design freeze   this document, merged
+AI-13-B   the workflow core          definition · identity · step · attempt · checkpoint
+                                     · resume · failure classification · retry · timeout
+                                     · cancellation · limits · run record
+AI-13-C   the approval point         the workflow approval record · validation · scope
+                                     digest · deadline · non-inheritance · self-approval
+                                     refusal · denied semantics
+```
+
+```text
+FROZEN: AI-13-B implements NO approval semantics. The approval RECORD, its scope digest,
+        its non-inheritance, its deadline and its refusal rules are AI-13-C's, and they
+        are frozen in §13 so that C implements against a settled contract rather than
+        deciding them while coding.
+FROZEN: therefore AI-13-B REFUSES a definition that declares an approval step, with a
+        named reason (`APPROVAL_STEP_NOT_IMPLEMENTED`). A workflow that needs a human
+        approval does not run until AI-13-C exists. Half an approval point — a step that
+        waits for something nothing can produce — would be worse than none, and a
+        workflow that parked forever on a gate no implementation opens is exactly the
+        unbounded state §16 forbids.
+FROZEN: AI-13-B's exit does NOT include any approval assertion, and AI-13-B MUST NOT
+        claim that approval semantics are proven. §21 assigns those tests to C.
 ```
 
 ```text
@@ -751,19 +1022,29 @@ C0   architecture baseline reviewed — C0 names the phases this contract compos
      seams it reuses, and the four deferrals it picks up (§1, §4, §17)
 C1   workflow identity frozen — id, revision, digest, run id, workspace binding, and
      the terminal states a mismatch produces (§5)
-C2   step / attempt / checkpoint model frozen (§6, §7)
+C2   step / attempt / checkpoint model frozen (§6, §7), including §7.4's canonical
+     form and the checkpoint digest preimage — one definition, shared by every digest
+     in the phase
 C3   resume integrity rules frozen — what is verified, what is inherited, what MUST NOT
-     be (§8)
-C4   retry and failure semantics frozen — the nine classes, retryability as an execution
-     fact, the four things retry is not, and the never-retried list (§9, §10)
+     be, and that a BOUND SURVIVES RESUME (§8)
+C4   retry and failure semantics frozen — the nine classes with NO UNKNOWN member,
+     retryability as an execution fact, the four things retry is not, the never-retried
+     list, and the effective-bound precedence (§9, §10)
 C5   timeout and cancellation semantics frozen (§11)
 C6   resource limits frozen — declared, bounded, terminal when reached (§12)
-C7   human approval boundary frozen — binding, non-inheritance, no self-approval, no
-     Evidence record, no Guard approval (§13)
-C8   Guard / Router / Evidence ownership frozen, with the ownership table (§4, §17)
+C7   human approval boundary frozen — binding, the scope preimage, non-inheritance, no
+     self-approval, no Evidence record, no Guard approval (§13). FROZEN HERE, and
+     IMPLEMENTED BY AI-13-C: freezing the boundary is this contract's exit, and it is
+     NOT a claim that any approval mechanism exists
+C8   Guard / Router / Evidence ownership frozen, with the ownership table (§4, §17),
+     and the B/C split that keeps an exit criterion from claiming a proof whose
+     mechanism does not exist (§18)
 C9   security non-goals frozen (§16)
-C10  auditability and provenance requirements frozen (§15)
-C11  required tests and mutation controls identified — named in §21, NOT implemented here
+C10  auditability and provenance requirements frozen, with the RunRecord / Checkpoint
+     boundary and the rule that a bound is enforced from the record, not the
+     checkpoint (§15)
+C11  required tests and mutation controls identified and assigned to the sub-phase that
+     owns them — named in §21, NOT implemented here
 C12  contract review checkpoint ready — this document is the review material
 ```
 
@@ -781,14 +1062,16 @@ An amendment is REQUIRED for any change to:
 ```text
 workflow identity, the revision/digest binding, or the workspace binding (§5)
 the step, attempt or checkpoint model (§6, §7)
-resume integrity (§8)
+the canonical form or the digest preimage (§7.4) — this changes EVERY digest here
+resume integrity, or the rule that a bound survives resume (§8)
 failure classification or retryability (§9)
-the retry boundary, its bounds, or the four things retry is not (§10)
+the retry boundary, its bounds, or the effective-bound precedence (§10)
 timeout or cancellation semantics (§11)
 the resource limits or the rule that they are declared (§12)
-the human-approval boundary (§13)
-AI-13's vocabulary (§14)
-the auditability requirements (§15)
+the human-approval boundary, including the scope preimage (§13)
+AI-13's vocabulary, or the absence of an UNKNOWN FailureClass member (§14, §9.1)
+the run record's contents, or the RunRecord / Checkpoint boundary (§15)
+which sub-phase owns which semantics (§18)
 any non-goal (§16)
 ```
 
@@ -803,47 +1086,87 @@ It is committed before the code that depends on it. Applied amendments are logge
 
 ---
 
-## 21. What AI-13-B must prove — identified here, implemented there
+## 21. What must be proven — identified here, implemented there
+
+Grouped by the sub-phase that OWNS the semantics, so an exit criterion cannot claim a
+proof whose mechanism does not exist yet (§18).
+
+### 21.1 AI-13-B — the workflow core
 
 ```text
 T1   a resumed attempt inherits no authorization: a checkpoint carrying a Guard
      decision, or an attempt reading one back, MUST fail
-T2   an approval bound to attempt 1 does not authorize attempt 2
-T3   an approval whose scope digest differs in ANY of the six bound fields is refused
-T4   an approval whose actor is the executing Agent, a model or a service is refused
-T5   a denied approval is terminal and produces no automatic re-request
-T6   an approval that misses its deadline is APPROVAL_DENIED, not a pending state
 T7   a revision mismatch is DEFINITION_CHANGED and is not retried into agreement
 T8   a definition digest mismatch is refused even when the revision string matches
-T9   a workspace identity mismatch is WORKSPACE_CHANGED
-T10  a checkpoint whose own digest does not verify is CHECKPOINT_CORRUPT
+T9   a workspace identity mismatch is WORKSPACE_CHANGED — and there is no
+     re-derivation path that would accept it (§5)
+T10  a checkpoint whose digest does not verify is CHECKPOINT_CORRUPT, and §7.4's
+     preimage is what it is verified against
 T11  a retry that would widen the request is refused
-T12  a retry that would exceed the declared attempt or time bound is refused
+T12  a retry that would exceed an effective bound is refused (§10.3.1)
 T13  an attempt that needs routing submits a new request and reuses no decision
-T14  an unclassified failure stops and is never retried
-T15  AUTHORIZATION_DENIED, APPROVAL_DENIED and CANCELLED are never retried
+T14  an unclassified failure assigns NO FailureClass, stops, and is never retried
+T15  AUTHORIZATION_DENIED and CANCELLED are never retried
 T16  a workflow that declares no limit is refused at validation
-T17  reaching a declared bound produces RESOURCE_EXHAUSTED, not a silent stop
+T17  reaching a declared bound produces RESOURCE_EXHAUSTED or TIMED_OUT, not a
+     silent stop
 T18  no AI-13 run record or checkpoint contains raw tool output, model output, a
      credential or repository content
 T19  AI-13 writes no AI-05 record and registers no producer
 T20  AI-13 reads no AI-12 policy and executes no fallback
 T21  AI-13 does not reopen a closed ReviewCase; a resumed run is not a review
      transition (AI-10 §5.3)
+T22  a definition declaring an approval step is REFUSED by B, named
+     APPROVAL_STEP_NOT_IMPLEMENTED (§18)
+T23  a run's deadline and attempt counters survive resume: exit the process, resume,
+     and the remaining budget is what was left, not a fresh one (§8.3)
+T24  the run record, not the checkpoint, is what a bound is enforced from: discarding
+     every checkpoint MUST NOT reduce the attempts a run has spent (§15.1)
+T25  an attempt that would begin at or after an effective deadline does not begin
+```
+
+### 21.2 AI-13-C — the approval point
+
+```text
+T2   an approval bound to attempt 1 does not authorize attempt 2
+T3   an approval whose scope digest differs in ANY of the six bound fields is refused,
+     and §13.2's preimage is what it is compared against
+T4   an approval whose actor is the executing Agent, a model or a service is refused
+T5   a denied approval is terminal and produces no automatic re-request
+T6   an approval that misses its deadline is APPROVAL_DENIED, not a pending state
+```
+
+### 21.3 Mutation controls — required of both
+
+```text
+FROZEN: each test MUST fail when the guard it names is REMOVED, not merely pass while
+        the guard exists. The review of AI-12-B found three defects that a
+        coverage-shaped suite had passed, and AI-13 does not repeat that: the controls
+        below are the ones that must be shown to fail.
 ```
 
 ```text
-FROZEN: each of these MUST be a test that fails when the guard it names is REMOVED, not
-        merely a test that passes while the guard exists. AI-13-B's review will require
-        mutation controls of the kind AI-12-B's did: take a working artifact, break the
-        rule, and require the focused test to notice.
+checkpoint digest preimage     change one byte of a covered field, or move the digest
+                               field into the preimage — T10 must fail
+approval scope digest preimage add the approver or a timestamp to the preimage, or
+                               change one of the six — T3 must fail
+persisted runtime budget       recompute the deadline on resume instead of reading it,
+                               or persist a monotonic reading — T23 must fail
+resumed retry budget           reset the attempt counter on resume — T23/T24 must fail
+RunRecord / Checkpoint split   enforce a bound from a checkpoint instead of the run
+                               record — T24 must fail
+B/C ownership boundary         let B accept an approval step — T22 must fail
+unclassified failure stops     give an unclassified failure a class, or a retry —
+                               T14 must fail
+effective bound precedence     let the WIDER of two bounds govern — T12/T25 must fail
 ```
 
 ```text
 FROZEN: AI-13-B MUST add a Layer 0 boundary for workflows/. The top-level workflows/
         directory is unchecked today — the only `workflows` Layer 0 knows about is
         .github/workflows — so a workflow module could reach a provider, write an
-        Evidence record or start a process with nothing to stop it.
+        Evidence record or start a process with nothing to stop it. AI-13-C extends it
+        for the approval point.
 ```
 
 ---

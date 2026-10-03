@@ -97,6 +97,21 @@ FROZEN by AI-13-A, and not implemented yet:
     a checkpoint is disposable workflow state, never an AI-05 EvidenceRecord
     a workflow approval opens a WORKFLOW gate only; Guard's gate stays independently
     BLOCKED (AI-04 §8, D-12, Q-3)
+
+Made mechanically checkable by the review round that preceded the freeze:
+    one canonical digest form (§7.4) for every digest in the phase, with the digest
+    field excluded — the checkpoint digest is no longer self-referential
+    the approval scope digest covers exactly six fields and nothing else
+    a BOUND SURVIVES RESUME: an absolute persisted deadline, never a restarted
+    duration; a restart, a resume and a wait for an approval all consume it
+    the RunRecord is the ledger and the Checkpoint is a disposable snapshot; a bound
+    is enforced from the record, so discarding a checkpoint cannot reset it
+    where bounds overlap the NARROWER governs, evaluated before an attempt begins
+    FailureClass has nine members and NO UNKNOWN member; an unclassifiable failure
+    assigns no class, stops, and is never retried
+    v1 has no workspace re-derivation: exact identity, or WORKSPACE_CHANGED
+    AI-13-B owns the workflow core and REFUSES an approval step; AI-13-C owns the
+    approval point — so a B exit cannot claim a proof whose mechanism does not exist
 ```
 
 **AI-13 does not unblock anything it does not own.** AI-12 §6's model-comparative

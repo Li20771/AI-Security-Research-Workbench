@@ -831,6 +831,24 @@ human approval 只开 workflow 的门；Guard 的门仍然独立 BLOCKED（AI-04
 AI-13 v1 无 DAG scheduler、无后台 daemon、无并发、无跨进程保持
 ```
 
+review 后补齐的、必须机械可验的语义：
+
+```text
+canonical digest（§7.4）  单一 preimage 定义：canonical JSON、键排序、UTF-8、
+                          null 视为缺省、整数、SHA-256；digest 字段自身排除。
+                          checkpoint / approval scope / run record / definition 共用
+checkpoint digest         自指定义已消除；T10 可机械验证 tamper -> CHECKPOINT_CORRUPT
+approval scope digest     冻结为恰好六个字段的 canonical 序列化；任一字段变化 -> 拒绝
+BOUND SURVIVES RESUME      持久化 ABSOLUTE deadline，不是重算的 duration；
+                          跨 process 不得重置；approval 等待、restart 均计入
+RunRecord vs Checkpoint    ledger 与 snapshot 分离；bound 由 RunRecord 强制，
+                          丢弃 checkpoint 不得减少已消耗的 attempts / budget
+effective bound            多 bound 并存取 min；先判后跑，不允许跑到超限才发现
+workspace re-derivation    v1 无此机制：exact identity 或 WORKSPACE_CHANGED
+FailureClass               九个成员，无 UNKNOWN 成员；无法归类 = 不赋类 + 停止 + 不 retry
+B/C 分工                   B = workflow core（拒绝 approval step）；C = approval point
+```
+
 仍 BLOCKED / 未解决，不得借 AI-13 绕过：
 
 ```text
