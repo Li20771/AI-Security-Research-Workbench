@@ -332,11 +332,20 @@ def _refuse_attempt(
     the run did, and a run that begins an attempt has spent it whether or not the attempt
     comes back to be described.
     """
-    return run.with_step(
-        step_id,
-        state=StepState.FAILED,
-        attempts=run.attempts_for(step_id) + (attempt,),
-    ).advance(
+    # ONE successor, like every other recording path: recording the attempt and taking
+    # it out of flight are the same fact, and a chained pair would publish a record
+    # saying the attempt had returned while still calling it in flight.
+    return run.advance(
+        steps=tuple(
+            replace(
+                other,
+                state=StepState.FAILED,
+                attempts=other.attempts + (attempt,),
+            )
+            if other.step_id == step_id
+            else other
+            for other in run.steps
+        ),
         state=WorkflowState.FAILED,
         updated_at=now,
         inflight_attempt_no=None,
@@ -483,10 +492,10 @@ def begin_attempt(
             moment=moment,
         )
 
-    # §6.3. The number is derived from what the run has BEGUN, not from what it has
-    # finished, so an attempt whose process died still holds its number and a resume
-    # cannot hand the same one out twice.
-    attempt_no = max(len(run.attempts_for(step.step_id)), run.inflight_attempt_no or 0) + 1
+    # §6.3. Derived from the last RECORDED number and the in-flight one — never from
+    # the COUNT of records. A lineage that begins at 2 (its attempt 1 died before it
+    # could be written) has one record, and counting it would hand out 2 again.
+    attempt_no = run.next_attempt_no()
     attempt_id = AttemptId(run_id=run.run_id, step_id=step.step_id, attempt_no=attempt_no)
 
     # §11.1, §12. Anchored at the step's FIRST attempt and persisted from there, so a

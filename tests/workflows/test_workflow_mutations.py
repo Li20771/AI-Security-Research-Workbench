@@ -275,9 +275,14 @@ MUTATIONS: tuple[Mutation, ...] = (
         guard="§12, §15.1 a successor may not lower a counter a bound is enforced "
               "from, so the public successor API is not a budget reset",
         path="workflows/run.py",
-        old="            if after < before:",
-        new="            if after < before and False:  # mutated: the guard is off",
+        old="            if getattr(successor, name) < getattr(self, name):",
+        new="            if getattr(successor, name) < getattr(self, name) and False:  # mutated",
+        # The checkpoint counter, not the attempt counter: lowering
+        # `consumed_total_attempts` is also caught by the reservation coupling, so a
+        # control pointed at it would pass with THIS guard removed — the property would
+        # still hold, by a second rule. This is the counter only this guard keeps.
         focused=(
+            f"{BOUNDARY}::test_a_successor_cannot_lower_the_checkpoint_count",
             f"{BOUNDARY}::test_a_successor_cannot_restore_the_attempt_budget",
         ),
     ),
@@ -290,6 +295,58 @@ MUTATIONS: tuple[Mutation, ...] = (
         new="    if definition.definition_digest != run.definition_digest and False:  # mutated",
         focused=(
             f"{BOUNDARY}::test_checkpoint_for_refuses_a_definition_digest_mismatch",
+        ),
+    ),
+    Mutation(
+        control="step identity and order are the definition's",
+        guard="§6.1 a workflow is an ordered sequence of declared steps, so a successor "
+              "may not add, remove, rename or reorder one",
+        path="workflows/run.py",
+        old="        if [record.step_id for record in successor.steps] != [",
+        new="        if False:  # mutated: the step sequence is not checked",
+        focused=(f"{BOUNDARY}::test_a_successor_cannot_add_a_step",),
+    ),
+    Mutation(
+        control="COMPLETED requires every step to have succeeded",
+        guard="§14 COMPLETED is what a run IS when every declared step has succeeded, "
+              "not a state a caller may assert",
+        path="workflows/run.py",
+        old="            elif successor.state is WorkflowState.COMPLETED:",
+        new="            elif successor.state is WorkflowState.COMPLETED and False:  # mutated",
+        focused=(f"{BOUNDARY}::test_a_successor_cannot_declare_a_run_completed",),
+    ),
+    Mutation(
+        control="an attempt must have been reserved to be recorded",
+        guard="§6.3 an attempt may only be RECORDED if the run RESERVED it, and its "
+              "number is the reserved one",
+        path="workflows/run.py",
+        old="            if attempt.attempt_id.attempt_no != self.inflight_attempt_no:",
+        new="            if attempt.attempt_id.attempt_no != self.inflight_attempt_no and False:  # mutated",
+        focused=(
+            f"{BOUNDARY}::test_a_successor_cannot_record_an_attempt_the_run_never_reserved",
+        ),
+    ),
+    Mutation(
+        control="attempt numbers come from the last recorded number",
+        guard="§6.3 the next attempt number comes from the last RECORDED attempt and "
+              "not from how many records there are, so a lineage that starts late does "
+              "not hand its number out twice",
+        path="workflows/run.py",
+        old="            max((attempt.attempt_id.attempt_no for attempt in current.attempts), default=0)",
+        new="            len(current.attempts)  # mutated: the COUNT, not the last number",
+        focused=(
+            f"{BOUNDARY}::test_an_attempt_number_is_not_reused_after_a_lineage_that_starts_late",
+        ),
+    ),
+    Mutation(
+        control="step deadline released only by its step succeeding",
+        guard="§8.3 the step deadline is released by the step it BOUNDS succeeding, not "
+              "by another step succeeding and not by this one merely moving",
+        path="workflows/run.py",
+        old="            if not moved or moved[0][1].state is not StepState.SUCCEEDED:",
+        new="            if not moved or moved[0][1].state is not StepState.SUCCEEDED and False:  # mutated",
+        focused=(
+            f"{BOUNDARY}::test_the_step_deadline_is_released_only_by_its_step_SUCCEEDING",
         ),
     ),
 )

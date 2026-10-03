@@ -26,10 +26,17 @@ import pytest
 
 from workflows.canonical import digest_of
 from workflows.definition import WorkflowDefinition
-from workflows.engine import advance, begin_attempt, checkpoint_for, record_checkpoint, start_run
+from workflows.engine import (
+    advance,
+    begin_attempt,
+    checkpoint_for,
+    complete_attempt,
+    record_checkpoint,
+    start_run,
+)
 from workflows.errors import InvalidRecord
-from workflows.run import RUN_DIGEST_FIELD, RunRecord
-from workflows.vocabulary import WorkflowState
+from workflows.run import RUN_DIGEST_FIELD, AttemptId, AttemptRecord, RunRecord, StepRecord
+from workflows.vocabulary import FailureClass, StepState, WorkflowState
 
 from tests.workflows.conftest import (
     T0,
@@ -127,6 +134,40 @@ def test_a_successor_cannot_restore_the_attempt_budget() -> None:
     assert run.consumed_total_attempts == 1, "the predecessor was mutated"
 
 
+def _attempt(
+    run: RunRecord,
+    step_id: str,
+    attempt_no: int,
+    *,
+    execution_id: str,
+    succeeded: bool = False,
+) -> AttemptRecord:
+    """An attempt a caller built by hand, for a transition the engine never performs."""
+    return AttemptRecord(
+        attempt_id=AttemptId(run_id=run.run_id, step_id=step_id, attempt_no=attempt_no),
+        execution_id=execution_id,
+        failure_class=None if succeeded else FailureClass.TERMINAL_FAILURE,
+        reason_code="" if succeeded else "REFUSED",
+        started_at=T1,
+        ended_at=T1,
+        succeeded=succeeded,
+    )
+
+
+def _with_step(run: RunRecord, step_id: str, **changes: object):
+    """The steps tuple with ONE step record replaced.
+
+    Written out rather than reached for, because there is no longer a `with_step` on
+    the record: a step-level change that is not part of a legal transition has no
+    convenience path, and a caller who wants one has to build the transition by hand —
+    which is exactly the caller these tests are written as.
+    """
+    return tuple(
+        dataclasses.replace(record, **changes) if record.step_id == step_id else record
+        for record in run.steps
+    )
+
+
 # ---------------------------------------------------------------------------
 # What a successor may not erase
 # ---------------------------------------------------------------------------
@@ -138,7 +179,7 @@ def test_a_successor_cannot_delete_a_recorded_attempt() -> None:
     assert len(run.attempts_for("s1")) == 1
 
     with pytest.raises(InvalidRecord):
-        run.with_step("s1", attempts=())
+        run.advance(steps=_with_step(run, "s1", attempts=()))
 
 
 def test_a_successor_cannot_renumber_a_recorded_attempt() -> None:
@@ -150,7 +191,7 @@ def test_a_successor_cannot_renumber_a_recorded_attempt() -> None:
     )
 
     with pytest.raises(InvalidRecord):
-        run.with_step("s1", attempts=(renumbered,))
+        run.advance(steps=_with_step(run, "s1", attempts=(renumbered,)))
 
 
 def test_a_successor_cannot_rewrite_a_recorded_attempt() -> None:
@@ -161,7 +202,7 @@ def test_a_successor_cannot_rewrite_a_recorded_attempt() -> None:
     rewritten = dataclasses.replace(recorded, reason_code="NEVER_HAPPENED")
 
     with pytest.raises(InvalidRecord):
-        run.with_step("s1", attempts=(rewritten,))
+        run.advance(steps=_with_step(run, "s1", attempts=(rewritten,)))
 
 
 def test_a_successor_cannot_drop_a_step() -> None:
@@ -364,3 +405,268 @@ def test_a_run_record_with_no_declared_bounds_is_refused() -> None:
 
     with pytest.raises(InvalidRecord):
         checkpoint_for(definition=definition, run=stripped, now=T1)
+
+
+# ---------------------------------------------------------------------------
+# §14 — the workflow state is not a field a caller may set
+# ---------------------------------------------------------------------------
+
+
+def test_a_successor_cannot_declare_a_run_completed() -> None:
+    """§14. COMPLETED is what a run IS when every declared step has succeeded.
+
+    A caller asserting it about a run whose steps have not run is not describing the
+    run; it is describing what it would like the record to say.
+    """
+    _, run = _failed_once()
+    assert run.state is WorkflowState.RUNNING
+    assert run.step("s2").state is not StepState.SUCCEEDED
+
+    with pytest.raises(InvalidRecord):
+        run.advance(state=WorkflowState.COMPLETED)
+
+
+def test_a_successor_cannot_move_the_run_to_another_non_terminal_state() -> None:
+    """§14. A run becomes terminal or stays where it is."""
+    _, run = _failed_once()
+
+    with pytest.raises(InvalidRecord):
+        run.advance(state=WorkflowState.CREATED)
+
+
+def test_a_successor_cannot_succeed_a_step_with_no_attempt_behind_it() -> None:
+    """§15.2. A step's state is what its ATTEMPTS did.
+
+    A SUCCEEDED step with no new attempt is a claim nothing in the record supports —
+    and it is also how the step deadline would be released without anything running.
+    """
+    _, run = _failed_once()
+
+    with pytest.raises(InvalidRecord):
+        run.advance(steps=_with_step(run, "s1", state=StepState.SUCCEEDED))
+
+
+def test_a_successor_cannot_move_a_step_the_run_is_not_on() -> None:
+    """§6.1. Steps run in their declared order, so a later step cannot finish first."""
+    _, run = _failed_once()
+    assert run.step("s1").state is StepState.READY
+
+    with pytest.raises(InvalidRecord):
+        run.advance(steps=_with_step(run, "s2", state=StepState.SUCCEEDED))
+
+
+# ---------------------------------------------------------------------------
+# §8.3 — the deadline is released by ITS step succeeding, and nothing else
+# ---------------------------------------------------------------------------
+
+
+def test_the_step_deadline_is_released_only_by_its_step_SUCCEEDING() -> None:
+    """The rule that a set-difference approximation gets wrong.
+
+    "Some step succeeded" would be satisfied by step two finishing while step one's
+    bound is released. Here the CURRENT step moves, an attempt behind it is recorded,
+    and the transition is otherwise well formed — and it is still refused, because the
+    step did not SUCCEED.
+    """
+    definition, run = _failed_once()
+    reserved = begin_attempt(definition=definition, run=run, now=T1).run
+    assert reserved.inflight_attempt_no == 2
+
+    refusing = _attempt(reserved, "s1", 2, execution_id="exec-refused")
+    with pytest.raises(InvalidRecord):
+        reserved.advance(
+            steps=_with_step(
+                reserved,
+                "s1",
+                state=StepState.FAILED,
+                attempts=reserved.attempts_for("s1") + (refusing,),
+            ),
+            step_deadline=None,
+            inflight_attempt_no=None,
+        )
+
+
+def test_the_step_deadline_cannot_be_released_by_another_step_succeeding() -> None:
+    """The same escape by the other route: succeed a DIFFERENT step."""
+    definition, run = _failed_once()
+    reserved = begin_attempt(definition=definition, run=run, now=T1).run
+    succeeded = _attempt(reserved, "s2", 1, execution_id="exec-s2", succeeded=True)
+
+    with pytest.raises(InvalidRecord):
+        reserved.advance(
+            steps=_with_step(
+                reserved,
+                "s2",
+                state=StepState.SUCCEEDED,
+                attempts=reserved.attempts_for("s2") + (succeeded,),
+            ),
+            step_deadline=None,
+            inflight_attempt_no=None,
+        )
+
+
+# ---------------------------------------------------------------------------
+# §6.1 — the step sequence is the definition's
+# ---------------------------------------------------------------------------
+
+
+def test_a_successor_cannot_add_a_step() -> None:
+    """A record free to add a step describes a different workflow than the run bound
+    to, and §5 binds the run to the definition's step sequence."""
+    _, run = _failed_once()
+    extra = StepRecord(step_id="s9", state=StepState.PENDING)
+
+    with pytest.raises(InvalidRecord):
+        run.advance(steps=run.steps + (extra,))
+
+
+def test_a_successor_cannot_reorder_steps() -> None:
+    _, run = _failed_once()
+
+    with pytest.raises(InvalidRecord):
+        run.advance(steps=tuple(reversed(run.steps)))
+
+
+# ---------------------------------------------------------------------------
+# §6.3 — attempt numbering
+# ---------------------------------------------------------------------------
+
+
+def test_a_successor_cannot_skip_an_attempt_number() -> None:
+    """§6.3. The count increases by exactly one per attempt."""
+    _, run = _failed_once()
+    assert run.next_attempt_no() == 2
+
+    with pytest.raises(InvalidRecord):
+        run.advance(
+            inflight_attempt_no=99,
+            consumed_total_attempts=run.consumed_total_attempts + 1,
+        )
+
+
+def test_an_attempt_number_is_not_reused_after_a_lineage_that_starts_late() -> None:
+    """§6.3, and the reason the in-flight number is persisted at all.
+
+    A run whose first attempt died before it could be written has a lineage beginning at
+    2. The next number has to come from the last RECORDED attempt, not from how many
+    records there are — one record would otherwise hand out 2 a second time.
+    """
+    definition = make_definition(
+        limits=limits(step_seconds=30, attempts_per_step=5, attempts_total=10),
+        retry_policy=a_retry_policy(max_attempts=5),
+    )
+    start = start_run(definition=definition, workspace_identity="ws-1", now=T0)
+    interrupted = begin_attempt(definition=definition, run=start, now=T0)
+    resumed = begin_attempt(definition=definition, run=interrupted.run, now=T1)
+    assert resumed.attempt_id.attempt_no == 2
+
+    # Phase two of the resumed attempt, NOT `advance` — which would begin ANOTHER
+    # attempt and move the number on again before anything was recorded.
+    after = complete_attempt(
+        definition=definition, plan=resumed, executor=AlwaysFailsExecutor()
+    )
+    assert [a.attempt_id.attempt_no for a in after.attempts_for("s1")] == [2]
+
+    nxt = begin_attempt(
+        definition=definition, run=after, now="2026-10-03T10:00:20Z"
+    )
+    assert nxt.attempt_id.attempt_no == 3, "attempt 2 was handed out twice"
+
+
+def test_a_successor_cannot_record_an_attempt_the_run_never_reserved() -> None:
+    """The rule that ties the lineage to the counter: an attempt may only be RECORDED
+    if it was RESERVED, and its number is the reserved one."""
+    _, run = _failed_once()
+    assert run.inflight_attempt_no is None
+    unreserved = _attempt(run, "s1", 2, execution_id="exec-unreserved")
+
+    with pytest.raises(InvalidRecord):
+        run.advance(
+            steps=_with_step(
+                run, "s1", attempts=run.attempts_for("s1") + (unreserved,)
+            ),
+            inflight_attempt_no=None,
+        )
+
+
+def test_a_successor_cannot_record_an_attempt_from_another_run() -> None:
+    """§6.3. An AttemptId is (run_id, step_id, attempt_no), and all three are this
+    run's."""
+    definition, run = _failed_once()
+    reserved = begin_attempt(definition=definition, run=run, now=T1).run
+    foreign = AttemptRecord(
+        attempt_id=AttemptId(run_id="run-someone-else", step_id="s1", attempt_no=2),
+        execution_id="exec-foreign",
+        failure_class=FailureClass.TERMINAL_FAILURE,
+        reason_code="REFUSED",
+        started_at=T1,
+        ended_at=T1,
+        succeeded=False,
+    )
+
+    with pytest.raises(InvalidRecord):
+        reserved.advance(
+            steps=_with_step(
+                reserved, "s1", attempts=reserved.attempts_for("s1") + (foreign,)
+            ),
+            inflight_attempt_no=None,
+        )
+
+
+def test_a_successor_cannot_record_an_attempt_under_another_step() -> None:
+    """The same for the step half of the identity."""
+    definition, run = _failed_once()
+    reserved = begin_attempt(definition=definition, run=run, now=T1).run
+    mislabelled = AttemptRecord(
+        attempt_id=AttemptId(run_id=reserved.run_id, step_id="s2", attempt_no=2),
+        execution_id="exec-mislabelled",
+        failure_class=FailureClass.TERMINAL_FAILURE,
+        reason_code="REFUSED",
+        started_at=T1,
+        ended_at=T1,
+        succeeded=False,
+    )
+
+    with pytest.raises(InvalidRecord):
+        reserved.advance(
+            steps=_with_step(
+                reserved, "s1", attempts=reserved.attempts_for("s1") + (mislabelled,)
+            ),
+            inflight_attempt_no=None,
+        )
+
+
+# ---------------------------------------------------------------------------
+# §6.3, §12 — the in-flight number and the counter move together
+# ---------------------------------------------------------------------------
+
+
+def test_a_successor_cannot_reserve_an_attempt_without_spending_one() -> None:
+    """§15.1. An attempt is counted when it BEGINS, so the two move together."""
+    _, run = _failed_once()
+
+    with pytest.raises(InvalidRecord):
+        run.advance(inflight_attempt_no=2)
+
+
+def test_a_successor_cannot_spend_an_attempt_without_reserving_one() -> None:
+    """The converse, and the one that stops a run being charged for nothing."""
+    _, run = _failed_once()
+
+    with pytest.raises(InvalidRecord):
+        run.advance(consumed_total_attempts=run.consumed_total_attempts + 1)
+
+
+def test_a_successor_cannot_lower_the_checkpoint_count() -> None:
+    """§12, §15.1. Discarding a checkpoint cannot restore the budget to write one —
+    and neither can a successor that rewrites the counter the bound is read from."""
+    definition, run = _failed_once()
+    charged = record_checkpoint(
+        run=run,
+        checkpoint=checkpoint_for(definition=definition, run=run, now=T1),
+        now=T1,
+    )
+    assert charged.consumed_checkpoints == 1
+
+    with pytest.raises(InvalidRecord):
+        charged.advance(consumed_checkpoints=0)

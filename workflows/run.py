@@ -347,6 +347,23 @@ class RunRecord:
                 "fields describe an act that did not happen"
             )
 
+        # §6.3. An AttemptId is (run_id, step_id, attempt_no), and every one recorded
+        # HERE must be this run's and this step's. Checked at construction rather than
+        # only on append, so a record that arrived through `from_mapping` cannot carry a
+        # foreign attempt either — a lineage that names another run is not a lineage.
+        for record in self.steps:
+            for attempt in record.attempts:
+                if attempt.attempt_id.run_id != self.run_id:
+                    raise InvalidRecord(
+                        "an attempt recorded against this run names a different run; an "
+                        "AttemptId is (run_id, step_id, attempt_no) (§6.3)"
+                    )
+                if attempt.attempt_id.step_id != record.step_id:
+                    raise InvalidRecord(
+                        "an attempt recorded against a step names a different step; an "
+                        "AttemptId is (run_id, step_id, attempt_no) (§6.3)"
+                    )
+
     @property
     def is_terminal(self) -> bool:
         return self.state in TERMINAL_STATES
@@ -425,18 +442,53 @@ class RunRecord:
     def to_mapping(self) -> dict[str, Any]:
         return {**self.body, RUN_DIGEST_FIELD: self.run_digest}
 
+    def _current_step(self) -> StepRecord | None:
+        """The step this run is on: the first that has not succeeded.
+
+        §12: "AI-13 v1 runs ONE step at a time." Declared order is part of the
+        definition and not a runtime discovery, so the step a run is on follows from its
+        own records — and that is also the only step a successor may move.
+        """
+        for record in self.steps:
+            if record.state is not StepState.SUCCEEDED:
+                return record
+        return None
+
+    def next_attempt_no(self) -> int:
+        """§6.3. The ONE attempt number a reservation is allowed to take.
+
+        Derived from the last RECORDED number and not from the COUNT of records. A run
+        whose first attempt died before it could be written has a lineage beginning at
+        2, and counting its single record would hand out 2 a second time — which is
+        exactly the reuse §6.3 forbids, and the reason the in-flight number is persisted
+        separately at all.
+        """
+        current = self._current_step()
+        recorded = (
+            max((attempt.attempt_id.attempt_no for attempt in current.attempts), default=0)
+            if current is not None
+            else 0
+        )
+        return max(recorded, self.inflight_attempt_no or 0) + 1
+
     def _verify_successor(self, successor: "RunRecord") -> None:
-        """§5, §6.3, §8.3, §12, §15. EVERY rule a successor must obey, in one place.
+        """§5, §6, §8.3, §11, §12, §14, §15. The predecessor → successor boundary.
 
         A digest proves a record is internally consistent. It proves NOTHING about the
-        step from the record before it, so the transition is checked here — and here is
-        the only place `advance` can be reached from, which is what makes the rule
-        structural rather than a convention callers are asked to observe.
+        step from the record before it — `run.advance(consumed_total_attempts=0)` hashes
+        beautifully — so the TRANSITION is what is checked here.
 
-        Without this the public API IS a budget reset: `run.advance(
-        consumed_total_attempts=0)` produces a record whose digest verifies and whose
-        counters say the run has spent nothing.
+        This is a state machine, not a list of forbidden examples. Every field is
+        classified: what creation fixed, what may only increase, what may only be
+        appended to, what has a declared set of transitions, and what a terminal state
+        freezes. A rule covering only the cases someone thought of leaves the rest
+        reachable, and reachable is the whole problem — the caller this defends against
+        is not the engine.
+
+        `advance` is the only way in, and there is no unchecked successor path: the
+        digest is computed after the transition is accepted, never instead of it.
         """
+        # ---- identity, and what creation fixed (§5, §8.3, §15.1) -----------------
         for name in _FIXED_FOR_THE_LIFE_OF_A_RUN:
             if getattr(self, name) != getattr(successor, name):
                 raise InvalidRecord(
@@ -444,94 +496,217 @@ class RunRecord:
                     "and no later record may move it (§5, §15.1)"
                 )
 
+        # ---- counters a bound is enforced from (§12, §15.1) ----------------------
         for name in _NEVER_DECREASES:
-            before = getattr(self, name)
-            after = getattr(successor, name)
-            if after < before:
+            if getattr(successor, name) < getattr(self, name):
                 raise InvalidRecord(
                     f"a successor lowered {name}; a counter a bound is enforced from "
                     "may only ever increase (§12, §15.1)"
                 )
 
-        # §6.3, §15.2. The attempt lineage is a RECORD of what happened. A successor may
-        # append to it; it may not delete an attempt, rewrite one, or renumber one — the
-        # first two would erase history and the third would hand out a number twice.
+        # ---- step identity and order (§6.1) --------------------------------------
+        # A workflow is an ORDERED sequence of declared steps. A successor may move what
+        # a step is DOING; it may not change which steps exist, what they are called,
+        # how many there are, or what order they are in. Those belong to the definition,
+        # and a record free to edit them describes a different workflow than the run
+        # bound to (§5).
+        if [record.step_id for record in successor.steps] != [
+            record.step_id for record in self.steps
+        ]:
+            raise InvalidRecord(
+                "a successor changed the run's step identity or order; the declared "
+                "sequence is the definition's, and a record may not add, remove, rename "
+                "or reorder a step (§6.1)"
+            )
+
+        # ---- the attempt lineage (§6.3, §15.2) -----------------------------------
+        appended: list[tuple[str, AttemptRecord]] = []
         for record in self.steps:
             other = successor.step(record.step_id)
-            if other is None:
+            if other is None:  # pragma: no cover - the order check above covers it
                 raise InvalidRecord(
-                    "a successor dropped a step the run declared; a step does not "
-                    "leave the record of the run that declared it (§6.1)"
+                    "a successor dropped a step the run declared (§6.1)"
                 )
             if len(other.attempts) < len(record.attempts):
                 raise InvalidRecord(
-                    "a successor shortened an attempt lineage; a spent attempt "
-                    "cannot be unspent (§15.1)"
+                    "a successor shortened an attempt lineage; a spent attempt cannot "
+                    "be unspent (§15.1)"
                 )
             for before, after in zip(record.attempts, other.attempts):
                 if before != after:
                     raise InvalidRecord(
-                        "a successor rewrote a recorded attempt; §15.2 records what "
-                        "an attempt WAS, and an attempt number is never reused or "
+                        "a successor rewrote a recorded attempt; §15.2 records what an "
+                        "attempt WAS, and an attempt number is never reused or "
                         "renumbered (§6.3)"
                     )
-            numbers = [attempt.attempt_id.attempt_no for attempt in other.attempts]
-            if any(b <= a for a, b in zip(numbers, numbers[1:])):
+            appended.extend(
+                (record.step_id, attempt)
+                for attempt in other.attempts[len(record.attempts) :]
+            )
+
+        # §12. One step at a time, so at most one execution is in flight and at most one
+        # attempt can leave it per transition.
+        if len(appended) > 1:
+            raise InvalidRecord(
+                "a successor recorded more than one attempt; AI-13 v1 runs one step at "
+                "a time and one attempt leaves flight per transition (§12)"
+            )
+
+        # ---- the in-flight attempt's lifecycle (§6.3, §12) -----------------------
+        reserved = successor.inflight_attempt_no is not None and (
+            successor.inflight_attempt_no != self.inflight_attempt_no
+        )
+        spent = successor.consumed_total_attempts - self.consumed_total_attempts
+
+        if reserved:
+            # A reservation IS the spend. The attempt is counted when the run commits
+            # to running it, not when an execution comes back to describe it — which is
+            # what stops a run that keeps dying from spending without limit.
+            if spent != 1:
                 raise InvalidRecord(
-                    "a successor recorded attempt numbers that do not strictly "
-                    "increase; §6.3 increases the count by exactly one per attempt"
+                    "a successor reserved an attempt without spending exactly one; an "
+                    "attempt is counted when it BEGINS, so the counter and the in-flight "
+                    "number move together (§12, §15.1)"
+                )
+            if successor.inflight_attempt_no != self.next_attempt_no():
+                raise InvalidRecord(
+                    "a successor reserved an attempt number that is not the next one; "
+                    "§6.3 increases the count by exactly one per attempt and never "
+                    "reuses a number"
+                )
+        elif spent != 0:
+            raise InvalidRecord(
+                "a successor spent attempts without reserving one; the counter moves "
+                "only when an attempt begins (§12, §15.1)"
+            )
+
+        if appended:
+            step_id, attempt = appended[0]
+            if attempt.attempt_id.run_id != self.run_id:
+                raise InvalidRecord(
+                    "a successor recorded an attempt belonging to another run; an "
+                    "AttemptId is (run_id, step_id, attempt_no) and all three are this "
+                    "run's (§6.3)"
+                )
+            if attempt.attempt_id.step_id != step_id:
+                raise InvalidRecord(
+                    "a successor recorded an attempt under a step it does not name; an "
+                    "AttemptId is (run_id, step_id, attempt_no) (§6.3)"
+                )
+            # An attempt may only be RECORDED if it was RESERVED. This is what ties the
+            # lineage to the counter: without it a caller could append an arbitrary
+            # attempt, with an arbitrary number, that the run never began.
+            if attempt.attempt_id.attempt_no != self.inflight_attempt_no:
+                raise InvalidRecord(
+                    "a successor recorded an attempt that was never in flight; an "
+                    "attempt is recorded when the one the run reserved returns, and its "
+                    "number is the reserved one (§6.3)"
+                )
+            if successor.inflight_attempt_no is not None:
+                raise InvalidRecord(
+                    "a successor recorded an attempt and left it in flight; an attempt "
+                    "leaves flight exactly when it is recorded (§6.3)"
                 )
 
-        # §8.3, §11.1. The step bound is anchored once. It may be set, kept, or released
-        # — and released only by the step succeeding, which is the one transition the
-        # engine performs. Replacing it would hand the same step a second budget.
-        if self.step_deadline is not None and successor.step_deadline != self.step_deadline:
-            if successor.step_deadline is not None:
+        if self.inflight_attempt_no is not None and successor.inflight_attempt_no is None:
+            if not appended and not successor.is_terminal:
                 raise InvalidRecord(
-                    "a successor replaced the step deadline; it is anchored once at "
-                    "the step's first attempt and read from there (§8.3)"
+                    "a successor released the in-flight attempt without recording it "
+                    "and without ending the run; an attempt leaves flight only by being "
+                    "recorded or by the run stopping (§6.3)"
                 )
-            succeeded_before = {
-                record.step_id for record in self.steps if record.state is StepState.SUCCEEDED
-            }
-            succeeded_after = {
-                record.step_id
-                for record in successor.steps
-                if record.state is StepState.SUCCEEDED
-            }
-            if not succeeded_after - succeeded_before:
+
+        # ---- step state (§6.1, §12, §14) -----------------------------------------
+        moved = [
+            (record, successor.step(record.step_id))
+            for record in self.steps
+            if successor.step(record.step_id).state is not record.state
+        ]
+        if len(moved) > 1:
+            raise InvalidRecord(
+                "a successor moved more than one step; AI-13 v1 runs one step at a "
+                "time, so one transition advances at most one (§12)"
+            )
+        if moved:
+            before = moved[0][0]
+            current = self._current_step()
+            if current is None or before.step_id != current.step_id:
                 raise InvalidRecord(
-                    "a successor released the step deadline without its step "
+                    "a successor moved a step that is not the one the run is on; steps "
+                    "run in their declared order and a later step cannot finish first "
+                    "(§6.1)"
+                )
+            if not appended:
+                raise InvalidRecord(
+                    "a successor changed a step's state with no attempt recorded; a "
+                    "step's state is what its ATTEMPTS did, and a state with no attempt "
+                    "behind it is a claim the record does not support (§15.2)"
+                )
+
+        # ---- the step deadline (§8.3, §11.1) -------------------------------------
+        if self.step_deadline is None:
+            if successor.step_deadline is not None and not reserved:
+                raise InvalidRecord(
+                    "a step deadline appeared without an attempt being reserved; it is "
+                    "anchored when a step's first attempt begins, and nowhere else (§8.3)"
+                )
+        elif successor.step_deadline is None:
+            # Released. The worry is a set-difference approximation — "some step
+            # succeeded" would let a caller succeed step two to release step one's
+            # bound. It is exact here, because exactly one step may move (above) and it
+            # must be the step the run is on, which is the step the bound belongs to:
+            # that is where it was anchored.
+            if not moved or moved[0][1].state is not StepState.SUCCEEDED:
+                raise InvalidRecord(
+                    "a successor released the step deadline without the step it bounds "
                     "succeeding; a step that has not finished still has its bound, and "
                     "clearing it would grant the retry a fresh one (§8.3)"
                 )
-
-        # §6.3. The in-flight attempt number may be reserved, kept, or cleared — and if
-        # it is reserved again it must be a LATER number, never an earlier one.
-        if (
-            self.inflight_attempt_no is not None
-            and successor.inflight_attempt_no is not None
-            and successor.inflight_attempt_no < self.inflight_attempt_no
-        ):
+        elif successor.step_deadline != self.step_deadline:
             raise InvalidRecord(
-                "a successor moved the in-flight attempt number backwards; an attempt "
-                "number is never reused (§6.3)"
+                "a successor replaced the step deadline; it is anchored once at the "
+                "step's first attempt and read from there (§8.3)"
             )
 
-        # §14, §15.2. A terminal run stays terminal, and the facts that stopped it stay
-        # on the record. A successor that could leave a terminal state would make
-        # "terminal" mean "terminal until someone asks again".
-        if self.is_terminal and successor.state is not self.state:
-            raise InvalidRecord(
-                "a successor moved a terminal run out of its terminal state; §14 "
-                "gives a terminal state no transition out of it"
-            )
-        for name in ("reached_bound", "cancelled_by", "cancelled_reason"):
-            before = getattr(self, name)
-            if before is not None and getattr(successor, name) != before:
+        # ---- the workflow state (§14) --------------------------------------------
+        if self.is_terminal:
+            if successor.state is not self.state:
                 raise InvalidRecord(
-                    f"a successor changed {name}; what a run reached, and who "
-                    "cancelled it, are facts about what happened (§15.2)"
+                    "a successor moved a terminal run out of its terminal state; §14 "
+                    "gives a terminal state no transition out of it"
+                )
+        elif successor.state is not self.state:
+            if not successor.is_terminal:
+                # The one declared non-terminal transition, and one the engine never
+                # needs: a run is created RUNNING.
+                if not (
+                    self.state is WorkflowState.CREATED
+                    and successor.state is WorkflowState.RUNNING
+                ):
+                    raise InvalidRecord(
+                        "a successor moved the run to a non-terminal state; a run "
+                        "becomes terminal or stays where it is (§14)"
+                    )
+            elif successor.state is WorkflowState.COMPLETED:
+                # §14's COMPLETED is not "the caller says so". It is what a run IS when
+                # every declared step has succeeded, and nothing else may produce it.
+                if any(
+                    record.state is not StepState.SUCCEEDED for record in successor.steps
+                ):
+                    raise InvalidRecord(
+                        "a successor completed a run with steps that have not "
+                        "succeeded; COMPLETED is what a run IS when every declared step "
+                        "is SUCCEEDED (§14)"
+                    )
+
+        # ---- what a terminal state freezes (§15.2) -------------------------------
+        for name in ("reached_bound", "cancelled_by", "cancelled_reason"):
+            if getattr(self, name) is not None and getattr(successor, name) != getattr(
+                self, name
+            ):
+                raise InvalidRecord(
+                    f"a successor changed {name}; what a run reached, and who cancelled "
+                    "it, are facts about what happened (§15.2)"
                 )
 
     def advance(self, **changes: Any) -> "RunRecord":
@@ -544,29 +719,17 @@ class RunRecord:
                 count, the elapsed or remaining runtime budget, ... or the run's lineage.
         ```
 
-        Those clauses are about a reader trusting the ledger. They hold only if a
-        successor cannot quietly disagree with its predecessor, which is a property of
-        this boundary rather than of the digest — the digest would happily verify
-        `consumed_total_attempts=0`.
+        Those clauses are about a reader trusting the ledger, and they hold only if a
+        successor cannot quietly disagree with its predecessor — a property of this
+        boundary rather than of the digest.
+
+        There is deliberately NO second, unchecked path to a successor. A convenience
+        that skipped the check would be the check's own bypass.
         """
         successor = replace(self, **changes)
         successor = replace(successor, run_digest=successor.computed_digest)
         self._verify_successor(successor)
         return successor
-
-    def with_step(self, step_id: str, **changes: Any) -> "RunRecord":
-        """Replace ONE step record and re-digest."""
-        records: list[StepRecord] = []
-        found = False
-        for record in self.steps:
-            if record.step_id == step_id:
-                records.append(replace(record, **changes))
-                found = True
-            else:
-                records.append(record)
-        if not found:
-            raise InvalidRecord(f"run {self.run_id} has no step {step_id!r}")
-        return self.advance(steps=tuple(records))
 
     @classmethod
     def from_mapping(cls, raw: object, *, verify: bool = True) -> "RunRecord":
