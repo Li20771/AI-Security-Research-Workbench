@@ -135,12 +135,6 @@ def _closed(raw: Mapping[str, Any], allowed: frozenset[str], where: str) -> None
         )
 
 
-def _non_empty_text(value: object, where: str) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise InvalidEvidence(f"{where} must be a non-empty string")
-    return value
-
-
 @dataclass(frozen=True, slots=True)
 class EvidenceRef:
     """§5.3. The identity of one measured run, as a decision must cite it.
