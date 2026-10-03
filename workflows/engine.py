@@ -492,13 +492,21 @@ def complete_attempt(
     if not plan.admitted:
         return plan.run
 
+    # Checked rather than asserted. `AttemptPlan` is a public record a caller can build
+    # by hand, and a plan claiming `admitted` without the state that admission implies
+    # is a refusal this module issues rather than an interpreter feature an optimised
+    # run removes.
     step = plan.step
-    assert step is not None and plan.attempt_id is not None  # noqa: S101 - set with admitted
-    run = plan.run
     attempt_id = plan.attempt_id
+    run = plan.run
+    if step is None or attempt_id is None or run.step_deadline is None:
+        raise InvalidRecord(
+            "an attempt plan is marked admitted but carries no step, no attempt "
+            "identity or no anchored step deadline; only `begin_attempt` produces an "
+            "admitted plan, and it sets all three"
+        )
     moment = plan.moment
     step_deadline = run.step_deadline
-    assert step_deadline is not None  # noqa: S101 - anchored by begin_attempt
     outer_deadline = plan.deadline
 
     outcome = executor.execute(
