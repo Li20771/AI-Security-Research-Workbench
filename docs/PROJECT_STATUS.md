@@ -68,10 +68,12 @@ Layer 0 check are all in this PR. Full evidence in
 modified by AI-07-B. Full evidence in
 [AI-07_EVIDENCE_2026-10-01.md](AI-07_EVIDENCE_2026-10-01.md). See [AI-07 status](#ai-07-status).
 
-**AI-05-B2 is COMPLETE**: every stage of its frozen scope has been implemented and merged. **AI-05
-as a whole remains INCOMPLETE**, because C-1 is still DEFERRED — §30 step 7 is unimplemented,
-T22a/T22b/T22c remain unrunnable, and §32's C6 gate is therefore not closed. See
-[AI-05 status](#ai-05-status).
+**AI-05-B2 is COMPLETE**, and **C-1 is CLOSED** — AI-05 Amendment 3 published the admission rule
+set (§14.10), §30 step 7 is implemented against it, `T20c`'s static skip is a real test and
+T22a/T22b/T22c are enforceable, so **§32's C6 gate is closed**. **AI-05 as a whole remains
+INCOMPLETE**: C-1 was one recorded reason, not the only one — §28's AI-11-admissible producer token
+is still OPEN and §35.1's deferrals stand. See [AI-05 status](#ai-05-status) and
+[AI-05-C1_EVIDENCE_2026-10-04.md](AI-05-C1_EVIDENCE_2026-10-04.md).
 
 The GitHub `main` branch protection requirement is **BLOCKED** by the current GitHub
 Free/private-repository plan and is retained as a documented platform limitation; it is not
@@ -148,9 +150,10 @@ FROZEN by AI-14-A (architecture; no runtime change):
 
 **AI-13 closed; it does not unblock anything it does not own.** AI-12 §6's
 model-comparative prerequisite remains BLOCKED, AI-12-C remains BLOCKED / NOT STARTED,
-and AI-05 remains INCOMPLETE with C-1 DEFERRED — AI-13 registered no producer, wrote no
-Evidence record, and did not resolve C-1. AI-14-A adopts all of those unchanged (its
-§20 decision table) and adds no producer token of its own.
+and AI-05 remains INCOMPLETE — AI-13 registered no producer, wrote no Evidence record, and
+did not resolve C-1. AI-14-A adopted all of those unchanged (its §20 decision table) and added
+no producer token of its own. (C-1 itself was closed afterwards, by AI-05 Amendment 3; AI-14
+recorded it as DEFERRED at the time, and that record is kept as what it was.)
 
 **AI-12 — Model Routing v2 — AI-12-B COMPLETE / MERGED; AI-12 NOT CLOSED.**
 
@@ -329,12 +332,14 @@ AI-07 evidence      = docs/AI-07_EVIDENCE_2026-10-01.md
 ```
 
 **Retained record — AI-05-B2: COMPLETE / MERGED.** All three stages are merged. AI-05 itself is
-**not** closed: C-1 remains DEFERRED.
+**not** closed, and the reason is no longer C-1: it is CLOSED (Amendment 3, 2026-10-04). What
+remains open is §28's AI-11-admissible producer token and §35.1's deferrals.
 
 ```text
 AI-05 contract      = frozen, docs/AI-05_EVIDENCE_EXECUTION_PLAN.md
-AI-05 contract blob = dd062148938f902109b49a496bb6051c3331a349
-                      current, after Amendment 2
+AI-05 contract blob = 3e5eab98b1c7af4662a7f6bff34818b2d41358b0
+                      current, after Amendment 3 (C-1 closed)
+                      was dd062148938f902109b49a496bb6051c3331a349, after Amendment 2
 B2 Decision Record  = docs/AI-05-B2_DECISIONS_2026-10-01.md
 B2 decision blob    = e6249c856d23afba5b97143bec60be06168a4a48
 
@@ -355,8 +360,12 @@ AI-05-B2-P3 merge   = 67515ff96dbd95ee5a8f73923d5eadc3f097501a  (PR #44, merged)
 
 AI-05-B2            = COMPLETE            its frozen scope is implemented and
                                           merged; C-1 was never part of it
-AI-05 overall       = INCOMPLETE          C-1 is DEFERRED, so §30 step 7 is
-                                          unimplemented and §32 C6 is not closed
+C-1                 = CLOSED              Amendment 3 published the rule set
+                                          (§14.10); §30 step 7 implemented;
+                                          T20c real, T22a/T22b/T22c enforceable;
+                                          §32 C6 CLOSED
+AI-05 overall       = INCOMPLETE          NOT because of C-1. §28's producer token
+                                          is OPEN and §35.1's deferrals stand
 
 B1 verification-time contract blob
                     = a1df976deea70daea754d89574c47165140d00d0
@@ -384,9 +393,11 @@ nothing else. It added **no storage, no admission pipeline and no Store**. Full 
 
 > **AI-05-B2 is complete and merged.** P1 (workspace agreement), P2 (stored-form round-trip) and
 > P3 (admission pipeline, filesystem Store, uniqueness, staged discard, §31 Layer 0 check) are all
-> on `main`. There is still no `rules.py`, and that is not an omission: C-1 remains DEFERRED, so
-> §30 step 7 is unimplemented and no document should read an `ACCEPTED` from `admit()` or
-> `admit_to_store()` as a full §30 admission.
+> on `main`. **Superseded note, kept as the record of the gap:** this block used to say there was no
+> `rules.py` and that C-1 remained DEFERRED, so no `ACCEPTED` could be read as a full §30
+> admission. `plugins/evidence/rules.py` now exists (Amendment 3, §14.10) and §30 step 7 runs
+> inside `admit()` and `admit_to_store()`, so an `ACCEPTED` from either **is** a full §30
+> admission — steps 1-14, with no step unimplemented.
 
 The merged AI-03, AI-04, AI-05-B1 and both merged AI-05-B2 branches
 (`feature/ai-03-context-plugin`, `feature/ai-04-guard-implementation`,
@@ -480,8 +491,9 @@ AI-14   Long-term AI Workbench                COMPLETE  AI-14-A MERGED (PR #72)
 - Exact supported DSH/Codex versions
 - Provider connectivity tests — live verification is **NOT_RUN** (AI-02-B6 built
   the opt-in path; no provider call has been made)
-- AI-05 C-1 — the published admission rule set — remains DEFERRED, so §30 step 7 is
-  unimplemented and the Evidence layer has **no production writer** (AI-14 plan §14, §20)
+- AI-05 C-1 is **CLOSED** (Amendment 3, §14.10; §30 step 7 implemented). The Evidence
+  layer still has **no production writer**: no phase holds an admitted producer token
+  (§6.5), which is §28's OPEN question and not C-1 (AI-14 plan §14, §20)
 - Research tool adapters — the eight adapter families exist under `tools/`; the
   Evidence projection of a tool call has no caller (AI-14 plan Appendix A)
 - Codex integration — AI-14-B gave `integrations/codex/` a non-test constructor
@@ -493,7 +505,9 @@ AI-14   Long-term AI Workbench                COMPLETE  AI-14-A MERGED (PR #72)
 - AI-14 — the final composition: four seams are now connected (AI-14 plan §5.1). What
   remains OPEN is a workflow-driven step's routing input — a `WorkflowDefinition` and a
   `RunRecord` declare no `task_class`, no candidates and no actor (§22.1 B3) — and the
-  Evidence writer, which is **BLOCKED** (B5, AI-05 C-1 DEFERRED)
+  Evidence writer, which is **BLOCKED** (B5): the §6.5 admitted-producer registry has
+  no row for any of these phases, and the producer-token question is §28's, still OPEN.
+  C-1's closure does not change it — a published detector does not admit a record
 
 ## AI-00 final gate status
 
@@ -771,7 +785,9 @@ main           = contains AI-04
 ## AI-05 status
 
 **AI-05 — Evidence / Audit Plugin: INCOMPLETE.** B1 and the whole of B2 are complete and merged.
-AI-05 is not closed, and the reason is C-1 rather than anything B2 left undone.
+AI-05 is not closed, and the reason is no longer C-1: **C-1 was CLOSED on 2026-10-04** by
+Amendment 3. What remains is §28's AI-11-admissible producer token (OPEN) and §35.1's
+deferrals (F-10, and the storage-backend record).
 Full evidence in [AI-05-B1_EVIDENCE_2026-10-01.md](AI-05-B1_EVIDENCE_2026-10-01.md),
 [AI-05-B2-P2_EVIDENCE_2026-10-01.md](AI-05-B2-P2_EVIDENCE_2026-10-01.md) and
 [AI-05-B2-P3_EVIDENCE_2026-10-01.md](AI-05-B2-P3_EVIDENCE_2026-10-01.md).
@@ -785,8 +801,9 @@ AI-05-B2-P3 = COMPLETE / MERGED   admission pipeline, filesystem Store,
                                   uniqueness, staged discard,
                                   §31 Layer 0 evidence check
 AI-05-B2    = COMPLETE            its frozen scope is implemented and merged
-AI-05       = INCOMPLETE          C-1 is DEFERRED, so §30 step 7 is
-                                  unimplemented and §32 C6 is not closed
+C-1         = CLOSED              Amendment 3 (§14.10); §30 step 7 implemented;
+                                  T20c/T22a-c enforceable; §32 C6 CLOSED
+AI-05       = INCOMPLETE          §28's producer token = OPEN; §35.1 = DEFERRED
 
 B1 merge SHA    = 0403fcd83b740f0603af7204e77f6e6905a84cf0   (PR #34)
 B1 merged head  = de63631ad88b42ad8a4bc1dbbc3997b25ab93d53
@@ -861,10 +878,17 @@ D11  four items remain undefined and were deliberately not frozen: the
      and discard cleanup granularity. The Store's Python surface is documented
      as provisional rather than as contract.
 
-C-1  remains DEFERRED. The published admission rule set is not published, so
-     §30 step 7 is unimplemented and T22a / T22b / T22c remain unrunnable. An
-     ACCEPTED from admit() or admit_to_store is therefore not a full §30
-     admission, and no document should read it as one.
+C-1  was CLOSED on 2026-10-04 by Amendment 3. The published admission rule set is
+     §14.10 — six rules, C1-R01..C1-R06, transcribed from the repository's own
+     upstream sanitizer patterns and never imported from it. §30 step 7 is
+     implemented in plugins/evidence/rules.py and runs in admit() and
+     admit_to_store(). T20c's static skip is a real test; T22a/T22b/T22c are
+     enforceable; §32's C6 gate is CLOSED. An ACCEPTED from admit() or
+     admit_to_store() IS a full §30 admission.
+
+     What this did NOT do: no producer token was created, no phase registered one,
+     and no Evidence seam was connected. AI-05 remains INCOMPLETE on §28 and §35.1,
+     not on C-1. Evidence: docs/AI-05-C1_EVIDENCE_2026-10-04.md.
 ```
 
 The contract reached `main` through PR #35 (Amendment 1) and was amended a second time by PR #38
@@ -905,8 +929,10 @@ storage boundary = clean — no file I/O, no serializer, no JSON/YAML/SQLite,
 contract         = unmodified; blob identical before and after the merge
 ```
 
-The one skip is `T20c`, deferred against `C-1`: the contract does not name the published
-admission rule set. It is reported as a skip rather than faked.
+The one skip WAS `T20c`, deferred against `C-1` while the contract named the published
+admission rule set and did not define it. Amendment 3 defined it (§14.10) and `T20c` is a
+real assertion now — same expectation it always stated. tests/evidence reports 390 passed,
+0 skipped.
 
 ### Recorded, not hidden
 
