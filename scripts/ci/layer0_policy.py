@@ -3186,6 +3186,254 @@ def check_ai13_workflows(root: "Path | None" = None) -> list[str]:
     return problems
 
 
+#: AI-14's composition layer: the glue between frozen layers, and no component.
+#: AI-14 §3 lists twelve components and this is not a thirteenth; §22.1 says the
+#: glue "is not a component and not an authority".
+AI14_COMPOSITION_DIR = "composition"
+
+#: The modules AI-14-B ships. A package missing one of these is incomplete rather
+#: than merely smaller, and its absence is reported as such.
+AI14_COMPOSITION_MODULES = (
+    "errors.py",
+    "executor.py",
+    "provider.py",
+    "root.py",
+    "selection.py",
+    "verification.py",
+)
+
+#: The roots the composition may reach. Every one of them is a phase's own
+#: package, and the composition calls their PUBLIC entry points — a composition
+#: that reached a layer's internals would be implementing that layer (§19).
+AI14_ALLOWED_IMPORT_ROOTS = (
+    "agents",
+    "benchmarks",
+    "composition",
+    "integrations",
+    "plugins",
+    "providers",
+    "review",
+    "routing",
+    "tools",
+    "workflows",
+)
+
+#: Roots that would mean the composition had acquired a process, a transport or a
+#: second execution. §18: no daemon, no scheduler, nothing held open.
+AI14_FORBIDDEN_STDLIB_ROOTS = (
+    "asyncio",
+    "ctypes",
+    "http",
+    "multiprocessing",
+    "requests",
+    "selectors",
+    "shutil",
+    "signal",
+    "socket",
+    "subprocess",
+    "threading",
+    "urllib",
+)
+
+#: B5 is BLOCKED: AI-05 C-1 is DEFERRED, no producer token exists for any of these
+#: phases, and the composition MUST NOT become the writer that papers over it
+#: (§14, §20, §22.1 B5). The rule is an IMPORT rule, so the block is structural.
+AI14_FORBIDDEN_IMPORTS = ("plugins.evidence",)
+
+#: Names that would mean the composition had acquired an authority of its own:
+#: a trust root, an approval vocabulary, a producer token or a Guard verdict it
+#: constructs rather than reads (§4.2, §13, §14).
+AI14_FORBIDDEN_IDENTIFIERS = (
+    "APPROVAL_TRUST_ANCHOR_ENV",
+    "ADMITTED_EVENTS",
+    "ApprovalRef",
+    "ApprovalStatus",
+    "Ed25519PrivateKey",
+    "DecisionRecord",
+    "designated_anchor",
+    "producer_token",
+)
+
+#: Callables that would make the composition the thing it is calling. `Invoker` is
+#: AI-02's invocation boundary — the composition is HANDED one or it has none
+#: (§22.1 B2) — and the fallback names are the executor AI-12 deliberately is not
+#: (§23).
+#:
+#: The live HTTP transport is deliberately NOT named here. AI-02's own confinement
+#: guard asserts that its name appears nowhere outside the live path, and a check
+#: that named it would be that guard's violation rather than a second enforcement
+#: of it. Building an `Invoker` at all is already refused above, and an invoker
+#: needs a transport.
+AI14_FORBIDDEN_CALLABLES = (
+    "Invoker",
+    "apply_fallback",
+    "escalate",
+    "execute_fallback",
+    "fallback_to",
+)
+
+
+def check_ai14_composition_layer(base: "Path | None" = None) -> list[str]:
+    """AI-14 §17, §19, §22.1: the composition layer, as a repository boundary.
+
+    ```text
+    identity      composition/ is the glue between frozen layers -- not a
+                  component (§3) and not an authority (§4)
+    reach         it calls public entry points, and reaches no process, no
+                  network and no Evidence writer
+    authority     it constructs no trust root, no approval, no producer token,
+                  no Guard decision and no Invoker
+    one-way       it may import a layer; a layer MUST NOT import it
+    ```
+
+    The last rule is what keeps the composition a CALLER. A layer that imported
+    `composition` would need the composition to run, which would make the
+    composition the layer.
+    """
+    import ast
+
+    problems: list[str] = []
+    root = ROOT if base is None else base
+    package = root / AI14_COMPOSITION_DIR
+
+    if not package.is_dir():
+        return [
+            f"{AI14_COMPOSITION_DIR}/ is absent; AI-14-B delivers the composition "
+            "as this package and nothing else"
+        ]
+
+    if (package / "__init__.py").exists():
+        problems.append(
+            f"{AI14_COMPOSITION_DIR}/__init__.py exists; a core layer here is a "
+            "namespace package, and an __init__ is an import side effect"
+        )
+
+    for name in AI14_COMPOSITION_MODULES:
+        if not (package / name).is_file():
+            problems.append(
+                f"{AI14_COMPOSITION_DIR}/{name} is absent; the composition AI-14-B "
+                "ships is incomplete without it"
+            )
+
+    for path in sorted(package.rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        except SyntaxError as exc:  # pragma: no cover - surfaced as a failure
+            problems.append(f"{_display(path)} does not parse: {exc}")
+            continue
+
+        imported: set[str] = set()
+        present: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imported.add(node.module)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                present.add(node.name)
+            elif isinstance(node, ast.Name):
+                present.add(node.id)
+            elif isinstance(node, ast.Attribute):
+                present.add(node.attr)
+            elif isinstance(node, ast.alias):
+                present.add(node.name.split(".")[-1])
+
+        for name in imported:
+            top = name.split(".")[0]
+            if top == AI14_COMPOSITION_DIR or top == "__future__":
+                continue
+            if name.startswith(AI14_FORBIDDEN_IMPORTS) or top in AI14_FORBIDDEN_STDLIB_ROOTS:
+                problems.append(
+                    f"{_display(path)} imports {name!r}; the composition calls "
+                    "public entry points and reaches no process, no transport and "
+                    "no Evidence writer (§19, §22.1 B5)"
+                )
+            elif top in sys.stdlib_module_names:
+                # The inert parts of the standard library are fine: a dataclass,
+                # a type hint and `math` are not a process, a transport or an
+                # authority.
+                continue
+            elif top not in AI14_ALLOWED_IMPORT_ROOTS:
+                problems.append(
+                    f"{_display(path)} imports {name!r}; the composition composes "
+                    "the layers this repository froze, and a foreign root is a "
+                    "dependency no phase owns"
+                )
+
+        for identifier in AI14_FORBIDDEN_IDENTIFIERS:
+            if identifier in present:
+                problems.append(
+                    f"{_display(path)} names {identifier!r}; the composition holds "
+                    "no trust root, no approval vocabulary and no producer token — "
+                    "those belong to the phases that own them (§4.2, §13, §14)"
+                )
+
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                if node.name in AI14_FORBIDDEN_CALLABLES:
+                    problems.append(
+                        f"{_display(path)}:{node.lineno} defines {node.name}(); the "
+                        "composition neither builds a network client nor implements "
+                        "a fallback — a definition here would be the lost "
+                        "distinction this boundary exists for (§22.1 B2, §23)"
+                    )
+                continue
+            if not isinstance(node, ast.Call):
+                continue
+            name = getattr(node.func, "id", None) or getattr(node.func, "attr", None)
+            if name in AI14_FORBIDDEN_CALLABLES:
+                problems.append(
+                    f"{_display(path)}:{node.lineno} calls {name}(); the composition "
+                    "does not build a network client, does not execute a fallback "
+                    "and does not escalate (§22.1 B2, §23)"
+                )
+
+    # One-way: a layer MUST NOT depend on the composition.
+    for module in (
+        "agents",
+        "benchmarks",
+        "integrations",
+        "plugins",
+        "providers",
+        "review",
+        "routing",
+        "tools",
+        "workflows",
+    ):
+        area = root / module
+        if not area.is_dir():
+            continue
+        for path in sorted(area.rglob("*.py")):
+            if "__pycache__" in path.parts:
+                continue
+            text = path.read_text(encoding="utf-8")
+            if "composition" not in text:
+                continue
+            try:
+                tree = ast.parse(text, filename=str(path))
+            except SyntaxError:  # pragma: no cover
+                continue
+            for node in ast.walk(tree):
+                names: list[str] = []
+                if isinstance(node, ast.Import):
+                    names = [alias.name for alias in node.names]
+                elif isinstance(node, ast.ImportFrom):
+                    names = [node.module or ""]
+                for name in names:
+                    if name == AI14_COMPOSITION_DIR or name.startswith(
+                        f"{AI14_COMPOSITION_DIR}."
+                    ):
+                        problems.append(
+                            f"{_display(path)} imports {name!r}; the composition is "
+                            "a CALLER, and a layer that needed it would make the "
+                            "composition the layer (§19)"
+                        )
+
+    return problems
+
+
 def main() -> int:
     print("Layer 0 - repository policy")
     report = Report()
@@ -3252,6 +3500,10 @@ def main() -> int:
     report.check(
         "workflow layer boundary and execution absence",
         check_ai13_workflows(),
+    )
+    report.check(
+        "composition layer boundary and authority absence",
+        check_ai14_composition_layer(),
     )
 
     if report.failures:
