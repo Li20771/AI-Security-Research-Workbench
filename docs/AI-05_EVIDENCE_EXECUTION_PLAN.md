@@ -1234,8 +1234,14 @@ the responsibility and this one does not restate it.
 **Class 4's division of responsibility.** The producer normalizes and flattens
 newlines before submission. AI-05 **rejects** a value containing CR or LF rather
 than flattening it, because flattening would be the silent substitution §14.4.1
-forbids. The published admission rule set is C-1 and remains DEFERRED, so every
-Class 4 field is structurally bounded and not rule-checked.
+forbids.
+
+**The published admission rule set is C-1, and Amendment 3 PUBLISHES it (§14.10).**
+Every Class 3 and Class 4 field is now rule-checked at admission, in addition to
+being structurally bounded. Before Amendment 3 this paragraph said the rule set
+"remains DEFERRED, so every Class 4 field is structurally bounded and not
+rule-checked"; that sentence is superseded, and the rule set it deferred is
+normatively defined in §14.10.
 
 ### 14.9 The grammar table — FROZEN
 
@@ -1254,9 +1260,115 @@ the §15.2 leaf table. No alias exists.
 | `G-REVISION` | conditional on `source_kind` as stated in §12.1 | REPOSITORY-DERIVED |
 | `G-TIMESTAMP` | ISO-8601 UTC with a trailing `Z`, at second resolution | REPOSITORY-DERIVED |
 | `G-LOCATOR` | non-empty when present, single-line, at most 512 characters, no CR, no LF, otherwise uninterpreted by AI-05 | IMPLEMENTATION-CHOSEN |
-| `G-TEXT` | single-line bounded producer-normalized text, at most 512 characters, no CR, no LF. The producer performs normalization and newline flattening. AI-05 validates and rejects malformed input and performs no substitution and no sanitization | shape IMPLEMENTATION-CHOSEN, admission rule-set obligation CONTRACT-REQUIRED and DEFERRED with C-1 |
+| `G-TEXT` | single-line bounded producer-normalized text, at most 512 characters, no CR, no LF. The producer performs normalization and newline flattening. AI-05 validates and rejects malformed input and performs no substitution and no sanitization | shape IMPLEMENTATION-CHOSEN; admission rule-set obligation CONTRACT-REQUIRED and **PUBLISHED by Amendment 3 (§14.10)** |
 | `G-REGISTERED` | the token admitted by §6.5 for the current kind and family | registry requirement CONTRACT-REQUIRED, token spelling IMPLEMENTATION-CHOSEN |
 | `G-ORDINAL` | an integer greater than or equal to 0, unique within `payload.tool_calls[]`, not required to be contiguous | IMPLEMENTATION-CHOSEN |
+
+### 14.10 The published admission rule set — FROZEN (Amendment 3)
+
+**This section PUBLISHES the rule set that §30 step 7, §14.2 and the `G-TEXT` row
+above refer to as C-1.** Before Amendment 3 the contract named it and deferred it;
+the companion records (`AI-05-B2_DECISIONS_2026-10-01.md` D1, the B1 evidence, the
+project status) recorded the same. It is now defined here, and this section is the
+normative source.
+
+```text
+FROZEN: AI-05 owns the published admission rule set. It is exactly the six rules
+        below; a seventh is an amendment (§34.1), never a configuration change.
+
+FROZEN: the patterns are a FROZEN SNAPSHOT of the six credential-detection patterns
+        the repository's upstream sanitizer applies to provider-bound text. They are
+        TRANSCRIBED, never imported: an edit to that sanitizer MUST NOT change what
+        AI-05 admits, and changing this rule set requires a further amendment. The
+        snapshot was taken at main 7e7d83b74e2903f2b83e95cf35d0115d4038df90.
+
+FROZEN: DETECTION ONLY. A rule answers "does this value match". No rule carries a
+        replacement, AI-05 holds none, and AI-05 never substitutes, redacts,
+        sanitizes or normalizes a value (§14.4.1). The substitution half stays
+        upstream.
+
+FROZEN: no exact-secret list and no secret registry. AI-05 holds no caller secret
+        and reads no credential store. Exact-VALUE substitution is an upstream
+        capture/sanitization operation and is not representable in this contract.
+
+FROZEN: no rule-set version field, on a record or anywhere else. The rule set is
+        versioned by AMENDMENT. A version field would invite an admission decision
+        to depend on which revision wrote the record.
+
+FROZEN: NOTHING HERE IS RETROACTIVE. These rules are checked at NEW admission only.
+        A record already written stays readable; no re-admission, no stored-form
+        load and no future amendment applies a later rule set to it (§17, §20).
+```
+
+```text
+rule id   pattern                                                    catches
+C1-R01    (?i)\bauthorization\b\s*[:=]\s*\S+                          Authorization header
+C1-R02    (?i)\b(api[_-]?key|apikey|access[_-]?token|                  key=value credential
+          refresh[_-]?token|auth[_-]?token|bearer|token|              parameters
+          secret|password|passwd|pwd)\b\s*[:=]\s*["']?([^\s"',;}\]]+)
+C1-R03    \bsk-[A-Za-z0-9_\-]{8,}                                       vendor "sk-" token
+C1-R04    \b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{16,}                     GitHub token prefix
+C1-R05    \bxox[baprs]-[A-Za-z0-9\-]{10,}                              Slack token prefix
+C1-R06    \b[A-Za-z0-9_\-]{32,}\b                                     long opaque token
+
+FROZEN: the rule ids, their order and their patterns are the published contract.
+        A rule is matched with `search` semantics wherever it applies, and the
+        FIRST matching rule in the order above is the one reported.
+```
+
+```text
+WHERE THE RULES APPLY — every supplied Class 3 and Class 4 field, and no other:
+
+Class 4 (G-TEXT)                 provenance.producer, provenance.actor.id,
+                                 payload.subject, payload.observed,
+                                 payload.reasons[],
+                                 payload.tool_calls[].what_ran,
+                                 references.context[].value,
+                                 references.supersedes[].correction_reason
+Class 3 (structured token)       provenance.producer_version,
+                                 provenance.workspace_id, provenance.experiment_id,
+                                 provenance.observed_at,
+                                 payload.binding.source_identity,
+                                 payload.binding.model_ref,
+                                 payload.binding.endpoint_host,
+                                 payload.reason_code,
+                                 references.context[].workspace_id,
+                                 references.context[].source_identity,
+                                 references.context[].subject,
+                                 references.decisions[].record_ref,
+                                 references.supersedes[].record_ref,
+                                 artifacts.items[].owner_workspace_id,
+                                 artifacts.items[].artifact_ref
+
+Class 1                          NEVER scanned. A digest or a revision is lowercase
+                                 hex of an exact length, and rule C1-R06 would match
+                                 every one of them: a 40-character commit SHA and a
+                                 64-character SHA-256 are both 32+ character runs.
+                                 Applying the rules to a structural field would
+                                 reject every legitimate record (T20a, T20b).
+Class 2                          validated against its closed enum and not scanned.
+```
+
+```text
+FROZEN: a value matching any published rule is REJECTED
+        (reason ADMISSION_RULE_VIOLATION). It is never sanitized, never truncated,
+        never replaced and never repaired, and no digest is computed over it (§14.6
+        R2) — which is why step 7 reads the SUPPLIED values before the record is
+        constructed, since construction derives references.context[].value_digest
+        from the supplied value (§12.1).
+
+FROZEN: this rule set is a DETECTOR, not a completeness claim. §14.1's limit stands
+        unchanged: a secret that matches no rule passes, and §14.8 keeps the
+        residual stated rather than closed.
+
+CONSEQUENCE, declared: a legitimate 64-character lowercase hex value in a Class 4
+        field matches C1-R06 and is REJECTED (T20c). That is deliberate
+        over-rejection in the safe direction; a kind needing to carry such a value
+        MUST declare the field Class 1. It MUST NOT be "fixed" by widening a rule.
+```
+
+---
+
 
 Evidence for the REPOSITORY-DERIVED labels:
 
@@ -2416,8 +2528,16 @@ FROZEN. The single entry condition for storing a record.
                    constraint is applied on top of it
  5. workspace      workspace_id is present, non-empty, and agrees everywhere (§18)
  6. classes        every string field is validated against its declared class (§14.2)
- 7. rule set       Class 3 and Class 4 fields are checked against the published rules
+ 7. rule set       every supplied Class 3 and Class 4 field is checked against the
+                   published rule set (§14.10, C1-R01..C1-R06)
+                   -> a match is REJECTED as ADMISSION_RULE_VIOLATION
                    -> DETECTION ONLY. AI-05 never substitutes (§14.4.1)
+                   -> read from the SUPPLIED values, before step 1 constructs the
+                      record: construction derives references.context[].value_digest
+                      from the supplied value, and R2 forbids hashing a value that
+                      was not admitted. A record violating both a shape rule and a
+                      published rule therefore reports the rule; both are REJECTED
+                      and nothing is stored
  8. references     references are well-formed and their identity is complete (§12)
  9. artifacts      artifact entries satisfy §13.1/§13.2
 10. digest origin  content_digest, record_digest and every ContextRef.value_digest
@@ -2538,6 +2658,13 @@ T22a-e are five distinct boundaries, not five spellings of one. T22a and T22b ar
 T20c and T21c assert DELIBERATE REJECTIONS that a reader may expect to be
   acceptances. They MUST NOT be "fixed" by widening the rule. Widening them changes
   a frozen boundary (§34.1).
+T20c and T22a-c are ENFORCEABLE as of Amendment 3, which publishes the admission
+  rule set they assert against (§14.10). T20c was carried as a static skip while C-1
+  was deferred; it is an assertion now, and it asserts the SAME expectation it always
+  stated. T22a, T22b and T22c are the three detection rows of §14.10: a known test
+  secret in a Class 4 field, a secret-shaped token in a Class 4 field, and an
+  unsanitized secret-shaped token in a Class 3 field. T22d and T22e are unaffected —
+  they are digest-ORIGIN rows and never depended on the rule set.
 T4b and T4c are a pair, and Amendment 2 restates what the pair proves. The earlier
   wording described T4c as an acceptance and justified it by the recorded human
   approval of §6.3, which §6.5 and §6.6 do not permit in v1; it is replaced here.
@@ -2709,8 +2836,9 @@ C5 — Truth / status preservation
 
 C6 — Secret-safe admission
   Proved     the §14.3 invariants hold, and the limit §14.8 does not close is stated
-  Evidence   T20a–c, T21a–c, T22a–e; the published rule set; the §14.6.1 digest-origin
-             table
+  Evidence   T20a–c, T21a–c, T22a–e; the published rule set (§14.10, published by
+             Amendment 3 — before it, this gate cited a rule set the contract named
+             and deferred); the §14.6.1 digest-origin table
   Forbidden  a secret in a Class 3 or Class 4 field; a caller-supplied value in an
              AI-05-generated digest field (R1); AI-05 computing a digest over a value
              it did not admit (R2); any field whose declared role is a secret or
@@ -3049,6 +3177,77 @@ the §30 admission check for `producer_type = human`, and T4b in the §31 matrix
 No change to §6.5's admitted registry. No change to §6.6's rejection rules. No
 production code change, no test change, no B2 implementation. T4c's expected value is
 the only assertion in the matrix this amendment changes.
+
+#### Amendment 3 — the published admission rule set is published, not deferred (2026-10-04)
+
+Found while closing C-1 against main
+`7e7d83b74e2903f2b83e95cf35d0115d4038df90`. The contract named a "published
+admission rule set" in three places — §14.2's Class 4 paragraph, the §14.9 `G-TEXT`
+row, and §30 step 7 — and defined it in none. Amendment 1 introduced the name C-1
+and left it deferred; the companion records (`AI-05-B2_DECISIONS_2026-10-01.md` D1,
+`AI-05-B1_EVIDENCE_2026-10-01.md`, `PROJECT_STATUS.md`) recorded that §30 step 7 was
+therefore unimplementable, that T20c was skipped and that T22a/T22b/T22c were
+unrunnable.
+
+```text
+(a) NEW §14.10 defines the published admission rule set: exactly six rules,
+    C1-R01..C1-R06, with their patterns, their order, and the fields they apply to.
+    It is a FROZEN SNAPSHOT of the six detection patterns the repository's upstream
+    sanitizer applies to provider-bound text — TRANSCRIBED, never imported, so an
+    edit to that sanitizer cannot change what AI-05 admits. The snapshot was taken
+    at main 7e7d83b74e2903f2b83e95cf35d0115d4038df90.
+
+(b) §14.10 states what the rule set is NOT, because each is a thing it could have
+    become: no substitution and no sanitization (DETECTION ONLY — §14.4.1 already
+    put the substitution half upstream); no exact-secret list and no secret
+    registry (AI-05 holds no caller secret and reads no credential store);
+    no rule-set version field on a record (the set is versioned by amendment);
+    and nothing retroactive (a written record stays readable; no re-admission and
+    no stored-form load applies a later rule set to it).
+
+(c) §14.2's Class 4 paragraph no longer says the rule set "remains DEFERRED, so every
+    Class 4 field is structurally bounded and not rule-checked". Class 3 and Class 4
+    fields are rule-checked at admission in addition to being structurally bounded,
+    which is what §14.5 had already resolved and what §14.4.1 had already scoped.
+
+(d) The §14.9 `G-TEXT` row's "DEFERRED with C-1" is superseded: the admission
+    rule-set obligation is CONTRACT-REQUIRED and PUBLISHED by §14.10. The row's
+    shape column is unchanged — G-TEXT is still bounded, single-line, ≤512
+    characters, no CR and no LF.
+
+(e) §30 step 7 now names the rules it checks (§14.10, C1-R01..C1-R06) and states
+    that a match is REJECTED as ADMISSION_RULE_VIOLATION. It also records the one
+    ordering consequence this amendment had to settle: step 7 reads the SUPPLIED
+    values, before step 1 constructs the record, because construction derives
+    references.context[].value_digest from the supplied value (§12.1) and §14.6 R2
+    forbids computing a digest over a value that was not admitted. A record
+    violating both a shape rule and a published rule therefore reports the RULE.
+    Both outcomes are REJECTED and nothing is stored; no accepted value, no bound,
+    no digest and no stored record is affected by which reason is reported first.
+
+(f) §31.1 records that T20c and T22a/T22b/T22c are enforceable assertions as of this
+    amendment, and that their expectations are unchanged: T20c was carried as a
+    static skip while C-1 was deferred and asserts the same REJECTED it always
+    stated. T22d and T22e are untouched — they are digest-origin rows.
+
+(g) §32.1's C6 evidence list now cites §14.10 for the rule set this gate always
+    required. The gate's condition text is unchanged.
+
+(h) §14.2's own Class 3 definition is unchanged, and Class 5 remains FORBIDDEN. The
+    scan set §14.10 publishes is the union of the two classes §14.5 already
+    resolved; Class 1 is still NEVER scanned, which is what keeps rule C1-R06 from
+    rejecting every digest and every revision in the schema (T20a, T20b).
+```
+
+No authority relation changed. No evidence kind, producer registry entry, digest
+input, canonical collection, workspace rule, identity field or admission outcome
+changed. No lifecycle state was added and no record becomes unreadable: the rules
+apply to new admission only. §14.1's limit — a detector is not a completeness claim,
+and §14.8's residual stays stated — is unchanged.
+
+C-1 is CLOSED by this amendment. AI-05 remains INCOMPLETE until its own exit gates
+say otherwise; a closed C-1 is not a claim that every Evidence seam is connected,
+and §30's remaining steps are as they were.
 
 ---
 
