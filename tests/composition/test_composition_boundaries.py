@@ -23,6 +23,7 @@ from tools import default_registry
 from composition.executor import AgentStepExecutor
 from agents.body import OfflineBody
 
+from composition.provider import ExecutionBinding, offline_body_factory
 from composition.root import run_task
 
 from tests.composition.conftest import (
@@ -54,7 +55,7 @@ class _ToolCallingBody:
         return BodyOutcome(result_ref="sha256:" + "cd" * 32)
 
 
-def _run(tmp_path, body=None, **overrides):
+def _run(tmp_path, body_factory=None, **overrides):
     root, _ = a_workspace(tmp_path / "ws")
     arguments = {
         "workspace_root": str(root),
@@ -64,7 +65,7 @@ def _run(tmp_path, body=None, **overrides):
         "rule_set": a_rule_set(),
         "profiles": PROFILES,
         "enabled_providers": ALL_PROVIDERS,
-        "body": body if body is not None else OfflineBody(agent_id=AgentId.DSH),
+        "body_factory": body_factory if body_factory is not None else offline_body_factory(),
         "default_agent": AgentId.DSH,
         "registry": default_registry(),
         "policy": None,
@@ -98,7 +99,10 @@ def test_the_router_does_not_authorize_the_tool_call_it_selected_for(tmp_path) -
             timeout_seconds=entry.timeout_seconds,
         )
     )
-    outcome, _ = _run(tmp_path, body=body)
+    def a_factory(*, model_ref, agent_id):
+        return ExecutionBinding(body=body, model_ref=None)
+
+    outcome, _ = _run(tmp_path, body_factory=a_factory)
 
     assert outcome.decision.outcome.value == "SELECTED"
     call = outcome.result.tool_calls[0]

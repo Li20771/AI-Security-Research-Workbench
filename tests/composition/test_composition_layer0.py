@@ -105,7 +105,13 @@ def test_the_check_catches_an_evidence_import(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     "identifier",
-    ["Ed25519PrivateKey", "ApprovalRef", "ADMITTED_EVENTS", "DecisionRecord"],
+    [
+        "Ed25519PrivateKey",
+        "ApprovalRef",
+        "ADMITTED_EVENTS",
+        "DecisionRecord",
+        "CredentialRef",
+    ],
 )
 def test_the_check_catches_an_authority_vocabulary(
     identifier: str, tmp_path: Path

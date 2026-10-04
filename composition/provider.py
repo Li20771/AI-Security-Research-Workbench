@@ -54,21 +54,58 @@ docstring says an "external composition root" would.
 
 from __future__ import annotations
 
-from typing import Any, Mapping, Sequence
+from dataclasses import dataclass
+from typing import Any, Callable, Mapping, Sequence
 
 from providers.config import ProviderConfig
 from providers.model_profile import ModelProfile
 from providers.profile import ProviderProfile
 
-from agents.body import AgentBody
+from agents.body import AgentBody, OfflineBody
 from agents.codex.body import CodexBody, OfflineCodexBackend
 from agents.toolcall import ToolInvocation
+from agents.vocabulary import AgentId
 
 from integrations.codex.backend import CODEX_INVOCATION_TIMEOUT_MS, MimoCodexBackend
 
 from composition.errors import ProviderRefused
 
-__all__ = ["codex_body", "enabled_provider_ids", "offline_codex_body"]
+__all__ = [
+    "BodyFactory",
+    "ExecutionBinding",
+    "codex_body",
+    "codex_body_factory",
+    "enabled_provider_ids",
+    "offline_body_factory",
+    "offline_codex_body",
+]
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutionBinding:
+    """What a body factory built, and which model it was built FOR.
+
+    ```text
+    model_ref is a string   the body was built for that model, and for a
+                            provider-backed body the value comes from AI-09's
+                            VALIDATED binding — the ref the backend will invoke
+    model_ref is None       the body invokes no model at all (the offline path)
+    ```
+
+    This is the value the composition checks against the Router's selection, and
+    it is the only thing that can: `RouterDecision.selected` says what was
+    SELECTED, and this says what was BUILT. A composition that reported the first
+    as if it were the second would be asserting a connection it never made.
+    """
+
+    body: AgentBody
+    model_ref: str | None = None
+
+
+#: What `run_task` calls AFTER the Router has selected. It is handed the selected
+#: model ref and the Agent identity the execution request carries, and it returns
+#: the body to run plus the model that body was built for.
+BodyFactory = Callable[..., ExecutionBinding]
 
 
 def enabled_provider_ids(config: ProviderConfig) -> frozenset[str]:
@@ -96,17 +133,16 @@ def offline_codex_body(*, plan: Sequence[ToolInvocation] = ()) -> CodexBody:
     return CodexBody(backend=OfflineCodexBackend(), plan=tuple(plan))
 
 
-def codex_body(
+def _provider_backend(
     *,
     model_ref: object,
     config: ProviderConfig,
     providers: Mapping[str, ProviderProfile],
     models: Mapping[str, ModelProfile],
     invoker: Any,
-    plan: Sequence[ToolInvocation] = (),
-    timeout_ms: int = CODEX_INVOCATION_TIMEOUT_MS,
-) -> AgentBody:
-    """Build the Codex body over one validated, runtime-enabled binding.
+    timeout_ms: int,
+) -> MimoCodexBackend:
+    """AI-09's backend over one validated, runtime-enabled binding.
 
     Every refusal below is AI-09's own and is raised BEFORE any backend exists, so
     no code path from here can reach a provider without enablement:
@@ -125,7 +161,7 @@ def codex_body(
     different model or a default: a refused binding is a STOP.
     """
     try:
-        backend = MimoCodexBackend(
+        return MimoCodexBackend(
             model_ref=model_ref,
             config=config,
             providers=providers,
@@ -137,8 +173,123 @@ def codex_body(
         # Named rather than swallowed: the caller gets a `ProviderRefused` whose
         # cause is AI-09's own error, so the reason ("not enabled", "not in
         # scope") survives instead of becoming "the body would not build".
-        raise ProviderRefused(
-            f"the Codex provider binding was refused: {exc}"
-        ) from exc
+        raise ProviderRefused(f"the Codex provider binding was refused: {exc}") from exc
 
+
+def codex_body(
+    *,
+    model_ref: object,
+    config: ProviderConfig,
+    providers: Mapping[str, ProviderProfile],
+    models: Mapping[str, ModelProfile],
+    invoker: Any,
+    plan: Sequence[ToolInvocation] = (),
+    timeout_ms: int = CODEX_INVOCATION_TIMEOUT_MS,
+) -> AgentBody:
+    """Build the Codex body over one validated, runtime-enabled binding."""
+    backend = _provider_backend(
+        model_ref=model_ref,
+        config=config,
+        providers=providers,
+        models=models,
+        invoker=invoker,
+        timeout_ms=timeout_ms,
+    )
     return CodexBody(backend=backend, plan=tuple(plan))
+
+
+# ---------------------------------------------------------------------------
+# Body factories: what `run_task` calls AFTER the Router has selected (§22.1 B1+B2)
+# ---------------------------------------------------------------------------
+
+
+def codex_body_factory(
+    *,
+    config: ProviderConfig,
+    providers: Mapping[str, ProviderProfile],
+    models: Mapping[str, ModelProfile],
+    invoker: Any,
+    plan: Sequence[ToolInvocation] = (),
+    timeout_ms: int = CODEX_INVOCATION_TIMEOUT_MS,
+) -> BodyFactory:
+    """A factory that binds THE SELECTED model, after the selection happens.
+
+    ```text
+    RouterRequest -> evaluate() -> RouterDecision(selected = X)
+                                        |
+                                        v   X is passed HERE, as an argument
+                              codex_body_factory's build()
+                                        |
+                                        v
+                              MimoCodexBackend(model_ref = X, ...)   AI-09 validates X
+                                        |
+                                        v
+                              ExecutionBinding(model_ref = the BOUND ref)
+    ```
+
+    The composition never holds a pre-built provider body: the body does not exist
+    until a selection exists, and the model it is built for is the one that was
+    selected. A ref the Router did not select can only reach this factory by a
+    caller passing it, and the composition refuses a binding that names a
+    different model than the selection did (§22.1 B1+B2).
+
+    The invoker is still the caller's: this factory constructs none, reads no
+    credential and opens no client — building one is what this phase does not do
+    (§22.1 B2).
+    """
+
+    def build(*, model_ref: str, agent_id: AgentId) -> ExecutionBinding:
+        if agent_id is not AgentId.CODEX:
+            raise ProviderRefused(
+                f"the provider-backed body serves {AgentId.CODEX.value!r} and the "
+                f"Router selected an execution for {agent_id.value!r}; a provider "
+                "binding is not a body for an Agent it does not serve (§7)"
+            )
+        backend = _provider_backend(
+            model_ref=model_ref,
+            config=config,
+            providers=providers,
+            models=models,
+            invoker=invoker,
+            timeout_ms=timeout_ms,
+        )
+        return ExecutionBinding(
+            body=CodexBody(backend=backend, plan=tuple(plan)),
+            # From AI-09's VALIDATED binding, not from the argument: this is what
+            # the backend will actually invoke.
+            model_ref=backend.binding.model_ref,
+        )
+
+    return build
+
+
+def offline_body_factory() -> BodyFactory:
+    """The offline factory. It invokes NO model, and says so.
+
+    ```text
+    FROZEN: an offline body is an execution with no provider. It is NOT a model
+            invocation, and a composed run using it MUST NOT be described as
+            having executed the model the Router selected.
+    ```
+
+    It still runs AFTER the selection, and still receives the selected ref — the
+    Agent it builds a body for is the Agent the selection's request names. What it
+    reports back is `model_ref=None`: the honest answer for a body that reaches no
+    provider.
+    """
+
+    def build(*, model_ref: str, agent_id: AgentId) -> ExecutionBinding:
+        if agent_id is AgentId.CODEX:
+            return ExecutionBinding(
+                body=CodexBody(backend=OfflineCodexBackend()), model_ref=None
+            )
+        if agent_id is AgentId.DSH:
+            return ExecutionBinding(
+                body=OfflineBody(agent_id=AgentId.DSH), model_ref=None
+            )
+        raise ProviderRefused(
+            f"no offline body serves {agent_id!r}; the AgentId vocabulary is closed "
+            "at two and this factory builds a body for the one the selection named"
+        )
+
+    return build

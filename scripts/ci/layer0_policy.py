@@ -3241,15 +3241,19 @@ AI14_FORBIDDEN_STDLIB_ROOTS = (
 AI14_FORBIDDEN_IMPORTS = ("plugins.evidence",)
 
 #: Names that would mean the composition had acquired an authority of its own:
-#: a trust root, an approval vocabulary, a producer token or a Guard verdict it
-#: constructs rather than reads (§4.2, §13, §14).
+#: a trust root, an approval vocabulary, a producer token, a Guard verdict it
+#: constructs rather than reads, or a credential it resolves for itself (§4.2,
+#: §13, §14; §22.1 B2: the invoker and its credential are the caller's).
 AI14_FORBIDDEN_IDENTIFIERS = (
     "APPROVAL_TRUST_ANCHOR_ENV",
     "ADMITTED_EVENTS",
     "ApprovalRef",
     "ApprovalStatus",
-    "Ed25519PrivateKey",
+    "CredentialRef",
+    "CredentialSpec",
     "DecisionRecord",
+    "Ed25519PrivateKey",
+    "SecretValue",
     "designated_anchor",
     "producer_token",
 )

@@ -367,12 +367,16 @@ Router -> Agent execution                     CONNECTED                   compos
                                                                           select() -> routing/router.py
                                                                           evaluate(); then
                                                                           agents/runtime.py run_execution()
-Agent -> Provider / model invocation          CONNECTED                   composition/provider.py
-  CodexBackend / MimoCodexBackend                                         codex_body() constructs
-                                                                          integrations/codex/backend.py
-                                                                          MimoCodexBackend;
-                                                                          offline_codex_body() is the
-                                                                          path a composed run uses
+Agent -> Provider / model invocation          CONNECTED                   composition/root.py:run_task
+  CodexBackend / MimoCodexBackend                                         calls body_factory(
+                                                                            model_ref=SELECTED, ...)
+                                                                          AFTER the selection ->
+                                                                          composition/provider.py
+                                                                          codex_body_factory()
+                                                                          constructs AI-09's
+                                                                          MimoCodexBackend FOR THAT
+                                                                          REF; a binding naming any
+                                                                          other ref is REFUSED
 Workflow -> Agent execution                   CONNECTED                   composition/executor.py
   StepExecutor Protocol                                                   AgentStepExecutor — the
                                                                           production implementor;
@@ -406,8 +410,16 @@ FROZEN: an edge is CONNECTED only when a NON-TEST call site exists (§2). The fo
 FROZEN: NOT claimed by the four connections: that any deployment wires a
         provider-backed body (that is the caller's act, and no deployment exists in
         this repository), that a model capability became VERIFIED (live
-        verification is NOT_RUN, so the invocation gate still refuses), or that a
-        composed run ever reached Evidence (it cannot — B5 is BLOCKED).
+        verification is NOT_RUN), or that a composed run ever reached Evidence (it
+        cannot — B5 is BLOCKED).
+FROZEN: the invocation gate refuses a call that NEEDS a capability, and AI-09's
+        Codex invocation requests none ("no tool schema and no response_format,
+        because this invocation requests neither" — integrations/codex/backend.py:
+        225-227). So a composed provider-backed run is not capability-gated by that
+        path, and what keeps this honest is that NOTHING here hands the composition
+        a live invoker: the invoker is a caller-supplied parameter, the composition
+        constructs none, and live verification is NOT_RUN. Stated rather than
+        implied, because a reader could otherwise take connection for verification.
 ```
 
 ```text
@@ -1474,13 +1486,29 @@ aggregation, and any activation of AI-12's model-comparative rule while §6 is B
 STATUS — AI-14-B, at the merge of its PR (per item, and NOT a claim about a deployment)
 
 B1  Router selection -> Agent execution    DONE      composition/selection.py,
-                                                     composition/root.py:run_task
+                                                     composition/root.py:run_task. The
+                                                     SELECTED model ref is passed to
+                                                     body_factory() AFTER the selection,
+                                                     and a binding that names another
+                                                     model is REFUSED
 B2  Agent -> Provider / model invocation   DONE      composition/provider.py
-                                                     (offline path connected; the
-                                                     provider-backed constructor is
-                                                     exercised with a caller-supplied
-                                                     invoker over a refusing transport)
+                                                     codex_body_factory() binds the
+                                                     selected ref through AI-09; the
+                                                     offline factory invokes no model
+                                                     and reports model_ref=None
 B3  Workflow StepExecutor -> execution     DONE      composition/executor.py
+                                                     RECORDED, NOT RESOLVED: the
+                                                     engine's call carries no routing
+                                                     input (a WorkflowDefinition and a
+                                                     RunRecord declare no task_class,
+                                                     no candidates and no actor), so a
+                                                     workflow-driven step has no
+                                                     selection to bind. The B1+B2
+                                                     selection->binding discipline is
+                                                     enforced on the TASK path
+                                                     (run_task); how a run would
+                                                     declare routing input is OPEN and
+                                                     this phase invents none
 B4  controlled verification caller         DONE      composition/verification.py
 B5  composition -> Evidence                BLOCKED   NOT STARTED. AI-05 C-1 is still
                                                      DEFERRED, no producer token exists,
@@ -1595,13 +1623,13 @@ agents   identity / runtime / results     IMPLEMENTED                    agents/
                                                                          runtime.py:142,250; result.py
 agents   structural independence (I1-I8)  IMPLEMENTED                    agents/independence.py
 agents   -> provider (CodexBackend)       CONNECTED (AI-14-B)            composition/provider.py
-                                                                         codex_body() constructs
-                                                                         integrations/codex/backend.py
-                                                                         MimoCodexBackend; the offline
-                                                                         body is the path a composed
-                                                                         run uses. Live verification
-                                                                         is NOT_RUN and no deployment
-                                                                         here wires a provider body
+                                                                         codex_body_factory() builds
+                                                                         AI-09's MimoCodexBackend FOR
+                                                                         THE SELECTED REF, and
+                                                                         run_task() refuses a binding
+                                                                         that names any other. Live
+                                                                         verification is NOT_RUN; no
+                                                                         deployment here wires one
 providers profiles / registry / validate  IMPLEMENTED                    providers/model_profile.py:381;
                                                                          providers/model_registry.py
 providers invocation boundary             IMPLEMENTED (no production     providers/invocation.py:722
@@ -1612,7 +1640,9 @@ providers live verification               NOT_RUN (path implemented)     provide
 providers capability VERIFIED             BLOCKED (all UNKNOWN)          providers/model_profile.py:53-72
 routing  evaluate() (AI-07 v1)            CONNECTED (AI-14-B)            composition/selection.py
                                                                          select() is called by
-                                                                         composition/root.py run_task()
+                                                                         composition/root.py run_task();
+                                                                         the SELECTED ref then builds
+                                                                         the body (see below)
 routing  policy core (AI-12)              IMPLEMENTED BUT NOT CONNECTED  routing/policy.py:502;
                                                                          routing/policy_eval.py:244
 routing  fallback / escalation            DECLARES ONLY (data)           routing/policy.py:281-334

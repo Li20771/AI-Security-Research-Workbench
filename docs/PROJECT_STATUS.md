@@ -1646,6 +1646,11 @@ AI-14-B connects the four seams §22.1 lists, each with a NON-TEST call site:
     B3  Workflow StepExecutor -> Agent execution composition/executor.py
     B4  controlled verification caller           composition/verification.py
     B6  composition root + boundary verification composition/root.py
+
+The selected model DRIVES the body: run_task() calls body_factory(model_ref=<selected>,
+agent_id=<selected>) AFTER the Router selection, and refuses a binding that names any
+other model. The offline factory invokes no model and reports model_ref=None rather
+than echoing the selection back as if it had run it.
 B5 (composition -> Evidence) is BLOCKED / NOT STARTED: AI-05 C-1 is DEFERRED, no
 producer token exists, and composition/ MUST NOT import plugins.evidence — the new
 Layer 0 check refuses it structurally.

@@ -44,7 +44,6 @@ from typing import Any, Callable, Mapping
 
 from providers.model_profile import ModelProfile
 
-from agents.body import AgentBody
 from agents.request import AgentExecutionRequest
 from agents.result import AgentResult
 from agents.runtime import run_execution
@@ -53,6 +52,8 @@ from routing.decision import RouterDecision
 from routing.request import RouterRequest
 from routing.rules import RuleSet
 
+from composition.errors import ProviderRefused
+from composition.provider import BodyFactory, ExecutionBinding
 from composition.selection import select
 
 __all__ = ["WorkbenchRun", "run_task"]
@@ -65,12 +66,22 @@ class WorkbenchRun:
     The decision is kept because it is the audit record of WHY this model and this
     Agent, and the request is kept because it is what the execution was given.
     Neither is authority, and the result is a REFERENCE — never inline content.
+
+    ```text
+    model_ref          what the ROUTER SELECTED
+    binding_model_ref  what the body was BUILT FOR (None = the body invokes no model)
+
+    The two are separate fields on purpose. `model_ref` alone proves only that a
+    selection happened; the pair is what says the execution was built for the
+    model the selection named, and `run_task` refuses to return at all when they
+    disagree.
     """
 
     decision: RouterDecision
     request: AgentExecutionRequest
     result: AgentResult
     workspace_id: str
+    binding_model_ref: str | None = None
 
     @property
     def model_ref(self) -> str:
@@ -90,7 +101,7 @@ def run_task(
     rule_set: RuleSet,
     profiles: Mapping[str, ModelProfile],
     enabled_providers: frozenset[str],
-    body: AgentBody,
+    body_factory: BodyFactory,
     default_agent: object,
     context_descriptor: str | None = None,
     registry: Any = None,
@@ -99,14 +110,26 @@ def run_task(
 ) -> WorkbenchRun:
     """Run one task through the connected path and return what it produced.
 
-    The order is the contract's:
+    The order is the contract's, and the third step is the one B1+B2 exist for:
 
     ```text
-    1  the Router SELECTS                     a non-selecting outcome is a STOP
-    2  the selection becomes a request        through the registry, never around it
-    3  the execution runs                     AI-08 establishes and owns its context
-    4  the execution's tool calls             go through Guard inside the tool path
-    5  one terminal result                     a reference, never content
+    1  the Router SELECTS                      a non-selecting outcome is a STOP
+    2  the selection becomes a request         through the registry, never around it
+    3  the body is BUILT FOR THE SELECTION     body_factory(model_ref=selected, ...)
+       -- not before it, and not by the caller in advance
+    4  the execution runs                      AI-08 establishes and owns its context
+    5  the execution's tool calls              go through Guard inside the tool path
+    6  one terminal result                      a reference, never content
+    ```
+
+    ```text
+    FROZEN: the body is constructed AFTER the selection, from the selected model
+            ref. A caller-supplied body built in advance would make "the Router
+            selected X" and "the execution was built for X" two independent facts,
+            which is the gap this signature closes.
+    FROZEN: a binding that names a model the selection did not name is REFUSED.
+            The composition does not re-select, does not fall back and does not
+            accept a near miss.
     ```
 
     `run_execution` is AI-08's own entry point: the Context this execution uses is
@@ -127,9 +150,29 @@ def run_task(
         clock=clock,
     )
 
+    # AFTER the selection, and handed what was selected. A factory that raises is
+    # not retried and not replaced: a body that cannot be built for the selected
+    # model is a STOP.
+    binding = body_factory(
+        model_ref=selection.model_ref, agent_id=selection.request.agent_id
+    )
+    if not isinstance(binding, ExecutionBinding):
+        raise ProviderRefused(
+            "the body factory must return an ExecutionBinding; a bare body could "
+            "not say which model it was built for, and that is the fact this call "
+            "exists to establish (§22.1 B1+B2)"
+        )
+    if binding.model_ref is not None and binding.model_ref != selection.model_ref:
+        raise ProviderRefused(
+            f"the body was built for {binding.model_ref!r} and the Router selected "
+            f"{selection.model_ref!r}; the composition does not re-select, does not "
+            "fall back and does not run a model the selection did not name (§4.2 "
+            "rule 1, §22.1 B1+B2)"
+        )
+
     record = run_execution(
         selection.request,
-        body=body,
+        body=binding.body,
         registry=registry,
         policy=policy,
         clock=clock,
@@ -142,4 +185,5 @@ def run_task(
         workspace_id=(
             "" if record.context is None else record.context.workspace.workspace_id
         ),
+        binding_model_ref=binding.model_ref,
     )
