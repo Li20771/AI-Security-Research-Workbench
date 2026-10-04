@@ -2,9 +2,13 @@
 > Baseline: 2026-09-26
 
 ## Current stage
-**AI-14 — Long-term AI Workbench — ACTIVE / AI-14-B IN PROGRESS (composition
-implementation).** AI-14-A — the final architecture freeze — is **COMPLETE / MERGED**,
-merged to `main` as `4b1058a4c764a613127800426fdd95e34d164bf3` (PR #72). AI-13 — Long-running Workflows is **COMPLETE / MERGED / CLOSED**, merged to
+**AI-14 — Long-term AI Workbench — AI-14-A and AI-14-B are COMPLETE / MERGED.** The
+architecture freeze (AI-14-A) merged to `main` as
+`4b1058a4c764a613127800426fdd95e34d164bf3` (PR #72), and the composition implementation
+(AI-14-B) merged as `adf6db2476b7e3de33a585954610e9ab568b498c` (PR #73). AI-14-B
+connected four of the seams the freeze had recorded as unconnected, recorded as ONE
+amendment to the plan (§25), and left **B5 (composition → Evidence) BLOCKED / NOT
+STARTED**. AI-13 — Long-running Workflows is **COMPLETE / MERGED / CLOSED**, merged to
 `main` as `98d4f57ad0bd78a54b9eb2ea44f30d2db394ee97` (PR #71): the contract (PR #69),
 the workflow core (PR #70) and the human approval point (PR #71) are all merged, with
 Amendments 1–4. AI-14-A writes no runtime code — it corrects this record, inventories
@@ -79,7 +83,8 @@ This file is the single entry point for deciding what to do next.
 
 ### Current work item
 
-**AI-14 — Long-term AI Workbench — AI-14-B IN PROGRESS (composition implementation).**
+**AI-14 — Long-term AI Workbench — COMPLETE / MERGED (AI-14-A and AI-14-B).** No
+sub-phase is in progress: AI-15 has not started.
 
 ```text
 AI-13    = COMPLETE / MERGED / CLOSED   merged to `main` as
@@ -87,13 +92,12 @@ AI-13    = COMPLETE / MERGED / CLOSED   merged to `main` as
 AI-13-A  = COMPLETE / MERGED   contract frozen        (PR #69 @ 1e0a7fdf4dd96230a6177d3ca21bda03ec9c19ba)
 AI-13-B  = COMPLETE / MERGED   the workflow core      (PR #70 @ 95f0d08c47c8137813013ad7fe318e8fd0ebf12a)
 AI-13-C  = COMPLETE / MERGED   the approval point     (PR #71 @ 98d4f57ad0bd78a54b9eb2ea44f30d2db394ee97)
-AI-14    = ACTIVE
-AI-14-A  = COMPLETE / MERGED   final architecture freeze — DOCS ONLY
-                               (PR #72 @ 4b1058a4c764a613127800426fdd95e34d164bf3)
-AI-14-B  = IN PROGRESS         composition implementation — the four seams B1-B4,
-                               the composition root B6; B5 BLOCKED
-contract = docs/AI-14_LONG_TERM_AI_WORKBENCH_EXECUTION_PLAN.md  (DRAFT / FREEZE PROPOSAL)
-home     = the COMPOSITION of the layers AI-00 … AI-13 already froze
+AI-14    = AI-14-A COMPLETE / MERGED; AI-14-B COMPLETE / MERGED
+AI-14-A  = COMPLETE / MERGED   final architecture freeze   (PR #72 @ 4b1058a4c764a613127800426fdd95e34d164bf3)
+AI-14-B  = COMPLETE / MERGED   composition implementation  (PR #73 @ adf6db2476b7e3de33a585954610e9ab568b498c)
+contract = docs/AI-14_LONG_TERM_AI_WORKBENCH_EXECUTION_PLAN.md
+                           FROZEN @ PR #72; AMENDED ONCE (§25, PR #73)
+home     = composition/  — the glue between frozen layers; not a component (§3)
 ```
 
 AI-14 composes; it does not add a capability. AI-14-A delivers three things and no code:
@@ -102,16 +106,34 @@ architecture inventory taken from the code, and the frozen contract that says wh
 paths are CONNECTED and which are still SEAMS.
 
 ```text
-What AI-14-A records, on code evidence (AI-14 plan §5, Appendix A):
-    ONE connected production spine today — the Agent runtime reaches Context, Guard and
-    Security Tools, with Guard inside the single tool path
-    the Workflow -> Agent execution coupling is a PROTOCOL SEAM: StepExecutor
-    (workflows/engine.py:238) has test doubles and no production implementor
-    the Agent -> Provider coupling is a SEAM: CodexBackend is implemented only by
-    integrations/codex/backend.py, which is constructed only in tests
-    Router -> model invocation DOES NOT EXIST; Evidence has NO production writer
-    the review layer's "controlled verification caller" is DECLARED ONLY
+What AI-14-A RECORDED at its freeze — base `main @ 98d4f57ad0bd78a54b9eb2ea44f30d2db394ee97`.
+HISTORICAL: four of these findings were superseded by AI-14-B, and are marked so rather
+than deleted:
+    ONE connected production spine — the Agent runtime reaches Context, Guard and
+    Security Tools, with Guard inside the single tool path                 [still true]
+    the Workflow -> Agent execution coupling is a PROTOCOL SEAM            [superseded by B3]
+    the Agent -> Provider coupling is a SEAM                               [superseded by B2]
+    Router -> model invocation DOES NOT EXIST                              [still true — a selection is not a grant]
+    Evidence has NO production writer                                      [still true — B5 BLOCKED]
+    the review layer's "controlled verification caller" is DECLARED ONLY   [superseded by B4]
     "the directory exists" is NOT "the architecture is connected"
+```
+
+```text
+What AI-14-B DELIVERED, and what it left open (AI-14 plan §5.1, Appendix A, §22.1):
+    B1  Router selection -> Agent execution        CONNECTED   composition/selection.py, root.py
+    B2  Agent -> Provider / model invocation       CONNECTED   composition/provider.py
+    B3  Workflow StepExecutor -> execution         CONNECTED   composition/executor.py
+    B4  controlled verification caller             CONNECTED   composition/verification.py
+    B5  composition -> Evidence                    BLOCKED / NOT STARTED
+    B6  composition root + boundary verification   DONE        composition/root.py
+
+    the composition is `composition/` — the glue, with its own Layer 0 check, holding no
+    authority: it is not a component (§3), and it constructs no Invoker, credential,
+    transport or trust root
+    OPEN, and not resolved by this phase: a workflow-driven step still has no routing
+    input (a WorkflowDefinition and a RunRecord declare no task_class, no candidates and
+    no actor), so there is no selection for it to bind (§22.1 B3)
 ```
 
 ```text
@@ -420,9 +442,9 @@ AI-13   Long-running Workflows                CLOSED    merged 98d4f57a (PR #71)
                                                         AI-13-A contract  (PR #69)
                                                         AI-13-B core      (PR #70)
                                                         AI-13-C approval  (PR #71)
-AI-14   Long-term AI Workbench                ACTIVE    AI-14-A COMPLETE (PR #72)
-                                                        AI-14-B IN PROGRESS
-                                                        composition implementation
+AI-14   Long-term AI Workbench                COMPLETE  AI-14-A MERGED (PR #72)
+                                                        AI-14-B MERGED (PR #73)
+                                                        B5 BLOCKED inside AI-14-B
 ```
 
 - **AI-11 — AI Security Benchmark — CLOSED.** Merged to `main` as
@@ -462,13 +484,16 @@ AI-14   Long-term AI Workbench                ACTIVE    AI-14-A COMPLETE (PR #72
   unimplemented and the Evidence layer has **no production writer** (AI-14 plan §14, §20)
 - Research tool adapters — the eight adapter families exist under `tools/`; the
   Evidence projection of a tool call has no caller (AI-14 plan Appendix A)
-- Codex integration — `integrations/codex/` is IMPLEMENTED BUT NOT CONNECTED; no
-  composition root constructs it outside tests (AI-14 plan §5)
+- Codex integration — AI-14-B gave `integrations/codex/` a non-test constructor
+  (`composition/provider.py:codex_body_factory()`), so the BINDING is connected; what
+  no deployment in this repository does is build a **live** `Invoker`, and live
+  verification remains **NOT_RUN** (AI-14 plan §5.1)
 - Benchmark dataset — the corpus and the REFERENCE campaign exist; a **model**
   measurement campaign is BLOCKED (AI-11 Layer 4, AI-12 §6)
-- AI-14 — the final composition: the Workflow → Agent execution seam, the Agent →
-  Provider seam and the review verification caller are all still unconnected
-  (AI-14 plan §5)
+- AI-14 — the final composition: four seams are now connected (AI-14 plan §5.1). What
+  remains OPEN is a workflow-driven step's routing input — a `WorkflowDefinition` and a
+  `RunRecord` declare no `task_class`, no candidates and no actor (§22.1 B3) — and the
+  Evidence writer, which is **BLOCKED** (B5, AI-05 C-1 DEFERRED)
 
 ## AI-00 final gate status
 
@@ -1626,18 +1651,27 @@ RECORDED — the AI-13 contract's own tail Status block still reads
 
 ## AI-14 status
 
-**AI-14 — Long-term AI Workbench: ACTIVE / AI-14-B IN PROGRESS (composition
-implementation).**
+**AI-14 — Long-term AI Workbench: AI-14-A COMPLETE / MERGED · AI-14-B COMPLETE /
+MERGED.**
 
 ```text
-AI-14-A  = COMPLETE / MERGED   final architecture freeze — DOCS ONLY, no runtime code
+AI-14-A  = COMPLETE / MERGED   final architecture freeze — DOCS ONLY
                                (PR #72 @ 4b1058a4c764a613127800426fdd95e34d164bf3)
-AI-14-B  = IN PROGRESS         composition implementation
-contract = docs/AI-14_LONG_TERM_AI_WORKBENCH_EXECUTION_PLAN.md   (FROZEN @ PR #72)
+AI-14-B  = COMPLETE / MERGED   composition implementation
+                               (PR #73 @ adf6db2476b7e3de33a585954610e9ab568b498c)
+contract = docs/AI-14_LONG_TERM_AI_WORKBENCH_EXECUTION_PLAN.md
+                           FROZEN @ PR #72; AMENDED ONCE (§25, PR #73)
+
+merge    = adf6db2476b7e3de33a585954610e9ab568b498c
+                     true two-parent merge; not squashed, not rebased
+                     parent 1 = 4b1058a4c764a613127800426fdd95e34d164bf3
+                     parent 2 = 9161052939379c25b1c4802a311a12c67151a42b
 base     = main @ 4b1058a4c764a613127800426fdd95e34d164bf3
-branch   = feature/ai-14-b-composition
+branch   = feature/ai-14-b-composition   (merged; retained)
 home     = composition/  — the glue between frozen layers; not a component (§3)
 ```
+
+### What AI-14-B delivers
 
 ```text
 AI-14-B connects the four seams §22.1 lists, each with a NON-TEST call site:
@@ -1652,8 +1686,40 @@ agent_id=<selected>) AFTER the Router selection, and refuses a binding that name
 other model. The offline factory invokes no model and reports model_ref=None rather
 than echoing the selection back as if it had run it.
 B5 (composition -> Evidence) is BLOCKED / NOT STARTED: AI-05 C-1 is DEFERRED, no
-producer token exists, and composition/ MUST NOT import plugins.evidence — the new
-Layer 0 check refuses it structurally.
+producer token exists, and composition/ MUST NOT import plugins.evidence — the Layer 0
+check refuses it structurally.
+```
+
+```text
+measured on the merged head (AI-14-B closeout, 2026-10-04 — THIS round's numbers)
+    tests/composition          73 passed
+    whole repository           3902 passed, 5 skipped, 5 deselected
+    Layer 0                    PASS (23 checks — the composition check is the 23rd)
+    compileall                 PASS (composition/ included)
+    providers.validate         PASS
+    plugins.context.validate   PASS
+
+    The numbers in the AI-13 status section above (tests/workflows 400 passed; whole
+    repository 3829 passed) are THAT phase's historical measurements, taken on the
+    AI-13-C merge head. They are kept as the record of that closeout, not as the
+    current count.
+```
+
+### What AI-14-B does not claim
+
+```text
+live provider call        NOT_RUN — no credential and no call. A composed
+                          provider-backed run is not capability-gated by AI-09's
+                          Codex path (its invocation requests no capability), which
+                          is why nothing here hands the composition a live invoker
+                          (AI-14 plan §5.1)
+Evidence writer           NONE — B5 is BLOCKED; composition/ cannot import the
+                          Evidence plugin, and that refusal is structural
+new authority             NONE — Guard is still the only authorizing component, the
+                          Router only SELECTS, and the composition holds no decision
+                          of its own
+workflow routing input    NONE — a workflow-driven step has no routing input and this
+                          phase invented none (§22.1 B3, OPEN)
 ```
 
 ### What AI-14-A delivers

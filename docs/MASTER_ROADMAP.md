@@ -882,14 +882,17 @@ AI-05 = INCOMPLETE（C-1 DEFERRED；AI-13 不注册 producer、不写 Evidence�
 
 目标不是“自动化一切”，而是建立一个**可验证、可审计、可扩展的安全研究 Agent 工作台**。
 
-### Status: AI-14 ACTIVE · AI-14-A IN PROGRESS (final architecture freeze)
+### Status: AI-14 COMPLETE · AI-14-A and AI-14-B COMPLETE / MERGED
 
 ```text
-contract = docs/AI-14_LONG_TERM_AI_WORKBENCH_EXECUTION_PLAN.md  (DRAFT / FREEZE PROPOSAL)
-AI-14-A  = IN PROGRESS   final architecture freeze — DOCS ONLY, no runtime code
-AI-14-B  = NOT STARTED   the composition the contract defines
-AI-14    = ACTIVE
-base     = main @ 98d4f57ad0bd78a54b9eb2ea44f30d2db394ee97
+contract = docs/AI-14_LONG_TERM_AI_WORKBENCH_EXECUTION_PLAN.md
+                           FROZEN @ PR #72; AMENDED ONCE (§25, PR #73)
+AI-14-A  = COMPLETE / MERGED   final architecture freeze — DOCS ONLY
+                               (PR #72 @ 4b1058a4c764a613127800426fdd95e34d164bf3)
+AI-14-B  = COMPLETE / MERGED   composition implementation
+                               (PR #73 @ adf6db2476b7e3de33a585954610e9ab568b498c)
+AI-14    = COMPLETE             B5 (composition -> Evidence) remains BLOCKED / NOT STARTED
+base     = main @ 4b1058a4c764a613127800426fdd95e34d164bf3
 ```
 
 AI-14 是**组合**阶段，不是新能力阶段：它组合 AI-00 … AI-13 已经冻结的能力，不重新定义
@@ -897,12 +900,22 @@ AI-14 是**组合**阶段，不是新能力阶段：它组合 AI-00 … AI-13 �
 任何 runtime 实现，也不新增 trust root、producer token、daemon 或 cross-workspace 通道。
 
 ```text
-AI-14-A 记录的核心事实（依据代码，见契约 §5 与 Appendix A）：
+AI-14-A 记录的核心事实（依据代码，见契约 §5 与 Appendix A）— 历史记录：
     今天只有一条 CONNECTED 生产主链：Agent runtime -> Context / Guard / Security Tools
     Workflow -> Agent execution 是 SEAM：StepExecutor Protocol 只有测试替身实现
     Agent -> Provider 是 SEAM：CodexBackend 仅由 integrations/codex/ 实现且只在测试中构造
     Router -> model invocation 不存在；Evidence 没有任何生产写入方
     “目录存在”不等于“架构已连接”
+
+AI-14-B 之后（当前状态，见契约 §5.1 / Appendix A / §22.1）：
+    B1 Router selection -> Agent execution        CONNECTED
+    B2 Agent -> Provider / model invocation       CONNECTED
+    B3 Workflow StepExecutor -> execution         CONNECTED
+    B4 controlled verification caller             CONNECTED
+    B5 composition -> Evidence                    BLOCKED / NOT STARTED
+    B6 composition root + boundary verification   DONE
+    OPEN：workflow 驱动的 step 目前没有 routing 输入（WorkflowDefinition / RunRecord
+    没有 task_class / candidates / actor），本阶段不发明
 ```
 
 ```text
@@ -1034,7 +1047,7 @@ SecurityLab
 | AI-11 | **COMPLETE / CLOSED** — contract `6f7548a1` (PR #62 + Amendment 1), benchmark core `ce880282` (PR #63), measured campaign `6bbe526b5bedeb29fb138f8979f0a4cb6df1b3ce` (PR #65); five tasks PASS, A.6 BLOCKED by `PRECONDITION_UNMET:environment:vcan0-exclusive`; see [AI-11_EVIDENCE_2026-10-03.md](AI-11_EVIDENCE_2026-10-03.md) |
 | AI-12 | **AI-12-A COMPLETE / MERGED** (`60c630d8`), **AI-12-B COMPLETE / MERGED** (`fa892eb1`, PR #67) — the policy core; **AI-12-C BLOCKED / NOT STARTED**, **AI-12 NOT CLOSED**, model-comparative prerequisite BLOCKED; see [AI-12-B_EVIDENCE_2026-10-03.md](AI-12-B_EVIDENCE_2026-10-03.md) |
 | AI-13 | **COMPLETE / MERGED / CLOSED** — contract `1e0a7fdf4dd96230a6177d3ca21bda03ec9c19ba` (PR #69), workflow core `95f0d08c47c8137813013ad7fe318e8fd0ebf12a` (PR #70), human approval point `98d4f57ad0bd78a54b9eb2ea44f30d2db394ee97` (PR #71), Amendments 1–4 applied; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
-| AI-14 | **ACTIVE / AI-14-A IN PROGRESS** — final architecture freeze, DOCS ONLY; contract [AI-14_LONG_TERM_AI_WORKBENCH_EXECUTION_PLAN.md](AI-14_LONG_TERM_AI_WORKBENCH_EXECUTION_PLAN.md) (DRAFT / FREEZE PROPOSAL); no runtime implementation; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
+| AI-14 | **COMPLETE** — AI-14-A (freeze) `4b1058a4c764a613127800426fdd95e34d164bf3` (PR #72) and AI-14-B (composition) `adf6db2476b7e3de33a585954610e9ab568b498c` (PR #73) both merged; contract **FROZEN + AMENDED ONCE** (§25); **B5 (composition → Evidence) BLOCKED / NOT STARTED**; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 
 ---
 
