@@ -1,6 +1,7 @@
 # AI-14 — Long-term AI Workbench — Execution Plan
 
-> Status: **DRAFT — FREEZE PROPOSAL** (AI-14-A, 2026-10-04)
+> Status: **FROZEN** (AI-14-A, 2026-10-04 — frozen by the merge of PR #72); **AMENDED
+> ONCE** (§25, 2026-10-04)
 > Phase: AI-14 — Long-term AI Workbench
 > Sub-phase: **AI-14-A — Final Architecture / Long-term Workbench Freeze**
 > Prerequisite: AI-13 — COMPLETE / MERGED / CLOSED, merge commit
@@ -10,15 +11,20 @@
 > may deviate from a frozen contract without amending this document first (§24).
 
 ```text
-THIS DOCUMENT IS NOT YET FROZEN.
+THIS DOCUMENT IS FROZEN.
 
-The freeze act is human review followed by the merge of this PR. Until that merge this is
-a proposal, and C0 (§22) is NOT satisfied by this document's existence — it is satisfied
-by its merge.
+The freeze act was human review followed by the merge of PR #72 into `main`, at merge
+commit `4b1058a4c764a613127800426fdd95e34d164bf3`. C0 (§22) is satisfied by that merge —
+as the block here said it would be — and not by this document's existence.
 
-AI-14-A writes NO runtime implementation and changes NO runtime behaviour. It corrects the
-project's status record, inventories what the repository actually contains, and freezes the
+This block is a STATUS record and nothing more. It changes no clause of §0–§24: those are
+as merged, and a change to any of them is an amendment (§24), never a status edit.
+
+AI-14-A wrote NO runtime implementation and changed NO runtime behaviour. It corrected the
+project's status record, inventoried what the repository actually contains, and froze the
 architecture the later sub-phases implement against.
+
+This document has been amended ONCE since its freeze. The amendment is logged in §25.
 ```
 
 ---
@@ -1592,7 +1598,99 @@ FROZEN: this document MUST NOT modify a frozen clause of any earlier phase, and 
 ## 25. Amendment Log
 
 ```text
-(none — this document has not been amended)
+AMENDMENT 1 — 2026-10-04 — the four seams AI-14-B connected are recorded as CONNECTED.
+
+CHANGED CLAUSES
+    §5.1        the recorded classification of four paths, and the RECORDED summary
+                beneath the table:
+
+                    Router -> Agent execution              SEAM           -> CONNECTED
+                    Agent -> Provider / model invocation   SEAM           -> CONNECTED
+                    Workflow -> Agent execution            SEAM           -> CONNECTED
+                    Review -> controlled verification      DECLARED ONLY  -> CONNECTED
+                      caller
+
+    §5.1        the NOT-claimed block gained the capability-gating statement: AI-09's
+                Codex invocation requests no capability, so what keeps a composed
+                provider-backed run honest is that nothing in this repository hands the
+                composition a live invoker (the invoker is a caller-supplied parameter)
+    §22.1       a per-item STATUS block was added (B1-B4 and B6 DONE, B5 BLOCKED)
+    Appendix A  the same four rows, plus rows for the composition package itself
+
+WHY
+    AI-14-B delivered the production NON-TEST call sites each of those four rows had
+    recorded as missing:
+
+        Router -> Agent execution       composition/root.py:run_task -> composition/
+                                        selection.py select() -> routing.router
+                                        evaluate() -> body_factory(model_ref=SELECTED)
+                                        -> agents.runtime.run_execution()
+        Agent -> Provider / model       composition/provider.py codex_body_factory()
+                                        constructs AI-09's MimoCodexBackend FOR THE
+                                        SELECTED REF; run_task() refuses a binding that
+                                        names any other model
+        Workflow -> Agent execution     composition/executor.py AgentStepExecutor
+                                        implements workflows/engine.py:238 StepExecutor
+        Review -> controlled caller     composition/verification.py
+                                        controlled_verification() -> plugins/
+                                        security_tools/dispatch.py invoke()
+
+    This is NOT a re-design of the topology. The classification VOCABULARY, the shape of
+    the topology and every path's MEANING are unchanged: the same paths, the same
+    directions, the same refusals. What changed is the recorded status of four paths that
+    were frozen as planned-but-unconnected and are now connected.
+
+    §22.1 already requires a work item to update §5 and Appendix A in the SAME change
+    that connects its seam. This amendment is the §24 record of that classification
+    change, made explicit rather than left to the reader — §24 lists "the execution
+    topology's CONNECTED/SEAM classification of a path" as amendment-requiring.
+
+SECURITY IMPACT
+    None. The amendment records connections; it grants nothing, and it is not a runtime
+    requirement.
+
+        no new authority of any kind, and no authority transferred between layers
+        the authority matrix is untouched: Guard is still the ONLY entry under
+          AUTHORIZES (§4.1)
+        Router still SELECTS and never authorizes; a RouterDecision is still data
+        Evidence still authorizes nothing, and B5 (composition -> Evidence) is still
+          BLOCKED / NOT STARTED with no producer token
+        Human Approval is still a WORKFLOW gate and still not a Guard approval
+        Workflow state is still not a Guard ALLOW
+        no trust root, no producer token, no daemon, no scheduler, no second entry
+          point for a layer and no cross-workspace path was added
+        UNKNOWN / BLOCKED / NOT_RUN / UNAVAILABLE still do not become PASS. No wiring in
+          this phase promoted a capability: every shipped model capability remains
+          UNKNOWN, live provider verification remains NOT_RUN, and AI-12-C remains
+          BLOCKED
+
+AUTHORITY IMPACT
+    None. No layer gained a power it did not already hold. The composition is glue: it is
+    not a component (§3), and it holds no decision of its own (§4). The frozen meaning of
+    B1/B2/B3/B4 is exactly what §22.1 stated, and this amendment changes none of it.
+
+CONTRACT IMPACT
+        the classification vocabulary is unchanged (§2, §5)
+        the topology's semantics are unchanged
+        the authority matrix and the ten rules (§4) are unchanged
+        the data and trust flow (§6), the dependency decisions (§20), the extension
+          points (§21), the Definition of Done (§22) and the non-goals (§23) are
+          unchanged
+        §22.1's "update §5 / Appendix A in the same change" produced the update this
+          amendment records; this amendment supplies the §24 record for it
+
+THIS AMENDMENT DOES NOT CHANGE
+    the component list (§3)                    the authority matrix (§4)
+    the data and trust flow (§6)               the dependency decisions (§20)
+    the extension points (§21)                 the non-goals (§23)
+    the Definition of Done (§22)               B5's BLOCKED state
+    the frozen meaning of a B1-B4 work item, or of a seam it did not connect
+
+AND IT DOES NOT CLOSE THE B3 OPEN ITEM
+    A workflow-driven step still has no routing input: a WorkflowDefinition and a
+    RunRecord declare no task_class, no candidates and no actor, so there is no
+    selection for it to bind. How a run would declare routing input remains OPEN
+    (§22.1 B3), and this amendment neither invents one nor amends AI-13.
 ```
 
 ---
