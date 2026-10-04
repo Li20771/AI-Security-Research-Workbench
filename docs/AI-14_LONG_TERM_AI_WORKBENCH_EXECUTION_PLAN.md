@@ -1233,13 +1233,217 @@ C5   data and trust flow frozen for every type in §6, including what may NOT cr
 C6   dependency decisions made and argued for AI-05 C-1 and AI-12-C (§20)
 C7   extension points named, and every "later maybe" refused a home in v1 (§21)
 C8   non-goals frozen (§23)
-C9   AI-14-B scope stated as a work list derived from C2-C7, with no item that requires
-     redefining another phase
+C9   AI-14-B scope stated as an EXECUTABLE work list: every item names its seam, the
+     entry point it calls, what composition may do, what authority it must never gain,
+     the boundary to re-verify, and the BLOCKED / DEFERRED item it depends on (§22.1)
 ```
 
 ```text
 FROZEN: AI-14-A satisfies C0 only on merge. C1-C9 are satisfied by THIS document's
         contents; AI-14-B is the sub-phase that implements the composition C9 lists.
+```
+
+### 22.1 The AI-14-B work list
+
+This list is derived from §5 (topology), §4 (authority) and Appendix A (inventory). It is
+not a new design: every item is one seam that already exists, named with the entry point
+it calls and the authority it must not gain. An implementer needs no other document to
+start, and MUST NOT add an item this list does not contain (§24).
+
+**Composition glue is not a component and not an authority.** The caller-side code an item
+adds is plumbing BETWEEN frozen layers: it is not a thirteenth component (§3), it holds no
+decision of its own, and §4's matrix is unchanged by it. In particular the glue MUST NOT
+choose a permission, produce a Guard ALLOW, persist an Evidence record, mint a workflow
+approval, or read a RouterDecision as authorization.
+
+```text
+EVERY ITEM BELOW INHERITS THESE RULES WITHOUT RESTATING THEM
+
+Router NEVER authorizes                      a decision is a SELECTION
+Human Approval NEVER becomes Guard approval  a workflow gate opens a workflow step
+Evidence NEVER authorizes                    a record is a FACT
+Workflow state NEVER becomes Guard ALLOW     the run ledger is not a permission
+a previous Agent result NEVER authorizes     a second execution is a second execution
+  another Agent
+UNKNOWN / BLOCKED / NOT_RUN / UNAVAILABLE    never become PASS; no default, no wiring and
+                                             no "temporary" path promotes one
+a seam is CONNECTED only with a NON-TEST     a Protocol plus a caller in tests proves
+  call site (§2)                             nothing, and MUST NOT be reported as one
+```
+
+```text
+ORDER  B1, B2 and B4 are independent and may be done in any order. B3 composes B1/B2's
+       shape. B5 MUST NOT START until AI-05 has amended its producer registry, and is
+       listed so the composition says what it does INSTEAD until then. B6 is last and is
+       re-run whenever an edge changes.
+       Nothing in this list may be skipped by "connecting it later"; an item left undone
+       leaves its seam marked NOT CONNECTED in §5 and Appendix A.
+```
+
+```text
+B1 — ROUTER SELECTION -> AGENT EXECUTION
+
+  work item        a caller-side component that turns a task into a RouterRequest, takes
+                   the RouterDecision, and builds the AgentExecutionRequest for what was
+                   selected
+  seam today       routing/router.py evaluate() is IMPLEMENTED BUT NOT CONNECTED; no path
+                   carries a RouterDecision into an execution, and agents/ is forbidden
+                   from importing routing at all (Layer 0; tests/agents/
+                   test_layer_boundaries.py:208-211)
+  entry points     routing.router.evaluate()  ->  agents.runtime.run_execution()
+  composition MAY  pass the selected model ref and the agent_hint as DATA into the
+                   execution request, and keep the RouterDecision as an audit record
+  NEVER            treat the decision as authorization; let the agent layer import
+                   routing; let an agent_hint select an AgentId that is not in the
+                   registry; retry, widen or fall back when the outcome is not `SELECTED`
+                   — `NO_ELIGIBLE_MODEL` is a STOP, not a cue to try the next candidate
+  after            §5 edge marked CONNECTED with the non-test call site named; Appendix A
+                   row updated; a connectedness test that fails if that call site goes
+                   away
+  blocked by       nothing for the REFERENCE-evidence path. A model-comparative selection
+                   stays BLOCKED (AI-12 §6) and MUST NOT be activated here; with live
+                   verification NOT_RUN most candidates are ineligible, and that is the
+                   correct outcome, not a defect to work around
+```
+
+```text
+B2 — AGENT -> PROVIDER / MODEL INVOCATION
+
+  work item        a composition root that constructs a declared agent body over a
+                   provider binding and hands it to the runtime
+  seam today       agents/codex/body.py:67 CodexBackend is implemented only by
+                   integrations/codex/backend.py:98, which is constructed only in tests
+                   (tests/integrations/conftest.py:196)
+  entry points     agents.runtime.run_execution(..., body=...)  ->  a body built from
+                   integrations/codex/binding.py bind_codex_model()  ->  providers/
+                   invocation.py Invoker.invoke() (through the backend, never instead of
+                   it)
+  composition MAY  construct the binding from DECLARED configuration, pass the body in,
+                   and report the AgentResult the runtime returns
+  NEVER            consult the Router, the environment, the task text or the AgentId
+                   inside the binding (binding.py:16-18 freezes this); retry, fall back or
+                   escalate; promote a capability — the invocation gate refuses a
+                   non-VERIFIED gated capability and that refusal MUST survive the
+                   connection; make a live provider call as part of this phase (live
+                   verification is a separate, manual, credentialed act)
+  after            §5 edge marked CONNECTED with the non-test call site named; a test
+                   that shows the gate still refuses an UNKNOWN capability through the
+                   new root; Appendix A row updated
+  blocked by       live provider verification = NOT_RUN. The composition MUST work
+                   offline with a non-network body, MUST NOT require a credential, and
+                   MUST NOT claim that any model capability became VERIFIED by being
+                   wired
+```
+
+```text
+B3 — WORKFLOW StepExecutor -> REAL AGENT EXECUTION
+
+  work item        a StepExecutor implementation, OUTSIDE workflows/, that performs one
+                   AI-08 execution for the attempt the engine is admitting
+  seam today       workflows/engine.py:238 StepExecutor has test doubles and no production
+                   implementor; workflows/ imports nothing outside itself, and Layer 0
+                   keeps it that way
+  entry points     workflows.engine.begin_attempt() / advance() / complete_attempt()
+                   (the executor is a PARAMETER)  ->  agents.runtime.run_execution()
+  composition MAY  build the execution request from the attempt identity, hand the
+                   composed timeout down to the execution, and report the ExecutionOutcome
+                   the execution produced — the engine owns every bound and every state
+                   transition
+  NEVER            move execution into workflows/ or let the package reach an agent, a
+                   provider or a tool by import; let the workflow layer select, authorize
+                   or approve anything; carry approval, context, authorization or tool
+                   state across a resume (AI-13 §8.2); hide a retry — a retry is a fresh,
+                   approval-gated attempt
+  after            §5 edge marked CONNECTED with the non-test call site named; the AI-13
+                   boundary tests still hold (Layer 0 refuses a foreign root in
+                   workflows/); Appendix A row updated
+  blocked by       nothing for an ungated step. A GATED step needs an accepted approval
+                   through the designated ingress — that path is implemented (AI-13-C) and
+                   the gate MUST NOT be relaxed to make composition easier
+```
+
+```text
+B4 — AI-10 CONTROLLED VERIFICATION CALLER -> AI-06 SINGLE TOOL PATH
+
+  work item        the "controlled verification caller" AI-10 §11.1 names: it takes a
+                   VerificationRequest, performs the invocation, and reports a
+                   VerificationObservation
+  seam today       DECLARED ONLY — nothing in review/ or tests/review/ calls invoke();
+                   review/ holds no evaluator, no registry and no ToolRequest
+  entry points     plugins.security_tools.dispatch.invoke(request, *, registry=...,
+                   evaluator=..., policy=..., runner=...)  ->  AI-04 Guard inside the tool
+                   path  ->  adapter  ->  ToolResult  ->  review.verification
+                   VerificationObservation
+  composition MAY  build the ToolRequest from the verification request's declared target,
+                   supply the evaluator and policy the caller provided, and map the
+                   ToolResult — including a refusal — into an observation
+  NEVER            enter the tool path without Guard, cache or reuse an ALLOW, put a
+                   permission level, an actor, a tool id, an operation or a command into a
+                   VerificationRequest (it refuses those keys by name), let review/ import
+                   guard or tools, or turn an observation into a verdict
+  after            §5 edge marked CONNECTED with the non-test call site named; a test
+                   showing the invocation is refused when Guard is not ALLOW; Appendix A
+                   row updated
+  blocked by       the adapter families' own NOT_RUN items (GitHub / MCP operations,
+                   Ghidra, and the symlink case this host refuses). The caller MUST report
+                   NOT_RUN or BLOCKED for those, and MUST NOT fabricate a result
+```
+
+```text
+B5 — COMPOSITION -> EVIDENCE   (gated: AI-05 producer contract)
+
+  work item        wiring a phase's run facts into Evidence admission — ONLY for a
+                   producer AI-05 has admitted
+  seam today       no production writer; AI-05 C-1 is DEFERRED and §30 step 7 is
+                   unimplemented, so an ACCEPTED is NOT a full §30 admission
+  entry points     plugins.evidence.admission.admit() / admit_to_store(store=...)
+  composition MAY  call admission with a record the OWNING phase produced, under the
+                   producer token that phase holds
+  NEVER            register a producer, invent or borrow a token, add a row to the §6.5
+                   registry (that is an AI-05 amendment and only AI-05 may make it), read
+                   ACCEPTED as a full §30 admission, treat a stored record as an
+                   authorization, or admit raw content
+  after            §14/§5/Appendix A updated together; a test that shows no record is
+                   admitted without an admitted producer
+  blocked by       AI-05 C-1 = DEFERRED. THIS ITEM DOES NOT START until AI-05 amends its
+                   producer registry. Until then the composition reports those facts as
+                   RUN DATA, and no document may call them durable evidence. Durable
+                   review evidence stays DEFERRED for the same reason
+```
+
+```text
+B6 — END-TO-END COMPOSITION AND BOUNDARY VERIFICATION
+
+  work item        one composition root that runs the connected path offline, end to end,
+                   and proves the boundaries survived the connection
+  seam today       §5.1's spine plus whichever of B1-B4 are done; B5 is not
+  entry points     every entry point above, called in the §5.2 order; Layer 0
+  composition MAY  assemble the path, run it against declared fixtures, and assert
+  NEVER            introduce a second entry point for a layer that has one, a new store, a
+                   daemon, a test-only bypass, or a "temporary" widened check — and MUST
+                   NOT report a seam as connected on the strength of a test double
+  after            §5 and Appendix A re-stated for EVERY edge, each CONNECTED row naming
+                   its non-test call site; the authority matrix still shows exactly one
+                   authorizing entry; every UNKNOWN / BLOCKED / NOT_RUN / UNAVAILABLE in
+                   §20 still reads as itself
+  blocked by       every item above, honestly: what is not done is reported NOT CONNECTED
+```
+
+```text
+AN ITEM IS DONE WHEN
+    its seam has a non-test call site, named in §5
+    Appendix A's classification for that row is updated in the SAME change
+    the boundary it touches still holds: Guard asked per invocation, the approval gate
+      intact, no authority transferred, no new trust root, no new producer
+    Layer 0 stays green, and any new top-level package arrived with its own check (§17)
+    the deferred / blocked items it depends on are still reported as deferred / blocked
+```
+
+```text
+NOT IN THIS WORK LIST — and MUST NOT be added without an amendment (§24): a record-level
+trust root for RunRecord, a new producer token, a daemon or scheduler, a third Agent
+identity, a new provider or model, a fallback or escalation executor, cross-workspace
+aggregation, and any activation of AI-12's model-comparative rule while §6 is BLOCKED.
 ```
 
 ---
