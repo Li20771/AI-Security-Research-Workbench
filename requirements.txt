@@ -5,3 +5,15 @@
 # required only to read provider profiles and runtime config.
 
 PyYAML>=6.0
+
+# AI-13-C's designated approval ingress verifies an Ed25519 signature (AI-13 §13.3).
+#
+# Ed25519 rather than a shared secret, and the difference is the whole boundary: the
+# workflow layer holds a VERIFICATION key and never a signing one, so it can say yes or
+# no and cannot say yes. With a shared secret the engine would hold what it takes to mint
+# the approvals it is checking, and "a caller cannot be the ingress" would be a rule
+# someone has to keep rather than a property of the mechanism.
+#
+# This is the standard implementation, and it brings no network client, no daemon and no
+# orchestration framework with it.
+cryptography>=42

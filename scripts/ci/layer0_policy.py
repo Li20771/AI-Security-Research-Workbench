@@ -2663,6 +2663,402 @@ AI13_FORBIDDEN_CALLABLES = (
 )
 
 
+#: §13.3. The ONE module permitted to verify an approval, and the one that must not be
+#: able to MINT one. The ingress is not `engine.py`: the engine composes executions, and
+#: an approval verifier living inside it would sit on the execution path it gates.
+AI13_INGRESS_MODULE = "ingress.py"
+
+#: §13.3. NO workflow module SIGNS. The phase holds a verification key and never a
+#: signing one, which is what makes "a caller cannot be the ingress" a property of the
+#: mechanism rather than a rule someone has to keep.
+AI13_FORBIDDEN_SIGNING_IDENTIFIERS = ("Ed25519PrivateKey",)
+
+#: §13.3. Exactly ONE module VERIFIES, and it is the one that defines `Provenance` —
+#: because a `Provenance` verifies ITSELF, so the check travels with the value and a
+#: second site would be a second place a "verified" value could be built without one.
+AI13_VERIFYING_MODULE = "approval.py"
+
+#: §13.3. Exactly ONE module decides WHAT IS TRUSTED. The anchor is a deployment fact,
+#: and a second reader would be a second place the phase chooses its own trust root.
+AI13_ANCHOR_MODULE = "ingress.py"
+
+#: §13.3. The environment variable. READ in one module and nowhere else: a second
+#: `os.environ.get` would be a second place the deployment's trust root is decided.
+AI13_TRUST_ANCHOR_ENV_IDENTIFIER = "APPROVAL_TRUST_ANCHOR_ENV"
+
+#: §13.3. The accessor that answers "which anchor applies". DEFINED only in the anchor
+#: module; CONSULTED by it and by the one verifying module, and by nothing else. The
+#: verifying module must consult it, because a `Provenance` whose anchor is never
+#: compared with the deployment's is self-consistent and nothing more — a signature
+#: under SOME key, which is precisely the bypass this rule exists to refuse. See
+#: `AI13_DESIGNATED_ANCHOR_BINDING`.
+AI13_DESIGNATED_ANCHOR_ACCESSOR = "designated_anchor"
+
+#: §13.3. The verifying module must BIND its `Provenance` constructor to the designated
+#: anchor, by calling the accessor (directly or through a private helper in the same
+#: module). Removing the binding while leaving the generic Ed25519 self-check intact
+#: leaves a verifier that accepts any keypair the caller generates; the focused suite's
+#: mutation control proves the same property at run time, and this proves the binding is
+#: still PRESENT at all.
+AI13_DESIGNATED_ANCHOR_BINDING = (AI13_VERIFYING_MODULE, "Provenance")
+
+#: §13.3. Names a caller could use to CHOOSE what is trusted. A public function taking
+#: one of these has a caller who selects the trust root -- and a caller who selects the
+#: trust root can install their own and mint approvals that verify, which is exactly
+#: what "a caller cannot be it" forbids.
+AI13_FORBIDDEN_TRUST_PARAMETERS = (
+    "public_key",
+    "public_key_hex",
+    "anchor",
+    "trust_anchor",
+    "trust_store",
+    "verifier",
+    "trusted",
+)
+
+#: §13.5. AI-04's approval vocabulary. AI-13 must not produce it: a workflow approval
+#: that became an `ApprovalRef` with `VERIFIED` would be presenting itself to Guard as
+#: the source Guard is still waiting for.
+AI13_FORBIDDEN_GUARD_IDENTIFIERS = ("ApprovalRef", "ApprovalStatus", "VERIFIED")
+
+#: §13.2. The scope preimage, as a source-level constant this check compares against.
+#: The digest itself is computed at run time; what is checkable here is that the phase
+#: declares EXACTLY these six and no seventh.
+AI13_SCOPE_FIELDS = (
+    "workflow_id",
+    "revision",
+    "definition_digest",
+    "run_id",
+    "step_id",
+    "attempt_no",
+)
+
+#: §7.2. The names a checkpoint must still refuse. AI-13-C may not soften this: a
+#: checkpoint that could carry an approval would be a resume snapshot carrying authority.
+AI13_CHECKPOINT_FORBIDDEN = (
+    "approval",
+    "approval_status",
+    "approver",
+    "approved",
+    "scope_digest",
+    "provenance",
+    "actor_reference",
+    "decided_at",
+    "artifact_reference",
+)
+
+#: §13.1.2. State a checkpoint or a resume must never read. An approval is the RUN's, and
+#: a snapshot that could re-open a wait would be a second authority for one decision.
+AI13_APPROVAL_STATE_NAMES = ("approvals", "approval_deadline")
+
+
+def check_ai13_approval_point(base: "Path", workflows: "Path") -> list[str]:
+    """AI-13 §13, §21.3: the approval point, as a repository boundary.
+
+    ```text
+    one ingress   exactly one module verifies an approval, and it is not the engine
+    no trust root no public function lets a caller choose what is trusted
+    no mint path  no callable manufactures an approval or its provenance
+    not Guard     no ApprovalRef, no ApprovalStatus, no VERIFIED
+    six fields    the scope preimage is exactly §13.2's six, and no seventh
+    no selector   the gated step is the IMMEDIATELY following one, chosen by nobody
+    no snapshot   a checkpoint carries no approval and a resume reads none
+    ```
+
+    Static structure only. The TARGET rule -- an APPROVAL step must be immediately
+    followed by an execution-seam step -- is a property of a definition rather than of
+    source, so it is enforced at validation and proven by the focused suite; what this
+    check adds is that no SELECTOR exists for choosing a target some other way.
+    """
+    import ast
+
+    problems: list[str] = []
+
+    def parse(path: "Path"):
+        # A scratch tree may be missing a module on purpose: the tests remove one to show
+        # that its ABSENCE is reported, and a checker that crashed on the removal would
+        # report a traceback instead of the finding.
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            return None
+        try:
+            return ast.parse(text, filename=str(path))
+        except SyntaxError as exc:  # pragma: no cover - surfaced as a failure
+            problems.append(f"{_display(path)} does not parse: {exc}")
+            return None
+
+    def source_of(name: str) -> str:
+        path = workflows / name
+        return path.read_text(encoding="utf-8") if path.is_file() else ""
+
+    def identifiers(tree) -> set[str]:
+        """Every NAME the module uses, imports included.
+
+        Imports count. A module that writes `from ... import Ed25519PublicKey` has a
+        verification primitive in hand without ever spelling it as a Name, and a scan
+        that skipped aliases would report a clean tree for the one violation this check
+        exists for.
+        """
+        found: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                found.add(node.name)
+            elif isinstance(node, ast.Name):
+                found.add(node.id)
+            elif isinstance(node, ast.Attribute):
+                found.add(node.attr)
+            elif isinstance(node, ast.arg):
+                found.add(node.arg)
+            elif isinstance(node, ast.alias):
+                found.add(node.name.split(".")[-1])
+                if node.asname:
+                    found.add(node.asname)
+        return found
+
+    # (1) ONE ingress, and not the engine. -------------------------------------------------
+    ingress = workflows / AI13_INGRESS_MODULE
+    if not ingress.is_file():
+        problems.append(
+            f"{AI13_WORKFLOWS_DIR}/{AI13_INGRESS_MODULE} is absent; §13.3 requires a "
+            "DESIGNATED human approval ingress, and §18 makes designating it part of "
+            "AI-13-C's exit"
+        )
+
+    for path in sorted(workflows.rglob("*.py")):
+        if "__pycache__" in path.parts or path.name == AI13_INGRESS_MODULE:
+            continue
+        tree = parse(path)
+        if tree is None:
+            continue
+        # Read as IDENTIFIERS and never as text: a module that NAMES a signing primitive
+        # in a docstring explaining why it does not use one is not a second ingress, and
+        # a text scan would flag the explanation as the violation.
+        present = identifiers(tree)
+
+        for identifier in AI13_FORBIDDEN_SIGNING_IDENTIFIERS:
+            if identifier in present:
+                problems.append(
+                    f"{_display(path)} uses {identifier!r}; the workflow layer verifies "
+                    "and never signs, and a signing key in this package is the material "
+                    "for minting the approvals it is supposed to be checking"
+                )
+
+        if "Ed25519PublicKey" in present and path.name != AI13_VERIFYING_MODULE:
+            problems.append(
+                f"{_display(path)} uses 'Ed25519PublicKey' and so verifies a signature; "
+                "§13.3 permits exactly ONE verification site "
+                f"({AI13_VERIFYING_MODULE}, where `Provenance` checks itself), and a "
+                "second is a second place a value could claim to be verified without "
+                "being checked"
+            )
+
+        if AI13_TRUST_ANCHOR_ENV_IDENTIFIER in present and path.name != AI13_ANCHOR_MODULE:
+            problems.append(
+                f"{_display(path)} reads the approval trust anchor's environment "
+                f"variable; §13.3 makes the anchor a DEPLOYMENT fact read in ONE place "
+                f"({AI13_ANCHOR_MODULE}), and a second reader is a second place the "
+                "phase decides what to trust"
+            )
+
+        # The accessor may be CONSULTED by the one verifying module as well: that is the
+        # designated-anchor binding, and it is required there rather than merely allowed.
+        # Anywhere else it is the same second reader the rule above refuses.
+        if (
+            AI13_DESIGNATED_ANCHOR_ACCESSOR in present
+            and path.name not in (AI13_ANCHOR_MODULE, AI13_VERIFYING_MODULE)
+        ):
+            problems.append(
+                f"{_display(path)} reaches for the approval trust anchor; §13.3 makes "
+                f"the anchor a DEPLOYMENT fact decided in ONE place "
+                f"({AI13_ANCHOR_MODULE}), and a second reader is a second place the "
+                "phase decides what to trust"
+            )
+
+    # (1b) The verifying module BINDS to the designated anchor. ---------------------------
+    # Not merely "may consult it": the binding IS the difference between a verifier that
+    # proves A signature and one that proves THE DESIGNATED AUTHORITY'S signature. A
+    # `Provenance` that checks a caller-supplied anchor against nothing but itself is
+    # constructible for any keypair the caller generates, and the ledger path would
+    # accept what it produced.
+    verifying_module, provenance_type = AI13_DESIGNATED_ANCHOR_BINDING
+    approval_tree = parse(workflows / verifying_module)
+    if approval_tree is not None:
+        binders = {
+            node.name
+            for node in approval_tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and AI13_DESIGNATED_ANCHOR_ACCESSOR in identifiers(node)
+        }
+        post_init = None
+        for node in ast.walk(approval_tree):
+            if isinstance(node, ast.ClassDef) and node.name == provenance_type:
+                for item in node.body:
+                    if (
+                        isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
+                        and item.name == "__post_init__"
+                    ):
+                        post_init = item
+        bound = post_init is not None and any(
+            isinstance(item, ast.Call)
+            and (
+                (
+                    isinstance(item.func, ast.Name)
+                    and (
+                        item.func.id in binders
+                        or item.func.id == AI13_DESIGNATED_ANCHOR_ACCESSOR
+                    )
+                )
+                or (
+                    isinstance(item.func, ast.Attribute)
+                    and item.func.attr == AI13_DESIGNATED_ANCHOR_ACCESSOR
+                )
+            )
+            for item in ast.walk(post_init)
+        )
+        if not bound:
+            problems.append(
+                f"{_display(workflows / verifying_module)} does not bind "
+                f"{provenance_type} to the anchor THIS DEPLOYMENT designated; §13.3 "
+                "accepts an approval only from the designated authority, and a verifier "
+                "that never asks WHICH anchor it is checking against proves a signature "
+                "under SOME key — and a keypair is something any caller can generate"
+            )
+
+    # (2) No caller-selected trust root. ---------------------------------------------------
+    for path in sorted(workflows.rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        tree = parse(path)
+        if tree is None:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if node.name.startswith("_"):
+                # A private helper is not an API a caller selects a trust root THROUGH.
+                # What the rule is about is the public surface: `_public_key(anchor)` is
+                # called with what `designated_anchor()` read from the deployment, and no
+                # caller of the phase can reach it with an anchor of their own.
+                continue
+            arguments = list(node.args.args) + list(node.args.kwonlyargs) + list(node.args.posonlyargs)
+            for argument in arguments:
+                if argument.arg.lower() in AI13_FORBIDDEN_TRUST_PARAMETERS:
+                    problems.append(
+                        f"{_display(path)}:{node.lineno} {node.name}() takes "
+                        f"{argument.arg!r}; §13.3 makes the trust root a DEPLOYMENT fact, "
+                        "and a caller who selects it can install their own and mint "
+                        "approvals that verify"
+                    )
+
+    # (3) No approval mint factory. --------------------------------------------------------
+    for path in sorted(workflows.rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        tree = parse(path)
+        if tree is None:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            name = node.name.lower()
+            if name.startswith("_") or not name.startswith(
+                ("make_", "create_", "new_", "mint_", "build_")
+            ):
+                continue
+            if "approval" in name or "provenance" in name:
+                problems.append(
+                    f"{_display(path)}:{node.lineno} defines {node.name}(); §13.3 forbids "
+                    "any constructor, factory or default by which an Agent, a model or a "
+                    "service can manufacture an approval or the provenance for one"
+                )
+
+    # (4) Not Guard's vocabulary. ----------------------------------------------------------
+    for path in sorted(workflows.rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        tree = parse(path)
+        if tree is None:
+            continue
+        present = identifiers(tree)
+        for identifier in AI13_FORBIDDEN_GUARD_IDENTIFIERS:
+            if identifier in present:
+                problems.append(
+                    f"{_display(path)} names {identifier!r}; §13.5 makes a workflow "
+                    "approval NOT an AI-04 ApprovalRef and forbids presenting it to Guard "
+                    "as VERIFIED"
+                )
+
+    # (5) The scope preimage is exactly the six. -------------------------------------------
+    approval_tree = parse(workflows / "approval.py")
+    declared = None
+    if approval_tree is not None:
+        for node in ast.walk(approval_tree):
+            if isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Name) and target.id == "SCOPE_FIELDS":
+                        try:
+                            declared = tuple(ast.literal_eval(node.value))
+                        except ValueError:  # pragma: no cover
+                            declared = None
+    if declared != AI13_SCOPE_FIELDS:
+        problems.append(
+            "workflows/approval.py does not declare SCOPE_FIELDS as exactly §13.2's six; "
+            "the preimage is frozen, and a seventh field would change every scope digest "
+            "in the phase"
+        )
+
+    # (6) No target selector. --------------------------------------------------------------
+    for path in sorted(workflows.rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        tree = parse(path)
+        if tree is None:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            name = node.name.lower()
+            if name.startswith("_"):
+                continue
+            if name in ("target", "select_target", "resolve_target", "choose_target", "gated"):
+                problems.append(
+                    f"{_display(path)}:{node.lineno} defines {node.name}(); §6.1 makes the "
+                    "gated step the IMMEDIATELY following declared step, and a selector is "
+                    "how a target two approval points could share would be chosen"
+                )
+
+    # (7) No approval through a checkpoint, and none read by a resume. ---------------------
+    checkpoint_source = source_of("checkpoint.py")
+    for name in AI13_CHECKPOINT_FORBIDDEN:
+        if f'"{name}"' not in checkpoint_source:
+            problems.append(
+                f"workflows/checkpoint.py no longer refuses a field named {name!r}; §7.2 "
+                "keeps an approval out of a resume snapshot, and a snapshot that could "
+                "carry one would be a second authority for one decision"
+            )
+
+    for module in ("engine.py", "resume.py"):
+        tree = parse(workflows / module)
+        if tree is None:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if node.name not in ("checkpoint_for", "record_checkpoint", "inherited_state", "verify_resume"):
+                continue
+            body_names = identifiers(node)
+            for name in AI13_APPROVAL_STATE_NAMES:
+                if name in body_names:
+                    problems.append(
+                        f"{_display(workflows / module)}:{node.lineno} {node.name}() reads "
+                        f"{name!r}; a checkpoint is not an approval cache and a resume "
+                        "inherits declared state rather than authority (§7.2, §8.2)"
+                    )
+
+    return problems
+
+
 def check_ai13_workflows(root: "Path | None" = None) -> list[str]:
     """AI-13 §4, §12, §16, §21.3: the workflow layer, as a gate.
 
@@ -2783,6 +3179,9 @@ def check_ai13_workflows(root: "Path | None" = None) -> list[str]:
                     f"{_display(path)} defines {identifier!r}; AI-13 executes no AI-12 "
                     "policy and performs no model fallback or escalation (§10.4, §16)"
                 )
+
+    # ---- §13. The approval point, as a repository boundary (§21.3) ---------------------
+    problems.extend(check_ai13_approval_point(base, workflows))
 
     return problems
 

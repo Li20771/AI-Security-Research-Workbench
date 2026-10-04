@@ -45,20 +45,39 @@ from datetime import datetime, timezone
 from typing import Any, Mapping, Protocol, Sequence
 
 from workflows.canonical import canonical_body
+from workflows.approval import (
+    ApprovalReference,
+    ApprovalScope,
+    Denial,
+    SignedApprovalArtifact,
+)
 from workflows.checkpoint import CHECKPOINT_DIGEST_FIELD, ArtifactRef, Checkpoint
-from workflows.definition import WorkflowDefinition, WorkflowStep
+from workflows.definition import StepKind, WorkflowDefinition, WorkflowStep
 from workflows.errors import InvalidRecord
+from workflows.ingress import (
+    ApprovalRefused,
+    accept_approval,
+    ingress_is_designated,
+)
 from workflows.instants import INSTANT_FORMAT, is_instant, parse_instant, plus_seconds
 from workflows.policy import (
     attempt_request_digest,
     check_attempt_may_begin,
     check_may_retry,
+    seconds_remaining,
     effective_deadline,
     effective_timeout_seconds,
     step_deadline_from,
 )
 from workflows.resume import verify_resume
-from workflows.run import AttemptId, AttemptRecord, RunRecord, StepRecord, new_run_id
+from workflows.run import (
+    AttemptId,
+    AttemptRecord,
+    RunRecord,
+    StepRecord,
+    new_run_id,
+    record_approval,
+)
 from workflows.vocabulary import FailureClass, StepState, WorkflowState
 
 __all__ = [
@@ -69,6 +88,8 @@ __all__ = [
     "begin_attempt",
     "cancel",
     "checkpoint_for",
+    "reenter_approval",
+    "resolve_approval",
     "complete_attempt",
     "record_checkpoint",
     "resume_run",
@@ -442,6 +463,339 @@ class AttemptPlan:
     moment: str = ""
 
 
+def _move_step(run: RunRecord, step_id: str, state: StepState, moment: str) -> RunRecord:
+    """ONE successor with ONE step moved, leaving its attempts and bounds alone.
+
+    Whether the move is legal is `_verify_successor`'s judgement, not this helper's: an
+    approval-wait transition and an attempt-backed one are told apart there, and a
+    helper that decided for itself would be a second place for the rule to live.
+    """
+    return run.advance(
+        steps=tuple(
+            replace(record, state=state) if record.step_id == step_id else record
+            for record in run.steps
+        ),
+        updated_at=moment,
+    )
+
+
+def _denied(run: RunRecord, step_id: str, moment: str) -> RunRecord:
+    """§13.4. A human said no, or nobody answered in time. Both are `APPROVAL_DENIED`.
+
+    Terminal for the step and for the run, and never retried: `APPROVAL_DENIED` is on
+    §9.2's never-retried list, and the run state comes from the same mapping every other
+    failure uses rather than from a second opinion computed here.
+    """
+    return _terminal(
+        _move_step(run, step_id, StepState.BLOCKED, moment),
+        terminal_state_for(FailureClass.APPROVAL_DENIED),
+        moment,
+    )
+
+
+def _next_attempt_no_for(run: RunRecord, step_id: str) -> int:
+    """§6.3. The number the next attempt at `step_id` will take.
+
+    From the last RECORDED number for that step — never from the count of its records,
+    because a lineage beginning at 2 has one record and counting it would hand out 2
+    again — and from the in-flight number, because a process that died after reserving
+    an attempt spent a number that no record mentions.
+
+    The in-flight number belongs to the GATED step whenever an approval is composed for
+    it: the approval point never reserves one, and a run reaches the wait either before
+    that step has started or after it has stopped.
+    """
+    return run.next_attempt_no_at(step_id)
+
+
+def _approval_plan(
+    *, definition: WorkflowDefinition, run: RunRecord, step: WorkflowStep, moment: str
+) -> AttemptPlan:
+    """§13.3, §13.4. What an advance decides when the run is on an approval step.
+
+    Two situations, and they are different:
+
+    ```text
+    arriving       the run reaches the step. It enters the wait, if a wait is possible.
+    already there  the only thing left to decide is whether the wait has RUN OUT.
+    ```
+    """
+    if run.state is WorkflowState.AWAITING_APPROVAL:
+        # §8.3. The run's own bounds govern WHILE it waits — "TIME SPENT AWAITING AN
+        # APPROVAL ... consume[s] the run's deadline. None of them pauses it." They are
+        # checked before the wait's own bound because they are the outer ones: a run that
+        # has run out of runtime has run out, whatever the approval deadline says.
+        if seconds_remaining(run.workflow_deadline, moment) <= 0:
+            return AttemptPlan(
+                run=_terminal(run, WorkflowState.TIMED_OUT, moment),
+                admitted=False,
+                refusal="WORKFLOW_DEADLINE_REACHED",
+                moment=moment,
+            )
+        if run.retry_deadline is not None and seconds_remaining(run.retry_deadline, moment) <= 0:
+            return AttemptPlan(
+                run=_terminal(run, WorkflowState.RESOURCE_EXHAUSTED, moment),
+                admitted=False,
+                refusal="RETRY_DEADLINE_REACHED",
+                moment=moment,
+            )
+
+        deadline = run.approval_deadline
+        if deadline is not None and seconds_remaining(deadline, moment) <= 0:
+            # §13.4. "An approval that does not arrive before its declared deadline is
+            # APPROVAL_DENIED, not a silent wait."
+            return AttemptPlan(
+                run=_denied(run, step.step_id, moment),
+                admitted=False,
+                refusal="APPROVAL_DENIED",
+                moment=moment,
+            )
+        # Still waiting, and asking again decides nothing. The run does not advance on
+        # its own (§12) — but it is a wait WITH A BOUND, which is what makes it not the
+        # open-ended pending state §13.4 forbids.
+        return AttemptPlan(
+            run=run, admitted=False, refusal="APPROVAL_PENDING", moment=moment
+        )
+
+    if not ingress_is_designated():
+        # §13.3. "until AI-13-C designates an ingress and its provenance check, NO
+        # approval is valid, and every approval step is therefore BLOCKED." A deployment
+        # with no anchor would be waiting for something nothing can produce, so it is
+        # BLOCKED NOW rather than after a deadline nothing could meet.
+        return AttemptPlan(
+            run=_terminal(
+                _move_step(run, step.step_id, StepState.BLOCKED, moment),
+                WorkflowState.BLOCKED,
+                moment,
+            ),
+            admitted=False,
+            refusal="APPROVAL_INGRESS_NOT_DESIGNATED",
+            moment=moment,
+        )
+
+    # §8.3, §13.4. The wait's bound is DECLARED and anchored ONCE, here, and persisted.
+    # It is never `now + duration` on a later read, for the same reason the step deadline
+    # is not: a bound that restarted would let a run ask a human forever.
+    seconds = step.approval_seconds
+    if seconds is None:  # pragma: no cover - validation refuses a step without one
+        raise InvalidRecord(
+            "an approval step reached the engine with no declared wait; §13.4 makes the "
+            "deadline part of what the step declares"
+        )
+
+    gated = definition.gated_step(step.step_id)
+    if gated is None:  # pragma: no cover - validation refuses such a definition
+        raise InvalidRecord(
+            "the approval point has no immediately following execution-seam step to "
+            "gate; §6.1 refuses such a definition before a run exists"
+        )
+
+    # §13.1.2 (Amendment 4). Arriving moves TWO steps and nothing else may: the approval
+    # point enters the wait, and the step it GATES becomes READY — which is the state the
+    # arrival describes, and the state an accepted approval leaves it in. Doing both here
+    # rather than in two transitions is what keeps a record from ever showing a run
+    # waiting at a point whose gated step is still PENDING.
+    return AttemptPlan(
+        run=run.advance(
+            state=WorkflowState.AWAITING_APPROVAL,
+            approval_deadline=plus_seconds(moment, seconds),
+            updated_at=moment,
+            steps=tuple(
+                replace(record, state=StepState.AWAITING_APPROVAL)
+                if record.step_id == step.step_id
+                else replace(record, state=StepState.READY)
+                if record.step_id == gated.step_id
+                else record
+                for record in run.steps
+            ),
+        ),
+        admitted=False,
+        refusal="AWAITING_APPROVAL",
+        moment=moment,
+    )
+
+
+def reenter_approval(
+    *,
+    definition: WorkflowDefinition,
+    run: RunRecord,
+    now: str | None = None,
+) -> RunRecord:
+    """§13.1.3 (Amendments 3, 4). The ONE backward transition: ask again for the NEXT attempt.
+
+    A CALLER asks; nothing asks on the run's behalf. A retryable failure does not call
+    the ingress and neither does a resume — §13.4's "a new request requires a new human
+    act or a new run" governs the request this opens, and a failure is not a question.
+
+    Refused unless all four conditions hold. Three are facts about the record; the fourth
+    is this function being called at all, which is the caller asking. Any one missing and
+    the transition is not the one the contract admits — so this REFUSES rather than
+    guessing, because a re-entry taken for the wrong reason would re-open a wait that the
+    approval point had already closed.
+    """
+    moment = now or _utc_now()
+    _require_the_runs_own_definition(definition, run)
+
+    if run.is_terminal:
+        raise InvalidRecord(
+            "a terminal run does not re-enter an approval point; §13.4 makes denial and "
+            "expiry terminal, and a terminal state has no transition out of it (§14)"
+        )
+
+    step = _next_step(definition, run)
+    if step is None:
+        raise InvalidRecord("this run has no step left to gate")
+    gating = definition.gating_step(step.step_id)
+    if gating is None:
+        raise InvalidRecord(
+            "the run's current step is not gated by an approval point, so there is no "
+            "wait to re-enter; §13.1.3 is the only backward transition and it moves that "
+            "one step"
+        )
+
+    gate_record = run.step(gating.step_id)
+    gated_record = run.step(step.step_id)
+    if gate_record is None or gate_record.state is not StepState.SUCCEEDED:
+        raise InvalidRecord(
+            "the approval point is not SUCCEEDED, so there is no closed wait to re-open; "
+            "§13.1.3 permits the wait to be re-entered only from SUCCEEDED"
+        )
+    if gated_record is None or gated_record.state is not StepState.READY:
+        raise InvalidRecord(
+            "the gated step is not READY, so no retry or resume is outstanding and "
+            "there is nothing to ask a human about"
+        )
+    if not gated_record.attempts and run.inflight_attempt_no is None:
+        raise InvalidRecord(
+            "the gated step has neither a recorded attempt nor one in flight, so no work "
+            "has been done that a fresh approval would be for"
+        )
+
+    next_no = _next_attempt_no_for(run, step.step_id)
+    if run.approval_covers(step.step_id, next_no):
+        raise InvalidRecord(
+            "the next legal attempt at the gated step ALREADY has an accepted approval "
+            "covering it; §13.1.3 forbids re-opening a wait for an attempt that is "
+            "already authorized, and no second request may be made for it"
+        )
+
+    # §13.1.3, §13.2 (Amendment 4, §5 of Amendment 4's deadline clause). The existing
+    # bound semantics are evaluated BEFORE the wait, not after it: a request nobody could
+    # legally answer is not a request this contract admits, so the run takes the terminal
+    # state its bounds already define rather than waiting for an impossible attempt.
+    decision = check_attempt_may_begin(definition, run, step.step_id, moment)
+    if not decision.allowed:
+        return _terminal(
+            run,
+            decision.terminal_state or WorkflowState.FAILED,
+            moment,
+            bound=decision.reason_code if decision.reached_bound else None,
+        )
+
+    seconds = gating.approval_seconds
+    if seconds is None:  # pragma: no cover - validation refuses a step without one
+        raise InvalidRecord(
+            "an approval step reached the engine with no declared wait (§13.4)"
+        )
+
+    return run.advance(
+        steps=tuple(
+            replace(record, state=StepState.AWAITING_APPROVAL)
+            if record.step_id == gating.step_id
+            else record
+            for record in run.steps
+        ),
+        state=WorkflowState.AWAITING_APPROVAL,
+        approval_deadline=plus_seconds(moment, seconds),
+        updated_at=moment,
+    )
+
+
+def resolve_approval(
+    *,
+    definition: WorkflowDefinition,
+    run: RunRecord,
+    artifact: SignedApprovalArtifact,
+    now: str | None = None,
+) -> RunRecord:
+    """§13. The ONLY way an approval enters a run.
+
+    The input is the ARTIFACT — the untrusted, externally produced thing — and this
+    function verifies it itself, every time. There is deliberately no parameter that
+    accepts a "verified approval": §13.3 accepts one only after MACHINE-VERIFYING its
+    provenance, and a function that took someone else's word for that would be accepting
+    a label as the thing it labels.
+
+    ```text
+    refusal    provenance, scope or actor does not check out. It RAISES, nothing changes
+               and nothing is recorded — a forgery is not a decision, and writing it
+               down as APPROVAL_DENIED would turn it into one in the ledger.
+    denial     the human ANSWERED no, and the answer verified. APPROVAL_DENIED, terminal
+               for the step, never re-asked (§13.4).
+    approval   accepted. Recorded as a REFERENCE on the run, and the wait ends.
+    ```
+
+    The scope is built from THIS run and the attempt number the approval will authorize.
+    `next_attempt_no()` is the same number `begin_attempt` will use, so the approval is
+    bound to the attempt that follows it — and after a retry or a resume that number has
+    moved on, the digest no longer matches, and the old approval authorizes nothing
+    (§13.2).
+    """
+    moment = now or _utc_now()
+    _require_the_runs_own_definition(definition, run)
+
+    if run.state is not WorkflowState.AWAITING_APPROVAL:
+        raise InvalidRecord(
+            "this run is not waiting for an approval; §13.2 binds an approval to one "
+            "attempt of one step, and an approval resolved outside that wait authorizes "
+            "nothing"
+        )
+
+    step = _next_step(definition, run)
+    if step is None or step.kind is not StepKind.APPROVAL:
+        raise InvalidRecord(
+            "this run's current step is not an approval step; there is no wait for an "
+            "approval to resolve"
+        )
+
+    gated = definition.gated_step(step.step_id)
+    if gated is None:  # pragma: no cover - validation refuses such a definition
+        raise InvalidRecord(
+            "the approval point has no immediately following execution-seam step to "
+            "gate; §6.1 refuses such a definition before a run exists"
+        )
+
+    # §13.1 (Amendment 1, tightened by 2). The scope names the GATED step and the number
+    # its NEXT attempt will take — never the wait step, which has no attempt for an
+    # approval to name (§6.3).
+    scope = ApprovalScope(
+        workflow_id=run.workflow_id,
+        revision=run.revision,
+        definition_digest=run.definition_digest,
+        run_id=run.run_id,
+        step_id=gated.step_id,
+        attempt_no=_next_attempt_no_for(run, gated.step_id),
+    )
+
+    answer = accept_approval(artifact=artifact, scope=scope, run_id=run.run_id)
+
+    if isinstance(answer, Denial):
+        return _denied(run, step.step_id, moment)
+
+    # §13.3. Through the ONE path that appends a VERIFIED approval. `answer` is a
+    # `WorkflowApproval`, which cannot exist without a `Provenance`, which verifies
+    # itself against the anchor THIS DEPLOYMENT DESIGNATED — so this call cannot be made
+    # with a value a caller assembled, and `RunRecord.advance` refuses the ledger field
+    # outright.
+    return record_approval(
+        run,
+        answer,
+        step_id=scope.step_id,
+        attempt_no=scope.attempt_no,
+        now=moment,
+    )
+
+
 def begin_attempt(
     *,
     definition: WorkflowDefinition,
@@ -476,6 +830,9 @@ def begin_attempt(
             moment=moment,
         )
 
+    if step.kind is StepKind.APPROVAL:
+        return _approval_plan(definition=definition, run=run, step=step, moment=moment)
+
     # The bound is evaluated BEFORE the attempt begins (§10.3.1), so an overrun is a
     # refusal rather than something discovered halfway through.
     decision = check_attempt_may_begin(definition, run, step.step_id, moment)
@@ -498,6 +855,24 @@ def begin_attempt(
     # the COUNT of records. A lineage that begins at 2 (its attempt 1 died before it
     # could be written) has one record, and counting it would hand out 2 again.
     attempt_no = run.next_attempt_no()
+
+    # §13.1.2 (Amendment 4). THE ADMISSION GATE.
+    #
+    # A gated execution-seam step's attempt does not begin without an ACCEPTED approval
+    # whose scope covers its EXACT number. The question is asked AFTER the number is
+    # computed and BEFORE anything is reserved, counted or created.
+    #
+    # It is a PRECONDITION, not a failure. The run is left exactly where it was — not
+    # reserved, not counted, not terminal, and with no FailureClass — because §9's nine
+    # classes classify what went WRONG, and nothing went wrong here: the run is simply
+    # not yet allowed to proceed, and §13.1.3 is the path that allows it. A terminal
+    # state would hide a security boundary behind a plausible-looking error.
+    if definition.gating_step(step.step_id) is not None and not run.approval_covers(
+        step.step_id, attempt_no
+    ):
+        return AttemptPlan(
+            run=run, admitted=False, refusal="APPROVAL_REQUIRED", moment=moment
+        )
     attempt_id = AttemptId(run_id=run.run_id, step_id=step.step_id, attempt_no=attempt_no)
 
     # §11.1, §12. Anchored at the step's FIRST attempt and persisted from there, so a

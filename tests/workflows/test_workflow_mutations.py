@@ -55,6 +55,7 @@ RESUME = "tests/workflows/test_workflow_resume.py"
 RUN = "tests/workflows/test_workflow_run.py"
 LIMITS = "tests/workflows/test_workflow_limits.py"
 BOUNDARY = "tests/workflows/test_workflow_record_boundary.py"
+APPROVAL = "tests/workflows/test_workflow_approval.py"
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,12 +127,20 @@ MUTATIONS: tuple[Mutation, ...] = (
         focused=(f"{RUN}::test_T24b_the_bounds_module_cannot_read_a_checkpoint",),
     ),
     Mutation(
-        control="B/C ownership boundary",
-        guard="§18 AI-13-B refuses a definition declaring an approval step, by name",
+        # §21.3's control for this line was "let B accept an approval step — T22 must
+        # fail". AI-13-C implements the approval point, so ACCEPTING the step is now the
+        # required behaviour and that mutation cannot be a control: it is the thing the
+        # contract asks for. What guards the same boundary now is the bound that makes
+        # the accepted step finite — an approval step with no declared wait would be the
+        # open-ended pending state §13.4 forbids, and it is refused in the same place
+        # B's refusal used to be.
+        control="an approval step must declare its wait",
+        guard="§12, §13.4 an approval step is accepted only WITH the wait it declares; "
+              "'no limit' and 'a limit nobody wrote down' are the same at run time",
         path="workflows/definition.py",
-        old="        if kind is StepKind.APPROVAL:",
-        new="        if kind is StepKind.APPROVAL and False:  # mutated: B accepts it",
-        focused=(f"{CORE}::test_T22_an_approval_step_is_refused_by_name",),
+        old='                data.get("approval_seconds"), f"{where}.approval_seconds"',
+        new='                data.get("approval_seconds", 1), f"{where}.approval_seconds"  # mutated',
+        focused=(f"{CORE}::test_T22_an_approval_step_with_no_declared_wait_is_refused",),
     ),
     Mutation(
         control="unclassified failure stops",
@@ -332,8 +341,8 @@ MUTATIONS: tuple[Mutation, ...] = (
               "not from how many records there are, so a lineage that starts late does "
               "not hand its number out twice",
         path="workflows/run.py",
-        old="            max((attempt.attempt_id.attempt_no for attempt in current.attempts), default=0)",
-        new="            len(current.attempts)  # mutated: the COUNT, not the last number",
+        old="            (attempt.attempt_id.attempt_no for attempt in self.attempts_for(step_id)),",
+        new="            len(self.attempts_for(step_id)),  # mutated: the COUNT, not the last",
         focused=(
             f"{BOUNDARY}::test_an_attempt_number_is_not_reused_after_a_lineage_that_starts_late",
         ),
@@ -365,8 +374,8 @@ MUTATIONS: tuple[Mutation, ...] = (
         guard="§15.2 an attempt that did NOT succeed cannot make its step SUCCEEDED — "
               "which also stops it releasing the step deadline",
         path="workflows/run.py",
-        old="            if moved[0][1].state not in _STEP_STATES_BY_OUTCOME[outcome]:",
-        new="            if moved[0][1].state not in _STEP_STATES_BY_OUTCOME[outcome] and False:  # mutated",
+        old="                if moved[0][1].state not in _STEP_STATES_BY_OUTCOME[outcome]:",
+        new="                if moved[0][1].state not in _STEP_STATES_BY_OUTCOME[outcome] and False:  # mutated",
         focused=(
             f"{BOUNDARY}::test_a_failed_attempt_cannot_make_its_step_SUCCEEDED",
         ),
@@ -465,6 +474,119 @@ MUTATIONS: tuple[Mutation, ...] = (
         new="    return bool(value)  # mutated: an illegal value becomes a legal one",
         focused=(
             f"{BOUNDARY}::test_the_typed_constructor_and_the_parser_refuse_the_same_records",
+        ),
+    ),
+    Mutation(
+        control="the attempt admission gate",
+        guard="§13.1.2 an attempt at a GATED step does not begin without an accepted "
+              "approval covering ITS number — the gate Amendment 4 added",
+        path="workflows/engine.py",
+        old="    if definition.gating_step(step.step_id) is not None and not run.approval_covers(",
+        new="    if False and definition.gating_step(step.step_id) is not None and not run.approval_covers(",
+        focused=(f"{APPROVAL}::test_T26_a_gated_attempt_without_a_covering_approval_is_not_admitted",),
+    ),
+    Mutation(
+        control="an approval covers ONE attempt number",
+        guard="§13.2 `attempt_no` is one of the six, so an approval is matched on the "
+              "EXACT number and never on 'an approval exists for this step'",
+        path="workflows/run.py",
+        old="            entry.step_id == step_id and entry.attempt_no == attempt_no",
+        new="            entry.step_id == step_id  # mutated: any approval for the step",
+        focused=(
+            f"{APPROVAL}::test_the_scope_is_not_inherited_across_attempts",
+            f"{APPROVAL}::test_T28_resume_with_only_the_previous_approval_cannot_start_the_next_attempt",
+        ),
+    ),
+    Mutation(
+        control="a crashed attempt's number is spent",
+        guard="§6.3, §13.1.3 a process that died after reserving an attempt spent that "
+              "number, so the next legal attempt is the NEXT one and no approval covers it",
+        path="workflows/run.py",
+        old="        return max(recorded, self.inflight_attempt_no or 0) + 1",
+        new="        return recorded + 1  # mutated: a crashed attempt's number is forgotten",
+        focused=(
+            f"{APPROVAL}::test_T28b_a_resume_reaches_the_next_attempt_only_through_a_fresh_approval",
+        ),
+    ),
+    Mutation(
+        control="a wait is not re-opened for an approved attempt",
+        guard="§13.1.3 the re-entry is refused when the next legal attempt ALREADY has "
+              "an accepted approval, so one attempt never draws two requests",
+        path="workflows/run.py",
+        old="    return not successor.approval_covers(gated.step_id, next_no)",
+        new="    return True  # mutated: the wait is re-opened for an approved attempt",
+        focused=(
+            f"{APPROVAL}::test_a_successor_cannot_re_open_a_wait_for_an_already_approved_attempt",
+        ),
+    ),
+    Mutation(
+        control="leaving the wait requires a newly accepted approval",
+        guard="§13.1.2, §13.3 the approval point becoming SUCCEEDED and the run returning "
+              "to RUNNING are what an ACCEPTED approval DOES, so a successor that does "
+              "both without one has closed a wait nothing answered",
+        path="workflows/run.py",
+        old="        if self.state is WorkflowState.AWAITING_APPROVAL:",
+        new="        if False and self.state is WorkflowState.AWAITING_APPROVAL:  # mutated",
+        focused=(f"{APPROVAL}::test_A_closing_the_wait_without_an_approval_is_refused",),
+    ),
+    Mutation(
+        control="the approval ledger is not caller-writable",
+        guard="§13.3 an ApprovalReference is a plain record a caller can build, and one "
+              "that never went near the ingress is not an approval",
+        path="workflows/run.py",
+        old='        if "approvals" in changes:',
+        new="        if False:  # mutated: the ledger is caller-writable",
+        focused=(
+            f"{APPROVAL}::test_B_a_hand_built_approval_reference_cannot_enter_the_ledger",
+        ),
+    ),
+    Mutation(
+        control="a provenance that does not verify cannot be built",
+        guard="§13.3 Provenance re-runs the Ed25519 check in its own constructor, so "
+              "there is no path that produces one without a signature that verifies",
+        path="workflows/approval.py",
+        old="            key.verify(signature, self.artifact.signed_bytes())",
+        new="            pass  # mutated: a provenance need not verify",
+        focused=(
+            f"{APPROVAL}::test_C_a_provenance_that_does_not_verify_cannot_be_constructed",
+        ),
+    ),
+    Mutation(
+        # The control the signature-check mutation above cannot be: that one removes the
+        # check that a signature verifies AT ALL, and this one removes the AUTHORITY check
+        # while leaving the signature check exactly as it was.
+        # `anchor != self.anchor_public_key` compares the anchor with itself, so the value
+        # still verifies a signature perfectly — under whichever key the caller named. If
+        # the focused tests still passed, the verifier would be proving a signature under
+        # SOME key, and the forged `WorkflowApproval` would reach the ledger through
+        # `record_approval`.
+        control="the designated-anchor binding in the verifier",
+        guard="§13.3 a `Provenance` is refused unless the anchor it names is the one THIS "
+              "DEPLOYMENT designated, so a keypair the caller generates produces a value "
+              "that cannot exist — a valid signature under SOME key is not provenance",
+        path="workflows/approval.py",
+        old="        if anchor != _designated_anchor():",
+        new="        if anchor != self.anchor_public_key:  # mutated: whatever key is named",
+        focused=(
+            f"{APPROVAL}::test_designation_a_provenance_under_a_caller_selected_key_cannot_be_constructed",
+            f"{APPROVAL}::test_designation_a_self_consistent_forgery_cannot_enter_the_ledger",
+        ),
+    ),
+    Mutation(
+        # The same family, one field over: this removes the binding between an answer and
+        # the artifact its provenance is over. `self` compared with `self` always agrees,
+        # so a REAL signature for one scope can be re-pointed at another by writing a
+        # different scope digest beside it — and `record_approval` records the digest the
+        # caller wrote, for a run the human never answered for.
+        control="an answer's fields are the artifact's",
+        guard="§13.2 a `WorkflowApproval`'s scope digest, actor, instant and artifact "
+              "reference are the ARTIFACT's own — a signature covers one scope, and an "
+              "answer asserting a different one is a claim nothing signed",
+        path="workflows/approval.py",
+        old='            self,\n            self.provenance.artifact,\n            "approval",',
+        new='            self,\n            self,  # mutated: the answer is compared with itself\n            "approval",',
+        focused=(
+            f"{APPROVAL}::test_scope_binding_a_signed_approval_cannot_be_re_pointed_at_another_run",
         ),
     ),
 )

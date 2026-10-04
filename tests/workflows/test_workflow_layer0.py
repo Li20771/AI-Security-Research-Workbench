@@ -132,3 +132,157 @@ def test_a_reach_that_is_NOT_forbidden_is_left_alone(tmp_path: Path) -> None:
         )
     )
     assert problems == [], problems
+# ---------------------------------------------------------------------------
+# §13 — the approval point, one planted violation at a time
+# ---------------------------------------------------------------------------
+
+
+def _rewrite(root: Path, module: str, old: str, new: str) -> None:
+    """Change one thing in a copied module, and fail if the anchor moved."""
+    path = root / "workflows" / module
+    text = path.read_text(encoding="utf-8")
+    assert old in text, f"the planted edit moved inside {module}"
+    path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+
+def test_the_check_catches_a_second_verification_site(tmp_path: Path) -> None:
+    """§13.3. One designated ingress, and a second site is a second thing to get wrong."""
+    problems = _LAYER0.check_ai13_workflows(
+        _scratch(
+            tmp_path,
+            extra_source=(
+                "from cryptography.hazmat.primitives.asymmetric.ed25519 import "
+                "Ed25519PublicKey\n"
+            ),
+        )
+    )
+    assert any("Ed25519" in problem for problem in problems), problems
+
+
+def test_the_check_catches_a_caller_selected_trust_root(tmp_path: Path) -> None:
+    """§13.3. A public function taking the key has a caller who selects it."""
+    problems = _LAYER0.check_ai13_workflows(
+        _scratch(
+            tmp_path,
+            extra_source="def verify_with(public_key):\n    return public_key\n",
+        )
+    )
+    assert any("public_key" in problem for problem in problems), problems
+
+
+def test_the_check_catches_a_verifier_that_does_not_bind_the_designated_anchor(
+    tmp_path: Path,
+) -> None:
+    """§13.3. A `Provenance` whose anchor is checked against nothing but itself is
+    constructible for any keypair the caller generates — a signature under SOME key —
+    and the ledger path would accept what it produced. The binding must be PRESENT, so
+    removing it is a finding rather than a refactor."""
+    root = _scratch(tmp_path)
+    _rewrite(
+        root,
+        "approval.py",
+        "        if anchor != _designated_anchor():",
+        "        if anchor != anchor:  # planted: the binding is gone",
+    )
+    problems = _LAYER0.check_ai13_workflows(root)
+    assert any("does not bind" in problem for problem in problems), problems
+
+
+def test_the_check_catches_a_second_module_consulting_the_designated_anchor(
+    tmp_path: Path,
+) -> None:
+    """§13.3. The verifying module may consult the anchor ACCESSOR — that is the binding.
+    Anywhere else it is a second place the phase decides what to trust."""
+    problems = _LAYER0.check_ai13_workflows(
+        _scratch(
+            tmp_path,
+            extra_source="from workflows.ingress import designated_anchor\n",
+        )
+    )
+    assert any("trust anchor" in problem for problem in problems), problems
+
+
+def test_the_check_catches_a_second_reader_of_the_anchor_environment_variable(
+    tmp_path: Path,
+) -> None:
+    """§13.3. The deployment fact is READ in one module. A second `os.environ.get` of the
+    same variable is a second place the trust root is decided, whether or not it calls
+    the accessor."""
+    problems = _LAYER0.check_ai13_workflows(
+        _scratch(
+            tmp_path,
+            extra_source=(
+                'APPROVAL_TRUST_ANCHOR_ENV = "WORKBENCH_APPROVAL_TRUST_ANCHOR"\n'
+            ),
+        )
+    )
+    assert any("environment variable" in problem for problem in problems), problems
+
+
+def test_the_check_catches_an_approval_mint_factory(tmp_path: Path) -> None:
+    """§13.3. "MUST NOT provide a constructor, a factory, a default or any other path"."""
+    problems = _LAYER0.check_ai13_workflows(
+        _scratch(
+            tmp_path,
+            extra_source="def make_approval(scope):\n    return scope\n",
+        )
+    )
+    assert any("make_approval" in problem for problem in problems), problems
+
+
+def test_the_check_catches_guards_approval_vocabulary(tmp_path: Path) -> None:
+    """§13.5. A workflow approval is NOT an AI-04 ApprovalRef and is never VERIFIED."""
+    problems = _LAYER0.check_ai13_workflows(
+        _scratch(tmp_path, extra_source="ApprovalRef = object()\n")
+    )
+    assert any("ApprovalRef" in problem for problem in problems), problems
+
+
+def test_the_check_catches_a_seventh_scope_field(tmp_path: Path) -> None:
+    """§13.2. The preimage is exactly six, and a seventh changes every digest."""
+    root = _scratch(tmp_path)
+    _rewrite(
+        root,
+        "approval.py",
+        '    "attempt_no",\n)',
+        '    "attempt_no",\n    "approval_point_id",\n)',
+    )
+    problems = _LAYER0.check_ai13_workflows(root)
+    assert any("SCOPE_FIELDS" in problem for problem in problems), problems
+
+
+def test_the_check_catches_a_target_selector(tmp_path: Path) -> None:
+    """§6.1. The gated step is the IMMEDIATELY following one, chosen by nobody."""
+    problems = _LAYER0.check_ai13_workflows(
+        _scratch(
+            tmp_path,
+            extra_source="def select_target(definition, stage_id):\n    return stage_id\n",
+        )
+    )
+    assert any("select_target" in problem for problem in problems), problems
+
+
+def test_the_check_catches_a_checkpoint_that_stopped_refusing_an_approval(tmp_path: Path) -> None:
+    """§7.2. A snapshot that could carry an approval is a second authority for it."""
+    root = _scratch(tmp_path)
+    _rewrite(
+        root,
+        "checkpoint.py",
+        '"provenance", "actor_reference", "decided_at", "artifact_reference",',
+        "",
+    )
+    problems = _LAYER0.check_ai13_workflows(root)
+    assert any("no longer refuses" in problem for problem in problems), problems
+
+
+def test_the_check_catches_a_resume_that_reads_an_approval(tmp_path: Path) -> None:
+    """§8.2. A resume inherits declared state, not authority."""
+    root = _scratch(tmp_path)
+    _rewrite(
+        root,
+        "resume.py",
+        "    return InheritedState(",
+        "    _ignored = (run.approvals, run.approval_deadline)\n    return InheritedState(",
+    )
+    problems = _LAYER0.check_ai13_workflows(root)
+    assert any("approvals" in problem for problem in problems), problems
