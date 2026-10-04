@@ -32,9 +32,14 @@ express.
 
 ### Where the rules apply, and where they must not
 
+The classes are **§15.2's own column**, not this module's judgement: §15.2 is the
+single source of truth for field classification, and a class assigned anywhere else
+is a defect in the contract. This module quotes it.
+
 ```text
-Class 3   structured machine tokens — scanned (15 supplied paths)
-Class 4   bounded producer-normalized text — scanned (8 supplied paths)
+Class 3   structured machine tokens — scanned (17 supplied paths)
+Class 4   bounded producer-normalized text — scanned (5 supplied paths)
+one admission-only supplied input — scanned, and not a §15.2 stored leaf
 
 Class 1   NEVER scanned. A digest or a revision is a 32+ character run of
           [A-Za-z0-9_-], and C1-R06 matches exactly that: applying the rules to a
@@ -63,6 +68,7 @@ from plugins.evidence.errors import AdmissionRuleViolation
 
 __all__ = [
     "ADMISSION_RULES",
+    "ADMISSION_ONLY_PATHS",
     "CLASS_3_PATHS",
     "CLASS_4_PATHS",
     "RULES_REVISION",
@@ -142,23 +148,24 @@ ADMISSION_RULES: tuple[AdmissionRule, ...] = (
 #: form. `references.context[].value` is here rather than in a stored form because
 #: the record keeps its digest and never the value.
 CLASS_4_PATHS: tuple[str, ...] = (
-    "provenance.producer",
-    "provenance.actor.id",
-    "payload.subject",
-    "payload.observed",
-    "payload.reasons[]",
-    "payload.tool_calls[].what_ran",
-    "references.context[].value",
-    "references.supersedes[].correction_reason",
+    "provenance.actor.id",                      # §15.2 class 4, G-TEXT
+    "payload.observed",                         # §15.2 class 4, G-TEXT
+    "payload.reasons[]",                        # §15.2 class 4, G-TEXT
+    "payload.tool_calls[].what_ran",            # §15.2 class 4, G-TEXT
+    "references.supersedes[].correction_reason",  # §15.2 class 4, G-TEXT
 )
 
 #: §14.10's Class 3 scan set: structured machine tokens, in the supplied form.
 #:
-#: `provenance.producer` is deliberately NOT here although §6.5 also constrains it:
-#: §14.10 publishes it as Class 4 text (G-TEXT shape) whose token is additionally
-#: registry-checked, and a field appears in exactly one class.
+#: `provenance.producer` is here because **§15.2 says so**: `producer` is class 3,
+#: grammar `G-REGISTERED`. The implementation additionally applies the G-TEXT shape
+#: bound to it, and that does not move it — §15.2 assigns the class, and the
+#: registry is its grammar. `payload.subject` is here for the same reason: §15.2
+#: makes it class 3, `G-SUBJECT`.
 CLASS_3_PATHS: tuple[str, ...] = (
+    "provenance.producer",
     "provenance.producer_version",
+    "payload.subject",
     "provenance.workspace_id",
     "provenance.experiment_id",
     "provenance.observed_at",
@@ -175,9 +182,17 @@ CLASS_3_PATHS: tuple[str, ...] = (
     "artifacts.items[].artifact_ref",
 )
 
+#: `references.context[].value` is the ONE scanned path that is **not** a §15.2
+#: stored leaf. It is an admission-only supplied input: it exists only in the
+#: supplied form, `ContextRef.from_mapping` derives `value_digest` from it (§12.1),
+#: and the raw value is never persisted and never rendered (§12.4). It has no §15.2
+#: row because it is not in a stored record at all — which is exactly why step 7
+#: must read it while it is still a supplied string (R2).
+ADMISSION_ONLY_PATHS: tuple[str, ...] = ("references.context[].value",)
+
 #: Every path the rules are applied to, and the whole of the scan set. Class 1 and
 #: Class 2 paths are absent, and their absence is the rule (§14.10).
-SCANNED_PATHS: tuple[str, ...] = CLASS_4_PATHS + CLASS_3_PATHS
+SCANNED_PATHS: tuple[str, ...] = CLASS_4_PATHS + CLASS_3_PATHS + ADMISSION_ONLY_PATHS
 
 
 def _values_at(raw: Mapping[str, Any], path: str) -> Iterator[Any]:

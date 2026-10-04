@@ -177,9 +177,12 @@ class TestTheRuleCatalogIsThePublishedOne:
 
     def test_the_scan_set_is_the_two_scanned_classes_and_nothing_else(self):
         """§14.10: Class 1 and Class 2 are not scanned, and their absence is the rule."""
-        assert len(CLASS_3_PATHS) == 15
-        assert len(CLASS_4_PATHS) == 8
-        assert SCANNED_PATHS == CLASS_4_PATHS + CLASS_3_PATHS
+        from plugins.evidence.rules import ADMISSION_ONLY_PATHS
+
+        assert len(CLASS_3_PATHS) == 17
+        assert len(CLASS_4_PATHS) == 5
+        assert len(ADMISSION_ONLY_PATHS) == 1
+        assert SCANNED_PATHS == CLASS_4_PATHS + CLASS_3_PATHS + ADMISSION_ONLY_PATHS
 
         structural = (
             "content_digest",
@@ -191,6 +194,84 @@ class TestTheRuleCatalogIsThePublishedOne:
         )
         for name in structural:
             assert not [p for p in SCANNED_PATHS if p.endswith(name)], name
+
+    def test_the_classes_are_15_2s_own_column(self):
+        """The scan set is DERIVED from the contract, not chosen here.
+
+        §15.2 is the single source of truth for a field's class, and it says so
+        itself: "An implementation MUST NOT classify a field by any other means."
+        This test reads that table and requires the implementation to agree with it
+        field by field — which is what makes `producer` (class 3, G-REGISTERED) and
+        `payload.subject` (class 3, G-SUBJECT) impossible to misplace again.
+        """
+        from plugins.evidence.rules import ADMISSION_ONLY_PATHS
+
+        contract = (
+            pathlib.Path(__file__).resolve().parents[2]
+            / "docs"
+            / "AI-05_EVIDENCE_EXECUTION_PLAN.md"
+        ).read_text(encoding="utf-8")
+        start = contract.index("### 15.2 The authoritative field table")
+        end = contract.index("### 15.2.1")
+        rows = [
+            line
+            for line in contract[start:end].splitlines()
+            if line.startswith("| `")
+        ]
+
+        authoritative: dict[str, str] = {}
+        for line in rows:
+            cells = [c.strip().strip("`") for c in line.strip("|").split("|")]
+            path, cls, origin = cells[0], cells[2], cells[7]
+            if cls in {"3", "4"} and origin == "C":
+                authoritative[path] = cls
+
+        def as_contract_leaf(p: str) -> str:
+            # §15.2 names the provenance leaves without the supplied wrapper.
+            return p[len("provenance."):] if p.startswith("provenance.") else p
+
+        mine = {
+            as_contract_leaf(p): ("3" if p in CLASS_3_PATHS else "4")
+            for p in CLASS_3_PATHS + CLASS_4_PATHS
+        }
+
+        assert len(authoritative) == 22, len(authoritative)
+        assert set(mine) == set(authoritative), (
+            set(mine) ^ set(authoritative)
+        )
+        assert mine == authoritative, {
+            k: (mine[k], authoritative[k]) for k in mine if mine[k] != authoritative[k]
+        }
+        # The one scanned path that is NOT a §15.2 leaf, and the reason it is not.
+        assert ADMISSION_ONLY_PATHS == ("references.context[].value",)
+        assert "references.context[].value" not in authoritative
+
+    def test_the_context_value_is_admission_only_and_never_a_stored_leaf(self):
+        """§12.4, §14.10. `references.context[].value` is supplied, hashed, dropped.
+
+        It is G-TEXT-shaped and scanned, and it is NOT a field of a stored record:
+        `ContextRef.from_mapping` derives `value_digest` from it (§12.1) and the raw
+        value is never persisted and never rendered. Adding it to the field table, to
+        the stored form or to the record would be a §15.2 and §12.4 violation, so the
+        boundary is asserted rather than assumed.
+        """
+        from dataclasses import fields as dataclass_fields
+
+        from plugins.evidence import FIELD_TABLE, ContextRef
+
+        table_paths = {row.path for row in FIELD_TABLE}
+        assert "references.context[].value" not in table_paths
+        assert "references.context[].value_digest" in table_paths
+
+        stored_fields = {f.name for f in dataclass_fields(ContextRef)}
+        assert "value" not in stored_fields
+        assert "value_digest" in stored_fields
+
+        from tests.evidence.conftest import make_context_ref
+
+        supplied = make_context_ref(value="PASS")
+        assert "value" in supplied
+        assert "value_digest" not in supplied
 
     def test_the_first_matching_rule_is_the_one_reported(self):
         """§14.10 fixes the order, so a two-rule value has one deterministic answer."""

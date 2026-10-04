@@ -1317,21 +1317,15 @@ FROZEN: the rule ids, their order and their patterns are the published contract.
 ```
 
 ```text
-WHERE THE RULES APPLY — every supplied Class 3 and Class 4 field, and no other:
+WHERE THE RULES APPLY — every CALLER-SUPPLIED Class 3 and Class 4 field, plus one
+admission-only input, and nothing else. Paths are §15.2's; the scan reads the
+supplied mapping, where the provenance leaves appear under `provenance.`:
 
-Class 4 (G-TEXT)                 provenance.producer, provenance.actor.id,
-                                 payload.subject, payload.observed,
-                                 payload.reasons[],
-                                 payload.tool_calls[].what_ran,
-                                 references.context[].value,
-                                 references.supersedes[].correction_reason
-Class 3 (structured token)       provenance.producer_version,
-                                 provenance.workspace_id, provenance.experiment_id,
-                                 provenance.observed_at,
+Class 3 (§15.2 class 3)          producer, producer_version, workspace_id,
+                                 experiment_id, observed_at, payload.subject,
                                  payload.binding.source_identity,
                                  payload.binding.model_ref,
-                                 payload.binding.endpoint_host,
-                                 payload.reason_code,
+                                 payload.binding.endpoint_host, payload.reason_code,
                                  references.context[].workspace_id,
                                  references.context[].source_identity,
                                  references.context[].subject,
@@ -1339,6 +1333,12 @@ Class 3 (structured token)       provenance.producer_version,
                                  references.supersedes[].record_ref,
                                  artifacts.items[].owner_workspace_id,
                                  artifacts.items[].artifact_ref
+Class 4 (§15.2 class 4)          actor.id, payload.observed, payload.reasons[],
+                                 payload.tool_calls[].what_ran,
+                                 references.supersedes[].correction_reason
+
+ADMISSION-ONLY, and NOT a        references.context[].value
+  §15.2 leaf
 
 Class 1                          NEVER scanned. A digest or a revision is lowercase
                                  hex of an exact length, and rule C1-R06 would match
@@ -1347,6 +1347,29 @@ Class 1                          NEVER scanned. A digest or a revision is lowerc
                                  Applying the rules to a structural field would
                                  reject every legitimate record (T20a, T20b).
 Class 2                          validated against its closed enum and not scanned.
+```
+
+```text
+FROZEN: the classes above are §15.2's own `class` column, quoted rather than assigned
+        here. §15.2 is the single source of truth for a field's class, and a
+        classification stated anywhere else — this section included — is a defect in
+        this document. `producer` is class 3 with grammar G-REGISTERED because §15.2
+        says so; the implementation additionally applies a G-TEXT shape bound to it,
+        and that does not move it.
+
+FROZEN: `references.context[].value` is an ADMISSION-ONLY SUPPLIED INPUT, and it is
+        the one scanned path with no §15.2 row. It exists only in the supplied form:
+        `ContextRef.from_mapping` derives `value_digest` from it (§12.1), and the raw
+        value is NEVER persisted and never rendered (§12.4). It is therefore not a
+        stored leaf, and it MUST NOT be added to §15.2, to the stored form or to the
+        implementation's field table. It is G-TEXT-shaped, and step 7 reads it BEFORE
+        that derivation — which is both what R2 requires and why step 7 runs where it
+        does. A reader must not have to derive this boundary; it is stated here.
+
+FROZEN: Class 3 and Class 4 are both scanned, so a field's class never decides
+        WHETHER it is checked — only Class 1 and Class 2 are exempt, and §15.2's
+        `origin` column decides the rest: a field AI-05 GENERATES (`evidence_id`,
+        `recorded_at`) is not a caller-supplied value and is not scanned.
 ```
 
 ```text
