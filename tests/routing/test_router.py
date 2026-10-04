@@ -991,6 +991,14 @@ class TestT37Regression:
         `agents/` therefore left the protected set at AI-08-A, which is when it
         entered AI-08's ownership. The earlier-phase boundaries are unchanged,
         and `routing/` is deliberately still NOT protected.
+
+        AI-05-C-1 narrowed `plugins/` for the same reason, and it is the narrower
+        form of the same edit: C-1 is an AI-05 sub-phase, so `plugins/evidence/` is
+        ITS OWN layer rather than an earlier phase's, and `plugins/` was protected
+        as a whole only because no branch had yet belonged to a phase owning one of
+        them. The AI-03, AI-04 and AI-06 plugin layers stay protected from this
+        branch, which is what the guard exists for — and §32's C12 gate names the
+        same boundary: "AI-02/03/04 implementations are unmodified".
         """
         import subprocess
 
@@ -1000,7 +1008,13 @@ class TestT37Regression:
         ).stdout.split()
 
         for path in changed:
-            for protected in ("providers/", "plugins/", "tools/"):
+            for protected in (
+                "providers/",
+                "plugins/context/",
+                "plugins/guard/",
+                "plugins/security_tools/",
+                "tools/",
+            ):
                 assert not path.startswith(protected), path
 
 

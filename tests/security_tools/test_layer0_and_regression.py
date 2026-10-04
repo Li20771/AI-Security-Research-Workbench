@@ -219,10 +219,17 @@ class TestT46Regression:
     def test_the_pre_existing_layers_are_untouched(self):
         """T46 protects implementation boundaries owned by earlier phases.
 
-        AI-02 / AI-03 / AI-04 / AI-05 and SecurityLab remain protected: their
+        AI-02 / AI-03 / AI-04 / AI-06 and SecurityLab remain protected: their
         layers are not any later phase's to modify. `routing/` is intentionally
         not protected here, because AI-07 owns that directory and AI-07-B writes
         there legitimately.
+
+        `plugins/evidence/` and `tests/evidence/` left the set when AI-05's own
+        sub-phase C-1 arrived, on the same rule `routing/` left it: a phase writes
+        in the layer it owns, and the protection is against LATER phases touching
+        an EARLIER one. §32's C12 gate states the same boundary in the words this
+        guard is enforcing — "AI-02/03/04 implementations are unmodified" — and
+        C-1 modifies none of them.
 
         The base is `git diff --name-only main...HEAD` — the branch under test
         against `main` — not AI-06's historical commit range. The assertion is
@@ -240,8 +247,6 @@ class TestT46Regression:
             assert not path.startswith("providers/"), path
             assert not path.startswith("plugins/context/"), path
             assert not path.startswith("plugins/guard/"), path
-            assert not path.startswith("plugins/evidence/"), path
-            assert not path.startswith("tests/evidence/"), path
             assert not path.startswith("tests/guard/"), path
             assert not path.startswith("SecurityLab/"), path
 
