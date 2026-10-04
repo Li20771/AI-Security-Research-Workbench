@@ -1,6 +1,7 @@
 # AI-14 — Long-term AI Workbench — Execution Plan
 
-> Status: **DRAFT — FREEZE PROPOSAL** (AI-14-A, 2026-10-04)
+> Status: **FROZEN** (AI-14-A, 2026-10-04 — frozen by the merge of PR #72); **AMENDED
+> ONCE** (§25, 2026-10-04)
 > Phase: AI-14 — Long-term AI Workbench
 > Sub-phase: **AI-14-A — Final Architecture / Long-term Workbench Freeze**
 > Prerequisite: AI-13 — COMPLETE / MERGED / CLOSED, merge commit
@@ -10,15 +11,20 @@
 > may deviate from a frozen contract without amending this document first (§24).
 
 ```text
-THIS DOCUMENT IS NOT YET FROZEN.
+THIS DOCUMENT IS FROZEN.
 
-The freeze act is human review followed by the merge of this PR. Until that merge this is
-a proposal, and C0 (§22) is NOT satisfied by this document's existence — it is satisfied
-by its merge.
+The freeze act was human review followed by the merge of PR #72 into `main`, at merge
+commit `4b1058a4c764a613127800426fdd95e34d164bf3`. C0 (§22) is satisfied by that merge —
+as the block here said it would be — and not by this document's existence.
 
-AI-14-A writes NO runtime implementation and changes NO runtime behaviour. It corrects the
-project's status record, inventories what the repository actually contains, and freezes the
+This block is a STATUS record and nothing more. It changes no clause of §0–§24: those are
+as merged, and a change to any of them is an amendment (§24), never a status edit.
+
+AI-14-A wrote NO runtime implementation and changed NO runtime behaviour. It corrected the
+project's status record, inventoried what the repository actually contains, and froze the
 architecture the later sub-phases implement against.
+
+This document has been amended ONCE since its freeze. The amendment is logged in §25.
 ```
 
 ---
@@ -361,41 +367,77 @@ Router -> provider/model TYPES                CONNECTED (types only)      routin
 AI-12 policy -> AI-11 OracleVerdict           CONNECTED (types only)      routing/policy.py:49,
                                                                           layer0:2219 allows only
                                                                           benchmarks.vocabulary
+----------------------------------------- CONNECTED BY AI-14-B (B1-B4) ----
+Router -> Agent execution                     CONNECTED                   composition/root.py:run_task
+  RouterDecision -> AgentExecutionRequest                                 -> composition/selection.py
+                                                                          select() -> routing/router.py
+                                                                          evaluate(); then
+                                                                          agents/runtime.py run_execution()
+Agent -> Provider / model invocation          CONNECTED                   composition/root.py:run_task
+  CodexBackend / MimoCodexBackend                                         calls body_factory(
+                                                                            model_ref=SELECTED, ...)
+                                                                          AFTER the selection ->
+                                                                          composition/provider.py
+                                                                          codex_body_factory()
+                                                                          constructs AI-09's
+                                                                          MimoCodexBackend FOR THAT
+                                                                          REF; a binding naming any
+                                                                          other ref is REFUSED
+Workflow -> Agent execution                   CONNECTED                   composition/executor.py
+  StepExecutor Protocol                                                   AgentStepExecutor — the
+                                                                          production implementor;
+                                                                          workflows/engine.py:942 calls
+                                                                          it through the Protocol
+Review -> controlled verification caller      CONNECTED                   composition/verification.py
+  VerificationRequest -> invoke()                                         controlled_verification() ->
+                                                                          plugins/security_tools/
+                                                                          dispatch.py invoke()
 --------------------------------------------------------------------------- SEAM -----
-Agent -> Provider                             IMPLEMENTED BUT NOT         agents/codex/body.py:67
-  CodexBackend Protocol                          CONNECTED                CodexBackend; the only
-                                                                          structural implementor is
-                                                                          integrations/codex/
-                                                                          backend.py:98, built only
-                                                                          in tests/integrations/
-                                                                          conftest.py:196
-Workflow -> Agent execution                   IMPLEMENTED BUT NOT         workflows/engine.py:238
-  StepExecutor Protocol                          CONNECTED                StepExecutor — the ONLY
-                                                                          implementors are test
-                                                                          doubles (tests/workflows/
-                                                                          conftest.py:161-362)
 Workflow -> Provider invocation               DOES NOT EXIST              workflows/ imports
                                                                           nothing outside itself
 Workflow -> Guard / Tools                     DOES NOT EXIST (by         layer0:2625-2640 forbids
                                                  contract)                every foreign root
-Router -> model invocation                    DOES NOT EXIST              no path carries a
-  RouterDecision -> Invoker                                               RouterDecision into
-                                                                          Invoker.invoke
-Review -> controlled verification caller      DECLARED ONLY               AI-10 §11.1/§11.2 names it;
-  VerificationRequest -> invoke()                                         review/ and tests/review/
-                                                                          never call invoke()
-Any producer -> Evidence                      IMPLEMENTED BUT NOT         no non-test caller of
-  admit() / admit_to_store()                     CONNECTED                admission.py:150,181
+Router -> model invocation                    DOES NOT EXIST              Router SELECTS; the model call
+  RouterDecision -> Invoker                                               is the provider binding's, and
+                                                                          no path carries a decision into
+                                                                          an Invoker (§4.2 rule 1)
+Any producer -> Evidence                      IMPLEMENTED BUT NOT         B5 is BLOCKED (AI-05 C-1
+  admit() / admit_to_store()                     CONNECTED                DEFERRED); no producer token
+                                                                          exists, and composition/ MUST
+                                                                          NOT import plugins.evidence
 AI-06 -> AI-05 projection                     IMPLEMENTED BUT NOT         plugins/security_tools/
   tool_call_for(), execution_payload_for()       CONNECTED                evidence.py:19,40
 ```
 
 ```text
-RECORDED: at this revision the Workbench has ONE connected production spine —
-          Agent runtime -> Context, Guard, Security Tools (with Guard inside the tool
-          path) — plus read-only predicate use of the Agent layer by Review and of the
-          tool/agent registries by Benchmark. Everything else in the table is a seam, a
-          declaration or an unconnected implementation.
+FROZEN: an edge is CONNECTED only when a NON-TEST call site exists (§2). The four
+        edges above are connected by AI-14-B's own modules, and each one names the
+        call site in the table.
+FROZEN: NOT claimed by the four connections: that any deployment wires a
+        provider-backed body (that is the caller's act, and no deployment exists in
+        this repository), that a model capability became VERIFIED (live
+        verification is NOT_RUN), or that a composed run ever reached Evidence (it
+        cannot — B5 is BLOCKED).
+FROZEN: the invocation gate refuses a call that NEEDS a capability, and AI-09's
+        Codex invocation requests none ("no tool schema and no response_format,
+        because this invocation requests neither" — integrations/codex/backend.py:
+        225-227). So a composed provider-backed run is not capability-gated by that
+        path, and what keeps this honest is that NOTHING here hands the composition
+        a live invoker: the invoker is a caller-supplied parameter, the composition
+        constructs none, and live verification is NOT_RUN. Stated rather than
+        implied, because a reader could otherwise take connection for verification.
+```
+
+```text
+RECORDED: AI-14-A found ONE connected production spine — Agent runtime -> Context,
+          Guard, Security Tools (with Guard inside the tool path) — plus read-only
+          predicate use of the Agent layer by Review and of the tool/agent registries
+          by Benchmark. AI-14-B connected the four edges above it, each with a
+          non-test call site, and left the rest of the table exactly as it was.
+RECORDED: what is still NOT connected, and MUST be reported as such: the Workflow ->
+          Provider and Workflow -> Guard/Tools paths (refused by contract), a
+          RouterDecision reaching an Invoker (refused by §4.2 rule 1), any producer
+          writing Evidence (B5 BLOCKED), and the AI-06 -> AI-05 projection.
 FROZEN:   AI-14-B MUST NOT describe a SEAM as a working path. Any user-facing statement
           about the system MUST carry the classification above.
 ```
@@ -1446,6 +1488,47 @@ identity, a new provider or model, a fallback or escalation executor, cross-work
 aggregation, and any activation of AI-12's model-comparative rule while §6 is BLOCKED.
 ```
 
+```text
+STATUS — AI-14-B, at the merge of its PR (per item, and NOT a claim about a deployment)
+
+B1  Router selection -> Agent execution    DONE      composition/selection.py,
+                                                     composition/root.py:run_task. The
+                                                     SELECTED model ref is passed to
+                                                     body_factory() AFTER the selection,
+                                                     and a binding that names another
+                                                     model is REFUSED
+B2  Agent -> Provider / model invocation   DONE      composition/provider.py
+                                                     codex_body_factory() binds the
+                                                     selected ref through AI-09; the
+                                                     offline factory invokes no model
+                                                     and reports model_ref=None
+B3  Workflow StepExecutor -> execution     DONE      composition/executor.py
+                                                     RECORDED, NOT RESOLVED: the
+                                                     engine's call carries no routing
+                                                     input (a WorkflowDefinition and a
+                                                     RunRecord declare no task_class,
+                                                     no candidates and no actor), so a
+                                                     workflow-driven step has no
+                                                     selection to bind. The B1+B2
+                                                     selection->binding discipline is
+                                                     enforced on the TASK path
+                                                     (run_task); how a run would
+                                                     declare routing input is OPEN and
+                                                     this phase invents none
+B4  controlled verification caller         DONE      composition/verification.py
+B5  composition -> Evidence                BLOCKED   NOT STARTED. AI-05 C-1 is still
+                                                     DEFERRED, no producer token exists,
+                                                     and `composition/` MUST NOT import
+                                                     `plugins.evidence` — the layer 0
+                                                     check refuses it structurally
+B6  end-to-end composition + boundaries    DONE      composition/root.py, and
+                                                     tests/composition/test_boundaries.py
+
+The composition package is `composition/` — the glue, not a component (§3) and not an
+authority (§4). It has its own layer 0 check (`composition layer boundary and authority
+absence`), and `tests/composition/` holds its tests.
+```
+
 ---
 
 ## 23. Non-goals — FROZEN
@@ -1515,7 +1598,99 @@ FROZEN: this document MUST NOT modify a frozen clause of any earlier phase, and 
 ## 25. Amendment Log
 
 ```text
-(none — this document has not been amended)
+AMENDMENT 1 — 2026-10-04 — the four seams AI-14-B connected are recorded as CONNECTED.
+
+CHANGED CLAUSES
+    §5.1        the recorded classification of four paths, and the RECORDED summary
+                beneath the table:
+
+                    Router -> Agent execution              SEAM           -> CONNECTED
+                    Agent -> Provider / model invocation   SEAM           -> CONNECTED
+                    Workflow -> Agent execution            SEAM           -> CONNECTED
+                    Review -> controlled verification      DECLARED ONLY  -> CONNECTED
+                      caller
+
+    §5.1        the NOT-claimed block gained the capability-gating statement: AI-09's
+                Codex invocation requests no capability, so what keeps a composed
+                provider-backed run honest is that nothing in this repository hands the
+                composition a live invoker (the invoker is a caller-supplied parameter)
+    §22.1       a per-item STATUS block was added (B1-B4 and B6 DONE, B5 BLOCKED)
+    Appendix A  the same four rows, plus rows for the composition package itself
+
+WHY
+    AI-14-B delivered the production NON-TEST call sites each of those four rows had
+    recorded as missing:
+
+        Router -> Agent execution       composition/root.py:run_task -> composition/
+                                        selection.py select() -> routing.router
+                                        evaluate() -> body_factory(model_ref=SELECTED)
+                                        -> agents.runtime.run_execution()
+        Agent -> Provider / model       composition/provider.py codex_body_factory()
+                                        constructs AI-09's MimoCodexBackend FOR THE
+                                        SELECTED REF; run_task() refuses a binding that
+                                        names any other model
+        Workflow -> Agent execution     composition/executor.py AgentStepExecutor
+                                        implements workflows/engine.py:238 StepExecutor
+        Review -> controlled caller     composition/verification.py
+                                        controlled_verification() -> plugins/
+                                        security_tools/dispatch.py invoke()
+
+    This is NOT a re-design of the topology. The classification VOCABULARY, the shape of
+    the topology and every path's MEANING are unchanged: the same paths, the same
+    directions, the same refusals. What changed is the recorded status of four paths that
+    were frozen as planned-but-unconnected and are now connected.
+
+    §22.1 already requires a work item to update §5 and Appendix A in the SAME change
+    that connects its seam. This amendment is the §24 record of that classification
+    change, made explicit rather than left to the reader — §24 lists "the execution
+    topology's CONNECTED/SEAM classification of a path" as amendment-requiring.
+
+SECURITY IMPACT
+    None. The amendment records connections; it grants nothing, and it is not a runtime
+    requirement.
+
+        no new authority of any kind, and no authority transferred between layers
+        the authority matrix is untouched: Guard is still the ONLY entry under
+          AUTHORIZES (§4.1)
+        Router still SELECTS and never authorizes; a RouterDecision is still data
+        Evidence still authorizes nothing, and B5 (composition -> Evidence) is still
+          BLOCKED / NOT STARTED with no producer token
+        Human Approval is still a WORKFLOW gate and still not a Guard approval
+        Workflow state is still not a Guard ALLOW
+        no trust root, no producer token, no daemon, no scheduler, no second entry
+          point for a layer and no cross-workspace path was added
+        UNKNOWN / BLOCKED / NOT_RUN / UNAVAILABLE still do not become PASS. No wiring in
+          this phase promoted a capability: every shipped model capability remains
+          UNKNOWN, live provider verification remains NOT_RUN, and AI-12-C remains
+          BLOCKED
+
+AUTHORITY IMPACT
+    None. No layer gained a power it did not already hold. The composition is glue: it is
+    not a component (§3), and it holds no decision of its own (§4). The frozen meaning of
+    B1/B2/B3/B4 is exactly what §22.1 stated, and this amendment changes none of it.
+
+CONTRACT IMPACT
+        the classification vocabulary is unchanged (§2, §5)
+        the topology's semantics are unchanged
+        the authority matrix and the ten rules (§4) are unchanged
+        the data and trust flow (§6), the dependency decisions (§20), the extension
+          points (§21), the Definition of Done (§22) and the non-goals (§23) are
+          unchanged
+        §22.1's "update §5 / Appendix A in the same change" produced the update this
+          amendment records; this amendment supplies the §24 record for it
+
+THIS AMENDMENT DOES NOT CHANGE
+    the component list (§3)                    the authority matrix (§4)
+    the data and trust flow (§6)               the dependency decisions (§20)
+    the extension points (§21)                 the non-goals (§23)
+    the Definition of Done (§22)               B5's BLOCKED state
+    the frozen meaning of a B1-B4 work item, or of a seam it did not connect
+
+AND IT DOES NOT CLOSE THE B3 OPEN ITEM
+    A workflow-driven step still has no routing input: a WorkflowDefinition and a
+    RunRecord declare no task_class, no candidates and no actor, so there is no
+    selection for it to bind. How a run would declare routing input remains OPEN
+    (§22.1 B3), and this amendment neither invents one nor amends AI-13.
 ```
 
 ---
@@ -1545,9 +1720,14 @@ tools    -> Evidence projection           IMPLEMENTED BUT NOT CONNECTED  securit
 agents   identity / runtime / results     IMPLEMENTED                    agents/vocabulary.py:123;
                                                                          runtime.py:142,250; result.py
 agents   structural independence (I1-I8)  IMPLEMENTED                    agents/independence.py
-agents   -> provider (CodexBackend)       IMPLEMENTED BUT NOT CONNECTED  agents/codex/body.py:67;
-                                                                         integrations/codex/
-                                                                         backend.py:98 (tests only)
+agents   -> provider (CodexBackend)       CONNECTED (AI-14-B)            composition/provider.py
+                                                                         codex_body_factory() builds
+                                                                         AI-09's MimoCodexBackend FOR
+                                                                         THE SELECTED REF, and
+                                                                         run_task() refuses a binding
+                                                                         that names any other. Live
+                                                                         verification is NOT_RUN; no
+                                                                         deployment here wires one
 providers profiles / registry / validate  IMPLEMENTED                    providers/model_profile.py:381;
                                                                          providers/model_registry.py
 providers invocation boundary             IMPLEMENTED (no production     providers/invocation.py:722
@@ -1556,7 +1736,11 @@ providers invocation boundary             IMPLEMENTED (no production     provide
 providers live verification               NOT_RUN (path implemented)     providers/live_verification.py;
                                                                          .github/.../preflight.yml:67
 providers capability VERIFIED             BLOCKED (all UNKNOWN)          providers/model_profile.py:53-72
-routing  evaluate() (AI-07 v1)            IMPLEMENTED BUT NOT CONNECTED  routing/router.py:48
+routing  evaluate() (AI-07 v1)            CONNECTED (AI-14-B)            composition/selection.py
+                                                                         select() is called by
+                                                                         composition/root.py run_task();
+                                                                         the SELECTED ref then builds
+                                                                         the body (see below)
 routing  policy core (AI-12)              IMPLEMENTED BUT NOT CONNECTED  routing/policy.py:502;
                                                                          routing/policy_eval.py:244
 routing  fallback / escalation            DECLARES ONLY (data)           routing/policy.py:281-334
@@ -1564,8 +1748,10 @@ routing  model-comparative rule           BLOCKED                        AI-12 p
                                                                          routing/evidence.py:104
 review   case / finding / decision API    IMPLEMENTED (run data)         review/case.py:122;
                                                                          review/finding.py:35
-review   controlled verification caller   DECLARED ONLY                  AI-10 plan §11.1-§11.2;
-                                                                         review/verification.py:15-25
+review   controlled verification caller   CONNECTED (AI-14-B)            composition/verification.py
+                                                                         controlled_verification() ->
+                                                                         plugins/security_tools/
+                                                                         dispatch.py invoke()
 review   durable evidence                 DEFERRED (AI-05 amendment)     AI-10_EVIDENCE:353-365
 bench    corpus / oracles / REFERENCE     IMPLEMENTED                    benchmarks/task.py:46;
            campaign                                                      benchmarks/oracle.py:49;
@@ -1575,8 +1761,10 @@ bench    durable results                  NOT IMPLEMENTED (disposable)   .gitign
 workflows engine / ledger / policy        IMPLEMENTED                    workflows/engine.py; run.py
 workflows approval point                  IMPLEMENTED + WIRED            workflows/approval.py;
                                                                          workflows/ingress.py
-workflows -> agent execution              IMPLEMENTED BUT NOT CONNECTED  workflows/engine.py:238
-  (StepExecutor)                                                         (test doubles only)
+workflows -> agent execution              CONNECTED (AI-14-B)            composition/executor.py
+  (StepExecutor)                                                         AgentStepExecutor implements
+                                                                         workflows/engine.py:238 and is
+                                                                         called through it at :942
 workflows -> provider / tool / guard      DOES NOT EXIST (by contract)   layer0_policy.py:2625-2640
 evidence admission (§30 1-6, 8-14)        IMPLEMENTED BUT NOT CONNECTED  plugins/evidence/admission.py:150,181
 evidence store (staged / promoted)        IMPLEMENTED BUT NOT CONNECTED  plugins/evidence/store.py:261-331
@@ -1585,6 +1773,15 @@ evidence producers (AI-08/10/11/13)       DECLARES ONLY / DEFERRED       AI-05 �
 integrations/codex backend                IMPLEMENTED BUT NOT CONNECTED  integrations/codex/backend.py:98
 workspaces registry / discovery           DECLARES ONLY                  workspaces/README.md +
                                                                          workspaces.example.yaml
+composition  the package                  IMPLEMENTED                    composition/selection.py,
+  (the glue, not a component)                                            provider.py, executor.py,
+                                                                         verification.py, root.py
+                                                                         — 63 tests; Layer 0 check
+                                                                         `composition layer boundary
+                                                                         and authority absence`
+composition  -> Evidence                 DOES NOT EXIST (by rule)       B5 BLOCKED; layer 0 refuses
+                                                                         a `plugins.evidence` import
+                                                                         from composition/
 ```
 
 ```text

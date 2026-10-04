@@ -2,8 +2,9 @@
 > Baseline: 2026-09-26
 
 ## Current stage
-**AI-14 — Long-term AI Workbench — ACTIVE / AI-14-A IN PROGRESS (final architecture
-freeze).** AI-13 — Long-running Workflows is **COMPLETE / MERGED / CLOSED**, merged to
+**AI-14 — Long-term AI Workbench — ACTIVE / AI-14-B IN PROGRESS (composition
+implementation).** AI-14-A — the final architecture freeze — is **COMPLETE / MERGED**,
+merged to `main` as `4b1058a4c764a613127800426fdd95e34d164bf3` (PR #72). AI-13 — Long-running Workflows is **COMPLETE / MERGED / CLOSED**, merged to
 `main` as `98d4f57ad0bd78a54b9eb2ea44f30d2db394ee97` (PR #71): the contract (PR #69),
 the workflow core (PR #70) and the human approval point (PR #71) are all merged, with
 Amendments 1–4. AI-14-A writes no runtime code — it corrects this record, inventories
@@ -78,7 +79,7 @@ This file is the single entry point for deciding what to do next.
 
 ### Current work item
 
-**AI-14 — Long-term AI Workbench — AI-14-A IN PROGRESS (final architecture freeze).**
+**AI-14 — Long-term AI Workbench — AI-14-B IN PROGRESS (composition implementation).**
 
 ```text
 AI-13    = COMPLETE / MERGED / CLOSED   merged to `main` as
@@ -87,7 +88,10 @@ AI-13-A  = COMPLETE / MERGED   contract frozen        (PR #69 @ 1e0a7fdf4dd96230
 AI-13-B  = COMPLETE / MERGED   the workflow core      (PR #70 @ 95f0d08c47c8137813013ad7fe318e8fd0ebf12a)
 AI-13-C  = COMPLETE / MERGED   the approval point     (PR #71 @ 98d4f57ad0bd78a54b9eb2ea44f30d2db394ee97)
 AI-14    = ACTIVE
-AI-14-A  = IN PROGRESS         final architecture freeze — DOCS ONLY, no runtime code
+AI-14-A  = COMPLETE / MERGED   final architecture freeze — DOCS ONLY
+                               (PR #72 @ 4b1058a4c764a613127800426fdd95e34d164bf3)
+AI-14-B  = IN PROGRESS         composition implementation — the four seams B1-B4,
+                               the composition root B6; B5 BLOCKED
 contract = docs/AI-14_LONG_TERM_AI_WORKBENCH_EXECUTION_PLAN.md  (DRAFT / FREEZE PROPOSAL)
 home     = the COMPOSITION of the layers AI-00 … AI-13 already froze
 ```
@@ -416,8 +420,9 @@ AI-13   Long-running Workflows                CLOSED    merged 98d4f57a (PR #71)
                                                         AI-13-A contract  (PR #69)
                                                         AI-13-B core      (PR #70)
                                                         AI-13-C approval  (PR #71)
-AI-14   Long-term AI Workbench                ACTIVE    AI-14-A final architecture
-                                                        freeze — IN PROGRESS
+AI-14   Long-term AI Workbench                ACTIVE    AI-14-A COMPLETE (PR #72)
+                                                        AI-14-B IN PROGRESS
+                                                        composition implementation
 ```
 
 - **AI-11 — AI Security Benchmark — CLOSED.** Merged to `main` as
@@ -1621,15 +1626,34 @@ RECORDED — the AI-13 contract's own tail Status block still reads
 
 ## AI-14 status
 
-**AI-14 — Long-term AI Workbench: ACTIVE / AI-14-A IN PROGRESS (final architecture
-freeze).**
+**AI-14 — Long-term AI Workbench: ACTIVE / AI-14-B IN PROGRESS (composition
+implementation).**
 
 ```text
-AI-14-A  = IN PROGRESS    final architecture freeze — DOCS ONLY, no runtime code
-contract = docs/AI-14_LONG_TERM_AI_WORKBENCH_EXECUTION_PLAN.md
-                           DRAFT / FREEZE PROPOSAL
-base     = main @ 98d4f57ad0bd78a54b9eb2ea44f30d2db394ee97
-branch   = feature/ai-14-a-final-architecture-freeze
+AI-14-A  = COMPLETE / MERGED   final architecture freeze — DOCS ONLY, no runtime code
+                               (PR #72 @ 4b1058a4c764a613127800426fdd95e34d164bf3)
+AI-14-B  = IN PROGRESS         composition implementation
+contract = docs/AI-14_LONG_TERM_AI_WORKBENCH_EXECUTION_PLAN.md   (FROZEN @ PR #72)
+base     = main @ 4b1058a4c764a613127800426fdd95e34d164bf3
+branch   = feature/ai-14-b-composition
+home     = composition/  — the glue between frozen layers; not a component (§3)
+```
+
+```text
+AI-14-B connects the four seams §22.1 lists, each with a NON-TEST call site:
+    B1  Router selection -> Agent execution      composition/selection.py, root.py
+    B2  Agent -> Provider / model invocation     composition/provider.py
+    B3  Workflow StepExecutor -> Agent execution composition/executor.py
+    B4  controlled verification caller           composition/verification.py
+    B6  composition root + boundary verification composition/root.py
+
+The selected model DRIVES the body: run_task() calls body_factory(model_ref=<selected>,
+agent_id=<selected>) AFTER the Router selection, and refuses a binding that names any
+other model. The offline factory invokes no model and reports model_ref=None rather
+than echoing the selection back as if it had run it.
+B5 (composition -> Evidence) is BLOCKED / NOT STARTED: AI-05 C-1 is DEFERRED, no
+producer token exists, and composition/ MUST NOT import plugins.evidence — the new
+Layer 0 check refuses it structurally.
 ```
 
 ### What AI-14-A delivers
