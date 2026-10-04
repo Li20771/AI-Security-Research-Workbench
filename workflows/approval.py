@@ -40,6 +40,16 @@ whole of the bypass. Self-verification proves the signature; only the designatio
 the AUTHORITY, and a verifier that never asks which anchor it is checking against proves
 nothing about who spoke.
 
+### An answer carries the artifact's fields, not its own
+
+A provenance proves a signature over ONE artifact, and the artifact is what names the six
+scope fields. So `WorkflowApproval` and `Denial` also refuse any field that is not the
+artifact's own: the scope digest, the actor, the instant, and the artifact reference.
+Without that binding a caller could keep a REAL provenance — a real signature, under the
+designated anchor — and write a different `scope_digest` beside it, re-pointing one
+human's approval at another run, another step or another attempt. The signature covers
+the artifact's scope, so an answer asserting another is a claim nothing signed.
+
 **The engine never accepts a `WorkflowApproval` from a caller.** Its input is the
 artifact, and it runs the verification itself, every time. That is what makes §13.3's
 "a caller-authored record ... is NOT proof" structural rather than a rule someone has to
@@ -166,6 +176,30 @@ def _instant(value: object, where: str) -> str:
             "trailing Z (§8.3)"
         )
     return value  # type: ignore[return-value]
+
+
+def _an_answer_must_be_the_artifacts(
+    answer: object,
+    artifact: "SignedApprovalArtifact",
+    where: str,
+    fields: tuple[str, ...],
+) -> None:
+    """§13.2, §13.3. The fields an answer COPIES from an artifact must BE the artifact's.
+
+    `Provenance` proves a signature over an artifact; it does not make the artifact's
+    SUBJECT stop mattering. Without this binding, a caller could keep a real provenance —
+    a real signature, under the designated anchor — and write whatever `scope_digest` it
+    liked beside it: one human's approval for one run, re-pointed at another run, another
+    step or another attempt. The signature covers the artifact's six-field scope, so an
+    answer asserting a different one is a claim nothing signed.
+    """
+    for name in fields:
+        if getattr(answer, name) != getattr(artifact, name):
+            raise InvalidRecord(
+                f"{where}.{name} is not the value the artifact it rests on carries; "
+                "§13.2 binds an approval to the artifact's OWN scope, and an answer "
+                "asserting a different one is a claim the signature does not cover"
+            )
 
 
 def _designated_anchor() -> str:
@@ -457,6 +491,10 @@ class WorkflowApproval:
     that verification on every artifact it is handed rather than accepting one of these
     from a caller.
 
+    Every field it carries is the ARTIFACT's field, checked at construction: a provenance
+    proves a signature over one artifact, and an approval may not assert a different
+    scope, actor, instant or artifact reference beside it.
+
     It is not an AI-04 `ApprovalRef` and must never be presented as one (§13.5).
     """
 
@@ -479,6 +517,12 @@ class WorkflowApproval:
                 "approval without one is a record whose only claim is its own fields "
                 "(§13.3)"
             )
+        _an_answer_must_be_the_artifacts(
+            self,
+            self.provenance.artifact,
+            "approval",
+            ("scope_digest", "actor_reference", "decided_at", "artifact_reference"),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -497,6 +541,17 @@ class Denial:
     def __post_init__(self) -> None:
         reference(self.actor_reference, "denial.actor_reference")
         _instant(self.decided_at, "denial.decided_at")
+        if not isinstance(self.provenance, Provenance):
+            raise InvalidRecord(
+                "a denial carries the provenance it was accepted on; an answer without "
+                "one is a record whose only claim is its own fields (§13.3)"
+            )
+        _an_answer_must_be_the_artifacts(
+            self,
+            self.provenance.artifact,
+            "denial",
+            ("scope_digest", "actor_reference", "decided_at"),
+        )
 
 
 @dataclass(frozen=True, slots=True)

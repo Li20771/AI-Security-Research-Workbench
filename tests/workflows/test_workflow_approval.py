@@ -800,6 +800,105 @@ def test_designation_no_designated_anchor_means_no_provenance_at_all(monkeypatch
         Provenance(artifact=artifact, anchor_public_key=caller.public_hex)
 
 
+# ---------------------------------------------------------------------------
+# THE ARTIFACT BINDING — a real signature does not cover a scope the caller wrote
+# ---------------------------------------------------------------------------
+
+
+def test_scope_binding_a_signed_approval_cannot_be_re_pointed_at_another_run(
+    monkeypatch,
+) -> None:
+    """SECURITY BOUNDARY. §13.2.
+
+    The human really did sign — for run A — and the provenance over that artifact is
+    genuine: it verifies under the designated anchor and could not have been built
+    otherwise. Re-pointing it at run B, which nobody approved, is a matter of writing run
+    B's scope digest into the approval beside that provenance. The signature covers the
+    artifact's scope, so a value asserting another scope is a claim nothing signed — and
+    without the binding it was constructible, `record_approval` accepted it, and run B's
+    gated attempt RAN.
+    """
+    from workflows.approval import Provenance, WorkflowApproval
+    from workflows.run import record_approval
+
+    ingress = SigningAuthority()
+    ingress.install(monkeypatch)
+    definition = a_gated_definition()
+    approved_run = a_waiting_run(definition)
+    unapproved_run = a_waiting_run(definition)
+    assert approved_run.run_id != unapproved_run.run_id
+
+    artifact = ingress.sign(_scope_for(approved_run, definition, 1))
+    provenance = Provenance(artifact=artifact, anchor_public_key=ingress.public_hex)
+    elsewhere = _scope_for(unapproved_run, definition, 1)
+
+    def re_point_it():
+        forged = WorkflowApproval(
+            scope_digest=elsewhere.digest,
+            actor_reference=artifact.actor_reference,
+            decided_at=artifact.decided_at,
+            artifact_reference=artifact.artifact_reference,
+            provenance=provenance,
+        )
+        return record_approval(
+            unapproved_run, forged, step_id=elsewhere.step_id,
+            attempt_no=elsewhere.attempt_no, now=T2,
+        )
+
+    with pytest.raises(InvalidRecord):
+        re_point_it()
+
+    assert unapproved_run.approvals == (), "an approval for another run reached the ledger"
+    assert not unapproved_run.approval_covers("work", 1)
+
+
+def test_scope_binding_a_signed_approval_cannot_be_re_pointed_at_another_attempt(
+    monkeypatch,
+) -> None:
+    """§13.2. `attempt_no` is one of the six, so an approval for attempt 1 does not become
+    one for attempt 2 by writing attempt 2's digest beside the same provenance."""
+    from workflows.approval import Provenance, WorkflowApproval
+
+    ingress = SigningAuthority()
+    ingress.install(monkeypatch)
+    definition = a_gated_definition()
+    run = a_waiting_run(definition)
+
+    artifact = ingress.sign(_scope_for(run, definition, 1))
+    provenance = Provenance(artifact=artifact, anchor_public_key=ingress.public_hex)
+
+    with pytest.raises(InvalidRecord):
+        WorkflowApproval(
+            scope_digest=_scope_for(run, definition, 2).digest,
+            actor_reference=artifact.actor_reference,
+            decided_at=artifact.decided_at,
+            artifact_reference=artifact.artifact_reference,
+            provenance=provenance,
+        )
+
+
+def test_scope_binding_a_denial_cannot_be_re_pointed_either(monkeypatch) -> None:
+    """A denial is an ANSWER, and the same rule holds: what it says is the artifact's,
+    not something written beside a real provenance."""
+    from workflows.approval import Denial, Provenance
+
+    ingress = SigningAuthority()
+    ingress.install(monkeypatch)
+    definition = a_gated_definition()
+    run = a_waiting_run(definition)
+
+    artifact = ingress.sign(_scope_for(run, definition, 1), decision="DENIED")
+    provenance = Provenance(artifact=artifact, anchor_public_key=ingress.public_hex)
+
+    with pytest.raises(InvalidRecord):
+        Denial(
+            scope_digest=_scope_for(run, definition, 2).digest,
+            actor_reference=artifact.actor_reference,
+            decided_at=artifact.decided_at,
+            provenance=provenance,
+        )
+
+
 def test_a_verified_approval_still_reaches_the_ledger(monkeypatch) -> None:
     """The control for all three. Without it they would pass if nothing worked."""
     ingress = SigningAuthority()

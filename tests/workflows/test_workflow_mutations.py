@@ -572,6 +572,23 @@ MUTATIONS: tuple[Mutation, ...] = (
             f"{APPROVAL}::test_designation_a_self_consistent_forgery_cannot_enter_the_ledger",
         ),
     ),
+    Mutation(
+        # The same family, one field over: this removes the binding between an answer and
+        # the artifact its provenance is over. `self` compared with `self` always agrees,
+        # so a REAL signature for one scope can be re-pointed at another by writing a
+        # different scope digest beside it — and `record_approval` records the digest the
+        # caller wrote, for a run the human never answered for.
+        control="an answer's fields are the artifact's",
+        guard="§13.2 a `WorkflowApproval`'s scope digest, actor, instant and artifact "
+              "reference are the ARTIFACT's own — a signature covers one scope, and an "
+              "answer asserting a different one is a claim nothing signed",
+        path="workflows/approval.py",
+        old='            self,\n            self.provenance.artifact,\n            "approval",',
+        new='            self,\n            self,  # mutated: the answer is compared with itself\n            "approval",',
+        focused=(
+            f"{APPROVAL}::test_scope_binding_a_signed_approval_cannot_be_re_pointed_at_another_run",
+        ),
+    ),
 )
 
 #: Named so a failure reads as "the harness cannot see the copy", not as an unrelated
