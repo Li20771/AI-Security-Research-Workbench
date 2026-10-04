@@ -568,6 +568,151 @@ def test_the_re_entry_refuses_an_ungated_run(monkeypatch) -> None:
         reenter_approval(definition=definition, run=run, now=T2)
 
 
+# ---------------------------------------------------------------------------
+# THE LEDGER AND THE WAIT — the two ways a caller could walk past the gate
+# ---------------------------------------------------------------------------
+
+
+def test_A_closing_the_wait_without_an_approval_is_refused(monkeypatch) -> None:
+    """SECURITY BOUNDARY. §13.1.2.
+
+    The approval point becoming SUCCEEDED and the run returning to RUNNING are what an
+    ACCEPTED approval DOES. A caller who performs both without one has closed a wait that
+    nothing answered — and the record would say a human was asked and answered.
+    """
+    import dataclasses
+
+    ingress = SigningAuthority()
+    ingress.install(monkeypatch)
+    definition = a_gated_definition()
+    run = a_waiting_run(definition)
+    assert run.state is WorkflowState.AWAITING_APPROVAL
+
+    with pytest.raises(InvalidRecord):
+        run.advance(
+            steps=tuple(
+                dataclasses.replace(record, state=StepState.SUCCEEDED)
+                if record.step_id == "gate"
+                else record
+                for record in run.steps
+            ),
+            state=WorkflowState.RUNNING,
+            approval_deadline=None,
+            updated_at=T2,
+        )
+
+
+def test_B_a_hand_built_approval_reference_cannot_enter_the_ledger(monkeypatch) -> None:
+    """SECURITY BOUNDARY. §13.3.
+
+    A caller assembles a structurally perfect reference — the right run, the right gated
+    step, the right attempt, the right scope digest — and appends it. It never went near
+    the ingress and no signature was ever checked, so it is not an approval, and the
+    ledger is not a place a caller writes.
+    """
+    from workflows.approval import ApprovalReference
+
+    ingress = SigningAuthority()
+    ingress.install(monkeypatch)
+    definition = a_gated_definition()
+    run = a_waiting_run(definition)
+    scope = _scope_for(run, definition, 1)
+
+    forged = ApprovalReference(
+        step_id=scope.step_id,
+        attempt_no=scope.attempt_no,
+        scope_digest=scope.digest,
+        artifact_reference="artifact://forged",
+        actor_reference="an-operator",
+        decided_at=T2,
+    )
+
+    with pytest.raises(InvalidRecord):
+        run.advance(approvals=run.approvals + (forged,), updated_at=T2)
+
+    assert run.approvals == ()
+
+
+def test_C_a_provenance_that_does_not_verify_cannot_be_constructed(monkeypatch) -> None:
+    """SECURITY BOUNDARY. §13.3.
+
+    The value the ledger insists on cannot be MADE UP. `Provenance` re-runs the Ed25519
+    check in its own constructor, so there is no path — public, private, or a hand-written
+    dataclass call — that produces one without a signature that verifies against the
+    anchor it names. Every field below is plausible; none of it is signed.
+    """
+    from workflows.approval import Provenance, SignedApprovalArtifact
+
+    ingress = SigningAuthority()
+    ingress.install(monkeypatch)
+    definition = a_gated_definition()
+    run = a_waiting_run(definition)
+    scope = _scope_for(run, definition, 1)
+
+    well_formed = SignedApprovalArtifact.from_mapping(
+        {
+            "decision": "APPROVED",
+            "actor_kind": "HUMAN",
+            "actor_reference": "an-operator",
+            "decided_at": T2,
+            "artifact_reference": "artifact://forged",
+            "scope_digest": scope.digest,
+            "signature": "00" * 64,
+        }
+    )
+
+    with pytest.raises(InvalidRecord):
+        Provenance(artifact=well_formed, anchor_public_key=ingress.public_hex)
+
+
+def test_a_verified_approval_still_reaches_the_ledger(monkeypatch) -> None:
+    """The control for all three. Without it they would pass if nothing worked."""
+    ingress = SigningAuthority()
+    ingress.install(monkeypatch)
+    definition = a_gated_definition()
+    run = a_waiting_run(definition)
+
+    accepted = resolve_approval(
+        definition=definition,
+        run=run,
+        artifact=ingress.sign(_scope_for(run, definition, 1)),
+        now=T1,
+    )
+
+    assert len(accepted.approvals) == 1
+    assert accepted.approvals[0].step_id == "work"
+    assert accepted.approvals[0].attempt_no == 1
+
+
+def test_E_a_trusted_approval_for_attempt_N_admits_exactly_attempt_N(monkeypatch) -> None:
+    """E. The gate admits the number the approval names, and the executor sees it."""
+    ingress = SigningAuthority()
+    ingress.install(monkeypatch)
+    definition = a_gated_definition()
+    run = _approved_for_attempt_one(ingress, definition)
+
+    executor = RecordingExecutor()
+    after = advance(definition=definition, run=run, executor=executor, now=T2)
+
+    assert len(executor.calls) == 1
+    assert executor.calls[0]["attempt_id"].attempt_no == 1
+    assert after.attempts_for("work")[-1].attempt_id.attempt_no == 1
+
+
+def test_F_an_approval_for_attempt_N_does_not_admit_attempt_N_plus_one(monkeypatch) -> None:
+    """F. §13.2, one more time, at the gate rather than at the digest."""
+    ingress = SigningAuthority()
+    ingress.install(monkeypatch)
+    definition, run = _failed_once(ingress)
+
+    assert run.approval_covers("work", 1)
+    idle = RecordingExecutor()
+    after = advance(definition=definition, run=run, executor=idle, now=T2)
+
+    assert len(idle.calls) == 0
+    assert after == run
+
+
 def test_a_successor_cannot_re_open_a_wait_for_an_already_approved_attempt(
     monkeypatch,
 ) -> None:

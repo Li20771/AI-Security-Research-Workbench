@@ -70,7 +70,14 @@ from workflows.policy import (
     step_deadline_from,
 )
 from workflows.resume import verify_resume
-from workflows.run import AttemptId, AttemptRecord, RunRecord, StepRecord, new_run_id
+from workflows.run import (
+    AttemptId,
+    AttemptRecord,
+    RunRecord,
+    StepRecord,
+    new_run_id,
+    record_approval,
+)
 from workflows.vocabulary import FailureClass, StepState, WorkflowState
 
 __all__ = [
@@ -498,10 +505,7 @@ def _next_attempt_no_for(run: RunRecord, step_id: str) -> int:
     it: the approval point never reserves one, and a run reaches the wait either before
     that step has started or after it has stopped.
     """
-    recorded = max(
-        (attempt.attempt_id.attempt_no for attempt in run.attempts_for(step_id)), default=0
-    )
-    return max(recorded, run.inflight_attempt_no or 0) + 1
+    return run.next_attempt_no_at(step_id)
 
 
 def _approval_plan(
@@ -778,35 +782,16 @@ def resolve_approval(
     if isinstance(answer, Denial):
         return _denied(run, step.step_id, moment)
 
-    return run.advance(
-        # §13.1.2. The WAIT is what completed, so the APPROVAL step becomes SUCCEEDED —
-        # with no attempt behind it, because a wait is not an execution (§6.3). The gated
-        # step is deliberately NOT in this tuple: it stays READY and untouched, and the
-        # approval authorizes an attempt rather than running one.
-        steps=tuple(
-            replace(record, state=StepState.SUCCEEDED)
-            if record.step_id == step.step_id
-            else record
-            for record in run.steps
-        ),
-        approvals=run.approvals
-        + (
-            ApprovalReference(
-                # The scope's step, which is the GATED execution-seam step — never the
-                # wait. §13.1 binds an approval to the step whose attempt it authorizes,
-                # and recording the wait here would put the ledger at odds with the
-                # digest it is checked against.
-                step_id=scope.step_id,
-                attempt_no=scope.attempt_no,
-                scope_digest=answer.scope_digest,
-                artifact_reference=answer.artifact_reference,
-                actor_reference=answer.actor_reference,
-                decided_at=answer.decided_at,
-            ),
-        ),
-        state=WorkflowState.RUNNING,
-        approval_deadline=None,
-        updated_at=moment,
+    # §13.3. Through the ONE path that appends a VERIFIED approval. `answer` is a
+    # `WorkflowApproval`, which cannot exist without a `Provenance`, which verifies
+    # itself — so this call cannot be made with a value a caller assembled, and
+    # `RunRecord.advance` refuses the ledger field outright.
+    return record_approval(
+        run,
+        answer,
+        step_id=scope.step_id,
+        attempt_no=scope.attempt_no,
+        now=moment,
     )
 
 

@@ -341,8 +341,8 @@ MUTATIONS: tuple[Mutation, ...] = (
               "not from how many records there are, so a lineage that starts late does "
               "not hand its number out twice",
         path="workflows/run.py",
-        old="            max((attempt.attempt_id.attempt_no for attempt in current.attempts), default=0)",
-        new="            len(current.attempts)  # mutated: the COUNT, not the last number",
+        old="            (attempt.attempt_id.attempt_no for attempt in self.attempts_for(step_id)),",
+        new="            len(self.attempts_for(step_id)),  # mutated: the COUNT, not the last",
         focused=(
             f"{BOUNDARY}::test_an_attempt_number_is_not_reused_after_a_lineage_that_starts_late",
         ),
@@ -501,9 +501,9 @@ MUTATIONS: tuple[Mutation, ...] = (
         control="a crashed attempt's number is spent",
         guard="§6.3, §13.1.3 a process that died after reserving an attempt spent that "
               "number, so the next legal attempt is the NEXT one and no approval covers it",
-        path="workflows/engine.py",
-        old="    return max(recorded, run.inflight_attempt_no or 0) + 1",
-        new="    return recorded + 1  # mutated: a crashed attempt's number is forgotten",
+        path="workflows/run.py",
+        old="        return max(recorded, self.inflight_attempt_no or 0) + 1",
+        new="        return recorded + 1  # mutated: a crashed attempt's number is forgotten",
         focused=(
             f"{APPROVAL}::test_T28b_a_resume_reaches_the_next_attempt_only_through_a_fresh_approval",
         ),
@@ -517,6 +517,38 @@ MUTATIONS: tuple[Mutation, ...] = (
         new="    return True  # mutated: the wait is re-opened for an approved attempt",
         focused=(
             f"{APPROVAL}::test_a_successor_cannot_re_open_a_wait_for_an_already_approved_attempt",
+        ),
+    ),
+    Mutation(
+        control="leaving the wait requires a newly accepted approval",
+        guard="§13.1.2, §13.3 the approval point becoming SUCCEEDED and the run returning "
+              "to RUNNING are what an ACCEPTED approval DOES, so a successor that does "
+              "both without one has closed a wait nothing answered",
+        path="workflows/run.py",
+        old="        if self.state is WorkflowState.AWAITING_APPROVAL:",
+        new="        if False and self.state is WorkflowState.AWAITING_APPROVAL:  # mutated",
+        focused=(f"{APPROVAL}::test_A_closing_the_wait_without_an_approval_is_refused",),
+    ),
+    Mutation(
+        control="the approval ledger is not caller-writable",
+        guard="§13.3 an ApprovalReference is a plain record a caller can build, and one "
+              "that never went near the ingress is not an approval",
+        path="workflows/run.py",
+        old='        if "approvals" in changes:',
+        new="        if False:  # mutated: the ledger is caller-writable",
+        focused=(
+            f"{APPROVAL}::test_B_a_hand_built_approval_reference_cannot_enter_the_ledger",
+        ),
+    ),
+    Mutation(
+        control="a provenance that does not verify cannot be built",
+        guard="§13.3 Provenance re-runs the Ed25519 check in its own constructor, so "
+              "there is no path that produces one without a signature that verifies",
+        path="workflows/approval.py",
+        old="            key.verify(signature, self.artifact.signed_bytes())",
+        new="            pass  # mutated: a provenance need not verify",
+        focused=(
+            f"{APPROVAL}::test_C_a_provenance_that_does_not_verify_cannot_be_constructed",
         ),
     ),
 )

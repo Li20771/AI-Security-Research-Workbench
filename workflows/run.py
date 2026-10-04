@@ -41,7 +41,7 @@ from dataclasses import dataclass, replace
 from types import MappingProxyType
 from typing import Any, Mapping, Sequence
 
-from workflows.approval import ApprovalReference, ApprovalScope
+from workflows.approval import ApprovalReference, ApprovalScope, WorkflowApproval
 from workflows.canonical import digest_of, verify_digest
 from workflows.checkpoint import ArtifactRef
 from workflows.errors import InvalidRecord
@@ -56,6 +56,7 @@ __all__ = [
     "RunRecord",
     "StepRecord",
     "new_run_id",
+    "record_approval",
 ]
 
 #: The one field §7.4 excludes from a run record's preimage. It uses the same canonical
@@ -218,6 +219,55 @@ def _boolean(value: object, where: str) -> bool:
     if not isinstance(value, bool):
         raise InvalidRecord(f"{where} must be a boolean (§15.2)")
     return value
+
+
+def record_approval(
+    run: "RunRecord",
+    approval: WorkflowApproval,
+    *,
+    step_id: str,
+    attempt_no: int,
+    now: str,
+) -> "RunRecord":
+    """§13.1.2, §13.3. THE acceptance transition, and the only path an approval is recorded on.
+
+    It takes the VERIFIED value and not a reference a caller assembled. `WorkflowApproval`
+    cannot exist without a `Provenance`, a `Provenance` verifies itself, and
+    `RunRecord.advance` refuses `approvals` outright — so there is no call to this
+    function that does not begin with an Ed25519 check against the anchor the deployment
+    designated, and no other door into the ledger at all.
+
+    Everything the transition does is the ACCEPTANCE's shape: one reference is appended,
+    the WAIT becomes SUCCEEDED, the run returns to RUNNING, and the wait's deadline is
+    released. The GATED step is not in this tuple — an approval authorizes an attempt
+    rather than running one, and §13.1.2 leaves it READY and untouched.
+    """
+    gate = run._current_step()
+    if gate is None:  # pragma: no cover - a waiting run always has one
+        raise InvalidRecord(
+            "this run has no step in flight, so there is no wait for an approval to end"
+        )
+
+    reference = ApprovalReference(
+        step_id=step_id,
+        attempt_no=attempt_no,
+        scope_digest=approval.scope_digest,
+        artifact_reference=approval.artifact_reference,
+        actor_reference=approval.actor_reference,
+        decided_at=approval.decided_at,
+    )
+    return run._successor(
+        approvals=run.approvals + (reference,),
+        state=WorkflowState.RUNNING,
+        approval_deadline=None,
+        updated_at=now,
+        steps=tuple(
+            replace(record, state=StepState.SUCCEEDED)
+            if record.step_id == gate.step_id
+            else record
+            for record in run.steps
+        ),
+    )
 
 
 def _is_approval_wait_entry(
@@ -686,6 +736,20 @@ class RunRecord:
                 return record
         return None
 
+    def next_attempt_no_at(self, step_id: str) -> int:
+        """§6.3. The number the next attempt at `step_id` will take.
+
+        From the last RECORDED number for that step and never from the count of its
+        records — a lineage beginning at 2 has one record, and counting it would hand out
+        2 again — and from the in-flight number, because a process that died after
+        reserving an attempt spent a number no record mentions.
+        """
+        recorded = max(
+            (attempt.attempt_id.attempt_no for attempt in self.attempts_for(step_id)),
+            default=0,
+        )
+        return max(recorded, self.inflight_attempt_no or 0) + 1
+
     def approval_covers(self, step_id: str, attempt_no: int) -> bool:
         """§13.1.2, §13.2. Whether an ACCEPTED approval covers this exact attempt.
 
@@ -786,21 +850,11 @@ class RunRecord:
         return None
 
     def next_attempt_no(self) -> int:
-        """§6.3. The ONE attempt number a reservation is allowed to take.
-
-        Derived from the last RECORDED number and not from the COUNT of records. A run
-        whose first attempt died before it could be written has a lineage beginning at
-        2, and counting its single record would hand out 2 a second time — which is
-        exactly the reuse §6.3 forbids, and the reason the in-flight number is persisted
-        separately at all.
-        """
+        """§6.3. The number the next attempt at the step the run is ON will take."""
         current = self._current_step()
-        recorded = (
-            max((attempt.attempt_id.attempt_no for attempt in current.attempts), default=0)
-            if current is not None
-            else 0
-        )
-        return max(recorded, self.inflight_attempt_no or 0) + 1
+        if current is None:
+            return 1
+        return self.next_attempt_no_at(current.step_id)
 
     def _verify_successor(self, successor: "RunRecord") -> None:
         """§5, §6, §8.3, §11, §12, §14, §15. The predecessor → successor boundary.
@@ -1130,6 +1184,58 @@ class RunRecord:
                     "approval accepted outside a wait authorizes nothing"
                 )
 
+        # ---- §13.1.2, §13.3. LEAVING THE WAIT *IS* AN ACCEPTANCE ------------------
+        # The approval point becoming SUCCEEDED and the run returning to RUNNING are what
+        # an ACCEPTED approval DOES. A successor that performs them without appending one
+        # has closed a wait that nothing answered — which is how a caller walks past the
+        # human gate while leaving the ledger looking undisturbed.
+        #
+        # The rule is not "the approval count went up": a caller-built `ApprovalReference`
+        # is not provenance, and a count is not a claim about where a value came from. What
+        # is checked is that the ONE appended entry names the step this wait gates and the
+        # attempt that step will actually run — the two facts the acceptance transition is
+        # FOR. That an entry can only be appended by `record_approval` is enforced where
+        # the append happens; this is the other half, and the two are independent.
+        appended_approvals = successor.approvals[len(self.approvals):]
+        if self.state is WorkflowState.AWAITING_APPROVAL:
+            if successor.state is WorkflowState.RUNNING:
+                if len(appended_approvals) != 1:
+                    raise InvalidRecord(
+                        "a successor returned a waiting run to RUNNING without recording "
+                        "exactly one accepted approval; §13.1.2 makes an approval the "
+                        "thing that ends the wait, and a wait that ends without one ended "
+                        "for no reason the record can name"
+                    )
+                entry = appended_approvals[0]
+                current = self._current_step()
+                ids = [record.step_id for record in self.steps]
+                index = ids.index(current.step_id) if current is not None else -1
+                gated_id = ids[index + 1] if 0 <= index < len(ids) - 1 else None
+                if gated_id is None or entry.step_id != gated_id:
+                    raise InvalidRecord(
+                        "a successor recorded an approval for a step the waiting approval "
+                        "point does not gate; §6.1 makes the gated step the IMMEDIATELY "
+                        "following declared step"
+                    )
+                if entry.attempt_no != self.next_attempt_no_at(gated_id):
+                    raise InvalidRecord(
+                        "a successor recorded an approval that does not name the NEXT "
+                        "legal attempt of the gated step; §13.2 binds an approval to one "
+                        "attempt, and one for any other number authorizes nothing"
+                    )
+                if successor.step(current.step_id).state is not StepState.SUCCEEDED:
+                    raise InvalidRecord(
+                        "a successor returned a waiting run to RUNNING without the "
+                        "approval point itself becoming SUCCEEDED; §13.1.2 makes the WAIT "
+                        "the thing that completed"
+                    )
+            elif successor.state is not WorkflowState.AWAITING_APPROVAL and appended_approvals:
+                raise InvalidRecord(
+                    "a successor recorded an approval while the run stopped waiting some "
+                    "other way; an approval is accepted INTO a wait and not beside a "
+                    "denial, an expiry or a deadline (§13.4)"
+                )
+
         # ---- the workflow state (§14) --------------------------------------------
         if self.is_terminal:
             if successor.state is not self.state:
@@ -1196,9 +1302,30 @@ class RunRecord:
                     "reason must be one that state is reachable by"
                 )
 
+    def _successor(self, **changes: Any) -> "RunRecord":
+        """Build a successor and verify the transition. PRIVATE, and the reason `advance`
+        can refuse a field at all.
+
+        `record_approval` is its only caller outside `advance` itself, and it passes an
+        approval a VERIFICATION produced rather than a reference a caller assembled. That
+        is what separates the two: one caller holds a value that cannot exist without an
+        Ed25519 check, and the other is the whole outside world.
+        """
+        successor = replace(self, **changes)
+        successor = replace(successor, run_digest=successor.computed_digest)
+        self._verify_successor(successor)
+        return successor
+
     def advance(self, **changes: Any) -> "RunRecord":
-        """§15. The ONE way to make a successor. Recomputes the digest, and refuses a
-        transition that violates the predecessor's own history.
+        """§15. The ONE way a CALLER makes a successor. Recomputes the digest, and refuses
+        a transition that violates the predecessor's own history.
+
+        The approval ledger is NOT among the fields it will write. An `ApprovalReference`
+        is a plain record a caller can build, and a hand-built one is indistinguishable
+        from a verified one BY ITS FIELDS — which is exactly why the ledger may not be
+        written through a path that only looks at fields. `record_approval` is the one
+        path, and it takes a `WorkflowApproval`, which cannot exist without a
+        `Provenance`, which verifies itself.
 
         ```text
         FROZEN: the run record of a NON-TERMINAL run MUST NOT be discarded.
@@ -1209,14 +1336,14 @@ class RunRecord:
         Those clauses are about a reader trusting the ledger, and they hold only if a
         successor cannot quietly disagree with its predecessor — a property of this
         boundary rather than of the digest.
-
-        There is deliberately NO second, unchecked path to a successor. A convenience
-        that skipped the check would be the check's own bypass.
         """
-        successor = replace(self, **changes)
-        successor = replace(successor, run_digest=successor.computed_digest)
-        self._verify_successor(successor)
-        return successor
+        if "approvals" in changes:
+            raise InvalidRecord(
+                "the approval ledger is not a field a successor may write; §13.3 accepts "
+                "an approval only through the designated ingress, and `record_approval` "
+                "is the one path that appends a VERIFIED one"
+            )
+        return self._successor(**changes)
 
     @classmethod
     def from_mapping(cls, raw: object, *, verify: bool = True) -> "RunRecord":

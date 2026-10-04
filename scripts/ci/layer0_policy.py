@@ -2668,10 +2668,20 @@ AI13_FORBIDDEN_CALLABLES = (
 #: an approval verifier living inside it would sit on the execution path it gates.
 AI13_INGRESS_MODULE = "ingress.py"
 
-#: §13.3. The signing primitives. They may appear in the designated ingress and nowhere
-#: else, so there is exactly one place an approval can be verified and exactly one thing
-#: to review.
-AI13_SIGNING_PRIMITIVES = ("Ed25519", "Ed25519PublicKey", "Ed25519PrivateKey")
+#: §13.3. NO workflow module SIGNS. The phase holds a verification key and never a
+#: signing one, which is what makes "a caller cannot be the ingress" a property of the
+#: mechanism rather than a rule someone has to keep.
+AI13_FORBIDDEN_SIGNING_IDENTIFIERS = ("Ed25519PrivateKey",)
+
+#: §13.3. Exactly ONE module VERIFIES, and it is the one that defines `Provenance` —
+#: because a `Provenance` verifies ITSELF, so the check travels with the value and a
+#: second site would be a second place a "verified" value could be built without one.
+AI13_VERIFYING_MODULE = "approval.py"
+
+#: §13.3. Exactly ONE module decides WHAT IS TRUSTED. The anchor is a deployment fact,
+#: and a second reader would be a second place the phase chooses its own trust root.
+AI13_ANCHOR_MODULE = "ingress.py"
+AI13_TRUST_ANCHOR_IDENTIFIERS = ("APPROVAL_TRUST_ANCHOR_ENV", "designated_anchor")
 
 #: §13.3. Names a caller could use to CHOOSE what is trusted. A public function taking
 #: one of these has a caller who selects the trust root -- and a caller who selects the
@@ -2806,12 +2816,31 @@ def check_ai13_approval_point(base: "Path", workflows: "Path") -> list[str]:
         # in a docstring explaining why it does not use one is not a second ingress, and
         # a text scan would flag the explanation as the violation.
         present = identifiers(tree)
-        for primitive in AI13_SIGNING_PRIMITIVES:
-            if primitive in present:
+
+        for identifier in AI13_FORBIDDEN_SIGNING_IDENTIFIERS:
+            if identifier in present:
                 problems.append(
-                    f"{_display(path)} uses {primitive!r}; §13.3 permits exactly ONE "
-                    "designated approval ingress, and a second verification site is a "
-                    "second thing to review and a second thing to get wrong"
+                    f"{_display(path)} uses {identifier!r}; the workflow layer verifies "
+                    "and never signs, and a signing key in this package is the material "
+                    "for minting the approvals it is supposed to be checking"
+                )
+
+        if "Ed25519PublicKey" in present and path.name != AI13_VERIFYING_MODULE:
+            problems.append(
+                f"{_display(path)} uses 'Ed25519PublicKey' and so verifies a signature; "
+                "§13.3 permits exactly ONE verification site "
+                f"({AI13_VERIFYING_MODULE}, where `Provenance` checks itself), and a "
+                "second is a second place a value could claim to be verified without "
+                "being checked"
+            )
+
+        for identifier in AI13_TRUST_ANCHOR_IDENTIFIERS:
+            if identifier in present and path.name != AI13_ANCHOR_MODULE:
+                problems.append(
+                    f"{_display(path)} reaches for the approval trust anchor; §13.3 makes "
+                    f"the anchor a DEPLOYMENT fact read in ONE place ({AI13_ANCHOR_MODULE}"
+                    "), and a second reader is a second place the phase decides what to "
+                    "trust"
                 )
 
     # (2) No caller-selected trust root. ---------------------------------------------------

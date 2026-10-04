@@ -63,8 +63,6 @@ from __future__ import annotations
 
 import os
 
-from cryptography.exceptions import InvalidSignature
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from workflows.approval import (
     ActorKind,
@@ -165,15 +163,6 @@ def ingress_is_designated() -> bool:
     return True
 
 
-def _public_key(anchor: str) -> Ed25519PublicKey:
-    try:
-        return Ed25519PublicKey.from_public_bytes(bytes.fromhex(anchor))
-    except ValueError:
-        raise ApprovalRefused(
-            "the designated approval trust anchor is not a usable Ed25519 public key"
-        ) from None
-
-
 def verify_provenance(artifact: SignedApprovalArtifact) -> Provenance:
     """§13.3. Machine-verify that `artifact` came from the DESIGNATED ingress.
 
@@ -182,36 +171,31 @@ def verify_provenance(artifact: SignedApprovalArtifact) -> Provenance:
     valid-looking scope digest still fails here unless the bytes were signed by the
     holder of the designated key.
 
-    ```
+    ```text
     FROZEN: a typed or mapping record whose only claim to humanity is `actor.type =
             human` MUST be REFUSED, however well-formed the rest of it is.
     ```
+
+    This function's job is to decide WHICH anchor applies. The cryptography is
+    `Provenance.__post_init__`'s, so that a value claiming to be verified verifies
+    wherever it is built — including by a caller who never came through here.
     """
     anchor = designated_anchor()
-    key = _public_key(anchor)
 
     signature = artifact.signature
-    if len(signature) != _SIGNATURE_BYTES * 2:
+    if not isinstance(signature, str) or len(signature) != _SIGNATURE_BYTES * 2:
         raise ApprovalRefused(
             "the approval artifact's signature is not a 64-byte Ed25519 signature in "
             "hexadecimal; provenance is not a shape a record can claim (§13.3)"
         )
-    try:
-        raw = bytes.fromhex(signature)
-    except ValueError:
-        raise ApprovalRefused(
-            "the approval artifact's signature is not hexadecimal (§13.3)"
-        ) from None
 
     try:
-        key.verify(raw, artifact.signed_bytes())
-    except InvalidSignature:
+        return Provenance(artifact=artifact, anchor_public_key=anchor)
+    except InvalidRecord as exc:
         raise ApprovalRefused(
             "the approval artifact was not signed by the designated approval ingress; "
             "§13.3 accepts an approval only from the authority entitled to produce one"
-        ) from None
-
-    return Provenance(anchor_public_key=anchor, signature=signature.lower())
+        ) from exc
 
 
 def accept_approval(

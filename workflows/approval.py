@@ -53,10 +53,16 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Mapping
 
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
 from workflows.canonical import digest_of
 from workflows.errors import InvalidRecord
 from workflows.instants import is_instant
 from workflows.references import reference
+
+#: Ed25519 public-key size, so a malformed anchor is refused as malformed.
+_PUBLIC_KEY_BYTES = 32
 
 __all__ = [
     "ActorKind",
@@ -219,25 +225,57 @@ class ApprovalRequest:
 class Provenance:
     """§13.3. Proof that an artifact was verified against the DESIGNATED anchor.
 
-    Constructed by `workflows.ingress.verify_provenance` and by nothing else. There is no
-    `verified=True` anywhere in this phase: a boolean saying so is a LABEL, and §13.3
-    refuses a label as the thing it labels. This type is instead a value that cannot be
-    OBTAINED without an Ed25519 verification having passed against the anchor the
-    deployment designated — which is the difference between proving a string and proving
-    a signature.
+    IT VERIFIES ITSELF. `__post_init__` re-runs the Ed25519 check over the artifact's
+    signed bytes against the anchor this records, so **a `Provenance` that does not
+    verify cannot be constructed** — by any caller, through any path, including a
+    hand-written dataclass call.
+
+    That is deliberately stronger than "the constructor is private". A private
+    constructor is a rule someone has to keep, and in this language anyone can reach past
+    one; a check that IS the constructor has nothing to reach past. It is what lets the
+    approval ledger insist on a VERIFIED VALUE rather than on a flag — and a flag is the
+    one thing §13.3 refuses outright.
+
+    There is no `verified=True` anywhere in this phase. A boolean saying so is a LABEL,
+    and this type is instead the thing the label would have been about.
     """
 
-    #: The designated anchor that verified it, lowercase hex. Recorded so a reader can
+    #: The signed artifact this rests on — the material, kept so the check can be run.
+    artifact: SignedApprovalArtifact
+    #: The designated anchor it verified against, lowercase hex. Recorded so a reader can
     #: see WHICH authority spoke, not merely that something did.
     anchor_public_key: str
-    #: The signature that verified, lowercase hex.
-    signature: str
 
     def __post_init__(self) -> None:
-        for name in ("anchor_public_key", "signature"):
-            value = getattr(self, name)
-            if not isinstance(value, str) or not value:
-                raise InvalidRecord(f"provenance.{name} must be a non-empty hex string")
+        anchor = self.anchor_public_key
+        if not isinstance(anchor, str) or len(anchor) != _PUBLIC_KEY_BYTES * 2:
+            raise InvalidRecord(
+                "provenance.anchor_public_key must be a 32-byte Ed25519 public key in "
+                "lowercase hexadecimal"
+            )
+        try:
+            key = Ed25519PublicKey.from_public_bytes(bytes.fromhex(anchor))
+            signature = bytes.fromhex(self.artifact.signature)
+        except ValueError:
+            raise InvalidRecord(
+                "a provenance names an anchor and a signature that are not both "
+                "hexadecimal key material"
+            ) from None
+
+        try:
+            key.verify(signature, self.artifact.signed_bytes())
+        except InvalidSignature:
+            raise InvalidRecord(
+                "a provenance whose signature does not verify against the anchor it "
+                "names cannot exist; §13.3 accepts an approval only from the authority "
+                "entitled to produce one, and a value that merely CLAIMS to be from it "
+                "is the record §13.3 refuses, however well formed the rest of it is"
+            ) from None
+
+    @property
+    def signature(self) -> str:
+        """The signature that verified, lowercase hex."""
+        return self.artifact.signature
 
 
 @dataclass(frozen=True, slots=True)
