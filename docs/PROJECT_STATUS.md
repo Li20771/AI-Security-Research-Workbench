@@ -2,6 +2,15 @@
 > Baseline: 2026-09-26
 
 ## Current stage
+**AI-14 — Long-term AI Workbench — ACTIVE / AI-14-A IN PROGRESS (final architecture
+freeze).** AI-13 — Long-running Workflows is **COMPLETE / MERGED / CLOSED**, merged to
+`main` as `98d4f57ad0bd78a54b9eb2ea44f30d2db394ee97` (PR #71): the contract (PR #69),
+the workflow core (PR #70) and the human approval point (PR #71) are all merged, with
+Amendments 1–4. AI-14-A writes no runtime code — it corrects this record, inventories
+what the repository actually contains, and freezes the final architecture in
+[AI-14_LONG_TERM_AI_WORKBENCH_EXECUTION_PLAN.md](AI-14_LONG_TERM_AI_WORKBENCH_EXECUTION_PLAN.md).
+See [AI-13 status](#ai-13-status) and [AI-14 status](#ai-14-status).
+
 **AI-10 — Cross-Agent Review — COMPLETE / MERGED / CLOSED.**
 AI-09 — Codex Provider Integration is **COMPLETE / MERGED / CLOSED** as
 `b8b815b181e69f7651efdde97dd9473a3e619c7f` (PR #54). AI-08 — Codex Second Agent is
@@ -69,60 +78,53 @@ This file is the single entry point for deciding what to do next.
 
 ### Current work item
 
-**AI-13 — Long-running Workflows — AI-13-A DRAFT / FREEZE PROPOSAL.**
+**AI-14 — Long-term AI Workbench — AI-14-A IN PROGRESS (final architecture freeze).**
 
 ```text
-AI-13-A  = DRAFT / FREEZE PROPOSAL   contract / design freeze   (PR open, not merged)
-AI-13-B  = NOT STARTED               the workflow core
-AI-13-C  = NOT STARTED               the approval point
-AI-13    = NOT COMPLETE
-contract = docs/AI-13_LONG_RUNNING_WORKFLOWS_EXECUTION_PLAN.md
-home     = workflows/  (definitions · checkpoints · runs · policies)
+AI-13    = COMPLETE / MERGED / CLOSED   merged to `main` as
+                                        98d4f57ad0bd78a54b9eb2ea44f30d2db394ee97 (PR #71)
+AI-13-A  = COMPLETE / MERGED   contract frozen        (PR #69 @ 1e0a7fdf4dd96230a6177d3ca21bda03ec9c19ba)
+AI-13-B  = COMPLETE / MERGED   the workflow core      (PR #70 @ 95f0d08c47c8137813013ad7fe318e8fd0ebf12a)
+AI-13-C  = COMPLETE / MERGED   the approval point     (PR #71 @ 98d4f57ad0bd78a54b9eb2ea44f30d2db394ee97)
+AI-14    = ACTIVE
+AI-14-A  = IN PROGRESS         final architecture freeze — DOCS ONLY, no runtime code
+contract = docs/AI-14_LONG_TERM_AI_WORKBENCH_EXECUTION_PLAN.md  (DRAFT / FREEZE PROPOSAL)
+home     = the COMPOSITION of the layers AI-00 … AI-13 already froze
 ```
 
-The contract freezes the boundaries and nothing is implemented. It picks up four
-deferrals recorded by name in earlier phases: AI-08 §7.2 (no retry or resumption
-lineage; a second attempt is a second execution), AI-08 §11.4 and T32 (the vocabulary
-`TIMED_OUT / CANCELLED / RETRYING / RETRIED / FALLBACK / ESCALATED` is AI-13's), AI-02
-§5.11 and §9.1 (`max_retries` defaults to 0; `retry_count` reserved for AI-13), and
-AI-10 §5.3 (resume of a closed case is AI-13's boundary).
+AI-14 composes; it does not add a capability. AI-14-A delivers three things and no code:
+the status correction in this file and in [MASTER_ROADMAP.md](MASTER_ROADMAP.md), an
+architecture inventory taken from the code, and the frozen contract that says which
+paths are CONNECTED and which are still SEAMS.
 
 ```text
-FROZEN by AI-13-A, and not implemented yet:
-    resume inherits DECLARED STATE and nothing else — no authorization, no approval,
-    no context, no tool state
-    every attempt is authorized on its own; a previous decision grants nothing
-    retry is not escalation, widening, relaxation or automatic model fallback
-    every bound is declared; reaching one is a named terminal state
-    a checkpoint is disposable workflow state, never an AI-05 EvidenceRecord
-    a workflow approval opens a WORKFLOW gate only; Guard's gate stays independently
-    BLOCKED (AI-04 §8, D-12, Q-3)
-
-Made mechanically checkable by the review round that preceded the freeze:
-    one canonical digest form (§7.4) for every digest in the phase, with the digest
-    field excluded — the checkpoint digest is no longer self-referential
-    the approval scope digest covers exactly six fields and nothing else
-    a BOUND SURVIVES RESUME: an absolute persisted deadline, never a restarted
-    duration; a restart, a resume and a wait for an approval all consume it
-    the RunRecord is the ledger and the Checkpoint is a disposable snapshot; a bound
-    is enforced from the record, so discarding a checkpoint cannot reset it
-    where bounds overlap the NARROWER governs, evaluated before an attempt begins
-    FailureClass has nine members and NO UNKNOWN member; an unclassifiable failure
-    assigns no class, stops, and is never retried
-    v1 has no workspace re-derivation: exact identity, or WORKSPACE_CHANGED
-    AI-13-B owns the workflow core and REFUSES an approval step; AI-13-C owns the
-    approval point — so a B exit cannot claim a proof whose mechanism does not exist
-    a caller-authored `actor.type = human` is NOT a human approval: an approval must
-    come from a designated ingress that is external to Agent/model/service execution,
-    and its provenance must be machine-verifiable. Until AI-13-C designates one, no
-    approval is valid and every approval step is BLOCKED — the same fail-closed shape
-    AI-04 already has
+What AI-14-A records, on code evidence (AI-14 plan §5, Appendix A):
+    ONE connected production spine today — the Agent runtime reaches Context, Guard and
+    Security Tools, with Guard inside the single tool path
+    the Workflow -> Agent execution coupling is a PROTOCOL SEAM: StepExecutor
+    (workflows/engine.py:238) has test doubles and no production implementor
+    the Agent -> Provider coupling is a SEAM: CodexBackend is implemented only by
+    integrations/codex/backend.py, which is constructed only in tests
+    Router -> model invocation DOES NOT EXIST; Evidence has NO production writer
+    the review layer's "controlled verification caller" is DECLARED ONLY
+    "the directory exists" is NOT "the architecture is connected"
 ```
 
-**AI-13 does not unblock anything it does not own.** AI-12 §6's model-comparative
-prerequisite remains BLOCKED, AI-12-C remains BLOCKED / NOT STARTED, and AI-05 remains
-INCOMPLETE with C-1 DEFERRED — AI-13 registers no producer, writes no Evidence record,
-and does not resolve C-1.
+```text
+FROZEN by AI-14-A (architecture; no runtime change):
+    composition adds NO authority; every layer keeps the authority it was frozen with
+    the authority matrix has exactly ONE authorizing column entry — Guard
+    the ten authority rules (§4.2) restate clauses other phases already froze
+    Evidence > model judgment; NOT_RUN / BLOCKED / UNKNOWN / UNAVAILABLE are NOT PASS
+    no record-level trust mechanism for RunRecord is introduced (the Round 4 ruling)
+    AI-14-B implements the contract; a change to it is an amendment (§24)
+```
+
+**AI-13 closed; it does not unblock anything it does not own.** AI-12 §6's
+model-comparative prerequisite remains BLOCKED, AI-12-C remains BLOCKED / NOT STARTED,
+and AI-05 remains INCOMPLETE with C-1 DEFERRED — AI-13 registered no producer, wrote no
+Evidence record, and did not resolve C-1. AI-14-A adopts all of those unchanged (its
+§20 decision table) and adds no producer token of its own.
 
 **AI-12 — Model Routing v2 — AI-12-B COMPLETE / MERGED; AI-12 NOT CLOSED.**
 
@@ -410,8 +412,12 @@ AI-11   AI Security Benchmark                 CLOSED    merged 6bbe526b (PR #65)
 AI-12   Model Routing v2                      ACTIVE    AI-12-A MERGED
                                                         AI-12-B MERGED (PR #67)
                                                         AI-12-C BLOCKED
-AI-13   Long-running Workflows                  ACTIVE    AI-13-A freeze proposal
-                                                        (PR open, not merged)
+AI-13   Long-running Workflows                CLOSED    merged 98d4f57a (PR #71)
+                                                        AI-13-A contract  (PR #69)
+                                                        AI-13-B core      (PR #70)
+                                                        AI-13-C approval  (PR #71)
+AI-14   Long-term AI Workbench                ACTIVE    AI-14-A final architecture
+                                                        freeze — IN PROGRESS
 ```
 
 - **AI-11 — AI Security Benchmark — CLOSED.** Merged to `main` as
@@ -447,11 +453,17 @@ AI-13   Long-running Workflows                  ACTIVE    AI-13-A freeze proposa
 - Exact supported DSH/Codex versions
 - Provider connectivity tests — live verification is **NOT_RUN** (AI-02-B6 built
   the opt-in path; no provider call has been made)
-- Executable Evidence/Audit plugin
-- Research tool adapters
-- Codex integration
-- Benchmark dataset
-- Long-running workflow implementation
+- AI-05 C-1 — the published admission rule set — remains DEFERRED, so §30 step 7 is
+  unimplemented and the Evidence layer has **no production writer** (AI-14 plan §14, §20)
+- Research tool adapters — the eight adapter families exist under `tools/`; the
+  Evidence projection of a tool call has no caller (AI-14 plan Appendix A)
+- Codex integration — `integrations/codex/` is IMPLEMENTED BUT NOT CONNECTED; no
+  composition root constructs it outside tests (AI-14 plan §5)
+- Benchmark dataset — the corpus and the REFERENCE campaign exist; a **model**
+  measurement campaign is BLOCKED (AI-11 Layer 4, AI-12 §6)
+- AI-14 — the final composition: the Workflow → Agent execution seam, the Agent →
+  Provider seam and the review verification caller are all still unconnected
+  (AI-14 plan §5)
 
 ## AI-00 final gate status
 
@@ -1519,4 +1531,154 @@ RECORDED — PR #57
     REBASED / NOT FORCE-PUSHED. Its implementation content was carried onto the
     amended main as 00e8b02 on the correction branch that PR #60 merged, so the
     old branch is superseded. Closing it is a human housekeeping decision.
+```
+
+## AI-13 status
+
+**AI-13 — Long-running Workflows: COMPLETE / MERGED / CLOSED.**
+
+```text
+AI-13-A     = COMPLETE / MERGED    contract frozen         (PR #69, 1e0a7fdf4dd96230a6177d3ca21bda03ec9c19ba)
+Amendment 1 = APPLIED / MERGED     the approval point gates a step; it is not one
+Amendment 2 = APPLIED / MERGED     an approval wait may not skip another approval wait
+Amendment 3 = APPLIED / MERGED     a retry re-enters the approval point for a fresh approval
+Amendment 4 = APPLIED / MERGED     an attempt at a gated step needs an approval for ITS number
+AI-13-B     = COMPLETE / MERGED    the workflow core        (PR #70, 95f0d08c47c8137813013ad7fe318e8fd0ebf12a)
+AI-13-C     = COMPLETE / MERGED    the approval point       (PR #71, 98d4f57ad0bd78a54b9eb2ea44f30d2db394ee97)
+AI-13       = CLOSED
+
+merge       = 98d4f57ad0bd78a54b9eb2ea44f30d2db394ee97
+                     true two-parent merge; not squashed, not rebased
+                     parent 1 = 95f0d08c47c8137813013ad7fe318e8fd0ebf12a
+                     parent 2 = 43f7cb5510baf7248f7acec722f738dce9e8ae20
+base        = main @ 95f0d08c47c8137813013ad7fe318e8fd0ebf12a
+branch      = feature/ai-13-c-human-approval   (merged; retained)
+contract    = docs/AI-13_LONG_RUNNING_WORKFLOWS_EXECUTION_PLAN.md
+              UNCHANGED by AI-13-C — the four amendments were committed by AI-13-A/B
+home        = workflows/  (definitions · checkpoints · runs · policies · approval)
+```
+
+### What AI-13 delivers
+
+```text
+workflows/                 13 modules — a namespace package, no __init__.py:
+                           canonical, checkpoint, definition, engine, errors, instants,
+                           policy, references, resume, run, vocabulary, approval, ingress
+the human approval point   a designated ingress with an Ed25519 anchor read from ONE
+                           place, a self-verifying Provenance bound to THE deployment's
+                           anchor AND to the artifact it verified, a six-field scope,
+                           non-inheritance, and an admission gate that refuses an
+                           attempt whose exact number no accepted approval covers
+the run record             a ledger separate from a disposable checkpoint; every bound
+                           enforced from the record; a persisted absolute deadline
+Layer 0                    check_ai13_workflows(), part of the 22-check policy
+```
+
+```text
+measured on the merged head (the AI-13-C review rounds)
+    tests/workflows         400 passed
+    45+ mutation controls   passed, including the approval-ingress and gate controls
+    whole repository        3829 passed, 5 skipped, 5 deselected
+    Layer 0                 PASS (22 checks)
+    required CI             green on the merge head
+```
+
+### What AI-13 does not claim
+
+```text
+live provider call         NOT_RUN — AI-13 reaches no provider
+Evidence record            none — AI-13 registers no producer and writes nothing
+Guard approval             none — a workflow approval opens a WORKFLOW gate only;
+                           Guard's approval gate stays BLOCKED / APPROVAL_NOT_VERIFIED
+RunRecord authenticity     none — the engine validates record-local invariants and the
+                           transitions IT performs, and does not authenticate the origin
+                           of a caller-supplied record (round 4 ruling)
+```
+
+### Recorded, not resolved
+
+```text
+CLOSED IN REVIEW — round 2
+    a caller-created ApprovalReference could enter the ledger; and a wait could be
+    closed with no approval at all
+
+CLOSED IN REVIEW — round 3
+    a caller-selected trust anchor produced a self-consistent "verified" approval; and
+    a REAL approval for one scope could be re-pointed at another run or attempt
+    (the artifact binding)
+
+OUT OF SCOPE BY CURRENT CONTRACT — round 4
+    a caller can assemble a self-consistent RunRecord whose ledger admits a gated
+    attempt. The run record is supplied by its persistence boundary (§3.2, §8.3/T23);
+    v1 defines no record-level trust root, and closing it would need one. Recorded,
+    not fixed, and not to be "fixed" by a token or a hidden flag.
+
+RECORDED — the AI-13 contract's own tail Status block still reads
+    "AI-13-C = IN PROGRESS / AI-13 = NOT COMPLETE". It is a STATUS record inside a
+    FROZEN contract document, and every frozen phase contract is out of AI-14-A's
+    scope. Reported for a human decision; not edited.
+```
+
+## AI-14 status
+
+**AI-14 — Long-term AI Workbench: ACTIVE / AI-14-A IN PROGRESS (final architecture
+freeze).**
+
+```text
+AI-14-A  = IN PROGRESS    final architecture freeze — DOCS ONLY, no runtime code
+contract = docs/AI-14_LONG_TERM_AI_WORKBENCH_EXECUTION_PLAN.md
+                           DRAFT / FREEZE PROPOSAL
+base     = main @ 98d4f57ad0bd78a54b9eb2ea44f30d2db394ee97
+branch   = feature/ai-14-a-final-architecture-freeze
+```
+
+### What AI-14-A delivers
+
+```text
+status correction       this file and MASTER_ROADMAP.md, corrected against the real
+                        `main` history (AI-13 COMPLETE; AI-14 ACTIVE; AI-05 INCOMPLETE
+                        with C-1 DEFERRED; AI-12 NOT CLOSED with AI-12-C BLOCKED)
+architecture inventory  taken from code, not from READMEs (AI-14 plan §5, Appendix A)
+authority matrix        one authorizing column entry — Guard — and ten frozen rules
+                        whose every cell traces to a clause or an API (AI-14 plan §4)
+execution topology      CONNECTED vs SEAM vs DECLARED ONLY, with a file for each
+                        (AI-14 plan §5)
+data and trust flow     source / owner / persistence / trust / reuse / crossing /
+                        authority for every type that crosses a boundary (plan §6)
+dependency decisions    AI-05 C-1, AI-12-C, live verification, model-comparative
+                        evidence, durable review evidence, clean-room reproducibility
+                        (AI-14 plan §20)
+extension points        named, with the owner and the amendment each would require
+                        (plan §21)
+non-goals               frozen (AI-14 plan §23)
+```
+
+### What AI-14-A does not claim
+
+```text
+runtime implementation    NONE — no file under agents/ providers/ routing/ review/
+                          workflows/ plugins/ tools/ integrations/ benchmarks/ changed
+connection of a seam      NONE — every SEAM recorded in the plan is still a seam
+new capability            NONE
+new trust root            NONE — no key, secret, anchor or record signature is added
+producer token            NONE — AI-14 creates no AI-05 producer and adds no row to
+                          the §6.5 registry
+```
+
+### Recorded, not resolved
+
+```text
+no CI check validates that this file or MASTER_ROADMAP.md agrees with git history.
+    Layer 0 checks the EXISTENCE of a few documents, and the AI-07 contract is the only
+    document whose CONTENT is checked. Both status files were stale at HEAD before this
+    change — they still described AI-13 as an unmerged draft — and no CI signal fired.
+    Recorded as an OPEN item: a status-drift check is a candidate for a later phase, and
+    AI-14-A does not add one (it would change Layer 0, which this round does not touch).
+
+the AI-13 contract's tail Status block (see AI-13 status above).
+
+tests/context/test_cache.py::test_a_warm_cache_does_not_change_the_items is
+    timing-sensitive: it failed ONE full-suite run on pristine `main` during AI-14-A's
+    baseline and passes in isolation (5/5) and in the AI-10-era record. Pre-existing,
+    RECORDED, out of scope — AI-14-A changes no test and no runtime code.
 ```

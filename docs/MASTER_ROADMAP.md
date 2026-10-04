@@ -795,18 +795,21 @@ AI-12 不修改 AI-07 / AI-11 / AI-05
 - 无限制后台执行
 - 绕过 Guard 获得更高权限
 
-### Status: AI-13-A DRAFT / FREEZE PROPOSAL · AI-13 NOT COMPLETE
+### Status: AI-13 COMPLETE / MERGED / CLOSED
 
 ```text
 contract = docs/AI-13_LONG_RUNNING_WORKFLOWS_EXECUTION_PLAN.md
-AI-13-A  = DRAFT / FREEZE PROPOSAL   contract / design freeze   (PR open, not merged)
-AI-13-B  = NOT STARTED               the workflow core
-AI-13-C  = NOT STARTED               the approval point
-AI-13    = NOT COMPLETE
-AI-13 home = workflows/  (definitions · checkpoints · runs · policies)
+AI-13-A  = COMPLETE / MERGED   contract / design freeze   (PR #69, 1e0a7fdf4dd96230a6177d3ca21bda03ec9c19ba)
+AI-13-B  = COMPLETE / MERGED   the workflow core          (PR #70, 95f0d08c47c8137813013ad7fe318e8fd0ebf12a)
+AI-13-C  = COMPLETE / MERGED   the approval point         (PR #71, 98d4f57ad0bd78a54b9eb2ea44f30d2db394ee97)
+AI-13    = CLOSED
+merge    = 98d4f57ad0bd78a54b9eb2ea44f30d2db394ee97
+AI-13 home = workflows/  (definitions · checkpoints · runs · policies · approval)
+Amendments 1-4 = APPLIED / MERGED
 ```
 
-本轮（AI-13-A）只冻结契约，不实现。契约承接了四个阶段**点名**交给 AI-13 的遗留项：
+AI-13 已完整关闭：契约、workflow core、human approval point 均已合入 `main`。
+契约承接了四个阶段**点名**交给 AI-13 的遗留项，并已全部实现：
 
 ```text
 AI-08 §7.2   无 parent-execution、无 retry lineage、无 resumption lineage；
@@ -878,6 +881,37 @@ AI-05 = INCOMPLETE（C-1 DEFERRED；AI-13 不注册 producer、不写 Evidence�
 - 长任务工作流
 
 目标不是“自动化一切”，而是建立一个**可验证、可审计、可扩展的安全研究 Agent 工作台**。
+
+### Status: AI-14 ACTIVE · AI-14-A IN PROGRESS (final architecture freeze)
+
+```text
+contract = docs/AI-14_LONG_TERM_AI_WORKBENCH_EXECUTION_PLAN.md  (DRAFT / FREEZE PROPOSAL)
+AI-14-A  = IN PROGRESS   final architecture freeze — DOCS ONLY, no runtime code
+AI-14-B  = NOT STARTED   the composition the contract defines
+AI-14    = ACTIVE
+base     = main @ 98d4f57ad0bd78a54b9eb2ea44f30d2db394ee97
+```
+
+AI-14 是**组合**阶段，不是新能力阶段：它组合 AI-00 … AI-13 已经冻结的能力，不重新定义
+任何一个。AI-14-A 只做三件事——校正状态记录、按代码盘点真实架构、冻结最终契约；它不写
+任何 runtime 实现，也不新增 trust root、producer token、daemon 或 cross-workspace 通道。
+
+```text
+AI-14-A 记录的核心事实（依据代码，见契约 §5 与 Appendix A）：
+    今天只有一条 CONNECTED 生产主链：Agent runtime -> Context / Guard / Security Tools
+    Workflow -> Agent execution 是 SEAM：StepExecutor Protocol 只有测试替身实现
+    Agent -> Provider 是 SEAM：CodexBackend 仅由 integrations/codex/ 实现且只在测试中构造
+    Router -> model invocation 不存在；Evidence 没有任何生产写入方
+    “目录存在”不等于“架构已连接”
+```
+
+```text
+AI-14 不解除任何它不拥有的 BLOCKER：
+    AI-12 §6 model-comparative prerequisite = BLOCKED
+    AI-12-C = BLOCKED / NOT STARTED
+    AI-05 = INCOMPLETE（C-1 DEFERRED；AI-14 不创建 producer token）
+    live provider verification = NOT_RUN（NOT_RUN != PASS）
+```
 
 ---
 
@@ -999,8 +1033,8 @@ SecurityLab
 | AI-10 | **COMPLETE** — contract `3613896d` (PR #56), Amendments 1 and 2 (`fbf1e1b0` PR #58, `32126416` PR #59), implementation `d22fe25c5fe94ae697083fd9fbdfaf3976785703` (PR #60) merged; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-11 | **COMPLETE / CLOSED** — contract `6f7548a1` (PR #62 + Amendment 1), benchmark core `ce880282` (PR #63), measured campaign `6bbe526b5bedeb29fb138f8979f0a4cb6df1b3ce` (PR #65); five tasks PASS, A.6 BLOCKED by `PRECONDITION_UNMET:environment:vcan0-exclusive`; see [AI-11_EVIDENCE_2026-10-03.md](AI-11_EVIDENCE_2026-10-03.md) |
 | AI-12 | **AI-12-A COMPLETE / MERGED** (`60c630d8`), **AI-12-B COMPLETE / MERGED** (`fa892eb1`, PR #67) — the policy core; **AI-12-C BLOCKED / NOT STARTED**, **AI-12 NOT CLOSED**, model-comparative prerequisite BLOCKED; see [AI-12-B_EVIDENCE_2026-10-03.md](AI-12-B_EVIDENCE_2026-10-03.md) |
-| AI-13 | **AI-13-A DRAFT / FREEZE PROPOSAL** — contract/design freeze, PR open, not merged; **AI-13 NOT COMPLETE**, AI-13-B/C not started; see [AI-13_LONG_RUNNING_WORKFLOWS_EXECUTION_PLAN.md](AI-13_LONG_RUNNING_WORKFLOWS_EXECUTION_PLAN.md) |
-| AI-14 | NOT STARTED |
+| AI-13 | **COMPLETE / MERGED / CLOSED** — contract `1e0a7fdf4dd96230a6177d3ca21bda03ec9c19ba` (PR #69), workflow core `95f0d08c47c8137813013ad7fe318e8fd0ebf12a` (PR #70), human approval point `98d4f57ad0bd78a54b9eb2ea44f30d2db394ee97` (PR #71), Amendments 1–4 applied; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
+| AI-14 | **ACTIVE / AI-14-A IN PROGRESS** — final architecture freeze, DOCS ONLY; contract [AI-14_LONG_TERM_AI_WORKBENCH_EXECUTION_PLAN.md](AI-14_LONG_TERM_AI_WORKBENCH_EXECUTION_PLAN.md) (DRAFT / FREEZE PROPOSAL); no runtime implementation; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 
 ---
 
