@@ -1489,7 +1489,8 @@ aggregation, and any activation of AI-12's model-comparative rule while §6 is B
 ```
 
 ```text
-STATUS — AI-14-B, at the merge of its PR (per item, and NOT a claim about a deployment)
+STATUS — AI-14-B, MERGED (PR #73 @ adf6db2476b7e3de33a585954610e9ab568b498c,
+         2026-10-04). Per item, and NOT a claim about a deployment
 
 B1  Router selection -> Agent execution    DONE      composition/selection.py,
                                                      composition/root.py:run_task. The
@@ -1527,6 +1528,12 @@ B6  end-to-end composition + boundaries    DONE      composition/root.py, and
 The composition package is `composition/` — the glue, not a component (§3) and not an
 authority (§4). It has its own layer 0 check (`composition layer boundary and authority
 absence`), and `tests/composition/` holds its tests.
+
+This block is the AI-14-B closeout record, and it is a STATUS record: it changes no
+clause (§24). The counts the closeout measured — tests/composition 73 passed; the whole
+repository 3902 passed, 5 skipped, 5 deselected — are recorded in PROJECT_STATUS.md and
+NOT here: this document states the contract, and a number that moves with the test suite
+would be a moving part inside a frozen document.
 ```
 
 ---
