@@ -784,8 +784,9 @@ def resolve_approval(
 
     # §13.3. Through the ONE path that appends a VERIFIED approval. `answer` is a
     # `WorkflowApproval`, which cannot exist without a `Provenance`, which verifies
-    # itself — so this call cannot be made with a value a caller assembled, and
-    # `RunRecord.advance` refuses the ledger field outright.
+    # itself against the anchor THIS DEPLOYMENT DESIGNATED — so this call cannot be made
+    # with a value a caller assembled, and `RunRecord.advance` refuses the ledger field
+    # outright.
     return record_approval(
         run,
         answer,

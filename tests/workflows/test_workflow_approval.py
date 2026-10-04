@@ -665,6 +665,141 @@ def test_C_a_provenance_that_does_not_verify_cannot_be_constructed(monkeypatch) 
         Provenance(artifact=well_formed, anchor_public_key=ingress.public_hex)
 
 
+# ---------------------------------------------------------------------------
+# THE DESIGNATED-ANCHOR BINDING — a self-consistent forgery is not provenance
+# ---------------------------------------------------------------------------
+
+
+def _the_whole_attack(caller: SigningAuthority, scope: ApprovalScope):
+    """The bypass, written the way a caller would have to write it.
+
+    Every step is a public API call and none of them reaches past a constructor: a
+    keypair the caller generates, an artifact it signs, and the `Provenance` that
+    re-runs the Ed25519 check over that artifact against the caller's OWN public key.
+    Every field is real and every check the value performs on itself passes; the only
+    thing wrong with it is WHICH key did the signing.
+    """
+    from workflows.approval import Provenance, WorkflowApproval
+
+    artifact = caller.sign(scope)
+    return WorkflowApproval(
+        scope_digest=artifact.scope_digest,
+        actor_reference=artifact.actor_reference,
+        decided_at=artifact.decided_at,
+        artifact_reference=artifact.artifact_reference,
+        provenance=Provenance(artifact=artifact, anchor_public_key=caller.public_hex),
+    )
+
+
+def test_designation_a_provenance_under_a_caller_selected_key_cannot_be_constructed(
+    monkeypatch,
+) -> None:
+    """A. SECURITY BOUNDARY. §13.3.
+
+    The deployment's anchor is KEY_A. The caller generates KEY_B, signs a well-formed
+    artifact with it, and builds the provenance that verifies under KEY_B — which is what
+    "the signature verifies" means when the SIGNER chose the key. A valid signature under
+    SOME key is not provenance: §13.3 accepts only the DESIGNATED authority's, and this
+    value must not be constructible at all.
+    """
+    from workflows.approval import Provenance
+
+    designated = SigningAuthority()
+    designated.install(monkeypatch)
+    caller = SigningAuthority()
+    definition = a_gated_definition()
+    run = a_waiting_run(definition)
+
+    artifact = caller.sign(_scope_for(run, definition, 1))
+
+    with pytest.raises(InvalidRecord):
+        Provenance(artifact=artifact, anchor_public_key=caller.public_hex)
+
+
+def test_designation_a_provenance_naming_another_key_is_refused(monkeypatch) -> None:
+    """B. §13.3. The DESIGNATED key signed, and the provenance names somebody else's.
+
+    The authority that spoke and the authority the record names must be the same one —
+    a provenance that records the wrong key is a record about a different authority, and
+    the artifact's own validity does not make it a true statement about who signed.
+    """
+    from workflows.approval import Provenance
+
+    designated = SigningAuthority()
+    designated.install(monkeypatch)
+    caller = SigningAuthority()
+    definition = a_gated_definition()
+    run = a_waiting_run(definition)
+
+    artifact = designated.sign(_scope_for(run, definition, 1))
+
+    with pytest.raises(InvalidRecord):
+        Provenance(artifact=artifact, anchor_public_key=caller.public_hex)
+
+
+def test_designation_a_provenance_naming_the_designated_key_is_accepted(monkeypatch) -> None:
+    """C. The control for both refusals above. Without it they would pass if nothing
+    worked — the designated key signs, the provenance names it, and the value exists."""
+    from workflows.approval import Provenance
+
+    designated = SigningAuthority()
+    designated.install(monkeypatch)
+    definition = a_gated_definition()
+    run = a_waiting_run(definition)
+
+    artifact = designated.sign(_scope_for(run, definition, 1))
+    provenance = Provenance(artifact=artifact, anchor_public_key=designated.public_hex)
+
+    assert provenance.anchor_public_key == designated.public_hex
+    assert provenance.signature == artifact.signature
+
+
+def test_designation_a_self_consistent_forgery_cannot_enter_the_ledger(monkeypatch) -> None:
+    """D. SECURITY BOUNDARY. §13.3 — the whole bypass, through the real API.
+
+    `record_approval` is the one ledger append path, and the attack can only reach it the
+    way anything does: carrying a `WorkflowApproval`. It cannot be built, so the ledger
+    cannot be reached — the run is left exactly as it was, still waiting, with no
+    approval covering the attempt the forgery named.
+    """
+    from workflows.run import record_approval
+
+    designated = SigningAuthority()
+    designated.install(monkeypatch)
+    caller = SigningAuthority()
+    definition = a_gated_definition()
+    run = a_waiting_run(definition)
+    scope = _scope_for(run, definition, 1)
+
+    def the_attack():
+        return record_approval(
+            run, _the_whole_attack(caller, scope), step_id=scope.step_id,
+            attempt_no=scope.attempt_no, now=T2,
+        )
+
+    with pytest.raises(InvalidRecord):
+        the_attack()
+
+    assert run.approvals == (), "a caller-selected trust anchor reached the ledger"
+    assert not run.approval_covers("work", 1)
+    assert run.state is WorkflowState.AWAITING_APPROVAL
+
+
+def test_designation_no_designated_anchor_means_no_provenance_at_all(monkeypatch) -> None:
+    """§13.3, fail-closed. With no anchor designated there is no authority to be from, so
+    no provenance exists — not even for an artifact whose arithmetic is perfect."""
+    from workflows.approval import Provenance
+
+    monkeypatch.delenv("WORKBENCH_APPROVAL_TRUST_ANCHOR", raising=False)
+    caller = SigningAuthority()
+    definition = a_gated_definition()
+    run = a_waiting_run(definition)
+    artifact = caller.sign(_scope_for(run, definition, 1))
+
+    with pytest.raises(InvalidRecord):
+        Provenance(artifact=artifact, anchor_public_key=caller.public_hex)
+
+
 def test_a_verified_approval_still_reaches_the_ledger(monkeypatch) -> None:
     """The control for all three. Without it they would pass if nothing worked."""
     ingress = SigningAuthority()

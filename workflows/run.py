@@ -232,10 +232,11 @@ def record_approval(
     """§13.1.2, §13.3. THE acceptance transition, and the only path an approval is recorded on.
 
     It takes the VERIFIED value and not a reference a caller assembled. `WorkflowApproval`
-    cannot exist without a `Provenance`, a `Provenance` verifies itself, and
+    cannot exist without a `Provenance`; a `Provenance` cannot be constructed unless its
+    signature verifies UNDER THE ANCHOR THIS DEPLOYMENT DESIGNATED; and
     `RunRecord.advance` refuses `approvals` outright — so there is no call to this
-    function that does not begin with an Ed25519 check against the anchor the deployment
-    designated, and no other door into the ledger at all.
+    function that does not begin with an Ed25519 check against that anchor, and no other
+    door into the ledger at all.
 
     Everything the transition does is the ACCEPTANCE's shape: one reference is appended,
     the WAIT becomes SUCCEEDED, the run returns to RUNNING, and the wait's deadline is
@@ -1309,7 +1310,8 @@ class RunRecord:
         `record_approval` is its only caller outside `advance` itself, and it passes an
         approval a VERIFICATION produced rather than a reference a caller assembled. That
         is what separates the two: one caller holds a value that cannot exist without an
-        Ed25519 check, and the other is the whole outside world.
+        Ed25519 check against the deployment's designated anchor, and the other is the
+        whole outside world.
         """
         successor = replace(self, **changes)
         successor = replace(successor, run_digest=successor.computed_digest)
@@ -1325,7 +1327,8 @@ class RunRecord:
         from a verified one BY ITS FIELDS — which is exactly why the ledger may not be
         written through a path that only looks at fields. `record_approval` is the one
         path, and it takes a `WorkflowApproval`, which cannot exist without a
-        `Provenance`, which verifies itself.
+        `Provenance`, which verifies itself against the anchor this deployment
+        designated — so the value is not merely well formed, it is designated.
 
         ```text
         FROZEN: the run record of a NON-TERMINAL run MUST NOT be discarded.

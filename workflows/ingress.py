@@ -29,6 +29,13 @@ root the engine — and therefore anything running in the engine's process — c
 manufacture the very thing it is checking. With an asymmetric anchor, this module holds
 what it takes to say YES OR NO and nothing it takes to say yes.
 
+This module decides WHICH anchor applies; `approval.py` holds the check, and that check
+is now BOUND to this module's decision. `Provenance.__post_init__` asks this module for
+the designated anchor and refuses any other, so "a signature verified" and "the
+DESIGNATED authority signed this" are one construction rather than two claims — and a
+caller who builds a keypair of their own and signs a perfect artifact with it produces a
+value that cannot exist.
+
 ### Why there is no key parameter anywhere
 
 §13.3 requires that "a caller cannot be it". A function that takes a public key has a
@@ -176,9 +183,13 @@ def verify_provenance(artifact: SignedApprovalArtifact) -> Provenance:
             human` MUST be REFUSED, however well-formed the rest of it is.
     ```
 
-    This function's job is to decide WHICH anchor applies. The cryptography is
-    `Provenance.__post_init__`'s, so that a value claiming to be verified verifies
-    wherever it is built — including by a caller who never came through here.
+    This function's job is to decide WHICH anchor applies — it reads the deployment fact
+    and hands it to the check. The check is `Provenance.__post_init__`'s, and it proves
+    BOTH halves: that the signature verifies, and that the anchor it verified against is
+    the one this function decided. So a value claiming to be verified is checked wherever
+    it is built — including by a caller who never came through here — and a caller-built
+    `Provenance` naming a key of their own is refused by the very constructor that would
+    have made it real. There is no second place the question is asked.
     """
     anchor = designated_anchor()
 

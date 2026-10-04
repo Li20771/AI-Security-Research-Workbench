@@ -15,11 +15,30 @@ SignedApprovalArtifact   UNTRUSTED. Produced outside; any caller may hand one ov
         |
         |  verify_provenance()   -- Ed25519, against the DESIGNATED anchor
         v
-Provenance               a value that cannot be obtained without the check having run
+Provenance               a value that cannot be obtained without BOTH checks having run:
+                         the signature verifies AND the anchor it names is the one THIS
+                         DEPLOYMENT designated
         |
         v
 WorkflowApproval         verified. Only ever produced BY the verification.
 ```
+
+### The anchor is checked, not merely recorded
+
+§13.3 accepts an approval only from the DESIGNATED authority, and that is a claim about
+WHICH key, not merely about whether some key's arithmetic worked out. So `Provenance`
+does both things in the one place the cryptography already lived: `__post_init__` asks
+the module that decides which anchor applies (`ingress.py`, the single reader of that
+deployment fact), refuses an anchor that is not it, and then verifies the signature
+against it.
+
+Order and dependency both matter. A self-consistent `Provenance(artifact, anchor)` is
+constructible for ANY keypair a caller generates — it is a valid signature under SOME
+key — and a `WorkflowApproval` built on one would be indistinguishable, field for field,
+from a real acceptance. That is what the ledger path would then accept, which is the
+whole of the bypass. Self-verification proves the signature; only the designation proves
+the AUTHORITY, and a verifier that never asks which anchor it is checking against proves
+nothing about who spoke.
 
 **The engine never accepts a `WorkflowApproval` from a caller.** Its input is the
 artifact, and it runs the verification itself, every time. That is what makes §13.3's
@@ -149,6 +168,25 @@ def _instant(value: object, where: str) -> str:
     return value  # type: ignore[return-value]
 
 
+def _designated_anchor() -> str:
+    """The anchor THIS DEPLOYMENT designates, from the module that decides it.
+
+    `ingress.py` reads the deployment fact — the one reader, and the one place that
+    answers "which anchor applies" — and this is the verifying module ASKING that
+    question rather than a second place answering it. The environment is not read here,
+    and this module has no way to name an anchor of its own.
+
+    Deferred, because `ingress` imports the types defined here: a module-level import
+    would be a cycle, and every construction of a `Provenance` happens long after both
+    modules are loaded. Failure to obtain an anchor (none configured, or malformed) is
+    `ApprovalRefused`, which is an `InvalidRecord` — so a deployment with no designated
+    ingress refuses provenance of every kind, which is §13.3's fail-closed shape.
+    """
+    from workflows.ingress import designated_anchor
+
+    return designated_anchor()
+
+
 @dataclass(frozen=True, slots=True)
 class ApprovalScope:
     """§13.2. The six fields an approval binds to — its identity, and nothing else.
@@ -225,10 +263,21 @@ class ApprovalRequest:
 class Provenance:
     """§13.3. Proof that an artifact was verified against the DESIGNATED anchor.
 
-    IT VERIFIES ITSELF. `__post_init__` re-runs the Ed25519 check over the artifact's
-    signed bytes against the anchor this records, so **a `Provenance` that does not
-    verify cannot be constructed** — by any caller, through any path, including a
-    hand-written dataclass call.
+    IT VERIFIES ITSELF, AGAINST THE DEPLOYMENT'S ANCHOR. `__post_init__` asks the one
+    module that decides which anchor applies, refuses any anchor that is not it, and only
+    then runs the Ed25519 check over the artifact's signed bytes. So **a `Provenance`
+    that does not verify, or that names an anchor this deployment did not designate,
+    cannot be constructed** — by any caller, through any constructor path, including a
+    hand-written dataclass call. (Reflection past a constructor is the
+    adversary-who-controls-the-process case the ingress module documents as out of scope
+    for every type in this phase, this one and `RunRecord` alike.)
+
+    Both checks are required and they are not the same check. The signature check proves
+    the holder of `anchor_public_key`'s private key signed these bytes; alone it is a
+    signature under SOME key, and a caller who generates a keypair satisfies it for free.
+    The designation check is what makes that key THE key — the difference between "a
+    valid signature" and "the designated authority's signature", which is the only thing
+    §13.3 accepts.
 
     That is deliberately stronger than "the constructor is private". A private
     constructor is a rule someone has to keep, and in this language anyone can reach past
@@ -242,8 +291,8 @@ class Provenance:
 
     #: The signed artifact this rests on — the material, kept so the check can be run.
     artifact: SignedApprovalArtifact
-    #: The designated anchor it verified against, lowercase hex. Recorded so a reader can
-    #: see WHICH authority spoke, not merely that something did.
+    #: The anchor it verified against, lowercase hex. It must be the one THIS DEPLOYMENT
+    #: designated — a caller may name the authority, and may not choose it.
     anchor_public_key: str
 
     def __post_init__(self) -> None:
@@ -261,6 +310,21 @@ class Provenance:
                 "a provenance names an anchor and a signature that are not both "
                 "hexadecimal key material"
             ) from None
+
+        # §13.3. THE DESIGNATED-ANCHOR BINDING. Everything above is shape; this is
+        # AUTHORITY. Without it the two checks below would verify a signature under a key
+        # the CALLER chose, and a caller with a keypair can produce one of those for any
+        # artifact they like — so the value would be self-consistent rather than
+        # designated, and the ledger that insists on one would be insisting on nothing.
+        # The question is asked of the one module entitled to answer it; this module
+        # never reads the deployment fact itself.
+        if anchor != _designated_anchor():
+            raise InvalidRecord(
+                "a provenance names an anchor this deployment did not designate; §13.3 "
+                "accepts an approval only from the DESIGNATED ingress, and a signature "
+                "that verifies under a key the caller selected is a signature under SOME "
+                "key rather than provenance"
+            )
 
         try:
             key.verify(signature, self.artifact.signed_bytes())

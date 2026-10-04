@@ -170,6 +170,55 @@ def test_the_check_catches_a_caller_selected_trust_root(tmp_path: Path) -> None:
     assert any("public_key" in problem for problem in problems), problems
 
 
+def test_the_check_catches_a_verifier_that_does_not_bind_the_designated_anchor(
+    tmp_path: Path,
+) -> None:
+    """§13.3. A `Provenance` whose anchor is checked against nothing but itself is
+    constructible for any keypair the caller generates — a signature under SOME key —
+    and the ledger path would accept what it produced. The binding must be PRESENT, so
+    removing it is a finding rather than a refactor."""
+    root = _scratch(tmp_path)
+    _rewrite(
+        root,
+        "approval.py",
+        "        if anchor != _designated_anchor():",
+        "        if anchor != anchor:  # planted: the binding is gone",
+    )
+    problems = _LAYER0.check_ai13_workflows(root)
+    assert any("does not bind" in problem for problem in problems), problems
+
+
+def test_the_check_catches_a_second_module_consulting_the_designated_anchor(
+    tmp_path: Path,
+) -> None:
+    """§13.3. The verifying module may consult the anchor ACCESSOR — that is the binding.
+    Anywhere else it is a second place the phase decides what to trust."""
+    problems = _LAYER0.check_ai13_workflows(
+        _scratch(
+            tmp_path,
+            extra_source="from workflows.ingress import designated_anchor\n",
+        )
+    )
+    assert any("trust anchor" in problem for problem in problems), problems
+
+
+def test_the_check_catches_a_second_reader_of_the_anchor_environment_variable(
+    tmp_path: Path,
+) -> None:
+    """§13.3. The deployment fact is READ in one module. A second `os.environ.get` of the
+    same variable is a second place the trust root is decided, whether or not it calls
+    the accessor."""
+    problems = _LAYER0.check_ai13_workflows(
+        _scratch(
+            tmp_path,
+            extra_source=(
+                'APPROVAL_TRUST_ANCHOR_ENV = "WORKBENCH_APPROVAL_TRUST_ANCHOR"\n'
+            ),
+        )
+    )
+    assert any("environment variable" in problem for problem in problems), problems
+
+
 def test_the_check_catches_an_approval_mint_factory(tmp_path: Path) -> None:
     """§13.3. "MUST NOT provide a constructor, a factory, a default or any other path"."""
     problems = _LAYER0.check_ai13_workflows(

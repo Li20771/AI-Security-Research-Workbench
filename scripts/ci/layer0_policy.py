@@ -2681,7 +2681,26 @@ AI13_VERIFYING_MODULE = "approval.py"
 #: §13.3. Exactly ONE module decides WHAT IS TRUSTED. The anchor is a deployment fact,
 #: and a second reader would be a second place the phase chooses its own trust root.
 AI13_ANCHOR_MODULE = "ingress.py"
-AI13_TRUST_ANCHOR_IDENTIFIERS = ("APPROVAL_TRUST_ANCHOR_ENV", "designated_anchor")
+
+#: §13.3. The environment variable. READ in one module and nowhere else: a second
+#: `os.environ.get` would be a second place the deployment's trust root is decided.
+AI13_TRUST_ANCHOR_ENV_IDENTIFIER = "APPROVAL_TRUST_ANCHOR_ENV"
+
+#: §13.3. The accessor that answers "which anchor applies". DEFINED only in the anchor
+#: module; CONSULTED by it and by the one verifying module, and by nothing else. The
+#: verifying module must consult it, because a `Provenance` whose anchor is never
+#: compared with the deployment's is self-consistent and nothing more — a signature
+#: under SOME key, which is precisely the bypass this rule exists to refuse. See
+#: `AI13_DESIGNATED_ANCHOR_BINDING`.
+AI13_DESIGNATED_ANCHOR_ACCESSOR = "designated_anchor"
+
+#: §13.3. The verifying module must BIND its `Provenance` constructor to the designated
+#: anchor, by calling the accessor (directly or through a private helper in the same
+#: module). Removing the binding while leaving the generic Ed25519 self-check intact
+#: leaves a verifier that accepts any keypair the caller generates; the focused suite's
+#: mutation control proves the same property at run time, and this proves the binding is
+#: still PRESENT at all.
+AI13_DESIGNATED_ANCHOR_BINDING = (AI13_VERIFYING_MODULE, "Provenance")
 
 #: §13.3. Names a caller could use to CHOOSE what is trusted. A public function taking
 #: one of these has a caller who selects the trust root -- and a caller who selects the
@@ -2834,14 +2853,77 @@ def check_ai13_approval_point(base: "Path", workflows: "Path") -> list[str]:
                 "being checked"
             )
 
-        for identifier in AI13_TRUST_ANCHOR_IDENTIFIERS:
-            if identifier in present and path.name != AI13_ANCHOR_MODULE:
-                problems.append(
-                    f"{_display(path)} reaches for the approval trust anchor; §13.3 makes "
-                    f"the anchor a DEPLOYMENT fact read in ONE place ({AI13_ANCHOR_MODULE}"
-                    "), and a second reader is a second place the phase decides what to "
-                    "trust"
+        if AI13_TRUST_ANCHOR_ENV_IDENTIFIER in present and path.name != AI13_ANCHOR_MODULE:
+            problems.append(
+                f"{_display(path)} reads the approval trust anchor's environment "
+                f"variable; §13.3 makes the anchor a DEPLOYMENT fact read in ONE place "
+                f"({AI13_ANCHOR_MODULE}), and a second reader is a second place the "
+                "phase decides what to trust"
+            )
+
+        # The accessor may be CONSULTED by the one verifying module as well: that is the
+        # designated-anchor binding, and it is required there rather than merely allowed.
+        # Anywhere else it is the same second reader the rule above refuses.
+        if (
+            AI13_DESIGNATED_ANCHOR_ACCESSOR in present
+            and path.name not in (AI13_ANCHOR_MODULE, AI13_VERIFYING_MODULE)
+        ):
+            problems.append(
+                f"{_display(path)} reaches for the approval trust anchor; §13.3 makes "
+                f"the anchor a DEPLOYMENT fact decided in ONE place "
+                f"({AI13_ANCHOR_MODULE}), and a second reader is a second place the "
+                "phase decides what to trust"
+            )
+
+    # (1b) The verifying module BINDS to the designated anchor. ---------------------------
+    # Not merely "may consult it": the binding IS the difference between a verifier that
+    # proves A signature and one that proves THE DESIGNATED AUTHORITY'S signature. A
+    # `Provenance` that checks a caller-supplied anchor against nothing but itself is
+    # constructible for any keypair the caller generates, and the ledger path would
+    # accept what it produced.
+    verifying_module, provenance_type = AI13_DESIGNATED_ANCHOR_BINDING
+    approval_tree = parse(workflows / verifying_module)
+    if approval_tree is not None:
+        binders = {
+            node.name
+            for node in approval_tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and AI13_DESIGNATED_ANCHOR_ACCESSOR in identifiers(node)
+        }
+        post_init = None
+        for node in ast.walk(approval_tree):
+            if isinstance(node, ast.ClassDef) and node.name == provenance_type:
+                for item in node.body:
+                    if (
+                        isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
+                        and item.name == "__post_init__"
+                    ):
+                        post_init = item
+        bound = post_init is not None and any(
+            isinstance(item, ast.Call)
+            and (
+                (
+                    isinstance(item.func, ast.Name)
+                    and (
+                        item.func.id in binders
+                        or item.func.id == AI13_DESIGNATED_ANCHOR_ACCESSOR
+                    )
                 )
+                or (
+                    isinstance(item.func, ast.Attribute)
+                    and item.func.attr == AI13_DESIGNATED_ANCHOR_ACCESSOR
+                )
+            )
+            for item in ast.walk(post_init)
+        )
+        if not bound:
+            problems.append(
+                f"{_display(workflows / verifying_module)} does not bind "
+                f"{provenance_type} to the anchor THIS DEPLOYMENT designated; §13.3 "
+                "accepts an approval only from the designated authority, and a verifier "
+                "that never asks WHICH anchor it is checking against proves a signature "
+                "under SOME key — and a keypair is something any caller can generate"
+            )
 
     # (2) No caller-selected trust root. ---------------------------------------------------
     for path in sorted(workflows.rglob("*.py")):

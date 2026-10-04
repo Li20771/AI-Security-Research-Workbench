@@ -551,6 +551,27 @@ MUTATIONS: tuple[Mutation, ...] = (
             f"{APPROVAL}::test_C_a_provenance_that_does_not_verify_cannot_be_constructed",
         ),
     ),
+    Mutation(
+        # The control the signature-check mutation above cannot be: that one removes the
+        # check that a signature verifies AT ALL, and this one removes the AUTHORITY check
+        # while leaving the signature check exactly as it was.
+        # `anchor != self.anchor_public_key` compares the anchor with itself, so the value
+        # still verifies a signature perfectly — under whichever key the caller named. If
+        # the focused tests still passed, the verifier would be proving a signature under
+        # SOME key, and the forged `WorkflowApproval` would reach the ledger through
+        # `record_approval`.
+        control="the designated-anchor binding in the verifier",
+        guard="§13.3 a `Provenance` is refused unless the anchor it names is the one THIS "
+              "DEPLOYMENT designated, so a keypair the caller generates produces a value "
+              "that cannot exist — a valid signature under SOME key is not provenance",
+        path="workflows/approval.py",
+        old="        if anchor != _designated_anchor():",
+        new="        if anchor != self.anchor_public_key:  # mutated: whatever key is named",
+        focused=(
+            f"{APPROVAL}::test_designation_a_provenance_under_a_caller_selected_key_cannot_be_constructed",
+            f"{APPROVAL}::test_designation_a_self_consistent_forgery_cannot_enter_the_ledger",
+        ),
+    ),
 )
 
 #: Named so a failure reads as "the harness cannot see the copy", not as an unrelated
