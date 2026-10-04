@@ -234,9 +234,18 @@ def record_approval(
     It takes the VERIFIED value and not a reference a caller assembled. `WorkflowApproval`
     cannot exist without a `Provenance`; a `Provenance` cannot be constructed unless its
     signature verifies UNDER THE ANCHOR THIS DEPLOYMENT DESIGNATED; and
-    `RunRecord.advance` refuses `approvals` outright — so there is no call to this
-    function that does not begin with an Ed25519 check against that anchor, and no other
-    door into the ledger at all.
+    `RunRecord.advance` refuses `approvals` outright — so no call to this function can
+    append an entry that did not begin with an Ed25519 check against that anchor, and no
+    successor the ENGINE produces gains a ledger entry any other way.
+
+    What that does and does not say is a boundary, so it is spelled out rather than left
+    to the reader. This is the only path by which the engine APPENDS to a ledger, and it
+    accepts only a verified value. It is NOT a claim that a `RunRecord` handed to the
+    engine came from this path: the engine cannot distinguish a record read back from a
+    caller's store from one assembled with the same contents, and it does not claim to
+    (see the SECURITY BOUNDARY note above `class RunRecord`). The origin of a complete
+    record is the persistence boundary's; what this function guarantees is the
+    predecessor → successor transition it performs.
 
     Everything the transition does is the ACCEPTANCE's shape: one reference is appended,
     the WAIT becomes SUCCEEDED, the run returns to RUNNING, and the wait's deadline is
@@ -549,6 +558,27 @@ class StepRecord:
         }
 
 
+# ---------------------------------------------------------------------------
+# SECURITY BOUNDARY — the RunRecord the engine is handed
+# ---------------------------------------------------------------------------
+#
+# AI-13 trusts the RunRecord supplied by its persistence boundary as the current
+# workflow state. AI-13 validates the record's own structural invariants and every
+# predecessor -> successor transition it performs. AI-13 does not authenticate the
+# origin of an externally supplied RunRecord, because v1 defines no record-level
+# trust root, signing authority or distributed persistence protocol.
+#
+# That is a property of the contract's architecture rather than a gap in it. §3.2 has
+# the engine hold no state between process lifetimes — "a run advances when something
+# asks it to advance", and what asks it is a record — and §8.3/T23 require bounds and
+# counters to be READ BACK from that record on resume. Between calls the run IS the
+# record the caller kept, so a record restored from a store and a record assembled with
+# the same contents are the same value here. Origin is therefore a property of the
+# persistence boundary, and record-level authentication is a mechanism this phase does
+# not define and does not claim.
+# ---------------------------------------------------------------------------
+
+
 @dataclass(frozen=True, slots=True)
 class RunRecord:
     """§15. The ledger. Immutable; every advance returns a NEW record.
@@ -556,6 +586,9 @@ class RunRecord:
     Immutability is what makes "discarding a checkpoint does not reduce the attempts a
     run has spent" a property rather than a promise: a run's counters cannot be edited
     by anything, including a resume, and only `replace` produces a successor.
+
+    Immutability is a property of the value, not of its origin: a record the caller
+    supplies is taken as the run's state (see the SECURITY BOUNDARY note above).
     """
 
     run_id: str
@@ -637,6 +670,16 @@ class RunRecord:
         defect class AI-12-B's review found when a caller labelled its own record
         `MODEL_EXECUTION` and manufactured the prerequisite. The helper is a
         convenience; this is the boundary.
+
+        What it is the boundary FOR is worth stating, because the word is easy to
+        over-read: it validates the RECORD-LOCAL invariants — the ones a record can be
+        held to without knowing where it came from. It does not authenticate the
+        external persistence source of a complete record, and it cannot: §3.2 gives the
+        engine no state between process lifetimes, and this phase defines no
+        record-level trust root (see the SECURITY BOUNDARY note above `class
+        RunRecord`). "Every invariant holds for a constructed record too" means a caller
+        cannot reach around a rule by using a constructor; it does not mean the record's
+        origin has been checked.
         """
         # §15.2. The declared bounds are FROZEN, not merely un-assignable. `frozen=True`
         # stops `run.declared = ...`; it does nothing about `run.declared["x"] = ...`,
@@ -1312,6 +1355,10 @@ class RunRecord:
         is what separates the two: one caller holds a value that cannot exist without an
         Ed25519 check against the deployment's designated anchor, and the other is the
         whole outside world.
+
+        That separation is about what this method WRITES, not about where its input came
+        from: `self` is a record the caller supplied and this method takes it as the
+        run's state (see the SECURITY BOUNDARY note above `class RunRecord`).
         """
         successor = replace(self, **changes)
         successor = replace(successor, run_digest=successor.computed_digest)
@@ -1326,9 +1373,9 @@ class RunRecord:
         is a plain record a caller can build, and a hand-built one is indistinguishable
         from a verified one BY ITS FIELDS — which is exactly why the ledger may not be
         written through a path that only looks at fields. `record_approval` is the one
-        path, and it takes a `WorkflowApproval`, which cannot exist without a
-        `Provenance`, which verifies itself against the anchor this deployment
-        designated — so the value is not merely well formed, it is designated.
+        path a SUCCESSOR appends through, and it takes a `WorkflowApproval`, which cannot
+        exist without a `Provenance`, which verifies itself against the anchor this
+        deployment designated — so the value is not merely well formed, it is designated.
 
         ```text
         FROZEN: the run record of a NON-TERMINAL run MUST NOT be discarded.
@@ -1339,6 +1386,13 @@ class RunRecord:
         Those clauses are about a reader trusting the ledger, and they hold only if a
         successor cannot quietly disagree with its predecessor — a property of this
         boundary rather than of the digest.
+
+        Both rules are TRANSITION rules, and a transition rule is all either is. They
+        constrain what a successor may do to the predecessor it is derived from; they do
+        not authenticate a complete record supplied from outside, and neither does the
+        constructor. Transition validation is not digest validation, and neither of them
+        is origin authentication — the persistence boundary owns where a record came from
+        (see the SECURITY BOUNDARY note above `class RunRecord`).
         """
         if "approvals" in changes:
             raise InvalidRecord(
