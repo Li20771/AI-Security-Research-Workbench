@@ -282,7 +282,8 @@ C0-C10    = all PASS
 **Status: INCOMPLETE.** B1 (the offline logical core) is complete and merged, and so is the whole
 of B2. AI-05 is not closed, and the reason is no longer C-1 — **C-1 was CLOSED on 2026-10-04 by
 Amendment 3**, which published the admission rule set (§14.10) so that §30 step 7 could be
-implemented. What remains is §28's AI-11-admissible producer token and §35.1's deferrals.
+implemented. What remains is AI-11 §21.1's OPEN-1 tension — an AI-05 producer-token
+amendment that has not been made — and §35.1's deferrals.
 This section keeps the original design as written — B1 and B2 completing do not change what AI-05
 is for, and they do not change any later stage's dependency on it.
 
@@ -297,7 +298,8 @@ AI-05-B2-P3 = COMPLETE / MERGED   admission pipeline, filesystem Store,
 AI-05-B2    = COMPLETE            its frozen scope is implemented and merged
 C-1         = CLOSED              Amendment 3 (§14.10): §30 step 7 implemented,
                                   T20c/T22a-c enforceable, §32 C6 CLOSED
-AI-05       = INCOMPLETE          §28 producer token OPEN; §35.1 DEFERRED
+AI-05       = INCOMPLETE          AI-11 §21.1 OPEN-1 (an AI-05 producer-token
+                                  amendment) = OPEN; §35.1 = DEFERRED
 
 B1 merge SHA = 0403fcd83b740f0603af7204e77f6e6905a84cf0   (PR #34)
 B1 evidence  = docs/AI-05-B1_EVIDENCE_2026-10-01.md
@@ -867,7 +869,7 @@ trusted approval ingress   caller 自述 actor.type = human 不等于 human appr
 AI-12 §6 model-comparative prerequisite = BLOCKED（AI-13 不执行 AI-12 policy）
 AI-12-C = BLOCKED / NOT STARTED
 AI-05 = INCOMPLETE（C-1 已由 Amendment 3 关闭；AI-13 不注册 producer、不写 Evidence。仍 OPEN：
-§28 producer token；DEFERRED：§35.1）
+AI-11 §21.1 OPEN-1（需 AI-05 的 producer-token amendment）；DEFERRED：§35.1）
 ```
 
 ---
@@ -928,7 +930,8 @@ AI-14-B 之后（当前状态，见契约 §5.1 / Appendix A / §22.1）：
 AI-14 不解除任何它不拥有的 BLOCKER：
     AI-12 §6 model-comparative prerequisite = BLOCKED
     AI-12-C = BLOCKED / NOT STARTED
-    AI-05 = INCOMPLETE（C-1 DEFERRED；AI-14 不创建 producer token）
+    AI-05 = INCOMPLETE（C-1 已关闭；剩余为 AI-11 §21.1 OPEN-1 的 producer-token
+    amendment。AI-14 不创建 producer token）
     live provider verification = NOT_RUN（NOT_RUN != PASS）
 ```
 
@@ -1044,7 +1047,7 @@ SecurityLab
 | AI-02 | **COMPLETE** — closed 2026-09-29, see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-03 | **COMPLETE** — C0–C8 PASS; merged as `548bc041` (PR #28); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-04 | **COMPLETE** — merged as `254823f7` (PR #32); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
-| AI-05 | **B1 COMPLETE** (PR #34); **B2 COMPLETE** — P1 `844df7be` (PR #41), P2 `b8692c18` (PR #42) and P3 `67515ff9` (PR #44) merged; **C-1 CLOSED** by Amendment 3 (§14.10) — §30 step 7 implemented, §32 C6 closed; **AI-05 INCOMPLETE** on §28 (producer token, OPEN) and §35.1 (DEFERRED); see [PROJECT_STATUS.md](PROJECT_STATUS.md) and [AI-05-C1_EVIDENCE_2026-10-04.md](AI-05-C1_EVIDENCE_2026-10-04.md) |
+| AI-05 | **B1 COMPLETE** (PR #34); **B2 COMPLETE** — P1 `844df7be` (PR #41), P2 `b8692c18` (PR #42) and P3 `67515ff9` (PR #44) merged; **C-1 CLOSED** by Amendment 3 (§14.10) — §30 step 7 implemented, §32 C6 closed; **AI-05 INCOMPLETE** on AI-11 §21.1 OPEN-1 (an AI-05 producer-token amendment, OPEN) and §35.1 (DEFERRED); see [PROJECT_STATUS.md](PROJECT_STATUS.md) and [AI-05-C1_EVIDENCE_2026-10-04.md](AI-05-C1_EVIDENCE_2026-10-04.md) |
 | AI-06 | **COMPLETE** — merged as `3b1917ab` (PR #47); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-07 | **COMPLETE** — contract `963c181c` (PR #48), implementation `e57541f9` (PR #49) merged; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-08 | **COMPLETE** — merged as `edb7dfc82ce51123482ac357fb9319dca2fa0d9a` (PR #52); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
