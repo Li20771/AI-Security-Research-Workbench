@@ -127,6 +127,21 @@ class InvalidDigestShape(FieldClassViolation):
     reason_code = "INVALID_DIGEST_SHAPE"
 
 
+class AdmissionRuleViolation(EvidenceError):
+    """A supplied Class 3 or Class 4 value matches the published rule set.
+
+    §14.10, §30 step 7. The value is REJECTED — never sanitized, never substituted
+    and never repaired, which is why this is a refusal and not a rewrite.
+
+    The message names the **field path and the rule id**, and nothing else. It
+    carries no part of the offending value and no matched text: this is the one
+    refusal in AI-05 whose subject is a possible secret, so the message is the
+    place it would escape to a log if it were ever interpolated.
+    """
+
+    reason_code = "ADMISSION_RULE_VIOLATION"
+
+
 class NonCanonicalDigestCase(InvalidDigestShape):
     """Uppercase hexadecimal in a Class 1 field (§14.5.1).
 
@@ -365,6 +380,7 @@ class DuplicateOrdinal(DuplicateElement):
 
 __all__ = [
     "ActorTypeNotAdmitted",
+    "AdmissionRuleViolation",
     "BindingArmMismatch",
     "CallerSuppliedDigest",
     "CallerSuppliedGeneratedField",

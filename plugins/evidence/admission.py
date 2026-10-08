@@ -12,16 +12,40 @@ converts B1's exceptions into a §22.1 outcome.
 steps 1-4, 4b, 6, 8-13   B1, reached through EvidenceRecord.from_mapping and
                          assign_digests. Composed, not reimplemented.
 step 5 (agreement half)  HERE — check_workspace_agreement
+step 7 (rule set)        HERE — check_admission_rules, against §14.10
 step 14 (uniqueness)     HERE — admit_to_store, against the Store's written ids
-step 7                   NOT IMPLEMENTED. It requires the published admission
-                         rule set, which is C-1 and remains DEFERRED. Nothing
-                         here invents one.
 ```
 
-`admit()` stops at step 13 and stores nothing; `admit_to_store()` runs step 14
-and persists. **Neither implements step 7**, so an `ACCEPTED` from either is not
-a full §30 admission. That is a property of B2's staging, and it is said here
-rather than left for a reader to infer from a green test.
+`admit()` runs steps 1-13 and stores nothing; `admit_to_store()` runs step 14 and
+persists. Both run the whole pipeline, step 7 included.
+
+### Why step 7 runs FIRST, before step 1 constructs the record
+
+§30 numbers the steps, and step 7 is numbered after step 1. The order below is the
+one the contract requires anyway, and the amendment that published the rule set
+(§14.10, Amendment 3) records why:
+
+```text
+EvidenceRecord.from_mapping derives references.context[].value_digest from the
+supplied `value` (§12.1). §14.6 R2 forbids computing a digest over a value that
+was not admitted, and says so directly: rule-tripping content "is rejected before
+hashing".
+```
+
+So the rule check reads the SUPPLIED values, while the context value is still a
+string, and it therefore precedes construction. The one observable consequence is
+which reason a record violating BOTH a shape rule and a published rule reports: it
+reports the RULE. Both outcomes are `REJECTED`, nothing is stored, and no accepted
+value, bound, digest or stored record differs by which reason comes first.
+
+### What step 7 does not do
+
+It does not sanitize, substitute, truncate or repair: §14.10 published a DETECTION
+rule set and AI-05 holds no replacement for any rule (§14.4.1). It does not touch
+Class 1 or Class 2 fields — a Class 1 digest or revision is a 32+ character run and
+C1-R06 matches exactly that, so scanning one would reject every legitimate record.
+And it is not retroactive: a record already written stays readable, and no
+stored-form load re-runs admission over it (§14.10, §17).
 
 ### §18.1, mapped onto the record that actually exists
 
@@ -67,12 +91,14 @@ from plugins.evidence.errors import (
     WorkspaceAgreementViolation,
 )
 from plugins.evidence.models import EvidenceRecord
+from plugins.evidence.rules import check_admission_rules
 from plugins.evidence.vocabulary import AdmissionOutcome
 
 __all__ = [
     "AdmissionResult",
     "admit",
     "admit_to_store",
+    "check_admission_rules",
     "check_workspace_agreement",
 ]
 
@@ -153,6 +179,8 @@ def admit(raw: object, *, clock=None) -> AdmissionResult:
     Composes, in order:
 
     ```text
+    check_admission_rules         §30 step 7 (§14.10) — over the SUPPLIED values,
+                                  before construction hashes the context value
     EvidenceRecord.from_mapping   §30 steps 1-4, 4b, 6, 8-13 (B1)
     check_workspace_agreement     §30 step 5's agreement half (§18.1)
     assign_digests                §30 step 12 (B1)
@@ -164,10 +192,11 @@ def admit(raw: object, *, clock=None) -> AdmissionResult:
     trivially rather than claimed.
 
     The supplied mapping is never modified. `from_mapping` builds new frozen
-    objects and `assign_digests` returns a copy, so no code path here writes to
-    the caller's input.
+    objects, `check_admission_rules` only reads, and `assign_digests` returns a
+    copy, so no code path here writes to the caller's input.
     """
     try:
+        check_admission_rules(raw)
         record = EvidenceRecord.from_mapping(raw, clock=clock)
         check_workspace_agreement(record)
         record = assign_digests(record)

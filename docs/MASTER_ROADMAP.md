@@ -280,7 +280,9 @@ C0-C10    = all PASS
 ## AI-05 — Evidence / Audit Plugin
 
 **Status: INCOMPLETE.** B1 (the offline logical core) is complete and merged, and so is the whole
-of B2. AI-05 is not closed, and the reason is C-1 rather than anything B2 left undone.
+of B2. AI-05 is not closed, and the reason is no longer C-1 — **C-1 was CLOSED on 2026-10-04 by
+Amendment 3**, which published the admission rule set (§14.10) so that §30 step 7 could be
+implemented. What remains is §28's AI-11-admissible producer token and §35.1's deferrals.
 This section keeps the original design as written — B1 and B2 completing do not change what AI-05
 is for, and they do not change any later stage's dependency on it.
 
@@ -293,7 +295,9 @@ AI-05-B2-P3 = COMPLETE / MERGED   admission pipeline, filesystem Store,
                                   uniqueness, staged discard,
                                   §31 Layer 0 evidence check
 AI-05-B2    = COMPLETE            its frozen scope is implemented and merged
-AI-05       = INCOMPLETE          C-1 is DEFERRED
+C-1         = CLOSED              Amendment 3 (§14.10): §30 step 7 implemented,
+                                  T20c/T22a-c enforceable, §32 C6 CLOSED
+AI-05       = INCOMPLETE          §28 producer token OPEN; §35.1 DEFERRED
 
 B1 merge SHA = 0403fcd83b740f0603af7204e77f6e6905a84cf0   (PR #34)
 B1 evidence  = docs/AI-05-B1_EVIDENCE_2026-10-01.md
@@ -319,7 +323,8 @@ Promotion stays a human act and has no AI-05 operation: the two tiers are two ty
 promoted one has no `write`, so an admitted record cannot be routed into the durable tier by any
 call. The promoted tier is read-only and is never deleted by AI-05.
 
-What is still ahead: C-1 leaves §30 step 7 unimplemented and T22a/T22b/T22c unrunnable, so §32's
+What was still ahead, now done: C-1 left §30 step 7 unimplemented and T22a/T22b/T22c
+unrunnable. Amendment 3 published the rule set (§14.10) and closed it, so §32's
 C6 gate is not closed. ContextRef derivation from AI-03 is not wired. And four items the B2
 decision record left undefined — the retrieval return shape, the `superseded_by` query shape, the
 promotion API and discard cleanup granularity — remain undefined rather than settled by the
@@ -861,7 +866,8 @@ trusted approval ingress   caller 自述 actor.type = human 不等于 human appr
 ```text
 AI-12 §6 model-comparative prerequisite = BLOCKED（AI-13 不执行 AI-12 policy）
 AI-12-C = BLOCKED / NOT STARTED
-AI-05 = INCOMPLETE（C-1 DEFERRED；AI-13 不注册 producer、不写 Evidence、不解决 C-1）
+AI-05 = INCOMPLETE（C-1 已由 Amendment 3 关闭；AI-13 不注册 producer、不写 Evidence。仍 OPEN：
+§28 producer token；DEFERRED：§35.1）
 ```
 
 ---
@@ -1038,7 +1044,7 @@ SecurityLab
 | AI-02 | **COMPLETE** — closed 2026-09-29, see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-03 | **COMPLETE** — C0–C8 PASS; merged as `548bc041` (PR #28); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-04 | **COMPLETE** — merged as `254823f7` (PR #32); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
-| AI-05 | **B1 COMPLETE** (PR #34); **B2 COMPLETE** — P1 `844df7be` (PR #41), P2 `b8692c18` (PR #42) and P3 `67515ff9` (PR #44) merged; **AI-05 INCOMPLETE** — C-1 DEFERRED, §30 step 7 unimplemented; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
+| AI-05 | **B1 COMPLETE** (PR #34); **B2 COMPLETE** — P1 `844df7be` (PR #41), P2 `b8692c18` (PR #42) and P3 `67515ff9` (PR #44) merged; **C-1 CLOSED** by Amendment 3 (§14.10) — §30 step 7 implemented, §32 C6 closed; **AI-05 INCOMPLETE** on §28 (producer token, OPEN) and §35.1 (DEFERRED); see [PROJECT_STATUS.md](PROJECT_STATUS.md) and [AI-05-C1_EVIDENCE_2026-10-04.md](AI-05-C1_EVIDENCE_2026-10-04.md) |
 | AI-06 | **COMPLETE** — merged as `3b1917ab` (PR #47); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-07 | **COMPLETE** — contract `963c181c` (PR #48), implementation `e57541f9` (PR #49) merged; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-08 | **COMPLETE** — merged as `edb7dfc82ce51123482ac357fb9319dca2fa0d9a` (PR #52); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |

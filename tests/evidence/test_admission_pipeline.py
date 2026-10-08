@@ -368,12 +368,12 @@ class TestThePipelineComposesRatherThanReimplements:
         assert store.list_ids() == ()
 
     def test_an_accepted_result_carries_no_step_seven_claim(self, store):
-        """C-1 remains DEFERRED, so step 7 has not run and nothing says it has.
+        """Step 7 runs; the result still carries no CLAIM that it did.
 
-        The pipeline is §30 steps 1-6 and 8-14. There is no field, flag or
-        status anywhere in the result that a caller could read as "the rule set
-        was checked", which is the shape the gap would take if it were papered
-        over.
+        Amendment 3 published the rule set and `check_admission_rules` runs it
+        (§14.10), and `AdmissionResult` is still exactly the three §22.1 fields. A
+        caller reads an outcome and a reason code — never an assertion about which
+        steps ran, which is the shape a papered-over gap would take.
         """
         import dataclasses
 

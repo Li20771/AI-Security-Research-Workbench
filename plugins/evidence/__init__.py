@@ -67,7 +67,17 @@ from plugins.evidence.admission import (
     AdmissionResult,
     admit,
     admit_to_store,
+    check_admission_rules,
     check_workspace_agreement,
+)
+from plugins.evidence.rules import (
+    ADMISSION_RULES,
+    CLASS_3_PATHS,
+    CLASS_4_PATHS,
+    RULES_REVISION,
+    SCANNED_PATHS,
+    AdmissionRule,
+    first_match,
 )
 from plugins.evidence.canonical import (
     CONTENT_EXCLUDED_PATHS,
@@ -89,6 +99,7 @@ from plugins.evidence.digests import (
 )
 from plugins.evidence.errors import (
     ActorTypeNotAdmitted,
+    AdmissionRuleViolation,
     BindingArmMismatch,
     CallerSuppliedDigest,
     CallerSuppliedGeneratedField,
@@ -213,7 +224,10 @@ __all__ = [
     "ActorType",
     "ActorTypeNotAdmitted",
     "AdmissionOutcome",
+    "ADMISSION_RULES",
     "AdmissionResult",
+    "AdmissionRule",
+    "AdmissionRuleViolation",
     "AdmittedEvent",
     "ArtifactRef",
     "Artifacts",
@@ -277,8 +291,14 @@ __all__ = [
     "WorkspaceAgreementViolation",
     "WorkspaceBinding",
     "actor_type_is_permitted",
+    "CLASS_3_PATHS",
+    "CLASS_4_PATHS",
+    "RULES_REVISION",
+    "SCANNED_PATHS",
     "admit",
     "admit_to_store",
+    "check_admission_rules",
+    "first_match",
     "admitted_events_for",
     "assign_digests",
     "canonical_json",

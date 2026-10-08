@@ -1,6 +1,6 @@
 """Structural fields, digest origin, and the conditional revision rule.
 
-Covers T20a, T20b, T20c (deferred), T21a, T21b, T21c, T22d, T22e, T49 and T57.
+Covers T20a, T20b, T20c, T21a, T21b, T21c, T22d, T22e, T49 and T57.
 
 ### Why the structural-field tests matter more than they look
 
@@ -15,8 +15,10 @@ keep it that way.
 
 T20c asserts that a legitimate 64-hex value in a Class 4 field is `REJECTED`
 because rule 6 fires on it. That belongs to the published admission rule set,
-which is **C-1** and remains deferred. B1 has no bounded-source rule set, so T20c
-is deferred with it rather than faked.
+which **C-1** was — and which AI-05 Amendment 3 published (§14.10). T20c was
+carried here as a static skip while the set did not exist; it is a real assertion
+now, with the expectation it always stated, and it is asserted through `admit()`
+because admission is where step 7 runs.
 """
 
 from __future__ import annotations
@@ -32,10 +34,12 @@ from plugins.evidence import (
     value_digest_of,
 )
 from tests.evidence.conftest import (
+    FIXED_CLOCK,
     GIT_SHA,
     SHA256,
     make_artifact,
     make_context_ref,
+    make_observation,
 )
 
 pytestmark = pytest.mark.layer1
@@ -102,14 +106,46 @@ class TestT20bValidSha256:
             assert not hasattr(module, "REDACTED"), module.__name__
 
 
-class TestT20cBoundedSourceRuleSetDeferred:
-    """T20c — deferred to C-1, recorded rather than silently absent."""
+class TestT20cBoundedSourceRuleSet:
+    """T20c — a legitimate 64-hex value in a Class 4 field is REJECTED.
 
-    @pytest.mark.skip(
-        reason="C-1: requires the published admission rule set, deferred"
-    )
+    §14.5.1 declares this over-rejection deliberate: 64 lowercase hex characters
+    are only safe where provenance is constrained, and rule C1-R06 cannot tell a
+    digest from a token. It MUST NOT be "fixed" by narrowing the rule (§31.1).
+    """
+
     def test_a_64_hex_value_in_a_bounded_source_field_is_rejected(self):
-        raise AssertionError("unreachable until C-1 is ratified")
+        from plugins.evidence import AdmissionOutcome, admit
+
+        raw = make_observation()
+        raw["payload"]["observed"] = SHA256
+
+        result = admit(raw, clock=lambda: FIXED_CLOCK)
+
+        assert result.outcome is AdmissionOutcome.REJECTED
+        assert result.reason_code == "ADMISSION_RULE_VIOLATION"
+        assert result.record is None
+
+    def test_the_same_value_stays_accepted_in_a_structural_field(self):
+        """The other half, and the reason this is a boundary and not a bug: T20b's
+        Class 1 fields are never scanned, so the same 64-hex value is admitted
+        there. T20b and T20c are one rule seen from two sides."""
+        from plugins.evidence import AdmissionOutcome, admit
+
+        raw = make_observation(
+            artifacts={
+                "items": [
+                    {
+                        "artifact_digest": SHA256,
+                        "external": False,
+                        "owner_workspace_id": None,
+                        "artifact_ref": "art-0001",
+                    }
+                ]
+            }
+        )
+
+        assert admit(raw, clock=lambda: FIXED_CLOCK).outcome is AdmissionOutcome.ACCEPTED
 
 
 class TestT21StructuralFieldShape:
