@@ -6,7 +6,7 @@
 The architecture freeze (AI-15-A) merged to `main` as
 `6e814a8b6d214a0203deb73b1abbf21ae50b68cc` (PR #78), a **true two-parent merge** of
 `37f354cbb3c007f2d92021fa560a443a53591372` and
-`210a1907b453e927c1af8074a3f33ba8f51be1b6`. It is **DOCS ONLY**: one file,
+`210a1907b453e927c1af8074a3f33ba8f51fe1b6`. It is **DOCS ONLY**: one file,
 `docs/AI-15_EVIDENCE_PRODUCTION_EXECUTION_PLAN.md`, no runtime, no producer token, and no
 other phase's contract touched. It **froze a contract**; it connected no seam.
 **AI-15-B is NOT STARTED and BLOCKED**, and **B5 (composition → Evidence) remains
@@ -1856,7 +1856,7 @@ contract = docs/AI-15_EVIDENCE_PRODUCTION_EXECUTION_PLAN.md
 merge    = 6e814a8b6d214a0203deb73b1abbf21ae50b68cc
                      true two-parent merge; not squashed, not rebased
                      parent 1 = 37f354cbb3c007f2d92021fa560a443a53591372
-                     parent 2 = 210a1907b453e927c1af8074a3f33ba8f51be1b6
+                     parent 2 = 210a1907b453e927c1af8074a3f33ba8f51fe1b6
 base     = main @ 37f354cbb3c007f2d92021fa560a443a53591372
 branch   = feature/ai-15-a-evidence-production-freeze   (merged; retained)
 merged   = 2026-10-09T04:36:07Z

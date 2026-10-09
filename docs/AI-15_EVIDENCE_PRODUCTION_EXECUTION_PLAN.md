@@ -3,9 +3,21 @@
 > Phase: AI-15 — Evidence Production / Composition Integration
 > Sub-phase: AI-15-A — architecture / contract freeze
 > Baseline: `main` @ `37f354cbb3c007f2d92021fa560a443a53591372`
-> Status: **DRAFT / FREEZE PROPOSAL.** No runtime is implemented by this document,
-> and none may be until this document is merged **and** the amendment
-> prerequisites in §15 have landed.
+> Status: **FROZEN — COMPLETE / MERGED.** The freeze act was the merge of PR #78
+> (`6e814a8b6d214a0203deb73b1abbf21ae50b68cc`, a true two-parent merge of
+> `37f354cbb3c007f2d92021fa560a443a53591372` and
+> `210a1907b453e927c1af8074a3f33ba8f51fe1b6`).
+>
+> It froze an ARCHITECTURE / CONTRACT. It wrote no runtime, created and registered
+> no producer token, and connected no seam. **AI-15-B is NOT STARTED / BLOCKED** and
+> **B5 (composition → Evidence) is BLOCKED / NOT STARTED**. An implementation that
+> depends on a prerequisite amendment still MUST NOT begin: that prohibition is
+> §15.2's and §16.2's, both FROZEN before this closeout, and neither is changed
+> here. §15.2 names each step and its owner; §16.2 lists the live blockers. See
+> §Status for the merge record.
+>
+> A change to this document now follows §19's amendment rule, which is unchanged by
+> the merge.
 
 ---
 
@@ -2869,14 +2881,24 @@ AI-15-B  = NOT STARTED                  BLOCKED (§16.2, §15.2)
 ```
 
 ```text
-FROZEN: this document is the AI-15 contract. The merge of PR #78 is the freeze act.
-        It froze a CONTRACT. It did not connect a seam, did not create a producer
-        token, did not register a producer, did not write a record, and did not move
-        B5 out of BLOCKED. Every state in the block below is unchanged by the merge.
-FROZEN: a change to this document now requires an amendment (§19), made by AI-15
-        under AI-15's own amendment rule — exactly as §15.2 requires of every other
-        phase's contract.
+RECORDED — THE MERGE, AND WHAT IT DID AND DID NOT DO. This block states FACTS about
+        PR #78. It adds NO rule, and it changes no clause of this document.
+
+            the merge of PR #78 IS the freeze act for this document
+            what it froze                       an ARCHITECTURE / CONTRACT
+            what it did NOT do                  connect a seam · create a producer
+                                                token · register a producer · write
+                                                a record · move B5 out of BLOCKED
+            states unchanged by it              every one in the block below
+RECORDED    the rule that follows from a frozen document is §19's, and it is
+            UNCHANGED by this closeout. §19 remains the authority for what an
+            amendment must contain and for which clauses require one. Nothing here
+            restates it more weakly, widens it, or adds a second amendment rule
+            beside it.
 ```
+
+The closeout that follows records the merge and syncs the status documents. It does
+not amend §0-§20, and it does not freeze a new clause.
 
 ```text
 BLOCKED: B5 (composition -> Evidence) is unchanged by this document. §16.2 lists
