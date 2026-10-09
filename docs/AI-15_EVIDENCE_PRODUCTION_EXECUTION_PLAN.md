@@ -324,15 +324,47 @@ FROZEN: IF A WRITER IS EVER PRESENT AND RUNS WHILE §15.2 STEP 0b IS UNSATISFIED
 ```text
 RECORDED, and this is what §3.1-§3.3 measured: at main @ 37f354c there is NO
 production caller of AI-05 admission that conforms to the frozen architectural
-rules. There is none because none was written, AND because a change that added
-one would be rejected by the checks listed below. Those are two different claims
-with two different strengths, and AI-15 states both rather than merging them.
+rules. Two different claims, two different strengths, and AI-15 states both
+rather than merging them:
+    none was WRITTEN — a negative finding about this tree; and
+    a change adding one would be refused by an explicit check, WHERE A CHECK
+      COVERS THE DIRECTORY THE CALLER IS ADDED TO.
 
-Every component that could plausibly write a record is refused by a build-time
-import rule, not by convention and not at runtime.
+```
+
+```text
+SCOPE, STATED BEFORE THE TABLE — THESE ARE PER-DIRECTORY RULES, NOT A GLOBAL
+BARRIER. Five of the components carry an explicit Layer 0 rule that refuses a
+`plugins.evidence` import. `plugins/security_tools/` carries NONE, and the
+projection it holds is a FROZEN CLAUSE OF AI-06'S OWN CONTRACT (§15.1, §15.2)
+rather than something a Layer 0 rule enforces.
+
+    WITH an explicit rule      composition/ · agents/ · review/ · benchmarks/
+                               · workflows/
+    WITHOUT one — permitted   plugins/security_tools/ — AI-06's projection
+                               (§14.3); the import is CONTRACT-SANCTIONED
+    WITHOUT one — it IS the   plugins/evidence/ — the package itself (§14.2)
+      package
+    WITHOUT one — no import   every other package, today
+      today
+```
+
+```text
+FROZEN: AI-15 MUST NOT describe the table below as a GLOBAL DEFENCE covering
+        every possible writer. It is a set of checks on the directories that
+        have them, and it is complete only for those directories.
+FROZEN: A WRITER PLACED IN A PACKAGE WITH NO RULE WOULD NOT BE REFUSED BY
+        LAYER 0 AT ALL. Nothing in this repository would stop it structurally;
+        what would refuse it is that phase's own contract — which is a rule, not
+        a check — and AI-15 states that difference rather than hiding it behind
+        the table.
+FROZEN: the checks are not a global barrier, and the RECORDED absence of a
+        caller is not runtime unreachability. Those are two separate corrections
+        and neither substitutes for the other.
 
 ```text
 COMPONENT            ENFORCEMENT                                  FILE:LINE
+                     — five directories carry a rule; security_tools does NOT
 composition/         AI14_FORBIDDEN_IMPORTS = ("plugins.evidence",)
                                                                   scripts/ci/layer0_policy.py:3241
                                                                   checked at :3351
@@ -348,8 +380,13 @@ benchmarks/          explicit check, "AI-11 v1 writes no AI-05
 workflows/           AI13_FORBIDDEN_IMPORT_ROOTS includes
                      "plugins"  (comment: "guard (AI-04),
                      evidence (AI-05), security_tools (AI-06)")   :2630
-plugins/security_tools/  NOT blocked — the projection is a
-                     FROZEN AI-06 contract clause (§15.1/§15.2)    (no rule)
+plugins/security_tools/  NO LAYER 0 RULE. Its import of two
+                     AI-05 payload types is permitted by
+                     AI-06 §15.1/§15.2 — a CONTRACT
+                     clause, not a check. A change adding
+                     an admission CALLER here would be
+                     refused by AI-06's contract and by
+                     review, NOT by layer0                    (none)
 ```
 
 ```text
@@ -362,7 +399,8 @@ RECORDED: a third check asserts the composition does not even NAME the concept �
           tests/composition/test_composition_boundaries.py:178-191 forbids the
           identifiers `producer_token`, `ADMITTED_EVENTS`, `Ed25519PrivateKey`,
           `ApprovalRef`, `ApprovalStatus`, `ALLOWED` in `composition/*.py`.
-RECORDED: the single block is proven NON-VACUOUS at
+RECORDED: the COMPOSITION block — and only that one, since it is the only block
+          with such a proof — is proven NON-VACUOUS at
           tests/composition/test_composition_layer0.py:98-101,
           `test_the_check_catches_an_evidence_import`, which injects
           `from plugins.evidence import admit` and asserts the check reports it.
@@ -688,7 +726,7 @@ READING B — SUBMITTER IS THE PRODUCER
 ```
 
 ```text
-AI15-AI15-OPEN-2  Which reading of AI-05 §7's "WROTE" governs `producer` when the
+AI15-OPEN-2  Which reading of AI-05 §7's "WROTE" governs `producer` when the
              submitter is not the named component?
 
         OWNER            AI-05 (it owns §7, §6.5 and §6.6)
@@ -1077,8 +1115,12 @@ THEY MUST NOT BE MERGED INTO ONE.
                  of admission exists (§3.1-§3.3). This is a RECORDED negative
                  finding about the repository, and it is the weakest of the three:
                  it says what HAS been written, not what CAN run.
-  the check      a change adding such a caller would fail the BUILD-TIME checks
-                 in §3.4. That is a constraint on what may be MERGED.
+  the check      a change adding such a caller TO ONE OF THE FIVE DIRECTORIES
+                 THAT CARRY A RULE would fail the BUILD-TIME checks in §3.4.
+                 That is a constraint on what may be MERGED. It is NOT global:
+                 §3.4 names the packages that have no rule, and a caller placed
+                 there would be refused by its phase's contract rather than by
+                 a check.
   NOT claimed    that any of the three makes the API unreachable at RUNTIME.
                  There is no runtime sandbox and no runtime authentication here.
                  Committed code that imported the package WOULD RUN (§3.4); the
@@ -1691,6 +1733,10 @@ contract   §15.1 FROZEN: AI-06 does not call admission; it projects, and "the
 code       plugins/security_tools/evidence.py — implemented, 2 functions.
 call site  NONE. `tool_call_for` and `execution_payload_for` are called only by
            tests/security_tools/test_evidence_and_families.py.
+           NO LAYER 0 RULE COVERS THIS PACKAGE (§3.4). Its import of two AI-05
+           payload types is permitted by AI-06 §15.1/§15.2, and a change adding
+           an admission caller here would be refused by AI-06's contract and by
+           review — NOT by a build-time check.
 evidence   AI-14 §5.1 classifies the AI-06 -> AI-05 row IMPLEMENTED BUT NOT
            CONNECTED, and Appendix A repeats it.
 AI-15 dependency
