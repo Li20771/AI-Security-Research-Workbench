@@ -543,6 +543,111 @@ citing §6.3, which §6.5 and §6.6 do not permit.
 **A record with no producer is not a record.** Provenance is never fabricated: a
 record claiming an observation that no producer made would be a false record.
 
+### 7.2 Producer and submitter are different roles — FROZEN (Amendment 4)
+
+> **PROPOSED — Amendment 4, awaiting owner review.** This section states the
+> clarification that amendment makes. It is NOT yet in force, and no clause of
+> this contract has changed. See §34.3 for the record and its status.
+
+Two roles take part in one admitted record, and they are not the same role.
+
+```text
+producer    the Workbench component RESPONSIBLE FOR THE CONTENT of the event the
+            record describes — the component that supplies the semantic content
+            of that event's claim.
+submitter   the caller that hands an already prepared record to an AI-05
+            admission entry point: `admit()` or `admit_to_store()`.
+```
+
+`WROTE`, where §7 and §5.1's field comment use the word, is given the first of
+those meanings **by this amendment**. It names the ATTRIBUTION of the event's
+claim to the component that supplies its semantic content, and it is not, by
+itself, a statement about which code called admission or the storage API.
+
+```text
+RECORDED — THIS IS A CHOICE AMENDMENT 4 MAKES, AND IT SAYS SO.
+        The original wording did NOT distinguish the component that authors an
+        event's claim from the caller that submits the record. Some of §7's own
+        examples, and §6.2's row for the human-approval event, are CONSISTENT
+        with the choice made here, and §7's closing rule — "a record with no
+        producer is not a record" — points the same way. That is why the choice
+        is defensible.
+        It is NOT evidence that the contract already entailed it uniquely, and
+        this amendment does not claim that it did.
+        The counter-evidence is on the record: AI-08 §13.1 reads WROTE the other
+        way and refused to write under `ai-06` on that basis, and AI-15 recorded
+        the question as an OPEN item rather than as settled text.
+```
+
+```text
+FROZEN: a submitter MAY differ from the producer named on the record. That
+        relationship is not a defect in the record, and §6.2's mapping, §6.5's
+        registry and §6.6's rejection rules are each written to be satisfied
+        either way.
+FROZEN: a submitter differing from the producer does NOT make the producer
+        claim true, and does NOT make it false. Whether a claim is trustworthy
+        is a DIFFERENT question, and this section does not answer it.
+FROZEN: calling `admit()` or `admit_to_store()` does NOT by itself confer the
+        PRODUCER role on the caller. Submitting is not producing. The producer
+        named on a record is the component §7 defines, whether or not that
+        component performed the call.
+FROZEN: THREE DIFFERENT CHECKS, AND §6.5 IS ONLY THE FIRST OF THEM.
+
+            registry and cross-field        whether this producer token APPLIES
+              validation                      to this record's kind and family,
+                                              plus the §6.6 type constraints.
+                                              This IS a real constraint: a token
+                                              registered for one event is not
+                                              valid for another (§6.5), and a
+                                              mismatched producer_type or
+                                              actor.type is REJECTED (§6.6)
+            producer                        whether the claim actually came
+              AUTHENTICATION                  from the component it names.
+                                              AI-05 v1 does NOT do this, and
+                                              this section does not add it
+            submitter IDENTITY              who called the admission entry
+                                              point. The API does not establish
+                                              it: `admit()` and
+                                              `admit_to_store()` take no
+                                              submitter identity
+        §6.5 CONSTRAINS THE FIRST. It neither implies, proves nor substitutes for
+        the second or the third, and the three MUST NOT be conflated. A caller
+        that reports a registered token has reported a token that APPLIES to
+        that kind and family, and nothing more.
+FROZEN: no clause of this contract may be read as declaring a producer claim
+        AUTHENTICATED. AI-05 v1 admits a record whose producer token is the one
+        §6.5 registers for its kind and family. It does not certify who supplied
+        the record, and it makes no claim that it did.
+```
+
+§7's three worked examples are read under this section, and none of them changes:
+
+```text
+"A human approves"    producer = the component that RECORDED it (§7). Under this
+                      section that component is the one responsible for the
+                      claim about the human's decision: it authored the record
+                      of that decision. It is the producer whether or not some
+                      other caller hands the record in. §6.2's row states the
+                      same role in the same words — "the Workbench component
+                      recording it" — and the event remains DEFERRED with
+                      producer NONE (§6.5).
+"Guard decides"       producer = AI-04, because AI-04 supplies the claim.
+"A probe observes"    producer = AI-02, for the same reason.
+```
+
+```text
+FROZEN: this section adds no field, no vocabulary member, no registry row, no
+        token and no admission outcome. It adds NORMATIVE TEXT and nothing
+        else: a recorded clarification of what this contract means, chosen
+        deliberately by Amendment 4.
+FROZEN: it is NOT a claim that the existing implementation already has producer
+        authentication, and NOT a claim that §6.5 and §6.6 already enforced this
+        reading. They enforce token applicability, kind and family, and the
+        field type constraints — which they enforced before this section and
+        still do. Whether a producer claim is trustworthy remains OPEN, and
+        this section does not close it.
+```
+
 ---
 
 ## 8. Identity Model
@@ -3271,6 +3376,168 @@ and §14.8's residual stays stated — is unchanged.
 C-1 is CLOSED by this amendment. AI-05 remains INCOMPLETE until its own exit gates
 say otherwise; a closed C-1 is not a claim that every Evidence seam is connected,
 and §30's remaining steps are as they were.
+
+
+#### Amendment 4 — producer and submitter are different roles (2026-10-09)
+
+```text
+PROPOSED — AWAITING OWNER REVIEW. This entry states the change this amendment
+makes and why. It is NOT yet an approved record: the clarification it describes
+takes effect only when the change carrying this entry is merged by AI-05's owner.
+Until then §7.2 is a proposal, and no clause of this contract has changed.
+```
+
+Found during the AI-15-A audit, against main
+`0bf520f4bd8d5b29d008bec2a11f6f4cfc41fcd5`. §7 defines `producer` as "the component
+that WROTE the EvidenceRecord" and never says what **WROTE** means when the caller
+that hands the record to admission is not that component. Two frozen clauses were
+found to depend on the answer in opposite directions:
+
+```text
+§7's human-approval example   producer = "the Workbench component that recorded it"
+                              — a ROLE, described by the recording relationship,
+                              and §6.2's row for the same event says the same:
+                              "the Workbench component recording it"
+AI-08 §13.1                   reads WROTE literally enough to refuse: AI-08 "MUST
+                              NOT write an EvidenceRecord under the 'ai-06' token.
+                              AI-08 is not AI-06. `producer` names the component
+                              that WROTE the record, and that claim would be
+                              false."
+```
+
+The audit recorded the question, chose neither reading, and named it OPEN-2. This
+amendment MAKES that choice rather than discovering it: `producer` names the
+component responsible for the event's **claim**, not the code that called the
+admission or storage API. §7's own example for the human-approval event and §6.2's
+row for it are CONSISTENT with the choice, which is why it is defensible; they are
+not evidence that the contract entailed it uniquely, and §7.2 records that limit.
+
+**Why this is an amendment rather than a clarification made in place.** §34.1's
+list of changes that require an amendment enumerates evidence kind, canonical
+collection, digest input, workspace rule, secret boundary, authority relation,
+identity field and admission outcome; **§7 is not on that list.** §34's preamble
+is broader than its list, though — a frozen contract "changes only through an
+explicit amendment recorded in §34.3" — and §7.2 adds a FROZEN clause to a frozen
+contract, which is a change however it is described. §34.2 forbids the
+alternative: a silent adjustment, or a rule relaxed to make an implementation
+pass. The instrument is therefore an amendment, recorded here, and the fact that
+§7 is absent from §34.1's list is recorded rather than relied on.
+
+The amendment is authored on a docs-only branch. **It changes no implementation.**
+`plugins/evidence/` is untouched: `admit()` and `admit_to_store()` take no
+submitter identity today, and they still take none after it. The registry check
+already compares the token against the rows its kind and family select, and
+compares nothing beyond them; §7.2 states what that does and does not establish.
+It changes no behaviour: the check is the same before and after. No test is
+added, changed or re-scoped.
+
+```text
+(a) NEW §7.2 declares the Producer / Submitter distinction and gives WROTE its
+    operative meaning.
+
+        producer    the Workbench component RESPONSIBLE FOR THE CONTENT of the
+                    event the record describes — the component that supplies the
+                    semantic content of that event's claim
+        submitter   the caller that hands an already prepared record to `admit()`
+                    or `admit_to_store()`
+
+    §7.2 states that WROTE names the ATTRIBUTION of the event's claim to the
+    component that supplies its semantic content, and is not by itself a
+    statement about which code performed the call.
+
+(b) §7.2 records five consequences, each FROZEN:
+
+        a submitter MAY differ from the producer named on the record, and that is
+          not a defect in the record
+        a submitter differing from the producer makes the claim neither true nor
+          false — trustworthiness is a DIFFERENT question, and §7.2 does not
+          answer it
+        calling `admit()` or `admit_to_store()` does NOT by itself confer the
+          producer role on the caller
+        §6.5 registry and cross-field validation constrain whether the token
+          APPLIES to this record's kind and family — a real constraint — and they
+          neither establish the submitter's identity nor authenticate the claim.
+          §7.2 separates those three checks and forbids conflating them.
+        no clause may be read as declaring a producer claim AUTHENTICATED — AI-05
+          admits a record whose token §6.5 registers for its kind and family, and
+          does not certify who supplied it
+
+(c) §7's three worked examples are reconciled with §7.2 and NONE of them is
+    changed. "Guard decides" and "A probe observes" name the component that
+    supplies the claim, which §7.2's definition already covers. "A human
+    approves" names a ROLE — "the component that recorded it" — and §7.2 states
+    that this component is the one responsible for the claim about the human's
+    decision, whether or not some other caller hands the record in. §6.2's row
+    for the same event uses the same words, and the event remains DEFERRED with
+    producer NONE in §6.5. §7's closing rule — "a record with no producer is not
+    a record", and provenance is never fabricated — is unchanged and is what §7.2
+    is written to protect.
+
+(d) §7.1's rule is reinforced rather than restated. §7.2 refuses to let a
+    submitter's ACT confer the producer role; §7.1 already refuses to let a
+    vocabulary MEMBERSHIP confer the producer role, and states why the constraint
+    is a rule about the role rather than an edit to a type AI-05 does not own.
+    The two are the same shape, and neither changes.
+
+(e) §6.2's producer/event mapping, §6.5's admitted-producer registry and §6.6's
+    cross-field rejection rules are UNCHANGED, and §7.2 states that they are each
+    written to be satisfied whether or not the submitter is the producer. The
+    mapping is keyed by event, the registry by (kind, family), and the rejection
+    rules by the token, the producer_type and the actor — none of them inspects
+    the caller, which is why no sentence in those three sections had to move.
+
+(f) §5.1's field comment — `producer: string  # the component that WROTE this
+    record` — is UNCHANGED, and it carries NO CROSS-REFERENCE: it does not cite
+    §7, and no such citation is claimed here. §7.2 supplies the meaning of WROTE
+    that the comment leaves open, which is why the comment needs no edit. The
+    alternative — rewriting a one-line comment in place — would have widened
+    this amendment's footprint without changing what the field means.
+
+(g) §6.5's sentence that the event-to-component mapping states "which component
+    writes which event" is UNCHANGED. Under §7.2, "writes the event" is the
+    producer role: the component responsible for that event's claim. The sentence
+    and §7.2 agree, and the registry's own limits — keyed by event and family, a
+    token valid for one event not thereby valid for another — are as they were.
+```
+
+```text
+WHAT THIS AMENDMENT DOES NOT DO, stated because each is a thing it could have
+been read as doing:
+
+    no producer token, registry row, Evidence kind, family, admission outcome or
+      serialized field is added or removed
+    no producer-authenticity mechanism is implemented, and authenticity is NOT
+      claimed to be established. §7.2 says the opposite: registry and cross-field
+      validation constrain token applicability and the field types, and neither
+      authenticates a producer nor identifies a submitter
+    the contracts of AI-06, AI-08, AI-11, AI-14 and AI-15 are NOT modified by
+      this change, and nothing here states or implies that they are
+    AI-11 §21.1's OPEN-1 — WHICH PRODUCERS EXIST — is NOT closed by this
+      amendment. It is a different question with the same owner
+    AI15-OPEN-1 (how a producer claim is authenticated) and AI15-OPEN-2 (the
+      submitter/producer relation) are NOT auto-closed. §7.2 answers the second
+      in AI-05's own voice; whether that closes AI-15's record of it is AI-15's
+      act, not this amendment's
+    no production Evidence writer is authorized to be created or run
+    AI-08 still MUST NOT write under the `ai-06` token. §7.2 explains WHY AI-08
+      §13.1's reasoning holds — AI-08 does not supply the claim about AI-06's act
+      — and changes nothing about AI-08's own token or its contract permission,
+      both of which remain unaddressed and DEFERRED
+    AI-06's "the caller submits it" is given a consistent reading — the caller is
+      the submitter, and AI-06 remains the producer of a tool-execution record —
+      but AI-06's contract is NOT modified by this change
+```
+
+No authority relation changed. No evidence kind, registry entry, digest input,
+canonical collection, workspace rule, identity field, admission outcome or
+lifecycle state changed. No admission rule changed: §30's steps, §14.10's rule set
+and §6.6's rejection rows are as they were. §7.2 adds no check and removes none:
+§6.5 and §6.6 continue to enforce exactly what they enforced before. What the
+amendment adds is a NORMATIVE CHOICE about what the word WROTE means, recorded
+here because the original wording left it open and two readings were available.
+
+**AI-05 remains INCOMPLETE.** This amendment closes nothing: not AI-11 §21.1's
+OPEN-1, not any AI-15 open item, and not §35.1's deferrals.
 
 ---
 
