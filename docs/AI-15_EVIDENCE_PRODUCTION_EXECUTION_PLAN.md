@@ -313,6 +313,12 @@ WHAT LAYER 0 IS NOT  a runtime enforcement. Nothing stops a Python module from
 FROZEN: a statement of the form "the composition cannot reach Evidence at runtime"
         is FALSE and MUST NOT appear in this document or in any AI-15-B change.
         The verifiable statement is the one below.
+FROZEN: IF A WRITER IS EVER PRESENT AND RUNS WHILE §15.2 STEP 0b IS UNSATISFIED,
+        THAT IS A VIOLATION OF THE ARCHITECTURE. It is NOT a legitimate
+        intermediate state, and it is NOT something these checks prevented — they
+        refuse a CHANGE, and they do not stop code that is already merged from
+        executing. A record such a writer stores is stored, and no later label
+        undoes it (§6.1).
 ```
 
 ```text
@@ -334,7 +340,9 @@ agents/              AGENTS_FORBIDDEN_IMPORTS check, explicit
                                                                   scripts/ci/layer0_policy.py:1549
 review/              AI10_ALLOWED_PLUGIN_IMPORTS is an ALLOWLIST
                      ("plugins.security_tools", "plugins.context")
-                     plugins.evidence is unreachable by omission :1833
+                     plugins.evidence is absent from the
+                     allowlist, so a change importing
+                     it is REPORTED by the check            :1833
 benchmarks/          explicit check, "AI-11 v1 writes no AI-05
                      EvidenceRecord (contract 21.1)"             :2465-2468
 workflows/           AI13_FORBIDDEN_IMPORT_ROOTS includes
@@ -1057,12 +1065,25 @@ FROZEN: whether AI-05's eventual answer to AI15-OPEN-1 involves a new trust root
 ### 9.2 Threat 1 — component A writes a record claiming to be component B
 
 ```text
-STATUS TODAY: POSSIBLE IN PRINCIPLE, UNREACHABLE IN PRACTICE.
+STATUS TODAY: THE GAP IS OPEN, AND NO CALLER EXISTS. THREE SEPARATE FACTS, AND
+THEY MUST NOT BE MERGED INTO ONE.
 
-  in principle   admit() takes no submitter identity (§4.3). A module with import
-                 access can submit producer="ai-04" with a well-formed DECISION.
-  in practice    no module outside plugins/evidence/ and AI-06's type-only
-                 projection can import the package at all (§3.1, §3.4).
+  the API        admit() takes no submitter identity (§4.3). ANY code that can
+                 import `plugins.evidence` and call `admit` can submit
+                 producer="ai-04" with a well-formed DECISION. This is a property
+                 of the API, and it does not depend on what is in the tree today.
+  the tree       at main @ 37f354c, no production module imports the package
+                 outside AI-06's type-only projection, and no production caller
+                 of admission exists (§3.1-§3.3). This is a RECORDED negative
+                 finding about the repository, and it is the weakest of the three:
+                 it says what HAS been written, not what CAN run.
+  the check      a change adding such a caller would fail the BUILD-TIME checks
+                 in §3.4. That is a constraint on what may be MERGED.
+  NOT claimed    that any of the three makes the API unreachable at RUNTIME.
+                 There is no runtime sandbox and no runtime authentication here.
+                 Committed code that imported the package WOULD RUN (§3.4); the
+                 constraint is that this repository will not merge it, and
+                 §15.2 STEP 0b says it must not be created in the first place.
 
 AI15-OPEN-1  PRODUCER AUTHENTICITY — how is a producer claim ESTABLISHED, as
              against merely well-formed?
@@ -1082,15 +1103,20 @@ AI15-OPEN-1  PRODUCER AUTHENTICITY — how is a producer claim ESTABLISHED, as
                          states no preference among mechanisms. §9.5 fixes only
                          that whatever AI-05 chooses MUST NOT enter the authority
                          matrix.
-        WHAT KEEPS IT FROM MATTERING TODAY  §3's two halves: no production
-                         caller exists, and a change adding one would fail the
-                         build-time checks in §3.4. Neither half is a runtime
-                         barrier, which is why AI15-OPEN-1 is LATENT rather than
-                         impossible.
-        WHY IT IS STILL A B5 PREREQUISITE  because it stops being latent the
-                         moment a writer RUNS — which is what B5 is. §15.2 STEP 0b
-                         gates that write, and §8.3 condition 11 carries it into
-                         the CONNECTED gate.
+        WHAT KEEPS IT FROM MATTERING TODAY  the RECORDED finding in §3.1-§3.3 — no
+                         production caller exists at this baseline — together
+                         with §15.2 STEP 0b, which forbids creating one while
+                         this item is OPEN. Neither is a runtime barrier.
+        STATUS, STATED PRECISELY  AI15-OPEN-1 is UNSOLVED, NOT UNREACHABLE. The
+                         API accepts a caller-supplied producer claim today, and
+                         the only thing between that and a stored record is that
+                         nobody has written the caller. "No caller exists" is a
+                         fact about the tree; it is not a property that keeps the
+                         claim safe.
+        WHY IT IS STILL A B5 PREREQUISITE  because the first caller to be written
+                         would run — which is what B5 is. §15.2 STEP 0b gates that
+                         write, and §8.3 condition 11 carries it into the
+                         CONNECTED gate.
 ```
 
 ```text
@@ -1262,9 +1288,10 @@ FROZEN: the store MUST be a StagedEvidenceStore. `admit_to_store` raises
         docstring at :250 states the reason: without that refusal the function
         would itself be a programmatic promotion path.
 FROZEN: the caller MUST NOT call `store.write` directly. It would bypass §30
-        steps 1-13 entirely, and `StagedEvidenceStore.write` (store.py:270) is
-        reachable — so this is a rule, not a structural block. It is stated as a
-        rule and the reviewer is told it is one.
+        steps 1-13 entirely, and `StagedEvidenceStore.write` (store.py:270) IS
+        CALLABLE — so this is a rule, not a build-time check, and nothing in the
+        repository refuses it. It is stated as a rule and the reviewer is told it
+        is one.
 FROZEN: a production caller MUST NOT promote. §20.3 makes promotion a HUMAN act.
 ```
 
@@ -1924,20 +1951,29 @@ THE ORDER — each step names its owner, its precondition and its output
            FROZEN: AI-15-B is ONE possible implementer of this step and is NOT
                    the only one. §17.5 fixes what the implementer may and may not
                    do, whoever it turns out to be.
-           FROZEN: STEP 2 AND STEP 3 LAND IN THE SAME FINAL MERGED CHANGE. Not
-                   two commits a reader has to join, not a runtime change followed
-                   by a documentation follow-up, and not the reverse order. AI-14
-                   §22.1 requires the classification to be updated in the SAME
-                   change that connects the seam; "the classification will
-                   follow" does NOT satisfy it, and neither does a stacked pair of
-                   PRs merged seconds apart.
+           FROZEN: STEP 2 AND STEP 3 ARE DELIVERED AS ONE CHANGE, IN ONE REVIEW,
+                   MERGED ONCE. AI-14 §22.1 requires the classification update to
+                   happen in the SAME change that connects the seam. WHAT §22.1
+                   DOES NOT DO IS PRESCRIBE A COMMIT COUNT, and AI-15 MUST NOT
+                   claim that it does: the requirement here is about the MERGE
+                   and the REVIEW, not about how either author arranges their
+                   commits on the way there.
+           FROZEN: WHAT IS FORBIDDEN IS SPLITTING THE MERGE. A runtime call site
+                   merged while the classification is absent — with the
+                   classification promised as a follow-up, deferred to a later
+                   PR, or carried by a stacked PR merged separately — does NOT
+                   satisfy §22.1, however many or few commits each half contains
+                   and however close together the merges land. The seam would be
+                   connected in the tree while the contract still says it does
+                   not exist, and that is the state §22.1 exists to prevent.
            FROZEN: "THE SAME CHANGE" DOES NOT MEAN "ONE AUTHOR". The change has
                    two parts with two owners:
                        the runtime/composition part   the implementing party
                        the AI-14 part                 AI-14's owner — §5.1,
                                                       §22.1 B5, Appendix A,
-                                                      §25, layer0 :3241 and the
-                                                      two composition assertions
+                                                      §25, layer0 :3241, and
+                                                      the two composition
+                                                      assertions in tests/
                    AI-15-B MUST NOT author the AI-14 part. The AI-14 owner MUST
                    personally make it, or formally submit and approve it, under
                    AI-14 §24 and that phase's own process.
@@ -1949,8 +1985,9 @@ THE ORDER — each step names its owner, its precondition and its output
                    AMENDMENT DELIVERED ALONGSIDE ANOTHER PARTY'S RUNTIME CHANGE,
                    WITH AI-14 RETAINING OWNERSHIP? AI-15 MUST NOT invent one, MUST
                    NOT author AI-14's parts to work around it, and MUST NOT treat
-                   a two-commit or two-PR sequence as satisfying AI-14 §22.1.
-                   §16.2 carries this as a live blocker with its owner.
+                   a separately merged AI-14 part as satisfying AI-14 §22.1 —
+                   whatever it was promised as, and however close together the
+                   merges land. §16.2 carries this as a live blocker with its owner.
 
   STEP 3   AI-14 amendment #2 — CLASSIFICATION, in the SAME change as STEP 2's
            call site.
@@ -1969,10 +2006,12 @@ THE ORDER — each step names its owner, its precondition and its output
            FROZEN: CONNECTED IS RECORDED ONLY WHEN EVERY §8.3 CONDITION HOLDS —
                    condition 11 included, which STEP 0b supplies. A caveated
                    CONNECTED is a CONNECTED claim, and §8.4 forbids it.
-           FROZEN: if STEP 3 cannot be delivered in the same change as STEP 2 by
+           FROZEN: if STEP 3 cannot be delivered in the SAME CHANGE as STEP 2 by
                    an owner-approved mechanism, STEP 2 MUST NOT RUN EITHER. That
                    is §16.2's joint-delivery blocker, and it is a decision AI-14's
                    owner makes, not a sequencing problem an implementer solves.
+                   "Same change" means the same review and the same merge, not a
+                   commit count (§17.2d).
 ```
 
 ```text
@@ -2117,12 +2156,17 @@ AI15-OPEN-1  PRODUCER AUTHENTICITY — how is a producer claim ESTABLISHED, as
         against merely well-formed? (§4.3, §9.2, §9.5)
         OWNER   AI-05
         STATUS  OPEN. Not a TODO for AI-15-B.
-        GATES   §8.3 condition 11. While it is OPEN, B5 cannot satisfy the final
-                CONNECTED gate, however many call sites exist. (§15.2 STEP 0b)
-        NOTE    the gap is LATENT today (§3.4) — no module can reach the entry
-                point. It becomes live the moment any writer is connected, which is
-                why it is a PREREQUISITE for B5's completion rather than a
-                follow-up.
+        GATES   §15.2 STEP 2 AND STEP 3, and through them §8.3 condition 11.
+                While it is OPEN, no production call site that can execute
+                admission and persist a record may be created, merged or run
+                (§17.2b), and B5 cannot satisfy the CONNECTED gate however many
+                call sites exist.
+        NOTE    UNSOLVED, NOT UNREACHABLE. The API accepts a caller-supplied
+                producer claim today and nothing in the runtime prevents a call
+                (§3.4). What holds it back is that no production caller exists at
+                this baseline (a RECORDED negative finding, §3.1-§3.3) and that
+                §15.2 STEP 0b forbids writing one. That is why it is a
+                PREREQUISITE for B5's completion rather than a follow-up.
         NOT     AI-11 §21.1's OPEN-1. That one is WHICH PRODUCERS EXIST; this one
                 is WHETHER A PRODUCER CLAIM IS TRUSTWORTHY. §9.2 works the
                 independence argument in both directions, and §16.2 keeps both as
@@ -2177,10 +2221,11 @@ B5 — composition -> Evidence
     3      AI-14 amendment #2 (classification), in       AI-14                 CONNECTED
            the SAME change as the call site
     joint  an AI-14-OWNER-APPROVED delivery              AI-14                 STEP 2 AND STEP 3
-           mechanism for a change with two authors:                            together
-           AI-14's owner authors or approves AI-14's
-           parts, the implementer authors the runtime
-           part, merged as ONE change (§15.2 STEP 2)
+           mechanism for a change with two authors:                            together, in
+           AI-14's owner owns its CONTRACT, LAYER 0,                           ONE review and
+           TESTS and CLASSIFICATION; the implementer                           ONE merge —
+           owns the runtime part. ONE review, ONE                             NOT a commit
+           merge (§15.2 STEP 2, §17.2d)                                     count
     FROZEN: 0b is INDEPENDENT of 1 and 1'. A call site that works and a token that
             is registered together satisfy no part of 0b (§15.3).
     FROZEN: 0b GATES STEP 2, SO IT GATES THE WRITE. Before it is complete, no
@@ -2374,12 +2419,15 @@ THE CHANGE HAS TWO PARTS AND TWO AUTHORS
     part                      author                     content
     ------------------------  -------------------------  -----------------------
     runtime / composition     the implementing party     the call site, the
-                                                         wiring, its tests
-    the AI-14 part            AI-14'S OWNER              §5.1, §22.1 B5,
-                                                         Appendix A, §25,
-                                                         layer0 :3241, and the
-                                                         two composition
-                                                         assertions
+                                                         wiring, its own tests
+    the AI-14 part            AI-14'S OWNER              its CONTRACT (§5.1,
+                                                         §22.1 B5, Appendix A,
+                                                         §25), its LAYER 0
+                                                         constant (layer0 :3241),
+                                                         its TEST assertions (the
+                                                         two in tests/composition/)
+                                                         and the resulting
+                                                         classification
 
 ORDER OF EVENTS
     STEP 1   AI-14's owner delivers the AUTHORIZATION change first — rules
@@ -2393,13 +2441,32 @@ ORDER OF EVENTS
 FROZEN: AI-15-B MUST NOT AUTHOR THE AI-14 PART. Meeting §22.1's same-change
         rule by editing AI-14's contract from an AI-15 branch is the owner-rule
         bypass §15.2 names, and MUST NOT be merged.
-FROZEN: AI-14'S OWNER MUST PERSONALLY MAKE, OR FORMALLY SUBMIT AND APPROVE, the
-        AI-14 parts under AI-14 §24 and that phase's own process. Nothing in
-        AI-15 may be read as transferring that ownership, delegating it, or
-        waiving it for a joint change.
-FROZEN: A TWO-COMMIT OR TWO-PR SEQUENCE DOES NOT SATISFY THE SAME-CHANGE RULE,
-        however close together the merges are. "The classification will follow"
-        is the exact case AI-14 §22.1 was written to refuse.
+FROZEN: AI-14'S OWNER MUST PERSONALLY MAKE, OR FORMALLY SUBMIT AND APPROVE, its
+        CONTRACT, its LAYER 0 CONSTANT, its TEST ASSERTIONS and its
+        CLASSIFICATION parts — under AI-14 §24 and that phase's own process.
+        Nothing in AI-15 may be read as transferring that ownership, delegating
+        it, or waiving it for a joint change.
+FROZEN: AI-15 DOES NOT DECIDE FOR AI-14'S OWNER — not whether the amendment is
+        made, not how it is delivered, and not which of the two mechanisms below
+        is used. Both are named as shapes AI-14's owner may choose; neither is
+        chosen here:
+            the AI-14 owner authors its parts in the SAME PR as the runtime part
+            the AI-14 owner formally submits and approves its parts for that PR
+              under AI-14's own process, without authoring them line by line
+        A third shape — the AI-14 owner's parts merged separately — is the one
+        §22.1 forbids, and is not an option.
+FROZEN: THE REQUIREMENT IS ONE CHANGE, ONE REVIEW, ONE MERGE — AND IT IS NOT A
+        COMMIT COUNT. AI-14 §22.1 freezes that the classification and Appendix A
+        are updated in the same change that connects the seam. It does NOT say
+        the parts must arrive as a single commit, and AI-15 MUST NOT attribute
+        such a rule to it. How each author arranges their own commits is each
+        author's business.
+FROZEN: WHAT IS FORBIDDEN IS A SEPARATELY MERGED AI-14 PART. A runtime call site
+        merged while the classification is absent does NOT satisfy §22.1 —
+        whether the classification is promised as a follow-up, deferred to a
+        later PR, or carried by a stacked PR merged separately, and however
+        close together the merges land. "The classification will follow" is the
+        exact case §22.1 was written to refuse.
 FROZEN: IF NO OWNER-APPROVED DELIVERY MECHANISM EXISTS — one the repository's
         workflow can actually express, in which AI-14's owner authors or formally
         approves AI-14's parts while the implementer authors the runtime part,
@@ -2529,7 +2596,10 @@ AI-15-A IS DONE WHEN
       production call site that could persist a record, and §17.2b/§17.2c draw
       the line between that and preparation which cannot write
     it says which part of the joint STEP 2 + STEP 3 change each author owns, and
-      keeps AI-14's owner owning AI-14's parts (§17.2d)
+      keeps AI-14's owner owning its contract, Layer 0, tests and classification
+      (§17.2d)
+    it states that rule as ONE review and ONE merge, and does NOT present it as a
+      commit-count requirement or attribute one to AI-14 (§17.2d)
     it states Layer 0's checks as BUILD-TIME repository checks, never as a
       runtime sandbox or a runtime authentication (§3.4)
     it keeps failure PROPAGATION separate from AUTHORIZATION, so neither
@@ -2556,8 +2626,11 @@ AI-15-A IS NOT DONE IF
       OPEN, however the seam is labelled (§15.2 STEP 0b, §17.2b)
     a test-only path, a flag, a default or a helper is offered as satisfying
       STEP 0b, or as preparation that cannot write when it can (§17.2c)
-    AI-15-B authors AI-14's contract, Layer 0 or classification parts to satisfy
-      the same-change rule, or a two-commit sequence is offered as satisfying it
+    AI-15-B authors AI-14's contract, Layer 0, test or classification parts to
+      satisfy the same-change rule, or a separately merged AI-14 part is offered
+      as satisfying it (§17.2d)
+    the same-change rule is stated as a COMMIT-COUNT requirement, or attributed
+      to AI-14 as one — AI-14 §22.1 fixes the MERGE, not the commit count
       (§17.2d)
     Layer 0 is described as preventing an import at runtime rather than as
       refusing a repository change (§3.4)
