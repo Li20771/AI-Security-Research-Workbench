@@ -1459,9 +1459,10 @@ AI-15 dependency
 
 ```text
 RECORDED: docs/AI-14_LONG_TERM_AI_WORKBENCH_EXECUTION_PLAN.md carries AI-05 C-1 as
-          DEFERRED in ten places written before C-1 merged:
-              :76, :404, :928, :937, :1132, :1142, :1217, :1275, :1439, :1450,
-              :1520, :1778
+          DEFERRED or as an open blocker on FOURTEEN lines, all written before
+          C-1 merged. `grep -n "C-1" <that file>` returns exactly:
+              :76, :404, :928, :937, :1132, :1142, :1143, :1150, :1217, :1275,
+              :1439, :1450, :1520, :1778
           and :930 asserts a falsifiable fact — "plugins/evidence/rules.py does not
           exist" — while plugins/evidence/rules.py exists (11,460 bytes, from
           C-1's merge on 2026-10-04).
