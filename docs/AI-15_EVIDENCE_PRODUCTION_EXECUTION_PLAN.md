@@ -951,9 +951,13 @@ T2 — COMPOSITION AS SUBMITTER OF AN OWNER-AUTHORED RECORD
      Amendment 4 answered that with READING A — a submitter MAY differ from the
      producer and does not thereby make a false claim — so this objection is
      SETTLED, and it was settled by the owner, not by AI-15 (§19 Amendment 1).
-     THE ONE UNBLOCKED PATH: AI-06's rows exist and AI-06 §15.1 names a caller.
-     WHAT IS NOT UNBLOCKED: the path itself. T2 still has no authorized call
-     site, and STEP 0b still forbids one (§17.2b).
+     THE SEMANTIC OBJECTION NOW SETTLED: AI-06's rows exist in §6.5, and AI-06
+     §15.1 gives the submitter role its own words — "the caller submits it" — so
+     the ownership question this path turns on is answered at the CONTRACT
+     level. Settling it is not building on it: THE OBJECTION IS SETTLED, THE
+     PATH IS NOT OPEN. No production caller exists (§14.3), T2 still has no
+     authorized call site, and while §15.2 STEP 0b is unsatisfied none may be
+     created or run (§17.2b).
 
 T3 — COMPOSITION AS A NEW PRODUCER
      REJECTED by §7.1. OUT OF SCOPE, permanently.
@@ -2911,6 +2915,14 @@ CLAUSES, DEPENDENCIES AND STATUSES THIS AMENDMENT CHANGES
     §5.3     the two resolving rules are restated as rules about OPEN items
               generally — unchanged in substance — and a RECORDED line states that
               AI15-OPEN-2 was closed by the owner, not by breaking them
+    §7.2     the T2 topology note's inherited objection is recorded as SETTLED by
+              AI-05 Amendment 4: a submitter MAY differ from the producer, so a
+              submitting composition does not thereby author a false producer
+              claim. The reading is AI-05's decision and is upstream of this
+              document. The note states in the same place what that is NOT — no
+              authorization, no production call site, no connection — so §7.2 and
+              §7.3 read consistently rather than one unblocking what the other
+              still forbids
     §7.3     "T2 is legal only under READING A" gains "and that condition is now
               met", plus a new FROZEN stating that a settled reading is NOT a
               connection and NOT an authorization
@@ -2946,6 +2958,13 @@ CLAUSES, DEPENDENCIES AND STATUSES THIS AMENDMENT CHANGES
               log it sits beside
     Status    the OPEN list drops AI15-OPEN-2; the BLOCKED block records that
               STEP 0a is satisfied and the rest is not
+    SECURITY  this amendment's own SECURITY IMPACT block is written to separate
+      IMPACT  three things the first draft ran together — what it does NOT add
+              (no authentication, no trust root, no new admission check), what
+              it DOES (records a choice AI-05 already made), and what FOLLOWS
+              WITHOUT BEING AUTHORIZED (STEP 1 becomes startable; nothing is
+              authorized). The rewording changes no obligation and no boundary;
+              it narrows a claim that was broader than the change
 
     NOTHING ELSE IN THIS DOCUMENT CHANGED. No clause of §6, §8, §9.5, §10-§13 or
     §17.1-§17.2d is touched, and no row of §20 moves.
@@ -2954,13 +2973,36 @@ CLAUSES, DEPENDENCIES AND STATUSES THIS AMENDMENT CHANGES
 ```text
 SECURITY IMPACT
 
-    None, and the negative is the point. This amendment RECORDS a clarification
-    AI-05 made about attribution. It establishes NO authentication mechanism,
-    adds no trust root, no signature, no key and no credential path, and it does
-    not claim that any record, producer claim or submitter is thereby trusted.
-    AI-05 Amendment 4 says the same in its own words: registry validation,
-    producer authentication and submitter identity are three different checks,
-    and it performs only the first.
+    NO NEW SECURITY CONTROL, AND NO AUTHENTICATION — stated precisely, because
+    the broader claim "nothing security-relevant changed" would be false.
+
+    WHAT THIS AMENDMENT DOES NOT ADD
+        no authentication mechanism, no trust root, no signature, no key, no
+        credential path and no new admission check
+        no claim that a record, a producer claim or a submitter is trusted
+        no change to what AI-05 admits or rejects, and no runtime behaviour at
+          all — this amendment is documentation
+        AI-05 Amendment 4 says the same in its own words: registry validation,
+          producer authentication and submitter identity are three different
+          checks, and it performs only the first
+
+    WHAT IT DOES
+        it RECORDS a semantic choice AI-05 had already made and put IN FORCE
+        (Amendment 4, PR #80), and it closes AI15-OPEN-2 in AI-15's inventory
+
+    WHAT FOLLOWS, AND WHAT IS NOT THEREBY AUTHORIZED
+        STEP 1 now has its semantic precondition met, so AI-14 may BEGIN its
+          amendment. A met precondition is not an authorization: no AI-14
+          amendment has been made, and this document makes none
+        AI15-OPEN-1 REMAINS OPEN. No producer authentication exists, and §15.2
+          STEP 0b still forbids creating or running any production call site
+          that can execute admission and persist a record
+        AI-11 §21.1's OPEN-1, AI15-OPEN-3 and AI15-OPEN-4 all remain OPEN
+
+    SO: this amendment adds no security control and grants no authority. It is
+    equally true that two things DID move — AI15-OPEN-2 is closed, and STEP 1
+    became startable. Neither is a control, a permission, or a change in what
+    the system will accept.
 ```
 
 ```text
