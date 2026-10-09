@@ -624,15 +624,32 @@ and — if every field is otherwise well formed and the workspace agrees — rec
 RECORDED: what that record then proves is that a record of that shape is
           well-formed for the AI-04 Guard-decision event. It does NOT prove that
           AI-04 produced it.
-RECORDED: whether this matters today is answered by §3 — and the answer has two
-          halves that MUST NOT be merged:
-              no production caller exists at main (§3.1-§3.3), because NONE WAS
-                WRITTEN; and
-              a change that added one would be REFUSED by the build-time checks
-                in §3.4, because those checks reject the commit.
-          Neither half is a runtime barrier. A committed module that imported
-          `plugins.evidence` would run. The gap is LATENT — no caller exists — not
-          IMPOSSIBLE, and stating it as latent is the point.
+RECORDED: whether this matters today is answered by §3, and the answer has THREE
+          parts that MUST NOT be merged:
+              BASELINE       at main @ 37f354c there is NO production Evidence
+                             admission caller (§3.1-§3.3). A negative finding
+                             about this tree: it says what has been WRITTEN, not
+                             what can RUN.
+              WITH A RULE    a change adding such a caller TO ONE OF THE FIVE
+                             DIRECTORIES THAT CARRY A LAYER 0 RULE would be
+                             refused by the corresponding build-time check,
+                             which rejects the commit (§3.4).
+              WITHOUT ONE    a caller placed in a directory with NO rule — the
+                             clearest case is `plugins/security_tools/` (§3.4,
+                             §14.3) — would NOT be refused by a build-time check,
+                             because there is none to refuse it. What governs it
+                             is the owning phase's CONTRACT, and A CONTRACT RULE
+                             IS NOT A BUILD-TIME CHECK. AI-15 MUST NOT describe
+                             one as the other.
+          None of the three is a runtime barrier. A committed module that
+          imported `plugins.evidence` would RUN (§3.4), and nothing in this
+          repository stops it at runtime. The gap is LATENT — no caller exists —
+          not IMPOSSIBLE, and stating it as latent is the point.
+FROZEN: while AI15-OPEN-1 is OPEN, NO production, non-test call site that can
+        execute admission and persist an EvidenceRecord may be created, merged
+        or run — IN ANY DIRECTORY, whether or not a Layer 0 rule covers it
+        (§15.2 STEP 0b, §17.2b). That rule does not depend on a check existing,
+        which is exactly why it is stated as a rule.
 ```
 
 ---
