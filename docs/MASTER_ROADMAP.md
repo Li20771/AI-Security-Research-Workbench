@@ -945,10 +945,14 @@ AI-15 不新增能力，也不绕过任何 phase：GPT 定义它为**“证据�
 
 ```text
 contract = docs/AI-15_EVIDENCE_PRODUCTION_EXECUTION_PLAN.md
-                           FROZEN @ PR #78; no amendment
+                           FROZEN @ PR #78; AMENDED ONCE (§19 Amendment 1)
                            contract blob = a206d90d0d357f08a214b0731a0b7f63d3771ea2
+                                           (the blob at the freeze; Amendment 1
+                                            supersedes it and is the current text)
 AI-15-A  = COMPLETE / MERGED   architecture / contract freeze — DOCS ONLY
                                (PR #78 @ 6e814a8b6d214a0203deb73b1abbf21ae50b68cc)
+amendment= AMENDED ONCE        §19 Amendment 1 records AI-05's answer to AI15-OPEN-2
+                               (2026-10-09); it is the only amendment
 AI-15-B  = NOT STARTED         BLOCKED
 AI-15    = NOT COMPLETE        B5 (composition -> Evidence) remains BLOCKED / NOT STARTED
 base     = main @ 37f354cbb3c007f2d92021fa560a443a53591372
@@ -998,10 +1002,17 @@ AI-15-A 不声称：runtime；producer token；改动任何其他 phase 的契�
 ```
 
 ```text
-AI-15 不解除它不拥有的任何 BLOCKER：
+AI-15 的 Amendment 1（§19）2026-10-09：记录 AI-05 Amendment 4 对 AI15-OPEN-2 的回答（READING A）
+    AI15-OPEN-2 = CLOSED / ANSWERED BY AI-05 AMENDMENT 4 — READING A
+                   由 AI-05 在其自己的契约中作出（PR #80，03d42681）；AI-15 只记录。
+    STEP 0a     = 已回答，因此 AI-14 的 STEP 1 已解除该前置条件（但尚未动手）
+
+AI-15 不解除它不拥有的任何其他 BLOCKER：
     AI-11 §21.1 OPEN-1 = OPEN（producer-token amendment）
-    AI15-OPEN-1..4 = OPEN（AI-05 · AI-05 · AI-04 · AI-13/AI-14）
-    B5 = BLOCKED / NOT STARTED
+    AI15-OPEN-1 = OPEN（AI-05，producer authentication）— 仍 gate 写入本身
+    AI15-OPEN-3 = OPEN（AI-04）· AI15-OPEN-4 = OPEN（AI-13 / AI-14）
+    STEP 0b = 未完成（仍阻止生产写入）· STEP 1 / 1' / 2 / 3 = 未完成
+    B5 = BLOCKED / NOT STARTED（无 seam CONNECTED，无生产 Evidence writer）
     AI-05 = INCOMPLETE（§35.1 DEFERRED）
     AI-12-C = BLOCKED / NOT STARTED；model-comparative = BLOCKED
     live provider verification = NOT_RUN（NOT_RUN != PASS）
@@ -1130,7 +1141,7 @@ SecurityLab
 | AI-12 | **AI-12-A COMPLETE / MERGED** (`60c630d8`), **AI-12-B COMPLETE / MERGED** (`fa892eb1`, PR #67) — the policy core; **AI-12-C BLOCKED / NOT STARTED**, **AI-12 NOT CLOSED**, model-comparative prerequisite BLOCKED; see [AI-12-B_EVIDENCE_2026-10-03.md](AI-12-B_EVIDENCE_2026-10-03.md) |
 | AI-13 | **COMPLETE / MERGED / CLOSED** — contract `1e0a7fdf4dd96230a6177d3ca21bda03ec9c19ba` (PR #69), workflow core `95f0d08c47c8137813013ad7fe318e8fd0ebf12a` (PR #70), human approval point `98d4f57ad0bd78a54b9eb2ea44f30d2db394ee97` (PR #71), Amendments 1–4 applied; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-14 | **COMPLETE** — AI-14-A (freeze) `4b1058a4c764a613127800426fdd95e34d164bf3` (PR #72) and AI-14-B (composition) `adf6db2476b7e3de33a585954610e9ab568b498c` (PR #73) both merged; contract **FROZEN + AMENDED ONCE** (§25); **B5 (composition → Evidence) BLOCKED / NOT STARTED**; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
-| AI-15 | **AI-15-A COMPLETE / MERGED** — architecture / contract freeze, **DOCS ONLY** `6e814a8b6d214a0203deb73b1abbf21ae50b68cc` (PR #78), a true two-parent merge of `37f354c`; contract **FROZEN** (`docs/AI-15_EVIDENCE_PRODUCTION_EXECUTION_PLAN.md`); **AI-15-B NOT STARTED / BLOCKED**, **B5 still BLOCKED / NOT STARTED**; see [PROJECT_STATUS.md](PROJECT_STATUS.md) and [AI-15_EVIDENCE_PRODUCTION_EXECUTION_PLAN.md](AI-15_EVIDENCE_PRODUCTION_EXECUTION_PLAN.md) |
+| AI-15 | **AI-15-A COMPLETE / MERGED** — architecture / contract freeze, **DOCS ONLY** `6e814a8b6d214a0203deb73b1abbf21ae50b68cc` (PR #78), a true two-parent merge of `37f354c`; contract **FROZEN + AMENDED ONCE** (§19 Amendment 1, 2026-10-09) — **AI15-OPEN-2 CLOSED / ANSWERED BY AI-05 AMENDMENT 4 as READING A**, so **STEP 0a is satisfied** and AI-14's STEP 1 is unblocked but NOT made; **AI15-OPEN-1 remains OPEN** and STEP 0b still gates the write; **AI-15-B NOT STARTED / BLOCKED**, **B5 still BLOCKED / NOT STARTED**, no seam CONNECTED; see [PROJECT_STATUS.md](PROJECT_STATUS.md) and [AI-15_EVIDENCE_PRODUCTION_EXECUTION_PLAN.md](AI-15_EVIDENCE_PRODUCTION_EXECUTION_PLAN.md) |
 
 ---
 

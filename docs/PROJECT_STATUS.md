@@ -10,7 +10,14 @@ The architecture freeze (AI-15-A) merged to `main` as
 `docs/AI-15_EVIDENCE_PRODUCTION_EXECUTION_PLAN.md`, no runtime, no producer token, and no
 other phase's contract touched. It **froze a contract**; it connected no seam.
 **AI-15-B is NOT STARTED and BLOCKED**, and **B5 (composition → Evidence) remains
-BLOCKED / NOT STARTED**. See [AI-15 status](#ai-15-status).
+BLOCKED / NOT STARTED**.
+
+**AI-15's contract has since been AMENDED ONCE** (§19 Amendment 1, 2026-10-09). It
+records AI-05 Amendment 4's answer to **AI15-OPEN-2** — **READING A**, merged as PR #80
+(`03d42681cb8b2110773654822655117daea44ad5`) — so **AI15-OPEN-2 is CLOSED** and
+**STEP 0a is satisfied**. That unblocks AI-14's STEP 1, which has **NOT** been made.
+**AI15-OPEN-1 remains OPEN** and §15.2 STEP 0b still gates the write, so **no seam is
+CONNECTED and no production Evidence writer exists**. See [AI-15 status](#ai-15-status).
 
 **AI-14 — Long-term AI Workbench — AI-14-A and AI-14-B are COMPLETE / MERGED.** The
 architecture freeze (AI-14-A) merged to `main` as
@@ -542,7 +549,10 @@ AI-14   Long-term AI Workbench                COMPLETE  AI-14-A MERGED (PR #72)
   TRUSTWORTHY). AI-15-B's blockers are listed with owners and the §15.2 step each gates
   in the AI-15 plan §16.2; **B5 remains BLOCKED**, and while AI15-OPEN-1 is OPEN **no
   production call site that can execute admission and persist a record may be created,
-  merged or run** (AI-15 plan §15.2 STEP 0b, §17.2b)
+  merged or run** (AI-15 plan §15.2 STEP 0b, §17.2b). **AI15-OPEN-2 is no longer one
+  of them**: AI-05 Amendment 4 answered it as READING A and AI-15 recorded the answer
+  (§19 Amendment 1), so STEP 0a is satisfied and AI-14's STEP 1 may begin. It has not
+  begun, and satisfying a blocker is not satisfying B5
 
 ## AI-00 final gate status
 
@@ -1849,9 +1859,14 @@ AI-15-A  = COMPLETE / MERGED   architecture / contract freeze — DOCS ONLY
 AI-15-B  = NOT STARTED         BLOCKED — the AI-15 plan §16.2 lists every blocker,
                                each with an owner and the §15.2 step it gates
 contract = docs/AI-15_EVIDENCE_PRODUCTION_EXECUTION_PLAN.md
-                           FROZEN @ PR #78; no amendment
+                           FROZEN @ PR #78; AMENDED ONCE (§19 Amendment 1, 2026-10-09)
                            contract blob = a206d90d0d357f08a214b0731a0b7f63d3771ea2
-                                         (DOCS ONLY, 2898 lines)
+                                         (the blob at the freeze; Amendment 1
+                                          supersedes it and is the current text)
+amendment= Amendment 1         records AI-05 Amendment 4's answer to AI15-OPEN-2
+                               (READING A), merged as PR #80
+                               03d42681cb8b2110773654822655117daea44ad5; it is the
+                               ONLY amendment to this contract
 
 merge    = 6e814a8b6d214a0203deb73b1abbf21ae50b68cc
                      true two-parent merge; not squashed, not rebased
@@ -1996,8 +2011,16 @@ live provider verification              NOT_RUN  (NOT_RUN != PASS)
 durable review evidence                 DEFERRED
 AI-07 routing DECISION / human approval
   as admitted events                    DEFERRED
-OPEN, not closed by AI-15               AI15-OPEN-1 (AI-05) · AI15-OPEN-2 (AI-05) ·
-                                        AI15-OPEN-3 (AI-04) · AI15-OPEN-4 (AI-13/AI-14)
+CLOSED by AI-05, recorded by AI-15      AI15-OPEN-2 = CLOSED / ANSWERED BY AI-05
+                                        AMENDMENT 4 — READING A (§5.3, §16.1,
+                                        §19 Amendment 1)
+OPEN, not closed by AI-15               AI15-OPEN-1 (AI-05, producer authentication)
+                                        · AI15-OPEN-3 (AI-04) ·
+                                        AI15-OPEN-4 (AI-13/AI-14)
+STEP 0a                                 ANSWERED — AI-14's STEP 1 is unblocked and
+                                        NOT made
+STEP 0b                                 NOT DONE — producer authentication still
+                                        gates the WRITE
 ```
 
 ### Measured this round
