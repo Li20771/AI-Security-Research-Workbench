@@ -76,6 +76,11 @@ PROPOSED  the admission boundary AI-15-B would call, and what it must not do (§
 PROPOSED  failure semantics for a production-side admission (§11)
 PROPOSED  the workspace obligations a production writer inherits (§12)
 PROPOSED  the authority rules, restated so a writer cannot acquire one (§13)
+PROPOSED  the boundary between REGISTRY MEMBERSHIP and AUTHENTICATION, and between
+          AUTHENTICATION and AUTHORIZATION (§4.3, §9.5)
+PROPOSED  the ORDER in which B5's blockers must be discharged, so that no
+          prerequisite amendment is asked to assert an outcome that does not yet
+          exist (§15.2)
 RECORDED  the current-state audit: contract / implementation / call site (§3, §20)
 ```
 
@@ -83,6 +88,9 @@ RECORDED  the current-state audit: contract / implementation / call site (§3, �
 
 ```text
 OUT OF SCOPE  AI-05's §6.5 registry, §6.6 rules, §7 producer model, §30 contract
+OUT OF SCOPE  producer AUTHENTICATION — how a producer claim is established.
+              AI15-OPEN-1, owned by AI-05 (§9.2). AI-15 neither resolves it nor
+              builds any mechanism for it (§9.5, §17.4)
 OUT OF SCOPE  AI-11 §21.1's OPEN-1 tension and its reconciliation
 OUT OF SCOPE  AI-14's CONNECTED/SEAM classification of any edge other than B5
 OUT OF SCOPE  any phase's own writer (§14, §15 — those are owner amendments)
@@ -183,7 +191,7 @@ FROZEN: BLOCKED != DEFERRED. A blocked item has a named blocker that could be
 ```text
 admission        the §30 pipeline. plugins/evidence/admission.py:176 admit()
                  runs steps 1-13; :210 admit_to_store() additionally runs step 14
-                 and persists. Both run step 7 (§14.10) since Amendment 3.
+                 and persists. Both run step 7 (AI-05 §14.10) since Amendment 3.
 producer         §7: "the component that WROTE the EvidenceRecord. Always a
                  Workbench component. Never a human."
 actor            §7: "the entity whose act the record is ABOUT."
@@ -412,10 +420,11 @@ six, because every spoofing argument in §9 turns on conflating two of them.
                          agent-execution record.
 4  PRODUCER TYPE         ProducerType = agent | service | unknown.
                          AI-05 owns it (vocabulary.py). NOT an ActorType (§7.1).
-5  EVENT KIND            EvidenceKind = OBSERVATION | DECISION | EXECUTION (§6).
-                         Describes THE ACT, and is what selects the payload (§11).
+5  EVENT KIND            EvidenceKind = OBSERVATION | DECISION | EXECUTION
+                         (AI-05 §6). Describes THE ACT, and is what selects the
+                         payload (AI-05 §11).
 6  EVENT FAMILY          ObservationFamily = SOURCE_READ | PROVIDER_PROBE |
-                         CAPABILITY_OBSERVATION (§6.7). REQUIRED on an
+                         CAPABILITY_OBSERVATION (AI-05 §6.7). REQUIRED on an
                          OBSERVATION, absent from DECISION and EXECUTION.
 ```
 
@@ -445,6 +454,11 @@ FROZEN: none of the following MAY be the sole basis on which a record's producer
             a test double, a fixture, or a Protocol implementation
 FROZEN: this list is a RESTATEMENT of AI-05 §6.5/§6.6 and AI-07's and AI-08's own
         boundaries. AI-15 adds no seventh refusal and weakens none.
+FROZEN: TODAY'S PIPELINE ACCEPTS THE CLAIM ON EXACTLY THE FIRST OF THOSE BASES.
+        A caller-supplied string is the sole basis of `provenance.producer`, and
+        §4.3 records what is and is not checked. This list states the RULE; §4.3
+        states the GAP between the rule and the implementation, and neither is a
+        substitute for the other.
 ```
 
 ### 4.3 Is the producer claim enforced today?
@@ -496,9 +510,22 @@ RECORDED: NOTHING enforces WHO IS SUBMITTING.
 
 ```text
 FROZEN: the producer token is a NAMESPACE CLAIM, not a CREDENTIAL.
-FROZEN: AI-15-A does NOT fix this. Fixing it would require a trust root, and §1.3
-        puts a new trust root out of scope. It is recorded as OPEN-1 in §9.2 and
-        §16, with the consequence stated rather than hidden.
+FROZEN: §6.5 REGISTRY MEMBERSHIP PROVES REGISTRATION AND NOTHING ELSE. A value
+        passing `g_registered` proves that the string is the token the registry
+        holds for this (kind, family). It does NOT prove that the named component
+        produced the record, that the submitter is that component, or that the
+        submitter is entitled to speak for it. Registry validation is a
+        WELL-FORMEDNESS check; producer AUTHENTICATION is a different question,
+        and no step of §30 answers it.
+FROZEN: A NON-TEST CALL SITE IS NOT PRODUCER PROVENANCE. Wiring a caller to
+        `admit_to_store` establishes that records can be WRITTEN. It establishes
+        nothing about WHO wrote them. §8.3 carries this as its own condition,
+        because a reader could otherwise take "the seam is connected" for "the
+        provenance is sound" — an inference this document refuses.
+FROZEN: AI-15-A does NOT fix this. §1.3 puts a new trust MECHANISM out of scope,
+        and §9.5 keeps the trust question apart from the authority question.
+        Recorded as AI15-OPEN-1 in §9.2 and §16, with the consequence stated
+        rather than hidden.
 ```
 
 ### 4.4 The consequence, stated plainly
@@ -587,7 +614,7 @@ docs/AI-05_EVIDENCE_EXECUTION_PLAN.md §7 — FROZEN
 ```
 
 ```text
-§7's worked example binds `producer` to the OWNING COMPONENT OF THE ACT.
+AI-05 §7's worked example binds `producer` to the OWNING COMPONENT OF THE ACT.
 §13.1 of AI-08 draws the strict conclusion from it:
     "`producer` names the component that WROTE the record, and that claim would be
      false [if AI-08 wrote under ai-06]."
@@ -608,14 +635,15 @@ READING A — SUBMITTER MAY DIFFER FROM PRODUCER
 READING B — SUBMITTER IS THE PRODUCER
     "wrote" means "called admission / store.write". Then AI-06 §15.1's caller
     needs a registry row of its own, and no row admits "composition" or "ai-14".
-    Consistent with:  §7's literal wording, and AI-08 §13.1's reasoning applied
+    Consistent with:  AI-05 §7's literal wording, and AI-08 §13.1's reasoning
+                      applied
                       to a courier.
     Consequence:      AI-06 §15.1 is unimplementable without an AI-05 amendment.
 ```
 
 ```text
-OPEN-2  Which reading governs `producer` when the submitter is not the named
-        component?
+AI15-AI15-OPEN-2  Which reading of AI-05 §7's "WROTE" governs `producer` when the
+             submitter is not the named component?
 
         OWNER            AI-05 (it owns §7, §6.5 and §6.6)
         AI-15 POSITION   AI-15 does NOT choose. It records that the question is
@@ -628,8 +656,8 @@ OPEN-2  Which reading governs `producer` when the submitter is not the named
 ```
 
 ```text
-FROZEN: AI-15 MUST NOT resolve OPEN-2 by implementing one reading.
-FROZEN: AI-15 MUST NOT "test" OPEN-2 by writing the record either way. A test
+FROZEN: AI-15 MUST NOT resolve AI15-OPEN-2 by implementing one reading.
+FROZEN: AI-15 MUST NOT "test" AI15-OPEN-2 by writing the record either way. A test
         asserting an outcome would settle by convention what the contract has not
         settled.
 ```
@@ -644,6 +672,22 @@ FROZEN: AI-15 MUST NOT "test" OPEN-2 by writing the record either way. A test
 FROZEN: run data does NOT become Evidence by being produced, by being correct, by
         being observed, or by a model judging it true. It becomes Evidence by
         passing §30 admission under an ADMITTED producer, and by nothing else.
+FROZEN: "PASSING §30 ADMISSION UNDER AN ADMITTED PRODUCER" IS A STATEMENT ABOUT
+        THE RECORD, NOT ABOUT THE SUBMITTER. §30's fourteen steps include no step
+        that establishes who submitted the record (§4.3). So a durable admission
+        means exactly this: the record is well formed, its producer token is the
+        one the registry holds for this kind and family, its workspace agrees, and
+        it is now stored. It does NOT mean the named component wrote it.
+FROZEN: DURABILITY DOES NOT UPGRADE THE CLAIM. A staged record and a promoted one
+        carry the same bytes and the same digests (§20.3), so promotion adds
+        EXISTENCE, not AUTHENTICITY. A reader MUST NOT treat "it is durable" as
+        stronger evidence of its producer than "it was admitted" was — promotion
+        is a human copy, not a verification step.
+FROZEN: THE AUTHENTICITY CONDITION IS AI15-OPEN-1, AND IT IS AI-05'S TO DEFINE.
+        Until AI-05 has defined it AND it has been implemented AND tests show it
+        holds, no document, no caller and no result may describe an admitted
+        record as PROVEN to have been produced by the component its token names.
+        §8.3 carries this as its own CONNECTED condition.
 FROZEN: no component may introduce a promotion path of its own. This restates
         AI-08 §13.3 and AI-14 §4.2 rule 4, and AI-15 adds no path.
 ```
@@ -669,7 +713,7 @@ FROZEN: raw tool output, raw model output, prompts, completions, credentials,
         SOURCES: AI-05 §5.2, §13.4, §13.8; AI-14 §14; AI-13 §7.2; AI-11 §18.2.
 FROZEN: AI-05 never converts supplied content into an artifact (§13.8), and an
         undeclared raw-content field of any kind is REJECTED (§30).
-FROZEN: SecretValue MUST NOT cross the boundary, and the §14.10 rule set is a
+FROZEN: SecretValue MUST NOT cross the boundary, and the AI-05 §14.10 rule set is
         DETECTOR, not a sanitizer — it refuses, and holds no replacement (§14.4.1).
 ```
 
@@ -754,7 +798,7 @@ T2 — COMPOSITION AS SUBMITTER OF AN OWNER-AUTHORED RECORD
          contract      AI-14 §5.1 / Appendix A classify this row
                        "DOES NOT EXIST (by rule)"
          and, for every phase but AI-06, ALSO by T1's registry and contract rows.
-     AND it inherits OPEN-2 (§5.3): whether a submitting composition authors a
+     AND it inherits AI15-OPEN-2 (§5.3): whether a submitting composition authors a
      false producer claim by the standard AI-08 §13.1 applied to itself.
      THE ONE UNBLOCKED BYTE: AI-06's rows exist and AI-06 §15.1 already names a
      caller — UNDER READING A ONLY.
@@ -768,14 +812,19 @@ T3 — COMPOSITION AS A NEW PRODUCER
 ```text
 FROZEN: the ONLY topology consistent with the frozen contracts is T2, and only
         under READING A, and only for an event whose registry row already exists,
-        and only after AI-14 amends §5.1 / §22.1 B5 / Appendix A and layer 0
-        narrows :3241 in the same change.
+        and only after §15.2's ordered steps are satisfied: AI-14 authorizes the
+        edge (STEP 1), a call site exists (STEP 2), and AI-14 records the
+        classification with it (STEP 3).
+FROZEN: T2 IS LEGAL ONLY UNDER READING A. That is AI15-OPEN-2, it is AI-05's to
+        answer (§5.3), and it gates STEP 1 (§15.2). Under READING B there is no
+        legal forwarder and T2 is not available at all — which would leave T1 as
+        the only shape, and T1 needs five amendments AI-15 does not own.
 FROZEN: T1 is not forbidden by AI-15 — it is the topology each phase's own
         contract would have to choose if it wanted its own writer — but AI-15 owns
-        none of the five amendments it needs and MUST NOT assume it.
+        none of the amendments it needs and MUST NOT assume it.
 FROZEN: T3 is refused.
-FROZEN: AI-15-B MUST NOT begin with T2's implementation. The AI-14 amendment in
-        §15.2 is a PREREQUISITE, not a parallel workstream.
+FROZEN: AI-15-B MUST NOT begin T2's implementation. STEP 1 is a PREREQUISITE, not
+        a parallel workstream, and STEP 3 may not run before STEP 0b (§15.2).
 ```
 
 ### 7.4 Who owns what, answered
@@ -794,7 +843,7 @@ A  the phase that owns the fact. AI-15 does NOT assign this and §5.1 records fo
    phases whose contracts have not answered it.
 
 Q  who asks AI-05 for admission?
-A  UNDETERMINED — this is the question §5.3's OPEN-2 and §7.2's three topologies
+A  UNDETERMINED — this is the question §5.3's AI15-OPEN-2 and §7.2's three topologies
    exist to frame. Today the answer is "nobody" (§3.2).
 
 Q  who holds an admitted producer token?
@@ -835,11 +884,18 @@ NOT SUFFICIENT, individually or together:
     two packages being importable from each other
     the absence of an exception
     a document asserting a call site exists without naming it
+    a non-test call site on its own — it proves records can be written, not who
+      wrote them (§4.3)
+    a record the registry ACCEPTED — §6.5 membership is a well-formedness check,
+      not an authentication (§4.3, §9.2)
+    a record that was ADMITTED and then PROMOTED — durability adds existence, not
+      authenticity (§6.1)
 ```
 
 ### 8.3 The B5 CONNECTED definition — PROPOSED
 
-B5 is CONNECTED when **all ten** hold, and each is checkable from the repository.
+B5 is CONNECTED when **all twelve** hold, and each is checkable from the
+repository.
 
 ```text
  1  a NON-TEST module in a production package imports an AI-05 admission entry
@@ -857,19 +913,41 @@ B5 is CONNECTED when **all ten** hold, and each is checkable from the repository
  7  `provenance.workspace_id` is the workspace the work was done in, derived from
     the same source the layers use (§12)
  8  the AdmissionOutcome is PROPAGATED to the caller as a value — never as an
-    exception, never swallowed, never re-read as a success (§11)
+    exception, never swallowed, never re-read as a success (§11) — and, in the
+    other direction, no API misuse is recast AS an outcome: a programming error
+    stays an exception and MUST NOT be reported as REJECTED or UNAVAILABLE
+    (§11.2)
  9  exactly one record is written per production event, into the STAGED tier, and
     §30 step 14 is run (`admit_to_store`, not a bare `store.write`)
 10  the authority matrix is unchanged, and the change names what it did NOT prove:
     that an ACCEPTED is not an authorization, and that a stored record is not a
     grant (§13)
+11  THE PRODUCER CLAIM ON THE RECORD IS AUTHENTICATED TO WHATEVER STANDARD AI-05
+    HAS DEFINED under AI15-OPEN-1 (§9.2), that standard is implemented, and tests
+    show it holds. Registry membership is not this condition (§4.3). While
+    AI15-OPEN-1 is OPEN, condition 11 is UNSATISFIED, and B5 MUST NOT claim the
+    final CONNECTED gate on conditions 1-10 alone.
+12  the change states, where a reader will meet it, WHAT AN ACCEPTED DOES NOT
+    ESTABLISH: that a record was admitted is evidence of a well-formed CLAIM made
+    under a registered token, not proof of the fact the claim describes. The
+    connection of a writer is the moment this is easiest to lose, so the change
+    that connects one carries the sentence.
 ```
 
 ```text
 PROPOSED: this list is AI-15-A's, and it is the class most likely to be amended.
-FROZEN: items 1, 2, 5, 8 and 10 are NOT negotiable — they restate AI-14 §2,
-        AI-05 §6.5/§6.6, and AI-14 §4.2 rules 4-6. Items 3, 4, 6, 7 and 9 are
-        AI-15-A's framing of what those restatements require of a call site.
+FROZEN: items 1, 2, 5, 8, 10 and 11 are NOT negotiable:
+           1, 2      restate AI-14 §2's CONNECTED definition
+           5         restates AI-05 §6.5/§6.6
+           8         restates §22.1's outcome rule, both directions
+           10, 11    restate AI-14 §4.2 rule 4 and §4.3's registry/authentication
+                     split. Item 11 is the one a wiring change is most likely to
+                     assume away, which is why it is stated as a condition rather
+                     than as a caveat.
+FROZEN: items 3, 4, 6, 7, 9 and 12 are AI-15-A's framing of what those
+        restatements require of a call site. They may be amended (§19). Items 1,
+        2, 5, 8, 10 and 11 may not be removed; they may only be restated more
+        precisely.
 ```
 
 ### 8.4 The intermediate states, so a partial result is not over-reported
@@ -878,14 +956,19 @@ FROZEN: items 1, 2, 5, 8 and 10 are NOT negotiable — they restate AI-14 §2,
 SEAM                    nothing on one side.
 IMPLEMENTED BUT NOT     both sides exist; only tests, or nothing, call it.
   CONNECTED
-CONNECTED               §8.3's ten conditions hold.
+CONNECTED               §8.3's twelve conditions hold, INCLUDING condition 11.
+                        A path meeting conditions 1-10 while AI15-OPEN-1 is OPEN is
+                        NOT CONNECTED: it is an exercised seam whose provenance is
+                        unestablished, and it MUST be reported that way.
 ```
 
 ```text
 FROZEN: AI-15-B MUST NOT report an intermediate state as CONNECTED, and MUST NOT
-        report a state that satisfies items 1-9 but fails 10. Item 10 is the one a
-        "successful" implementation is most likely to skip, and it is the one that
-        keeps the Evidence layer from becoming an authority.
+        report a state that satisfies items 1-10 but fails 11 or 12. Items 10-12
+        are the ones a "successful" implementation is most likely to skip: 10
+        keeps the Evidence layer from becoming an authority, 11 keeps it from
+        asserting a producer it cannot vouch for, and 12 keeps a reader from
+        taking an admitted claim for a proven fact.
 ```
 
 ---
@@ -910,8 +993,16 @@ FROZEN (AI-08 §13.1)   "A false producer is exactly the class of claim this
 ```text
 FROZEN: AI-15 restates these four and adds no fifth source of producer truth.
 FROZEN: AI-15 introduces NO signer, NO signature, NO key, NO registry service, NO
-        daemon, NO credential path and NO central authority. None exists in the
+        daemon, NO credential path and NO authentication API. None exists in the
         repository for this purpose and AI-15 does not invent one.
+FROZEN: AUTHENTICATION IS NOT AUTHORIZATION, AND THIS DOCUMENT MUST NOT BE READ
+        AS SAYING SO IN EITHER DIRECTION. A mechanism that ESTABLISHES who
+        submitted a record is a TRUST mechanism, not a permission. §9.5 states
+        the rule and AI-14 §4.1's matrix is unchanged by it.
+FROZEN: whether AI-05's eventual answer to AI15-OPEN-1 involves a new trust root
+        is AI-05's determination, made under AI-05's amendment rule and approved
+        by AI-05's owner. AI-15 neither presupposes one nor forbids one. What
+        AI-15 fixes is narrower and stated in §17.4: AI-15 does not BUILD one.
 ```
 
 ### 9.2 Threat 1 — component A writes a record claiming to be component B
@@ -924,21 +1015,58 @@ STATUS TODAY: POSSIBLE IN PRINCIPLE, UNREACHABLE IN PRACTICE.
   in practice    no module outside plugins/evidence/ and AI-06's type-only
                  projection can import the package at all (§3.1, §3.4).
 
-OPEN-1  producer authenticity — how is a producer claim established, as against
-        merely well-formed?
+AI15-OPEN-1  PRODUCER AUTHENTICITY — how is a producer claim ESTABLISHED, as
+             against merely well-formed?
 
         OWNER            AI-05. It owns §6.5, §6.6 and §7. The question is a
-                         question about AI-05's admission contract.
-        BLOCKER          there is no trust root in this repository for it, and
-                         AI-15 §1.3 puts creating one out of scope. A signature, a
-                         key, a registry service or a capability handle would each
-                         be a new authority, and AI-14 §4.1 freezes the matrix at
-                         exactly one AUTHORIZES entry.
-        WHAT AI-15 DOES NOT DO   it does not add a token, a check, a hook or a
-                         "producer verification" seam.
+                         question about AI-05's admission contract, and neither
+                         AI-15 nor any other phase may answer it for AI-05.
+        STATUS           OPEN. Not a TODO for AI-15-B.
+        WHAT IS MISSING  a decision about HOW a claim is established. §6.5/§6.6
+                         answer "is this token the registered one for this kind
+                         and family"; nothing answers "did the named component
+                         submit it".
+        WHAT AI-15 DOES NOT DO   it does not add a token, a check, a hook, a
+                         signature, a key, a registry service or a "producer
+                         verification" seam. §17.4 forbids all of them.
+        HOW THE QUESTION IS ANSWERED   that is AI-05's design act, and AI-15
+                         states no preference among mechanisms. §9.5 fixes only
+                         that whatever AI-05 chooses MUST NOT enter the authority
+                         matrix.
         WHAT KEEPS IT FROM MATTERING TODAY  §3.4's structural blocks. Those are
-                         the reason OPEN-1 is latent rather than live, and the
-                         reason narrowing layer0 :3241 is not a local change.
+                         the reason AI15-OPEN-1 is latent rather than live.
+        WHY IT IS STILL A B5 PREREQUISITE  because it stops being latent the
+                         moment a writer is connected — which is what B5 is.
+                         §8.3 condition 11 carries it into the CONNECTED gate.
+```
+
+```text
+AI15-OPEN-1 IS NOT AI-11 §21.1's OPEN-1. They share an owner and nothing else.
+
+    AI-11 §21.1 OPEN-1   WHICH PRODUCERS EXIST
+                         no §6.5 row exists for AI-08 / AI-10 / AI-11 / AI-13, so
+                         no record from those phases can be admitted at all.
+                         Resolving it means ADMITTING A TOKEN.  (§15.3)
+
+    AI15-OPEN-1          WHETHER A PRODUCER CLAIM IS TRUSTWORTHY
+                         the rows that DO exist accept a caller-supplied string.
+                         Resolving it means DECIDING HOW A CLAIM IS ESTABLISHED.
+                         (§4.3, §8.3 condition 11)
+
+    ADMITTING A TOKEN DOES NOT RESOLVE AI15-OPEN-1. A newly admitted `ai-11` row
+    would accept a caller-supplied "ai-11" for exactly the reason the `ai-06` row
+    accepts a caller-supplied "ai-06": `g_registered` compares the string to the
+    registry and compares nothing else (models.py:193).
+
+    RESOLVING AI15-OPEN-1 DOES NOT RESOLVE AI-11 §21.1 OPEN-1. A claim established
+    to whatever standard AI-05 sets is still REFUSED by `g_registered` when the
+    phase has no row for that kind and family.
+
+    The two are therefore independent, neither blocks the other's resolution, and
+    closing one MUST NOT be reported as progress on the other.
+
+FROZEN: AI-15 MUST NOT close, weaken, rename or claim to have resolved AI-11
+        §21.1's OPEN-1. §15.1 keeps the questions apart; §16 keeps BOTH open.
 ```
 
 ### 9.3 Threat 2 — a caller fills in any producer token it likes
@@ -949,7 +1077,7 @@ STATUS TODAY: THE FIELD IS CALLER-SUPPLIED AND IS CHECKED ONLY FOR REGISTRATION.
   `provenance.producer` is a Class 3, G-REGISTERED leaf in §15.2's field table
   (plugins/evidence/canonical.py:104), validated by g_text at
   plugins/evidence/models.py:1211 and by the registry at models.py:193.
-  It is caller-supplied, and §14.10's C1-R06 opaque-token rule scans it.
+  It is caller-supplied, and AI-05 §14.10's C1-R06 opaque-token rule scans it.
 
 RECORDED: a value "looking right" is EXACTLY the condition that makes it pass.
           `ai-04` passes because it IS the registered token for a DECISION, not
@@ -959,7 +1087,8 @@ RECORDED: a value "looking right" is EXACTLY the condition that makes it pass.
 ```text
 FROZEN: AI-15-A states this rather than glossing it, because a later reader could
         otherwise take §6.5/§6.6's mechanical checks for an authenticity check.
-        They are a REGISTRY check. §4.3 draws the line and §9.2 names the owner.
+        They are a REGISTRY check. §4.3 draws the line, §9.2 names the owner and
+        the condition, and §9.5 keeps the question out of the authority matrix.
 ```
 
 ### 9.4 What a future writer MUST keep immutable when forwarding
@@ -985,9 +1114,54 @@ FROZEN: a forwarder MUST NOT add a field. §30 step 1 rejects an unknown top-lev
 ```
 
 ```text
-FROZEN: OPEN-2 (§5.3) must be answered BEFORE this clause can be implemented,
+FROZEN: AI15-OPEN-2 (§5.3) must be answered BEFORE this clause can be implemented,
         because §9.4 presumes the forwarder is not the producer. Under READING B
         there is no legal forwarder at all, and this clause is inert.
+```
+
+### 9.5 Authentication is not authorization
+
+```text
+FROZEN: an identity-authentication or provenance-verification mechanism is NOT a
+        permission mechanism, and the two MUST NOT be conflated IN EITHER
+        DIRECTION:
+            "it authenticates"          MUST NOT be read as "it authorizes"
+            "it is not authorization"   MUST NOT be read as "authentication
+                                         mechanisms are forbidden"
+```
+
+```text
+FROZEN: THE SECOND DIRECTION IS THE ONE THIS CLAUSE EXISTS FOR. AI-15 does not
+        hold that a trust mechanism would be an authority, and MUST NOT be read as
+        refusing AI15-OPEN-1's resolution on the ground that it would grant one.
+        Whether a specific mechanism AI-05 might propose would constitute a new
+        authority is decided by AI-14 §4.1's matrix and by AI-05's own amendment.
+        Not by this document.
+FROZEN: the mechanism's DESIGN is AI-05's to propose and AI-05's owner to approve.
+        AI-15 states no preference among signatures, keys, registry services,
+        capability handles or any other shape, and MUST NOT be cited for or
+        against one.
+```
+
+```text
+FROZEN: REGARDLESS OF HOW AI15-OPEN-1 IS RESOLVED, AND WHATEVER SHAPE THE
+        MECHANISM TAKES:
+            AI-14 §4.1's authority matrix MUST NOT change
+            no new authorizing subject may appear
+            Guard MUST remain the only component with an AUTHORIZES entry
+            an AUTHENTICATED producer MUST NOT thereby hold a permission
+            an AUTHENTICATED record MUST NOT thereby become a grant
+            an authentication failure MUST NOT be reported as a Guard DENY, and a
+              Guard ALLOW MUST NOT be reported as an authentication
+```
+
+```text
+FROZEN: a resolution that changed the matrix would be an AI-14 amendment and an
+        AI-04 question, not an AI-05 one, and AI-15 MUST NOT propose it. If AI-05's
+        chosen mechanism appeared to require one, that is a cross-phase dependency
+        to be raised with the owners — not something AI-15-B resolves by wiring.
+FROZEN: §13 states the same rule from the authority side, and the two sections are
+        one rule. Where they appear to differ, §13's matrix is the authority.
 ```
 
 ---
@@ -1080,6 +1254,15 @@ FROZEN: AI-15 declares NO second outcome vocabulary. No `PARTIAL`, no `SKIPPED`,
         outcomes and adds none.
 FROZEN: AI-15 declares no second reason-code namespace. `reason_code` carries the
         EvidenceError's own (§22.1), never prose and never a supplied value.
+FROZEN: AI-15 NORMALIZES NO EXCEPTION INTO AN OUTCOME, AND NORMALIZES NO OUTCOME
+        INTO AN EXCEPTION. The two channels are different and stay different:
+            a normal admission result arrives as an AdmissionResult VALUE
+            an API misuse stays a raised exception (§11.2)
+FROZEN: `admit` catches `EvidenceError` only (admission.py:203). Every other
+        exception propagates, and AI-15-B MUST let it. Wrapping it — in an
+        AdmissionResult, in a REJECTED, in an UNAVAILABLE, in a new reason_code —
+        would put a caller's programming error into the same channel as a record's
+        verdict, and a log could no longer tell them apart.
 ```
 
 ### 11.2 Per-situation semantics
@@ -1151,7 +1334,18 @@ A PROGRAMMING ERROR — store without `write`
     admission.py:256 raises TypeError. This is the ONE case where a caller sees an
     exception rather than a value, and it is deliberate: it is a misuse of the API,
     not an admission outcome (§22.1 defines three outcomes and an exception is not
-    one of them)
+    one of them).
+
+    FROZEN: AI-15-B MUST NOT wrap it in an AdmissionResult, MUST NOT map it to
+            REJECTED or UNAVAILABLE, and MUST NOT mint a reason_code for it. It is
+            outside the outcome vocabulary, and putting it inside would make "the
+            record was refused" and "the caller passed the wrong store"
+            indistinguishable to whoever reads the failure later.
+    FROZEN: the same rule governs every other non-EvidenceError exception. It
+            propagates, and it MUST keep propagating.
+    FROZEN: this is NOT a gap to be closed by AI-15. `admit_to_store`'s TypeError
+            is the API telling a caller it used the wrong tier; the fix is the
+            caller's, and no outcome value makes a misused store into a verdict.
 ```
 
 ### 11.3 The conversions that are forbidden
@@ -1276,7 +1470,7 @@ FROZEN: workflow state != Evidence authority. A RunRecord, a Checkpoint and a
         WorkflowApproval are AI-13 types; none is a producer and none is a
         submission. AI-14 §4.2 rule 7 and AI-13 §13.5.
 FROZEN: a benchmark result != durable truth, and != a permission.
-        AI-14 §4.2 rule 5; AI-11 §8.5, §23.
+        AI-14 §4.2 rule 5; AI-11 §8.5, AI-11 §23.
 FROZEN: a review finding != durable truth, and != a permission.
         AI-14 §4.2 rule 6; AI-10 §13.2.
 ```
@@ -1298,6 +1492,10 @@ FROZEN: AI-15-B MUST prove these remain true AFTER its change, in the same chang
         or the change is not done. An authority transfer that arrives as a
         side-effect of wiring is exactly what AI-14 §4.2 rule 4 and AI-14 §22.1's
         ten rules exist to prevent.
+FROZEN: §9.5 states the same boundary from the TRUST side, and the two are one
+        rule: an authenticated producer gains no permission, and no mechanism that
+        establishes who wrote a record may appear in §13.1's matrix. Where this
+        section and §9.5 appear to differ, THIS section's matrix is the authority.
 ```
 
 ### 13.4 The residual, stated rather than hidden
@@ -1318,7 +1516,7 @@ RECORDED: `DecisionRecord.evidence_ref` is NEVER populated in production —
 FROZEN: AI-15-B MUST NOT treat any of the three as an Evidence identity, and MUST
         NOT populate `DecisionRecord.evidence_ref` as part of this phase.
         AI-04's own contract governs that field, and AI-15 owns no AI-04 clause.
-OPEN-3  whether `DecisionRecord.evidence_ref` should ever carry an AI-05 id.
+AI15-OPEN-3  whether `DecisionRecord.evidence_ref` should ever carry an AI-05 id.
         OWNER: AI-04. Not AI-15, and not AI-15-B.
 ```
 
@@ -1333,8 +1531,8 @@ non-test caller · **evidence** = re-checkable observation.
 
 | phase | contract says | code exists | non-test call site | evidence proves CONNECTED | AI-15 depends on an amendment? |
 | --- | --- | --- | --- | --- | --- |
-| AI-05 | owns Evidence; §6.5 6 rows/4 tokens | yes, complete | **no external caller** | **no** | no — but §9.2 OPEN-1 is AI-05's |
-| AI-06 | §15.1 projects, caller submits | `evidence.py` | **no** | **no** | **UNDETERMINED — hinges on §5.3 OPEN-2** |
+| AI-05 | owns Evidence; §6.5 6 rows/4 tokens | yes, complete | **no external caller** | **no** | no — but §9.2 AI15-OPEN-1 is AI-05's |
+| AI-06 | §15.1 projects, caller submits | `evidence.py` | **no** | **no** | **UNDETERMINED — hinges on §5.3 AI15-OPEN-2** |
 | AI-08 | §13.1 writes NO record | n/a | n/a | no | no (AI-15 does not restate AI-08's job) |
 | AI-10 | §13.2 writes NO record | n/a | n/a | no | no |
 | AI-11 | §21.1 writes NO record; OPEN-1 | n/a | n/a | no | **OPEN-1 is AI-05's, not AI-11's** |
@@ -1354,7 +1552,7 @@ call site  NONE outside the package (§3.1, §3.2).
 evidence   an ACCEPTED from either entry point IS a full §30 admission as of
            Amendment 3 — steps 1-14, no step unimplemented (PROJECT_STATUS.md:402-406).
 AI-15 dependency
-           none for the freeze. §9.2's OPEN-1 and §5.3's OPEN-2 are AI-05's and are
+           none for the freeze. §9.2's AI15-OPEN-1 and §5.3's AI15-OPEN-2 are AI-05's and are
            listed in §16, not scheduled here.
 ```
 
@@ -1363,7 +1561,7 @@ AI-15 dependency
 ```text
 contract   §15.1 FROZEN: AI-06 does not call admission; it projects, and "the
            caller submits it". §15.2 FROZEN: one invocation -> one ToolResult ->
-           one ToolCall. §15.7: both AI-06 §6.5 rows are real.
+           one ToolCall. AI-06 §15.7: both AI-06 §6.5 rows are real.
 code       plugins/security_tools/evidence.py — implemented, 2 functions.
 call site  NONE. `tool_call_for` and `execution_payload_for` are called only by
            tests/security_tools/test_evidence_and_families.py.
@@ -1413,7 +1611,7 @@ AI-15 dependency
 contract   §21.1 FROZEN: "AI-11 v1 writes NO AI-05 EvidenceRecord"; "AI-11 MUST NOT
            add a producer token to AI-05's ADMITTED_EVENTS registry. … An added
            token is an AI-05 amendment, made by AI-05 under AI-05's amendment rule."
-           §8.5: what a verdict never means. §23: non-goals.
+           AI-11 §8.5: what a verdict never means. AI-11 §23: non-goals.
 code       benchmarks/ imports no plugins.evidence — enforced at layer0 :2465.
 call site  NONE.
 evidence   the model-measurement campaign is BLOCKED (AI-11 Layer 4, AI-12 §6).
@@ -1424,7 +1622,8 @@ AI-15 dependency
 ### 14.7 AI-13
 
 ```text
-contract   §16 FROZEN: writes none and registers no producer. §13.5: an approval
+contract   AI-13 §16 FROZEN: writes none and registers no producer. AI-13 §13.5:
+           an approval
            is not an EvidenceRecord. RunRecord (workflows/run.py) and Checkpoint
            are AI-13 types with no Evidence relationship.
 code       workflows/ imports nothing outside itself — layer0 :2630 forbids every
@@ -1490,43 +1689,182 @@ MASTER_ROADMAP.md's, and both are current.
 
 ## 15. Amendment ownership
 
-### 15.1 The three questions, separated
+### 15.1 The four questions, kept apart
 
 ```text
-AI-15's own contract       this document. Frozen by its merge. Amended by AI-15 §19.
-the AI-05 producer         whether a producer token may be admitted, for whom, and
-  amendment                on what evidence. Owned by AI-05.
-the AI-11 reconciliation   whether AI-05 §28's "AI-11 CONSUMES Evidence" is
-                           satisfied. Owned by AI-05, recorded by AI-11.
+1  AI-15's own contract       this document. Frozen by its merge (§19).
+2  the AI-05 producer-token   WHICH PRODUCERS EXIST. Whether a token may be
+     amendment                 admitted, for whom, and on what evidence. This is
+                               AI-11 §21.1's OPEN-1. Owned by AI-05.
+3  producer AUTHENTICITY      WHETHER A PRODUCER CLAIM IS TRUSTWORTHY, for the
+                               rows that already exist. This is AI15-OPEN-1 (§9.2).
+                               Owned by AI-05.
+4  the AI-11 reconciliation   whether AI-05 §28's "AI-11 CONSUMES Evidence" is
+                               satisfied. Owned by AI-05, recorded by AI-11.
 ```
 
 ```text
-FROZEN: these are three different things and AI-15 MUST NOT merge them. In
-        particular, "AI-15-B is done" MUST NOT be offered as the reconciliation of
-        AI-11 §21.1's OPEN-1.
+FROZEN: these are FOUR different things and AI-15 MUST NOT merge them.
+FROZEN: items 2 and 3 are independent in both directions, and §9.2 works the
+        argument: admitting a token does not make a claim trustworthy, and making
+        a claim trustworthy does not admit a token. Closing either MUST NOT be
+        reported as progress on the other.
+FROZEN: item 4 is reconciled only when item 2 lands. It is NOT reconciled by
+        item 3, and NOT by "AI-15-B is done" — that inference is the one this
+        clause exists to forbid.
 ```
 
-### 15.2 AI-14 amendment — REQUIRED, and it is a prerequisite
+### 15.2 AI-14 amendment — the ordering, and why the naive order is circular
 
 ```text
-WHAT MUST CHANGE
-    §5.1's classification of "Any producer -> Evidence"        IMPLEMENTED BUT NOT
-                                                               CONNECTED -> CONNECTED
-    §22.1 B5's item status and its "blocked by" clause
-    Appendix A's classification of the composition -> Evidence row
-    §25's amendment log
-WHY
-    AI-14 §24 lists "the execution topology's CONNECTED/SEAM classification of a
-    path" as amendment-requiring, and §22.1 requires Appendix A to be updated in
-    the SAME change that connects a seam.
-ALSO IN THE SAME CHANGE
-    scripts/ci/layer0_policy.py:3241    AI14_FORBIDDEN_IMPORTS
-    tests/composition/test_composition_boundaries.py:151-176   the AST block
-    tests/composition/test_composition_boundaries.py:178-191   the `producer_token`
-                                                               name block
-OWNER      AI-14.
-AI-15 RELATIONSHIP  AI-15-B MUST NOT START until it lands. This is a PREREQUISITE,
-                    not a parallel workstream.
+THE CIRCULARITY, STATED FIRST
+
+    A plan that says all three of these at once is NOT EXECUTABLE:
+
+        (A)  AI-15-B MUST NOT START until an AI-14 amendment lands
+        (B)  that amendment must record B5 as CONNECTED
+        (C)  CONNECTED requires a real non-test call site (§8.3 condition 1)
+
+    (A)+(B) require a call site BEFORE the work that creates it. (C) forbids
+    recording CONNECTED without one. The three cannot all hold.
+
+    An earlier revision of this document contained exactly that plan. It is
+    WITHDRAWN, and the order below replaces it.
+```
+
+```text
+THE RESOLUTION — SPLIT THE AMENDMENT BY WHAT IT CHANGES
+
+    AI-14 makes TWO different kinds of statement about this edge, and they are
+    separable:
+
+        the RULE that forbids the edge      §13's identifier refusal;
+                                            scripts/ci/layer0_policy.py:3241;
+                                            the two composition assertions
+        the CLASSIFICATION of the edge      §5.1; §22.1 B5; Appendix A
+
+    Removing the RULE comes first and does NOT record CONNECTED. Recording
+    CONNECTED comes last and comes WITH the call site. Nothing in between claims a
+    connection that does not exist yet.
+```
+
+```text
+THE ORDER — each step names its owner, its precondition and its output
+
+  STEP 0a  AI-05 answers AI15-OPEN-2 (§5.3): which reading of AI-05 §7's "WROTE"
+           governs
+           when the submitter is not the named component.
+           OWNER         AI-05.
+           PRECONDITION  none.
+           OUTPUT        a reading, or an explicit refusal to choose.
+           GATES         STEP 1. §7.3's T2 is legal only under READING A; under
+                         READING B there is no legal forwarder and STEP 1 has
+                         nothing to authorize.
+
+  STEP 0b  AI-05 answers AI15-OPEN-1 (§9.2, §9.5): how a producer claim is
+           ESTABLISHED to AI-05 §7's standard for "the component that WROTE".
+           OWNER         AI-05.
+           PRECONDITION  none. Runs in parallel with STEP 1 and STEP 2.
+           OUTPUT        a mechanism, PLUS its implementation and tests — not a
+                         prose decision alone, because §8.3 condition 11 requires
+                         that the standard be implemented and shown to hold.
+           GATES         STEP 3. Not STEP 1, and not STEP 2.
+
+  STEP 1   AI-14 amendment #1 — AUTHORIZATION. It changes the RULES, not the
+           classification.
+               §22.1 B5's "blocked by" clause
+               §13's `producer_token` identifier refusal, where it reaches the
+                 SUBMITTING caller rather than the composition
+               §5.1's "by rule" annotation on the composition -> Evidence row
+               §25's amendment log
+           and, in the same change:
+               scripts/ci/layer0_policy.py:3241   AI14_FORBIDDEN_IMPORTS
+               tests/composition/test_composition_boundaries.py:151-176
+               tests/composition/test_composition_boundaries.py:178-191
+           OWNER         AI-14.
+           PRECONDITION  STEP 0a.
+           FROZEN: THIS AMENDMENT MUST NOT RECORD B5 AS CONNECTED. There is no
+                   call site yet, §8.3 condition 1 is unsatisfied, and recording
+                   CONNECTED here would reproduce the (A)+(B)+(C) contradiction
+                   in a new place.
+           FROZEN: after STEP 1, B5's classification remains NOT CONNECTED. AI-14
+                   §2 already has a member that expresses this without a new one:
+                   the row stays IMPLEMENTED BUT NOT CONNECTED and loses its
+                   "by rule" annotation. IF AI-14's owner judges that its
+                   vocabulary CANNOT express "authorized but not yet connected",
+                   that judgement is AI-14's to make and to amend for under AI-14
+                   §24. AI-15 MUST NOT invent a classification member, and B5
+                   stays BLOCKED until AI-14 resolves it.
+
+  STEP 2   the IMPLEMENTATION. A real, non-test call site is created, meeting
+           §8.3's conditions.
+           OWNER         the party STEP 1 authorizes. Per §7.3 that is the
+                         composition submitting an OWNER-AUTHORED record, so the
+                         owner phase authors the claim and the composition
+                         submits it.
+           PRECONDITION  STEP 1.
+           FROZEN: AI-15-B is ONE possible implementer of this step and is NOT
+                   the only one. §17.5 fixes what the implementer may and may not
+                   do, whoever it turns out to be.
+
+  STEP 3   AI-14 amendment #2 — CLASSIFICATION, in the SAME change as STEP 2's
+           call site.
+               §5.1        -> CONNECTED, naming the call site by file and line
+               Appendix A  -> CONNECTED, naming the call site
+               §22.1 B5's item status
+               §25's amendment log
+           OWNER         AI-14.
+           PRECONDITION  STEP 0b AND STEP 2. Both. The call site must exist IN
+                         THE SAME CHANGE (AI-14 §22.1), and condition 11 must be
+                         satisfiable.
+           FROZEN: CONNECTED IS RECORDED ONLY WHEN EVERY §8.3 CONDITION HOLDS. If
+                   STEP 0b produced no mechanism, or produced one that is not
+                   implemented and tested, B5 MUST be recorded as NOT CONNECTED —
+                   naming the missing AI-05 decision — and MUST NOT be recorded as
+                   CONNECTED with a caveat attached. A caveated CONNECTED is a
+                   CONNECTED claim, and §8.4 forbids it.
+```
+
+```text
+FROZEN: AI-14 retains ownership of its own topology, its Layer 0 boundary, its
+        CONNECTED/SEAM classification and its amendment procedure. AI-15 owns
+        neither STEP 1 nor STEP 3.
+FROZEN: AI-15-B MUST NOT modify
+        docs/AI-14_LONG_TERM_AI_WORKBENCH_EXECUTION_PLAN.md. Authoring STEP 1 or
+        STEP 3 is AI-14's act. AI-15-B may at most prepare a PROPOSAL for AI-14's
+        owner, which that owner makes or declines under AI-14 §24. An AI-15-B
+        change that carries an AI-14 amendment is a bypass of the owner rule and
+        MUST NOT be merged.
+FROZEN: AI-15-B MUST NOT reach the call site by narrowing layer0 :3241 itself, by
+        deleting or weakening the two composition assertions, or by adding a
+        test-only path. STEP 1 is the only route to a production call site, and it
+        is AI-14's.
+FROZEN: A PREREQUISITE AMENDMENT MUST NOT ASSERT THE OUTCOME OF THE WORK IT
+        PRECEDES. That is the general form of (A)+(B)+(C), and it governs every
+        amendment in this order: STEP 1 authorizes, STEP 3 classifies, and only
+        STEP 3 may use the word CONNECTED about this edge.
+```
+
+```text
+IF THE ORDER CANNOT BE SATISFIED
+
+    B5 and AI-15-B stay BLOCKED, and this document NAMES the missing owner
+    decision rather than inventing a rule. The order fails in exactly three ways:
+
+        STEP 0a or 0b produces no decision      missing owner decision: AI-05
+        AI-14 declines STEP 1, or judges its    missing owner decision: AI-14
+          vocabulary cannot express
+          "authorized but not yet connected"
+        no party accepts STEP 2                 missing owner decision: AI-14's,
+                                                since designating it is AI-14's
+                                                under STEP 1
+
+    In any of those:
+        B5        = BLOCKED
+        AI-15-B   = NOT STARTED
+    and AI-15 MUST NOT close the gap by amending an earlier contract, by adding a
+    producer token, by narrowing another phase's Layer 0 boundary, or by recording
+    CONNECTED ahead of the evidence. §16.2 carries these as live blockers.
 ```
 
 ### 15.3 AI-05 amendment — what it does and does not unblock
@@ -1547,8 +1885,35 @@ FROZEN: AI-15 does NOT own this and MUST NOT request a specific token.
 FROZEN: AI-15 MUST NOT borrow "ai-06", MUST NOT register "ai-15", and MUST NOT
         claim the composition may be a producer (§7.1).
 FROZEN: the AMENDMENT, if ever made, unblocks ONLY the phases whose facts it
-        admits. It does NOT by itself unblock B5, because §15.2's AI-14 amendment
+        admits. It does NOT by itself unblock B5, because §15.2's ordered steps
         and §3.4's structural blocks are independent of it.
+```
+
+```text
+AI-05'S SECOND, SEPARATE DEPENDENCY — PRODUCER AUTHENTICITY
+
+    §15.1 item 2 (the token amendment) and item 3 (authenticity) are different
+    questions with the same owner. B5 needs BOTH, and they are NOT substitutes:
+
+        the token amendment        WHICH PRODUCERS EXIST
+                                   gates records from phases with no §6.5 row
+                                   (§14.3-§14.8), and reconciles AI-11 §21.1's
+                                   OPEN-1
+        AI15-OPEN-1                WHETHER A PRODUCER CLAIM IS TRUSTWORTHY
+                                   gates §8.3 condition 11 for EVERY record,
+                                   including the four phases that already have
+                                   a row
+
+    RECORDED, and it is the reason they are not substitutes: the four phases that
+    ALREADY hold a row currently satisfy `g_registered` on a caller-supplied
+    string. Admitting a fifth token adds a fifth row that behaves the same way.
+    The token amendment therefore cannot, by construction, satisfy condition 11.
+
+    FROZEN: AI-15 MUST NOT present the token amendment as the whole of AI-05's
+            dependency, and MUST NOT present AI15-OPEN-1 as a restatement of it.
+    FROZEN: neither AI-05 item is owned, requested, scheduled or resolved here.
+            §15.2's STEP 0a and STEP 0b name them as owner decisions, and §16.2
+            carries them as blockers.
 ```
 
 ```text
@@ -1558,6 +1923,7 @@ THE POINT AI-15-A EXISTS TO MAKE
 
     A phase that wants a durable record needs THREE things, and the token is one:
         (i)   a §6.5 row                    AI-05 amendment
+                                            (= AI-11 §21.1 OPEN-1)
         (ii)  its own contract permitting it to write
                                             THAT phase's amendment
               (AI-08 §13.1, AI-10 §13.2, AI-11 §21.1, AI-13 §16 each FROZEN the
@@ -1565,11 +1931,17 @@ THE POINT AI-15-A EXISTS TO MAKE
         (iii) its Layer 0 boundary narrowed
                                             layer0 :1549 / :1833 / :2465 / :2630
     and B5 additionally needs:
-        (iv)  AI-14 §5.1 / §22.1 B5 / Appendix A amended   §15.2
-        (v)   layer0 :3241 narrowed                        §15.2
-        (vi)  two assertions in tests/composition/ amended §15.2
+        (iv)  AI-14 §5.1 / §22.1 B5 / Appendix A     §15.2 STEP 1 and STEP 3
+        (v)   layer0 :3241 narrowed                  §15.2 STEP 1
+        (vi)  two assertions in tests/composition/   §15.2 STEP 1
+        (vii) AI15-OPEN-2 answered, or no forwarder  §15.2 STEP 0a
+              exists at all
+        (viii) AI15-OPEN-1 answered, implemented     §15.2 STEP 0b
+              AND tested                                  §8.3 condition 11
 
-    Six changes, four owners. AI-15 owns none of them.
+    Eight changes, four owners. AI-15 owns none of them, and (viii) is the one an
+    implementation is most likely to assume away — a working call site does not
+    make the producer claim behind it true.
 ```
 
 ### 15.4 What AI-15 owns, and it is only this
@@ -1590,47 +1962,75 @@ FROZEN: where AI-15 and an earlier contract differ, the earlier contract governs
 ### 16.1 OPEN
 
 ```text
-OPEN-1  producer authenticity — how is a producer claim established, as against
-        merely well-formed?
+AI15-OPEN-1  PRODUCER AUTHENTICITY — how is a producer claim ESTABLISHED, as
+        against merely well-formed? (§4.3, §9.2, §9.5)
         OWNER   AI-05
         STATUS  OPEN. Not a TODO for AI-15-B.
+        GATES   §8.3 condition 11. While it is OPEN, B5 cannot satisfy the final
+                CONNECTED gate, however many call sites exist. (§15.2 STEP 0b)
         NOTE    the gap is LATENT today (§3.4) — no module can reach the entry
                 point. It becomes live the moment any writer is connected, which is
                 why it is a PREREQUISITE for B5's completion rather than a
                 follow-up.
+        NOT     AI-11 §21.1's OPEN-1. That one is WHICH PRODUCERS EXIST; this one
+                is WHETHER A PRODUCER CLAIM IS TRUSTWORTHY. §9.2 works the
+                independence argument in both directions, and §16.2 keeps both as
+                separate blockers.
 
-OPEN-2  which reading of AI-05 §7's "WROTE" governs when the submitter is not the
+AI15-OPEN-2  which reading of AI-05 §7's "WROTE" governs when the submitter is not the
         named component?
         OWNER   AI-05
         STATUS  OPEN. §5.3 states both readings and AI-15 does not choose.
         BLOCKS  the AI-06 path, and therefore the ONLY topology that could connect
                 without a §6.5 amendment (§7.2 T2).
 
-OPEN-3  whether DecisionRecord.evidence_ref should ever carry an AI-05 id.
+AI15-OPEN-3  whether DecisionRecord.evidence_ref should ever carry an AI-05 id.
         OWNER   AI-04
         STATUS  OPEN. §13.4.
 
-OPEN-4  a workflow-driven step's routing input.
+AI15-OPEN-4  a workflow-driven step's routing input.
         OWNER   AI-13 / AI-14
         STATUS  OPEN, recorded by AI-14 §22.1 B3 as "RECORDED, NOT RESOLVED".
         RELATIONSHIP TO AI-15  NONE. Listed so a reader does not attribute it here.
 ```
 
 ```text
-FROZEN: OPEN-1 and OPEN-2 MUST NOT be closed by an AI-15-B implementation decision
-        (AI-14 §2: "An OPEN item MUST NOT be closed by an implementation decision").
+FROZEN: AI15-OPEN-1, AI15-OPEN-2, AI15-OPEN-3 and AI15-OPEN-4 MUST NOT be closed
+        by an AI-15-B implementation decision (AI-14 §2: "An OPEN item MUST NOT be
+        closed by an implementation decision").
+FROZEN: AI15-OPEN-1 and AI15-OPEN-2 gate §15.2's steps directly — 0b and 0a
+        respectively — so an implementation that "resolves" either one by choosing
+        while building is the exact failure this clause names.
 ```
 
 ### 16.2 BLOCKED
 
 ```text
 B5 — composition -> Evidence
-    BLOCKED. Blockers, all of them live: §15.2's AI-14 amendment, layer0 :3241,
-    the two composition assertions, and — for every event but AI-06's — §15.3's
-    registry and per-phase contract rows.
-    OWNERS   AI-14 (the amendment), AI-05 (the token, where needed), each phase
-             (its own writer clause).
-    AI-15-B  MUST NOT START. §7.3.
+    BLOCKED. Every blocker below is live; none is satisfied today.
+
+    order  blocker                                   owner        gates
+    -----  ----------------------------------------  -----------  --------------
+    0a     AI15-OPEN-2 answered — which reading of   AI-05        STEP 1
+           AI-05 §7's "WROTE" governs (§5.3)
+    0b     AI15-OPEN-1 answered, implemented and     AI-05        STEP 3,
+           tested — how a producer claim is                       §8.3 cond. 11
+           established (§9.2)
+    1      AI-14 amendment #1 (authorization) +      AI-14        STEP 2
+           layer0 :3241 + the two composition
+           assertions (§15.2)
+    1'     the §6.5 row and the own-contract clause  AI-05 +      STEP 2, for
+           for each phase whose facts are admitted   that phase   any event
+                                                                  but AI-06's
+    2      a real non-test call site, §8.3 cond. 1   —            STEP 3
+    3      AI-14 amendment #2 (classification), in   AI-14        CONNECTED
+           the SAME change as the call site
+
+    FROZEN: 0b is INDEPENDENT of 1 and 1'. A call site that works and a token that
+            is registered together satisfy no part of 0b (§15.3).
+    FROZEN: the classification step (3) MUST NOT run before 0b. A prerequisite
+            amendment may not assert the outcome of the work it precedes (§15.2).
+    AI-15-B  MUST NOT START. §7.3, §17.
 
 AI-12-C — the campaign over policies
     BLOCKED / NOT STARTED. Owner: AI-12. Unchanged by AI-15.
@@ -1666,10 +2066,15 @@ the AI-07 routing DECISION event and the human-approval event
 ### 16.4 OUT OF SCOPE
 
 ```text
-permanently, by this document (§1.3):
+FORBIDDEN TO AI-15 — permanently, by this document (§1.3, §9.5):
     a record-level trust root, a signer, a signature, a key
+    an authentication API, a provenance-verification seam, a producer check
     a producer-registry service, a daemon, a scheduler
     a new credential path or a new central authority
+    NOTE: this list forbids AI-15 from BUILDING these. It does NOT declare that
+    they may never exist, and it does NOT classify them as authorities. Whether
+    AI-05's answer to AI15-OPEN-1 takes one of these shapes is AI-05's decision,
+    subject only to §9.5's rule that it MUST NOT change AI-14 §4.1's matrix.
     a second Evidence contract, a second outcome vocabulary, a second registry
     a composition producer token
     cross-workspace aggregation, a multi-workspace record, a record merge
@@ -1692,7 +2097,10 @@ FROZEN: an item moved out of §16.4 requires an amendment to THIS document (§19
 
 ## 17. AI-15-B implementation boundary
 
-Nothing here is authorized until this document is merged AND §15.2 has landed.
+Nothing here is authorized until this document is merged AND §15.2's ordered
+steps have reached the point each clause names. "§15.2 has landed" is not a
+single event: STEP 1 authorizes and STEP 3 classifies, and no clause below may be
+read as authorized by the wrong one.
 
 ### 17.1 Allowed after the freeze
 
@@ -1709,29 +2117,56 @@ PERMITTED, once this document is merged:
 
 ```text
 FROZEN: none of the above may be reported as B5 progress. B5 is BLOCKED until
-        §15.2 lands.
+        §15.2's steps are satisfied in order (§16.2), and the absence tests are
+        what make a future connection a VISIBLE change rather than a silent one.
 ```
 
-### 17.2 Blocked until the AI-14 amendment
+### 17.2 Blocked until §15.2 STEP 1
 
 ```text
-BLOCKED (§15.2 — AI-14 owns all of it):
+BLOCKED (§15.2 STEP 1 — AI-14 owns all of it):
     any import of `plugins.evidence` from composition/
     narrowing layer0 :3241
     amending tests/composition/test_composition_boundaries.py:151, :178
     restating AI-14 §5.1 / §22.1 B5 / Appendix A
+FROZEN: AI-15-B MUST NOT do any of these itself, and MUST NOT reach the same
+        effect by another route — a second entry point for the evidence package,
+        a helper that imports it on the composition's behalf, a test-only path, or
+        a re-export that moves the import out of `composition/` while keeping the
+        call. STEP 1 is the only route, and it is AI-14's act.
+```
+
+### 17.2b Blocked until §15.2 STEP 0b
+
+```text
+BLOCKED until AI-05 has answered, implemented and tested AI15-OPEN-1:
+    any claim that B5 is CONNECTED  (§8.3 condition 11)
+    any claim that an admitted record is PROVEN to come from the component its
+      token names  (§6.1)
+    any "provisional", "interim" or caveated CONNECTED — a caveated CONNECTED
+      is a CONNECTED claim (§8.4)
+NOTE: STEP 0b does not gate the IMPLEMENTATION (STEP 2). It gates the
+      CLASSIFICATION (STEP 3). A call site may exist, work and be tested while
+      AI15-OPEN-1 is OPEN — it is simply reported as an exercised seam whose
+      provenance is unestablished, never as CONNECTED.
 ```
 
 ### 17.3 Blocked until an AI-05 amendment — and only for some events
 
 ```text
-BLOCKED until AI-05 admits a producer (§15.3):
+BLOCKED until AI-05 admits a producer (§15.3, §15.2 STEP 1'):
     any record for a phase with NO §6.5 row — AI-08, AI-10, AI-11, AI-13, AI-14 —
       and each phase's own writer clause must also be amended, by that phase
-NOT BLOCKED by a token, but blocked by OPEN-2 (§5.3):
+NOT BLOCKED by a token, but blocked by AI15-OPEN-2 (§5.3, §15.2 STEP 0a):
     the AI-06 rows exist and AI-06 §15.1 names a caller, so the AI-06 path needs no
       §6.5 amendment — under READING A. AI-15 MUST NOT proceed on that reading
-      alone.
+      alone, and MUST NOT proceed on READING B either, because under it there is no
+      legal forwarder at all.
+STILL BLOCKED even after all of the above, for EVERY phase including AI-06:
+    §8.3 condition 11, until §15.2 STEP 0b lands. This is the clause that survives
+    every other amendment, and it is the one the earlier revision of this document
+    missed: a registered token and a working call site together still do not
+    establish who wrote the record (§4.3).
 ```
 
 ### 17.4 Forbidden in AI-15, permanently
@@ -1742,15 +2177,22 @@ FORBIDDEN:
     editing AI-05's contract, AI-11's contract, or AI-14's contract
     editing any phase's Layer 0 boundary on that phase's behalf
     adding a trust root, a signer, a key, a registry service or a credential path
+    adding an authentication API, a provenance-verification seam, a producer
+      check, or any hook by which a claim would "look verified" — AI15-OPEN-1 is
+      AI-05's to resolve, and AI-15 does not pre-empt it (§9.5, §15.2 STEP 0b)
+    resolving AI15-OPEN-1 or AI15-OPEN-2 by implementing one answer
     implementing a writer in a phase that has not amended its own contract
     a composition producer token (§7.1)
     reimplementing any part of §30
+    recasting a programming error as an admission outcome, or swallowing one
+      (§11.1, §11.2)
     reading ACCEPTED as an authorization, a capability, a verification or a
       measurement
     a fallback producer, a repaired retry, or a default workspace
     cross-workspace anything
-    reporting B5 as CONNECTED, or as "mostly connected", on §8.3's items 1-9 while
-      failing item 10
+    reporting B5 as CONNECTED, or as "mostly connected", or as "provisional",
+      while any of §8.3's twelve conditions is unsatisfied — in particular items
+      10, 11 or 12, which a working call site does not supply
 ```
 
 ### 17.5 The four questions, answered for AI-15-B
@@ -1759,7 +2201,8 @@ FORBIDDEN:
 Q  does the composition call plugins.evidence directly, or does the owner phase?
 A  §7.3: only T2 is consistent with the frozen contracts — the composition submits
    a record the OWNING phase authored — and only under READING A, and only after
-   §15.2. AI-15-B MUST NOT choose T1 or T3.
+   §15.2's STEP 1 and STEP 2. AI-15-B MUST NOT choose T1 or T3, and MUST NOT
+   reach T2 by amending AI-14's contract itself (§15.2).
 
 Q  is the composition only an orchestrator?
 A  YES. AI-14 §3: it is not a component. It supplies NO fact of its own (§7.4),
@@ -1777,6 +2220,11 @@ A  IT IS A VALUE, AND IT IS OBSERVABLE, AND IT IS NON-AUTHORITATIVE — all thre
    persisted; §10.3 forbids converting it into a success. AI-15-B MUST NOT make it
    hard-fail the composition process (that would give Evidence a veto, which is an
    authority AI-14 §4.1 does not grant) and MUST NOT swallow it (§11.3).
+A  AND THE OTHER CHANNEL IS NOT THIS ONE. A programming error — the store without
+   `write`, or any other non-EvidenceError exception — is NOT an admission
+   failure at all, is never an AdmissionResult, and MUST NOT be recast as one
+   (§11.1, §11.2). "Admission returned a value" and "the caller misused the API"
+   are two different events and stay reported as two.
 ```
 
 ---
@@ -1790,8 +2238,17 @@ AI-15-A IS DONE WHEN
     it separates contract / implementation / call site / evidence everywhere
       (§2.1)
     it states the producer-ownership question and assigns its owners (§4, §9, §15)
-    it states OPEN-1, OPEN-2, OPEN-3 and OPEN-4 with their owners (§16)
-    it defines CONNECTED for B5 (§8.3), on top of AI-14 §2's definition
+    it states AI15-OPEN-1..4 with their owners, and keeps them distinct from
+      AI-11 §21.1's OPEN-1 (§9.2, §16.1)
+    it defines CONNECTED for B5 as twelve conditions (§8.3), on top of AI-14 §2's
+      definition, and gives condition 11 — producer authenticity — its own owner
+    it separates REGISTRY MEMBERSHIP from AUTHENTICATION everywhere they could be
+      confused (§4.3, §6.1, §8.2, §9.2, §9.5)
+    it separates AUTHENTICATION from AUTHORIZATION, in both directions (§9.5)
+    it gives B5 an EXECUTABLE dependency order rather than a circular one (§15.2),
+      and says what remains BLOCKED and whose decision is missing if that order
+      cannot be satisfied
+    it names every B5 blocker with an owner and the step it gates (§16.2)
     it fixes failure semantics against AI-05's existing vocabulary, adding none (§11)
     it freezes the workspace obligations (§12)
     it restates the authority rules and forbids any transfer (§13)
@@ -1800,11 +2257,23 @@ AI-15-A IS DONE WHEN
 
 AI-15-A IS NOT DONE IF
     any claim of CONNECTED appears without a non-test call site named by file:line
+    any claim of CONNECTED appears while AI15-OPEN-1 is OPEN, however many call
+      sites exist (§8.3 condition 11)
+    registry membership is offered as producer authentication (§4.3)
+    an authentication mechanism is described as an authority, or an authority as
+      an authentication (§9.5)
+    a prerequisite amendment is asked to record CONNECTED before the call site
+      exists (§15.2)
+    a programming error is presented as an admission outcome, or an outcome as an
+      exception (§11)
     any frozen clause of AI-00 .. AI-14 is modified or restated in weaker words
-    a producer token, a registry row, a new outcome or a new trust root appears
+    a producer token, a registry row, a new outcome, a new reason-code namespace
+      or a new trust root appears
     B5's BLOCKED status is presented as a scheduling matter rather than named
       blockers with owners
     an OPEN item is closed by a decision this document makes
+    AI-11 §21.1's OPEN-1 is closed, weakened or renamed, or reported as progressed
+      by anything AI-15 does
 ```
 
 ---
@@ -1962,15 +2431,22 @@ AI-15-B  = NOT STARTED                  BLOCKED (§16.2, §15.2)
 ```
 
 ```text
-BLOCKED: B5 (composition -> Evidence) is unchanged by this document. The AI-14
-         amendment (§15.2) has not been made, the Layer 0 block at :3241 stands,
-         and no producer token has been added.
+BLOCKED: B5 (composition -> Evidence) is unchanged by this document. §16.2 lists
+         every blocker with its owner and the §15.2 step it gates. None is
+         satisfied: STEP 0a and STEP 0b have no answer, STEP 1 has not been made,
+         there is no call site, and STEP 3 cannot be recorded.
 
-OPEN:    OPEN-1 (AI-05) · OPEN-2 (AI-05) · OPEN-3 (AI-04) · OPEN-4 (AI-13/AI-14)
+OPEN:    AI15-OPEN-1 (AI-05) · AI15-OPEN-2 (AI-05) · AI15-OPEN-3 (AI-04) ·
+         AI15-OPEN-4 (AI-13/AI-14)   — local ids, prefixed so they cannot be
+         confused with AI-11 §21.1's OPEN-1, which is a different item (§9.2)
 
 UNCHANGED BY THIS DOCUMENT: AI-05 · AI-06 · AI-08 · AI-10 · AI-11 · AI-13 · AI-14
          contracts, implementations and boundaries — every one byte-identical.
 
 NOT CLAIMED: that Evidence is connected. It is not. §3 records what is, and §20
          records it at file:line.
+
+NOT CLAIMED: that a producer claim is trustworthy once a token is registered.
+         It is not, and §8.3 condition 11 keeps that out of the CONNECTED gate
+         until AI-05 says otherwise and shows it (§9.2, §15.2 STEP 0b).
 ```
