@@ -545,9 +545,11 @@ record claiming an observation that no producer made would be a false record.
 
 ### 7.2 Producer and submitter are different roles — FROZEN (Amendment 4)
 
-> **PROPOSED — Amendment 4, awaiting owner review.** This section states the
-> clarification that amendment makes. It is NOT yet in force, and no clause of
-> this contract has changed. See §34.3 for the record and its status.
+> **IN FORCE — Amendment 4, merged as PR #80
+> (`03d42681cb8b2110773654822655117daea44ad5`).** This section is FROZEN as
+> written, and the text below is unchanged by that activation. The activation
+> condition §34.3 recorded for this amendment has been met. See §34.3 for the
+> record.
 
 Two roles take part in one admitted record, and they are not the same role.
 
@@ -3381,10 +3383,33 @@ and §30's remaining steps are as they were.
 #### Amendment 4 — producer and submitter are different roles (2026-10-09)
 
 ```text
-PROPOSED — AWAITING OWNER REVIEW. This entry states the change this amendment
-makes and why. It is NOT yet an approved record: the clarification it describes
-takes effect only when the change carrying this entry is merged by AI-05's owner.
-Until then §7.2 is a proposal, and no clause of this contract has changed.
+IN FORCE — the activation condition this entry declared for itself has been met.
+
+    THE ENTRY WAS PROPOSED WITH THIS STATUS, KEPT HERE AS THE RECORD OF WHAT
+    WAS PROPOSED. It is not retracted and not rewritten; it is superseded by
+    the merge it named as its own condition:
+
+        "PROPOSED — AWAITING OWNER REVIEW. This entry states the change this
+         amendment makes and why. It is NOT yet an approved record: the
+         clarification it describes takes effect only when the change carrying
+         this entry is merged by AI-05's owner. Until then §7.2 is a proposal,
+         and no clause of this contract has changed."
+
+    THAT MERGE HAS HAPPENED:
+
+        merged as   03d42681cb8b2110773654822655117daea44ad5   (PR #80)
+                    a true two-parent merge of
+                    0bf520f4bd8d5b29d008bec2a11f6f4cfc41fcd5  (main before)
+                    and
+                    29ccf9a04c35e9fcb01f62f59366806f66afac41  (the branch head)
+
+    WHAT CHANGED       the STATUS of this amendment: proposed -> in force.
+    WHAT DID NOT       any semantic text. §7.2 is FROZEN exactly as merged. No
+                       clause of it is reworded, added or removed by this
+                       status record, and no clause below this block is
+                       edited. §34.1's list of amendment-requiring changes is
+                       not engaged: this records an amendment's own declared
+                       activation, it does not make a new one.
 ```
 
 Found during the AI-15-A audit, against main
