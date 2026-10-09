@@ -937,6 +937,79 @@ AI-14 不解除任何它不拥有的 BLOCKER：
 
 ---
 
+## AI-15 — Evidence Production / Composition Integration
+
+AI-15 不新增能力，也不绕过任何 phase：GPT 定义它为**“证据生产与 composition 集成”的架构冻结**。AI-14 留下的唯一未完成项 B5（composition → Evidence）当时有两个理由：C-1 延期，以及 “没有 producer token”。C-1 已在 2026-10-04 由 Amendment 3 关闭，但第二个理由并未消失，而且没有任何文档说清 B5 到底需要什么。AI-15-A 就是那份说清楚的文档。
+
+### Status: AI-15-A COMPLETE / MERGED · AI-15-B NOT STARTED / BLOCKED
+
+```text
+contract = docs/AI-15_EVIDENCE_PRODUCTION_EXECUTION_PLAN.md
+                           FROZEN @ PR #78; no amendment
+                           contract blob = a206d90d0d357f08a214b0731a0b7f63d3771ea2
+AI-15-A  = COMPLETE / MERGED   architecture / contract freeze — DOCS ONLY
+                               (PR #78 @ 6e814a8b6d214a0203deb73b1abbf21ae50b68cc)
+AI-15-B  = NOT STARTED         BLOCKED
+AI-15    = NOT COMPLETE        B5 (composition -> Evidence) remains BLOCKED / NOT STARTED
+base     = main @ 37f354cbb3c007f2d92021fa560a443a53591372
+branch   = feature/ai-15-a-evidence-production-freeze   (merged; retained)
+```
+
+AI-15-A 只交付一件事：**一份契约**。2898 行，七个 commit，全部文档；没有 runtime、没有 producer token、没有动任何其他 phase 的契约，也没有连接任何 seam。
+
+```text
+AI-15-A 记录的核心事实（全部可按 file:line 复核）
+    生产 call-site 盘点   plugins.evidence 没有任何生产调用方。
+                            admit() 的唯一非测试调用是 admit_to_store 内部调它
+                            (admission.py:265)；admit_to_store 本身零调用方；
+                            唯一非测试 EvidenceRecord(...) 是 stored-form 读取器
+                            (stored.py:172)；包外唯一非测试 import 是 AI-06 的
+                            类型投影（security_tools/evidence.py:12），其两个函数无生产调用方
+    producer 注册表        六行、四个 token（ai-02 / ai-03 / ai-04 / ai-06），
+                            在 models.py:125 以不可变 tuple 声明一次；
+                            其余 phase 一个 token 也没有
+    producer 真实性 gate     g_registered（models.py:193）只把 token 与注册表
+                            比对，不比对别的。它是 WELL-FORMEDNESS 检查；
+                            producer AUTHENTICATION 是另一个问题，
+                            §30 没有任何一步回答它，非测试 call site
+                            也不提供答案
+    B5 CONNECTED 定义   十二个可核验条件（§8.3）。条件 11（producer
+                            authenticity）在 AI15-OPEN-1 未关闭时不满足；
+                            且 §15.2 STEP 0b gate 的是写入本身，所以“未标
+                            CONNECTED”不是合法中间态 — writer 根本不得存在
+    B5 依赖顺序          STEP 0a（AI-05 回答 AI15-OPEN-2）→ STEP 1（AI-14
+                            授权，仅改规则，绝不标 CONNECTED）→ STEP 0b
+                            （AI-05 回答、实现并测试 AI15-OPEN-1）→ STEP 2
+                            （call site）+ STEP 3（AI-14 分类，同一次 review、
+                            同一次 merge — 一次 merge，不是 commit 数量）
+    Layer 0 范围          五个目录有显式规则（composition/ :3241、
+                            agents/ :1549、review/ :1833 allowlist、
+                            benchmarks/ :2465、workflows/ :2630），
+                            plugins/security_tools/ 没有。Layer 0 是
+                            BUILD-TIME 检查 — 不是运行时沙箱，
+                            也不是全局防线
+```
+
+```text
+AI-15-A 不声称：runtime；producer token；改动任何其他 phase 的契约；
+        连接任何 seam；Evidence 已连接；Layer 0 能在运行时阻止 import；
+        admission 失败是一种授权。
+        封结契约没有改变上面任何一条。
+```
+
+```text
+AI-15 不解除它不拥有的任何 BLOCKER：
+    AI-11 §21.1 OPEN-1 = OPEN（producer-token amendment）
+    AI15-OPEN-1..4 = OPEN（AI-05 · AI-05 · AI-04 · AI-13/AI-14）
+    B5 = BLOCKED / NOT STARTED
+    AI-05 = INCOMPLETE（§35.1 DEFERRED）
+    AI-12-C = BLOCKED / NOT STARTED；model-comparative = BLOCKED
+    live provider verification = NOT_RUN（NOT_RUN != PASS）
+    durable review evidence = DEFERRED
+```
+
+---
+
 # 4. Dependency Map
 
 ```text
@@ -1057,6 +1130,7 @@ SecurityLab
 | AI-12 | **AI-12-A COMPLETE / MERGED** (`60c630d8`), **AI-12-B COMPLETE / MERGED** (`fa892eb1`, PR #67) — the policy core; **AI-12-C BLOCKED / NOT STARTED**, **AI-12 NOT CLOSED**, model-comparative prerequisite BLOCKED; see [AI-12-B_EVIDENCE_2026-10-03.md](AI-12-B_EVIDENCE_2026-10-03.md) |
 | AI-13 | **COMPLETE / MERGED / CLOSED** — contract `1e0a7fdf4dd96230a6177d3ca21bda03ec9c19ba` (PR #69), workflow core `95f0d08c47c8137813013ad7fe318e8fd0ebf12a` (PR #70), human approval point `98d4f57ad0bd78a54b9eb2ea44f30d2db394ee97` (PR #71), Amendments 1–4 applied; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-14 | **COMPLETE** — AI-14-A (freeze) `4b1058a4c764a613127800426fdd95e34d164bf3` (PR #72) and AI-14-B (composition) `adf6db2476b7e3de33a585954610e9ab568b498c` (PR #73) both merged; contract **FROZEN + AMENDED ONCE** (§25); **B5 (composition → Evidence) BLOCKED / NOT STARTED**; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
+| AI-15 | **AI-15-A COMPLETE / MERGED** — architecture / contract freeze, **DOCS ONLY** `6e814a8b6d214a0203deb73b1abbf21ae50b68cc` (PR #78), a true two-parent merge of `37f354c`; contract **FROZEN** (`docs/AI-15_EVIDENCE_PRODUCTION_EXECUTION_PLAN.md`); **AI-15-B NOT STARTED / BLOCKED**, **B5 still BLOCKED / NOT STARTED**; see [PROJECT_STATUS.md](PROJECT_STATUS.md) and [AI-15_EVIDENCE_PRODUCTION_EXECUTION_PLAN.md](AI-15_EVIDENCE_PRODUCTION_EXECUTION_PLAN.md) |
 
 ---
 

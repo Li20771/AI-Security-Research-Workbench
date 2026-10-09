@@ -2,6 +2,16 @@
 > Baseline: 2026-09-26
 
 ## Current stage
+**AI-15 — Evidence Production / Composition Integration — AI-15-A is COMPLETE / MERGED.**
+The architecture freeze (AI-15-A) merged to `main` as
+`6e814a8b6d214a0203deb73b1abbf21ae50b68cc` (PR #78), a **true two-parent merge** of
+`37f354cbb3c007f2d92021fa560a443a53591372` and
+`210a1907b453e927c1af8074a3f33ba8f51be1b6`. It is **DOCS ONLY**: one file,
+`docs/AI-15_EVIDENCE_PRODUCTION_EXECUTION_PLAN.md`, no runtime, no producer token, and no
+other phase's contract touched. It **froze a contract**; it connected no seam.
+**AI-15-B is NOT STARTED and BLOCKED**, and **B5 (composition → Evidence) remains
+BLOCKED / NOT STARTED**. See [AI-15 status](#ai-15-status).
+
 **AI-14 — Long-term AI Workbench — AI-14-A and AI-14-B are COMPLETE / MERGED.** The
 architecture freeze (AI-14-A) merged to `main` as
 `4b1058a4c764a613127800426fdd95e34d164bf3` (PR #72), and the composition implementation
@@ -86,8 +96,13 @@ This file is the single entry point for deciding what to do next.
 
 ### Current work item
 
-**AI-14 — Long-term AI Workbench — COMPLETE / MERGED (AI-14-A and AI-14-B).** No
-sub-phase is in progress: AI-15 has not started.
+**AI-15 — Evidence Production / Composition Integration — AI-15-A COMPLETE / MERGED**
+(PR #78 @ `6e814a8b6d214a0203deb73b1abbf21ae50b68cc`), the contract frozen.
+No sub-phase is in progress: **AI-15-B has not started**, and §16.2 of the AI-15 plan
+lists every blocker that holds it there, each with an owner and the §15.2 step it
+gates.
+
+**AI-14 — Long-term AI Workbench — COMPLETE / MERGED (AI-14-A and AI-14-B).**
 
 ```text
 AI-13    = COMPLETE / MERGED / CLOSED   merged to `main` as
@@ -517,6 +532,17 @@ AI-14   Long-term AI Workbench                COMPLETE  AI-14-A MERGED (PR #72)
   Evidence writer, which is **BLOCKED** (B5): the §6.5 admitted-producer registry has
   no row for any of these phases. That tension is AI-11 §21.1's OPEN-1, still OPEN —
   C-1's closure does not change it; a published detector does not admit a record
+- AI-15 — **AI-15-A is COMPLETE / MERGED** (PR #78), the contract frozen; **AI-15-B is
+  NOT STARTED and BLOCKED**. The AI-15-A audit sharpened the entry above: four phases
+  (AI-02, AI-03, AI-04, AI-06) **do** hold a §6.5 row — what none of them has is a
+  WRITER — and the rows that exist accept a caller-supplied producer token, which
+  `g_registered` (`plugins/evidence/models.py:193`) checks for registration and nothing
+  else. Those are **two independent OPEN items, both owned by AI-05**: AI-11 §21.1's
+  OPEN-1 (WHICH PRODUCERS EXIST) and **AI15-OPEN-1** (WHETHER A PRODUCER CLAIM IS
+  TRUSTWORTHY). AI-15-B's blockers are listed with owners and the §15.2 step each gates
+  in the AI-15 plan §16.2; **B5 remains BLOCKED**, and while AI15-OPEN-1 is OPEN **no
+  production call site that can execute admission and persist a record may be created,
+  merged or run** (AI-15 plan §15.2 STEP 0b, §17.2b)
 
 ## AI-00 final gate status
 
@@ -1808,3 +1834,189 @@ tests/context/test_cache.py::test_a_warm_cache_does_not_change_the_items is
     baseline and passes in isolation (5/5) and in the AI-10-era record. Pre-existing,
     RECORDED, out of scope — AI-14-A changes no test and no runtime code.
 ```
+
+
+---
+
+## AI-15 status
+
+**AI-15 — Evidence Production / Composition Integration: AI-15-A COMPLETE / MERGED.
+AI-15-B NOT STARTED / BLOCKED.**
+
+```text
+AI-15-A  = COMPLETE / MERGED   architecture / contract freeze — DOCS ONLY
+                               (PR #78 @ 6e814a8b6d214a0203deb73b1abbf21ae50b68cc)
+AI-15-B  = NOT STARTED         BLOCKED — the AI-15 plan §16.2 lists every blocker,
+                               each with an owner and the §15.2 step it gates
+contract = docs/AI-15_EVIDENCE_PRODUCTION_EXECUTION_PLAN.md
+                           FROZEN @ PR #78; no amendment
+                           contract blob = a206d90d0d357f08a214b0731a0b7f63d3771ea2
+                                         (DOCS ONLY, 2898 lines)
+
+merge    = 6e814a8b6d214a0203deb73b1abbf21ae50b68cc
+                     true two-parent merge; not squashed, not rebased
+                     parent 1 = 37f354cbb3c007f2d92021fa560a443a53591372
+                     parent 2 = 210a1907b453e927c1af8074a3f33ba8f51be1b6
+base     = main @ 37f354cbb3c007f2d92021fa560a443a53591372
+branch   = feature/ai-15-a-evidence-production-freeze   (merged; retained)
+merged   = 2026-10-09T04:36:07Z
+home     = docs/ only — AI-15-A delivered no runtime file
+```
+
+### What AI-15-A delivers
+
+```text
+ONE DOCUMENT. 2898 lines. PR #78 carries seven commits, all documentation:
+
+    cd4b8ed  the freeze proposal itself
+    8b852e5  cite AI-07's regression guard; correct a stale-line count
+    7391f02  fix the producer-authenticity gate, the AI-14 circular order, and three
+             conflations
+    56c1791  gate the Evidence write on producer authenticity, and separate failure from
+             authority
+    952da04  state Layer 0 as a build-time check, and stop over-attributing the
+             same-change rule
+    c0dde97  scope the Layer 0 checks to the directories that have them
+    210a190  scope §4.4's claim to the directories a Layer 0 rule actually covers
+
+WHAT IT ESTABLISHES, each point re-checkable at a file:line in the document
+
+    the production call-site audit   `plugins.evidence` has NO production caller. The
+                                     only non-test call of `admit()` is
+                                     `admit_to_store` calling it internally
+                                     (admission.py:265); `admit_to_store` has none at
+                                     all; the only non-test `EvidenceRecord(...)` is the
+                                     stored-form LOADER (stored.py:172); and the only
+                                     non-test import outside the package is AI-06's
+                                     type-only projection (security_tools/evidence.py:12),
+                                     whose two functions no production code calls
+    the producer registry            six rows, four tokens (ai-02, ai-03, ai-04, ai-06),
+                                     declared once as an immutable module-level tuple
+                                     (models.py:125). No token exists for any other
+                                     phase. AI-07's own guard states the same set:
+                                     tests/routing/test_router.py:760-765
+    the producer-authenticity gate   `g_registered` (models.py:193) compares the token to
+                                     the registry and compares nothing else. It is a
+                                     WELL-FORMEDNESS check; producer AUTHENTICATION is a
+                                     different question, no step of §30 answers it, and a
+                                     non-test call site does not supply the answer
+    the B5 CONNECTED definition      twelve checkable conditions (§8.3). Condition 11
+                                     — producer authenticity — is UNSATISFIED while
+                                     AI15-OPEN-1 is OPEN, and §15.2 STEP 0b gates the
+                                     WRITE, so a seam reported as NOT CONNECTED is not a
+                                     legitimate intermediate state: the writer must not
+                                     exist at all
+    the B5 dependency order          STEP 0a (AI-05 answers AI15-OPEN-2) → STEP 1
+                                     (AI-14 authorizes, rules only, NEVER CONNECTED) →
+                                     STEP 0b (AI-05 answers, implements and tests
+                                     AI15-OPEN-1) → STEP 2 (the call site) + STEP 3
+                                     (AI-14 classifies, in the SAME review and the SAME
+                                     merge — one merge, NOT a commit count)
+    the Layer 0 scope                five components carry an explicit rule
+                                     (composition/ :3241, agents/ :1549, review/ :1833
+                                     allowlist, benchmarks/ :2465, workflows/ :2630) and
+                                     `plugins/security_tools/` carries NONE. Layer 0 is a
+                                     BUILD-TIME check on the directories that have one —
+                                     not a runtime sandbox, and not a global barrier
+```
+
+### What AI-15-A does not claim
+
+```text
+runtime implementation   NONE — the PR's diff is one file under docs/
+producer token           NONE — AI-15 creates no producer and adds no §6.5 row
+other phase's contract    NONE — AI-05, AI-06, AI-08, AI-10, AI-11, AI-13 and AI-14 are
+                         byte-identical before and after
+connection of a seam     NONE — B5 is BLOCKED before and after the merge
+Evidence is connected    NO — `plugins.evidence` still has no production caller and no
+                         production writer. Freezing the contract changed none of that
+Layer 0 stops an import
+  at runtime             NO — it refuses a REPOSITORY CHANGE. Committed code that
+                         imported the package would RUN. The absence of a caller is a
+                         fact about the tree, not a runtime barrier
+admission failure is an
+  authorization          NO — and neither is it a veto: §11.4 keeps a caller free to
+                         treat REJECTED or UNAVAILABLE as the failure of its own
+                         operation, under that caller's own contract
+```
+
+### Recorded, not resolved
+
+```text
+the AI-11 §21.1 OPEN-1 tension is OPEN and is NOT closed, weakened or renamed by
+    AI-15. AI-15-A separates it from AI15-OPEN-1 and states the independence in both
+    directions: admitting a token does not make a claim trustworthy (§9.2), and a
+    trustworthy claim from a phase with no §6.5 row is still refused. AI-11's contract
+    is unmodified.
+
+FOLLOW-UP / OWNER AMENDMENT REQUIRED — AI-14. The AI-14 plan still carries AI-05 C-1 as
+    DEFERRED on fourteen lines written before C-1 merged (grep "C-1"), including the
+    falsifiable claim at :930 that `plugins/evidence/rules.py` does not exist. That file
+    exists (11,460 bytes, from C-1's merge on 2026-10-04). PROJECT_STATUS.md:402 already
+    annotates this as a superseded record. AI-15-A records it and does not fix it — the
+    file belongs to AI-14 and AI-15 owns no AI-14 clause.
+
+WINDOWS TEST FLAKE — mechanism identified, trigger UNRESOLVED. Recorded here because
+    AI-14-A recorded a comparable pre-existing flake, and because a reader of this file
+    should not take a green CI run for a green local run:
+        symptom   tests/review intermittently errors, and `-m layer3` intermittently
+                  fails, on this Windows host
+        mechanism `subprocess` CreateProcess raises OSError: [WinError 6] (句柄无效 /
+                  ERROR_INVALID_HANDLE). plugins/context/workspace.py:127 spawns git and
+                  catches FileNotFoundError (:136) and TimeoutExpired (:140) but NOT the
+                  bare OSError that WinError 6 is; it escapes build_context, is caught by
+                  agents/runtime.py:186's `except Exception`, and becomes BLOCKED with
+                  workspace_id="" (:190), which review/material.py:140 then refuses
+        baseline  reproduces on PRISTINE main @ 37f354c with no branch applied — six runs
+                  of `pytest tests/review` gave 66, 59, 48, 0, 35 and 55 errors, and the
+                  same command on the AI-15-A branch gave 61, 0, 0 and 60
+        CI        unaffected: preflight.yml runs on ubuntu-latest, where WinError 6 cannot
+                  arise
+        UNRESOLVED  WHY CreateProcess intermittently fails on this host. 400 direct
+                  sequential spawns through the same call shape reproduced nothing. It is
+                  NOT claimed to be proven environmental, and a repository robustness
+                  defect is NOT claimed to be proven absent.
+        follow-up   AI-03 runtime robustness — widening that handler is an AI-03 change,
+                  recorded and NOT made here
+```
+
+### States, unchanged by the AI-15-A merge
+
+```text
+AI-15-A                                 COMPLETE / MERGED (contract frozen, DOCS ONLY)
+AI-15-B                                 NOT STARTED / BLOCKED
+B5  (composition -> Evidence)           BLOCKED / NOT STARTED
+AI-05                                   INCOMPLETE — AI-11 §21.1 OPEN-1 (producer-token
+                                        amendment, OPEN) and §35.1 (DEFERRED)
+AI-05 C-1                               CLOSED (Amendment 3)
+AI06/AI08/AI10/AI11/AI13 producers      UNCHANGED — no phase writes a record
+AI-12-C                                 BLOCKED / NOT STARTED
+model-comparative prerequisite          BLOCKED
+live provider verification              NOT_RUN  (NOT_RUN != PASS)
+durable review evidence                 DEFERRED
+AI-07 routing DECISION / human approval
+  as admitted events                    DEFERRED
+OPEN, not closed by AI-15               AI15-OPEN-1 (AI-05) · AI15-OPEN-2 (AI-05) ·
+                                        AI15-OPEN-3 (AI-04) · AI15-OPEN-4 (AI-13/AI-14)
+```
+
+### Measured this round
+
+```text
+on the merged main @ 6e814a8b6d214a0203deb73b1abbf21ae50b68cc — see the flake note
+above before reading this line as a stability claim
+    whole repository            3953 passed, 4 skipped, 5 deselected   (best observed)
+    Layer 0                     PASS (23 checks)
+    compileall                  PASS
+    git diff --check            clean
+    citations                   73 file:line citations in the AI-15 document, 0 unresolvable
+    markdown fences             302, balanced
+
+CI on the merge head 210a1907b453e927c1af8074a3f33ba8f51fe1b6
+    Layer 0 — repository policy          PASS (6s)
+    Layers 1-3 — offline model/context   PASS (1m31s)
+```
+
+The local suite line is deliberately NOT presented as a stable PASS: the whole-repository
+figure is the best observed on this host, and the flake above is intermittent at the
+pristine baseline. CI PASS and the local result are two different measurements.

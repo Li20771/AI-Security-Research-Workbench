@@ -2859,8 +2859,23 @@ FROZEN: a row that says "(none)" is a finding, not an omission. It MUST NOT be
 ## Status
 
 ```text
-AI-15-A  = DRAFT / FREEZE PROPOSAL      this document
+AI-15-A  = COMPLETE / MERGED            contract FROZEN — DOCS ONLY
+                                        PR #78 @ 6e814a8b6d214a0203deb73b1abbf21ae50b68cc
+                                        true two-parent merge of 37f354c + 210a190;
+                                        not squashed, not rebased
+                                        (PR #78 landed seven commits: cd4b8ed, 8b852e5,
+                                        7391f02, 56c1791, 952da04, c0dde97, 210a190)
 AI-15-B  = NOT STARTED                  BLOCKED (§16.2, §15.2)
+```
+
+```text
+FROZEN: this document is the AI-15 contract. The merge of PR #78 is the freeze act.
+        It froze a CONTRACT. It did not connect a seam, did not create a producer
+        token, did not register a producer, did not write a record, and did not move
+        B5 out of BLOCKED. Every state in the block below is unchanged by the merge.
+FROZEN: a change to this document now requires an amendment (§19), made by AI-15
+        under AI-15's own amendment rule — exactly as §15.2 requires of every other
+        phase's contract.
 ```
 
 ```text
@@ -2880,7 +2895,9 @@ UNCHANGED BY THIS DOCUMENT: AI-05 · AI-06 · AI-08 · AI-10 · AI-11 · AI-13 �
          contracts, implementations and boundaries — every one byte-identical.
 
 NOT CLAIMED: that Evidence is connected. It is not. §3 records what is, and §20
-         records it at file:line.
+         records it at file:line. Freezing this contract changed none of that:
+         at the merge, and after it, `plugins.evidence` still has no production
+         caller and no production writer (§3.1-§3.3).
 
 NOT CLAIMED: that a producer claim is trustworthy once a token is registered.
          It is not, and §8.3 condition 11 keeps BOTH the CONNECTED claim and the
