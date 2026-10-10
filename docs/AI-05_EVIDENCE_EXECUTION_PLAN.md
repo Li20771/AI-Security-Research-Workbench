@@ -810,11 +810,26 @@ FROZEN: A MAPPING THAT VIOLATES INJECTIVITY FAILS CLOSED, AND NO AUTHENTICATION
         the first or last entry it saw, and MUST NOT warn and continue — a mapping
         it cannot vouch for is not a mapping it may hand out.
 FROZEN: THE REQUIREMENT IS STATED OVER RECOGNIZED TOKENS BECAUSE THAT IS WHERE IT
-        BITES. An entry for a token §6.5 does not register is INERT (WHAT IT IS NOT,
-        above), so a collision involving one authenticates nothing. A reader MAY
-        refuse a mapping for ANY duplicate public key over ALL its entries, which is
-        strictly stronger and cannot reject a deployment that was not already
-        broken.
+        BITES — AND A DUPLICATE INVOLVING ONLY AN UNREGISTERED TOKEN IS HARMLESS
+        FOR A REASON THAT MUST NOT BE MISSTATED.
+            a mapping entry for a token §6.5 does not register GRANTS NO §6.5
+              IDENTITY, and creates no registry row
+            under §7.3.7's order a signature over that token's claim MAY STILL
+              VERIFY, because step 7b runs before construction and §7.3.2 requires
+              that it does
+            the record is then REFUSED BY §6.6 during construction, whatever the
+              proof said
+            so a duplicate public key involving only such a token does NOT, BY THAT
+              DUPLICATION ITSELF, bypass the registry check or cause an unregistered
+              record to be accepted. IT IS HARMLESS THROUGH THE REGISTRY, NOT
+              THROUGH A FAILED AUTHENTICATION
+        AN EARLIER REVISION OF THIS CLAUSE SAID SUCH A COLLISION "AUTHENTICATES
+        NOTHING". THAT IS WITHDRAWN: it is false under the execution order this
+        contract fixes, and it is precisely the confusion between authenticating a
+        CLAIM and admitting a RECORD that §7.2 and §7.3.8 exist to prevent.
+        A reader MAY refuse a mapping for ANY duplicate public key over ALL its
+        entries, which is strictly stronger and cannot reject a deployment that was
+        not already broken.
 FROZEN: INJECTIVITY IS NOT RECOGNITION, AND A PUBLIC-KEY MAPPING CONFERS NOTHING.
         §6.5 remains the SOLE authority on whether a producer token is recognized;
         a key configured for an unrecognized token creates no registry entry and
@@ -1500,8 +1515,10 @@ FROZEN: THE TEST OBLIGATION THIS SECTION CREATES, for the implementation that
               token whose entry was not part of the collision, because the reader
               refuses the mapping rather than trimming it
             a mapping whose only duplicate public key involves a token §6.5 does
-              NOT register, asserting that the duplicate authenticates nothing and
-              that the unrecognized token stays unrecognized either way
+              NOT register, asserting that a submission naming that token is still
+              REFUSED — by §6.6 during construction, and NOT at authentication,
+              whose signature MAY verify — and that the unrecognized token stays
+              unrecognized either way
             a mapping in which every recognized token holds DISTINCT key material,
               asserting that the same submissions that failed above now succeed —
               the control that shows the two tests above are testing injectivity
@@ -4743,7 +4760,10 @@ recorded rather than relied on, exactly as Amendment 4 recorded the same about �
     mapping, and EVERY submission is REJECTED with AUTHENTICATION_KEY_UNAVAILABLE.
     The reader MUST NOT return the valid subset, keep the first or last entry it
     saw, or warn and continue. The requirement is stated over RECOGNIZED tokens
-    because an entry for an unrecognized one is inert; a reader MAY refuse on any
+    because a duplicate involving only an unregistered token cannot produce an
+    ACCEPTED record — a signature over that token's claim MAY VERIFY, and §6.6 then
+    REFUSES the record during construction — so the collision is harmless THROUGH
+    THE REGISTRY, not through a failed authentication. A reader MAY refuse on any
     duplicate over all entries, which is strictly stronger and cannot reject a
     deployment that was not already broken. This is a compliance condition of the
     mechanism rather than advice, because a shared key leaves §6.5's string
