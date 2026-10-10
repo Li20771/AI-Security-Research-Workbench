@@ -765,6 +765,33 @@ FROZEN: A SHARED PRIVATE SIGNING KEY ACROSS TWO OR MORE PRODUCER TOKENS IS
         naming the other that verifies. That is precisely the forgery §9.2 names,
         and a shared key would leave §6.5's string comparison as the only thing
         refusing it — which §7.2 already records is not an authentication check.
+FROZEN: THE MAPPING MUST BE INJECTIVE OVER THE TOKENS §6.5 RECOGNIZES. The same
+        Ed25519 PUBLIC-KEY BYTES MUST NOT be assigned to two different recognized
+        producer tokens. This is the ENFORCEABLE HALF of the rule above: the
+        contract never sees a private key, but it does see the public keys the
+        mapping holds, and a mapping that gives two tokens one public key IS the
+        shared-key defect stated in terms a reader can check.
+FROZEN: A MAPPING THAT VIOLATES INJECTIVITY FAILS CLOSED, AND NO AUTHENTICATION
+        PROCEEDS UNDER IT. Validation happens IN THE DESIGNATED READER — §7.3.2's
+        ONE READER — which refuses to produce a mapping it finds non-injective.
+        The deployment therefore has NO usable designated mapping, and every
+        submission is REJECTED under §7.3.8 with AUTHENTICATION_KEY_UNAVAILABLE:
+        the same outcome as a deployment with no mapping at all, because that is
+        what it now has. The reader MUST NOT return the valid subset, MUST NOT keep
+        the first or last entry it saw, and MUST NOT warn and continue — a mapping
+        it cannot vouch for is not a mapping it may hand out.
+FROZEN: THE REQUIREMENT IS STATED OVER RECOGNIZED TOKENS BECAUSE THAT IS WHERE IT
+        BITES. An entry for a token §6.5 does not register is INERT (WHAT IT IS NOT,
+        above), so a collision involving one authenticates nothing. A reader MAY
+        refuse a mapping for ANY duplicate public key over ALL its entries, which is
+        strictly stronger and cannot reject a deployment that was not already
+        broken.
+FROZEN: INJECTIVITY IS NOT RECOGNITION, AND A PUBLIC-KEY MAPPING CONFERS NOTHING.
+        §6.5 remains the SOLE authority on whether a producer token is recognized;
+        a key configured for an unrecognized token creates no registry entry and
+        changes no authority; and an unrecognized token STAYS UNRECOGNIZED however
+        well-formed and however unique its key material is. Nothing in this section
+        admits an event, and nothing in it moves a row of any authority matrix.
 ```
 
 #### 7.3.3 The proof, and where it lives
@@ -985,17 +1012,49 @@ admissible Evidence input today, and adopting RFC 8785 unchanged would reject in
 the existing contract admits — a schema change this amendment has no mandate to make.
 
 ```text
-FROZEN: AI-05-CJ-1 IS RFC 8785 WITH EXACTLY ONE STATED EXTENSION, AND NO OTHER:
+FROZEN: AI-05-CJ-1's WIRE FORMAT IS RFC 8785 WITH EXACTLY ONE EXTENSION, AND NO
+        OTHER. The extension is in the NUMBER DOMAIN and nowhere else:
 
         INTEGERS   are serialized in PLAIN DECIMAL with arbitrary precision — an
                    optional leading '-' and digits, no exponent, no leading zeros,
                    no '+', no decimal point. This SUPERSET of RFC 8785's number
                    domain is what preserves `g_ordinal`'s existing bound.
-                   WHERE RFC 8785 AND AI-05-CJ-1 DIFFER, THEY DIFFER HERE AND
-                   ONLY HERE, and the difference is recorded rather than implied.
+                   WHERE RFC 8785 AND AI-05-CJ-1 DIFFER ON THE WIRE, THEY DIFFER
+                   HERE AND ONLY HERE, and the difference is recorded rather than
+                   implied.
 
         EVERYTHING ELSE IS RFC 8785 VERBATIM, and is restated below so that an
         implementer needs no second document.
+```
+
+```text
+FROZEN: THE INPUT ADAPTERS ARE NOT WIRE-FORMAT EXTENSIONS, AND THE DISTINCTION IS
+        NOT PEDANTRY. Rule 1 below maps some PYTHON representations onto the JSON
+        data model. An adapter is not an extension when the bytes it produces are
+        the bytes RFC 8785 would produce for an equivalent plain value, and each
+        adapter here satisfies that:
+
+            StrEnum member    renders as its canonical STRING value — the same
+                              bytes a plain `str` of that value produces. RFC 8785
+                              has no notion of an enum and needs none: it receives
+                              a string.
+            tuple             renders as a JSON array — the same bytes a `list` of
+                              the same items produces. JSON has no tuple.
+            bool              dispatches BEFORE the integer rule, so True renders
+                              as `true` and never as `1`. This is a DISPATCH rule
+                              for a Python quirk (`isinstance(True, int)` is True),
+                              not a serialization choice: JSON's booleans are
+                              RFC 8785's.
+            Mapping           renders as a JSON object; its key ORDER is rule 2's,
+                              not the mapping's insertion order.
+
+        NO ADAPTER MAY PRODUCE BYTES A PLAIN VALUE COULD NOT. An adapter that did
+        would be an EXTENSION, and it would have to be listed with the integer
+        extension above and versioned with the profile. There is none, and adding
+        one is precisely the breaking change §7.3.6's version governance covers —
+        so the claim "exactly one extension" is checkable rather than a slogan: an
+        adapter changes WHICH PYTHON VALUE reaches the encoder, never WHAT BYTES
+        the encoder emits for a value of that JSON type.
 ```
 
 ```text
@@ -1104,6 +1163,17 @@ can be checked against the profile rather than against a description of it. Byte
 strings are hexadecimal; `‖` marks a concatenation boundary and is not a byte.
 
 ```text
+LINE WRAPPING IN THIS BLOCK IS PRESENTATION ONLY. The hex, the Base64url and the
+canonical text below are WRAPPED TO FIT THE PAGE. None of them contains a line
+break; a line break is NEVER part of a signed input, of a canonical serialization,
+or of an encoded value, and a reader MUST NOT treat the wrap points as bytes.
+Where a length is stated, it is the length of the UNWRAPPED value. The one place
+this document shows a canonical serialization on more than one line is VECTOR 1,
+and that vector also gives the same text on a single line so the two can be
+compared.
+```
+
+```text
 THE FIXED PREFIX — the same in every vector, and what the domain/version rule costs:
     DOMAIN_TAG     776f726b62656e63682e65766964656e63652e70726f64756365722d70726f6f66
                    (33 ASCII bytes: "workbench.evidence.producer-proof")
@@ -1122,10 +1192,18 @@ VECTOR 1 — ASCII, nested objects, and key ordering that is NOT the input's ord
                        "workspace_id":"ws-1"},
          "payload":{"family":"SOURCE_READ"}}
 
-    AI-05-CJ-1 canonical text (four keys reordered; no whitespace)
+    AI-05-CJ-1 canonical text, 158 characters, ON ONE PHYSICAL LINE, with no
+    whitespace outside the string values. The line below is that line:
+
+{"kind":"OBSERVATION","payload":{"family":"SOURCE_READ"},"provenance":{"producer":"ai-03","producer_type":"service","workspace_id":"ws-1"},"schema_version":1}
+
+    The same text, wrapped at the same points as the rest of this block, for
+    comparison — the wrap points are NOT in the value:
+
         {"kind":"OBSERVATION","payload":{"family":"SOURCE_READ"},"provenance":
         {"producer":"ai-03","producer_type":"service","workspace_id":"ws-1"},
         "schema_version":1}
+
       sha256 over its UTF-8 bytes, for cross-checking only:
         f4a1d5fcd69667991fde630a1df304c0d704926986e307a2203de6d3bb33e1ec
 
@@ -1176,25 +1254,75 @@ VECTOR 2 — a NON-ASCII string, and the rule that matters for it
 ```
 
 ```text
-VECTOR 3 — NEGATIVE CONTROL: the version byte is covered by the signature
+VECTOR 3 — NEGATIVE CONTROL: the version is covered by the signature
 
     Same mapping as VECTOR 1, with PROOF_VERSION "2" instead of "1".
 
-    SIGNED INPUT — identical to VECTOR 1 EXCEPT for ONE byte
+    MESSAGE B — the version-2 signed input, identical to VECTOR 1 EXCEPT ONE byte
         776f...726f6f66 00 32 00 7b226b696e64...317d
                             ^^
         byte offset 34, hexadecimal 32 ("2") where VECTOR 1 has 31 ("1")
 
-    CONSEQUENCE  a signature minted over VECTOR 1's bytes does NOT verify over this
-        one, and a verifier at version 1 reconstructs 31, compares against a carried
-        message carrying 32, and REJECTS with AUTHENTICATION_INPUT_MISMATCH. A
-        version cannot be changed, downgraded or upgraded without invalidating
-        every proof minted under the other one, which is exactly what §7.3.4's
-        "PROOF_VERSION IS PART OF THE SIGNED INPUT AND IS NOT NEGOTIATED" requires.
+    THE TWO CASES ARE DIFFERENT TESTS AND HAVE DIFFERENT EXPECTED RESULTS. §7.3.5
+    runs V4 (signature over the decoded carried bytes) BEFORE V5 (compare the
+    decoded carried bytes to the reconstruction), so WHICH CASE a submission falls
+    into decides WHICH STEP refuses it. A vector that assigned one result to both
+    would be testing the wrong stage in one of them.
 
-    VECTOR 4 — NEGATIVE CONTROL: the domain tag is covered by the signature
-        Replace byte 0 with 78 ("x"): the tag no longer matches, reconstruction
-        differs at offset 0, and the comparison fails for the same reason.
+    CASE A — MESSAGE B CARRIED WITH VECTOR 1's SIGNATURE (sig_A)
+        V4 checks sig_A over message B's decoded bytes. It does not verify: sig_A
+        was produced over message A. V5 is NEVER REACHED, and a verifier that
+        reported a mismatch here would have compared before verifying.
+            EXPECTED   AUTHENTICATION_SIGNATURE_INVALID
+
+    CASE B — MESSAGE B CARRIED WITH A VALID SIGNATURE OVER MESSAGE B (sig_B),
+             SUBMITTED TO A VERIFIER CONFIGURED FOR PROOF_VERSION "1"
+        V4 succeeds — sig_B is valid over message B under the key the mapping
+        holds for the token the record names. V5 then reconstructs the expected
+        signed input from the submitted mapping. The mapping is unchanged and
+        carries no version of its own, so the reconstruction uses the VERIFIER's
+        version literal and begins 00 31 00, while the decoded carried message
+        begins 00 32 00. They differ at offset 34.
+            EXPECTED   AUTHENTICATION_INPUT_MISMATCH
+
+    WHAT THE PAIR PROVES  the version is INSIDE the signed bytes, so a version
+        cannot be changed, downgraded or upgraded without invalidating every proof
+        minted under the other one (case B), AND a proof whose message was altered
+        after signing is refused at the signature rather than at the comparison
+        (case A). This is what §7.3.4's "PROOF_VERSION IS PART OF THE SIGNED INPUT
+        AND IS NOT NEGOTIATED" requires. There is NO version negotiation, NO
+        downgrade fallback and NO "try each version": a verifier implements the
+        versions it implements and refuses everything else at one of these two
+        steps.
+
+VECTOR 4 — NEGATIVE CONTROL: the domain tag is covered by the signature
+
+    Byte 0 is replaced by 78 ("x"), so the leading bytes are no longer
+    "workbench.evidence.producer-proof". Same two cases, same expected results,
+    by the same reasoning:
+
+        CASE A  the altered-tag message carried with VECTOR 1's signature
+                EXPECTED   AUTHENTICATION_SIGNATURE_INVALID
+        CASE B  a valid signature over the altered-tag message, submitted to a
+                verifier expecting the original tag
+                EXPECTED   AUTHENTICATION_INPUT_MISMATCH
+                (V5 reconstruction differs at offset 0)
+
+    The pair proves for the domain tag exactly what VECTOR 3 proves for the
+    version.
+
+SIGNATURES USED, STATED BECAUSE BOTH VECTORS TURN ON THEM
+
+    sig_A   a valid Ed25519 signature over VECTOR 1's signed input, under the test
+            producer key for the token VECTOR 1 names
+    sig_B   a valid Ed25519 signature over the ALTERED signed input (version-2 in
+            VECTOR 3, altered-tag in VECTOR 4), under the SAME test producer key
+
+    NO SIGNATURE VALUE IS PRINTED, and none is normative here. These vectors fix
+    the BYTES a verifier compares and WHICH STEP refuses a submission; the
+    signature is whatever the test key produces, and printing one would invite it
+    to be copied as a fixed value when it is not. sig_A and sig_B are NAMES for
+    "a valid signature over X", not constants.
 ```
 
 #### 7.3.7 The order in which this runs, and the tests it obliges
@@ -1204,10 +1332,17 @@ FROZEN: THE ORDER IS FIXED, AND IT IS STATED IN TERMS OF WHAT ACTUALLY RUNS WHER
         §30's NUMBERS IDENTIFY steps; they are NOT an execution order, and this
         section does not pretend otherwise. The order that runs is:
 
-            1  §30 step 7         THE RULE SET, over the SUPPLIED values. The ONLY
-                                  check that runs before construction, and
-                                  `check_admission_rules` is written for exactly
-                                  that position (admission.py:199)
+            1  §30 step 7         THE RULE SET, over the SUPPLIED values. This is
+                                  the only EXISTING ADMISSION CHECK that runs
+                                  BEFORE AUTHENTICATION, and `check_admission_rules`
+                                  is written for exactly that position
+                                  (admission.py:199).
+                                  IT IS NOT THE ONLY THING THAT RUNS BEFORE
+                                  CONSTRUCTION: step 7b runs there too, and so do
+                                  its §7.3.5 V1 and V2 — envelope validation and
+                                  the producer-token read. What is unique to step 7
+                                  is that it is the one ADMISSION check already in
+                                  the contract that precedes authentication
             2  §30 step 7b        PRODUCER AUTHENTICATION — this section. No
                                   implementation of it exists anywhere
             3  §30 steps 1-4, 4b, 6, 8-11
@@ -1329,6 +1464,19 @@ FROZEN: THE TEST OBLIGATION THIS SECTION CREATES, for the implementation that
             a valid proof and an accepted producer claim
             no proof, and no designated mapping at all
             a mapping with no entry for the claimed token
+            ONE PUBLIC KEY ASSIGNED TO TWO RECOGNIZED PRODUCER TOKENS, asserting
+              that the designated reader REFUSES the mapping, that no mapping is
+              therefore designated, and that EVERY submission is REJECTED with
+              AUTHENTICATION_KEY_UNAVAILABLE — including a submission naming a
+              token whose entry was not part of the collision, because the reader
+              refuses the mapping rather than trimming it
+            a mapping whose only duplicate public key involves a token §6.5 does
+              NOT register, asserting that the duplicate authenticates nothing and
+              that the unrecognized token stays unrecognized either way
+            a mapping in which every recognized token holds DISTINCT key material,
+              asserting that the same submissions that failed above now succeed —
+              the control that shows the two tests above are testing injectivity
+              and not merely the absence of a mapping
             a malformed envelope: a non-Base64url character, '=' padding, and a
               NON-CANONICAL encoding whose final quantum carries unused bits
             a signature that does not verify
@@ -4540,11 +4688,22 @@ recorded rather than relied on, exactly as Amendment 4 recorded the same about �
     for an unregistered token is inert.
 
 (c) §7.3.2 makes ONE KEY PER PRODUCER TOKEN mandatory and records that a SHARED
-    private signing key across two or more tokens is NON-COMPLIANT. This is stated
-    as a compliance condition of the mechanism rather than as advice, because a
-    shared key leaves §6.5's string comparison as the only thing refusing a
-    cross-producer forgery — and §7.2 already records that a registry check is not
-    an authentication check.
+    private signing key across two or more tokens is NON-COMPLIANT. It then states
+    the ENFORCEABLE HALF of that rule: THE MAPPING MUST BE INJECTIVE OVER THE TOKENS
+    §6.5 RECOGNIZES, so the same public-key bytes cannot be assigned to two of them.
+    The contract never sees a private key, but it does see the public keys the
+    mapping holds, and a mapping that gives two tokens one key IS the shared-key
+    defect in terms a reader can check. A mapping that VIOLATES INJECTIVITY FAILS
+    CLOSED: the designated READER refuses it, the deployment therefore has NO usable
+    mapping, and EVERY submission is REJECTED with AUTHENTICATION_KEY_UNAVAILABLE.
+    The reader MUST NOT return the valid subset, keep the first or last entry it
+    saw, or warn and continue. The requirement is stated over RECOGNIZED tokens
+    because an entry for an unrecognized one is inert; a reader MAY refuse on any
+    duplicate over all entries, which is strictly stronger and cannot reject a
+    deployment that was not already broken. This is a compliance condition of the
+    mechanism rather than advice, because a shared key leaves §6.5's string
+    comparison as the only thing refusing a cross-producer forgery — and §7.2
+    already records that a registry check is not an authentication check.
 
 (d) §7.3.3 and §7.3.4 define the PROOF: a `message_b64u` field carrying the signed
     input as canonical UNPADDED Base64url, and an Ed25519 `signature` over the
@@ -4565,16 +4724,34 @@ recorded rather than relied on, exactly as Amendment 4 recorded the same about �
     verifier's own reconstruction. Neither operation implies the other.
 
 (f) §7.3.6 defines AI-05-CJ-1, a COMPLETE canonical-JSON profile, rather than
-    describing a serializer by its properties. It is RFC 8785 (JCS) with exactly ONE
-    stated extension — arbitrary-precision plain-decimal integers, which is what
-    preserves `g_ordinal`'s existing unbounded non-negative integer rule — and every
-    other rule is RFC 8785 verbatim: UTF-16 code-unit key ordering, literal UTF-8
-    for non-ASCII, NO Unicode normalization, minimal escaping with lowercase \u
-    hex, no whitespace outside strings, and an explicit out-of-domain set. It
-    carries NORMATIVE TEST VECTORS with exact bytes. It records that any change is a
-    BREAKING change requiring a new PROOF_VERSION, and that §15.2's digest input,
-    §14.6.1's generated digests and the stored form are UNCHANGED: AI-05-CJ-1
-    governs the SIGNED INPUT and nothing else.
+    describing a serializer by its properties. Its WIRE FORMAT is RFC 8785 (JCS)
+    with exactly ONE extension — arbitrary-precision plain-decimal integers, which
+    is what preserves `g_ordinal`'s existing unbounded non-negative integer rule —
+    and every other rule is RFC 8785 verbatim: UTF-16 code-unit key ordering,
+    literal UTF-8 for non-ASCII, NO Unicode normalization, minimal escaping with
+    lowercase \u hex, no whitespace outside strings, and an explicit out-of-domain
+    set.
+    THE INPUT ADAPTERS ARE SEPARATED FROM THAT EXTENSION AND ARE STATED NOT TO BE
+    EXTENSIONS, because each produces bytes RFC 8785 would produce for an
+    equivalent plain value: a StrEnum member renders as its canonical string
+    (identical to a plain str of the same value), a tuple as a JSON array
+    (identical to a list), and bool dispatches BEFORE the integer rule so True is
+    `true` and never `1`. An adapter that produced bytes no plain value could WOULD
+    be an extension, and would have to be listed with the integer one and versioned
+    with the profile; there is none, which is what makes "exactly one extension"
+    checkable rather than a slogan.
+    It carries NORMATIVE TEST VECTORS with exact bytes, states that LINE WRAPPING in
+    them is PRESENTATION ONLY and never part of a serialized value, and gives
+    VECTOR 1's canonical text on a SINGLE PHYSICAL LINE as well as wrapped. The
+    NEGATIVE CONTROLS ARE STATED AS TWO CASES EACH, because §7.3.5 runs V4 before
+    V5: a control whose message is altered while the ORIGINAL signature is retained
+    is refused at V4 with AUTHENTICATION_SIGNATURE_INVALID, and one carrying a VALID
+    signature over the altered message is refused at V5 with
+    AUTHENTICATION_INPUT_MISMATCH. Assigning one result to both would test the wrong
+    stage in one of them.
+    It records that any change is a BREAKING change requiring a new PROOF_VERSION,
+    and that §15.2's digest input, §14.6.1's generated digests and the stored form
+    are UNCHANGED: AI-05-CJ-1 governs the SIGNED INPUT and nothing else.
 
 (g) NEW §30 step 7b places authentication AFTER step 7's rule set and BEFORE
     CONSTRUCTION — steps 1-4, 4b, 6, 8-11 and 13, and NOT step 12. §7.3.7 carries
@@ -4588,6 +4765,11 @@ recorded rather than relied on, exactly as Amendment 4 recorded the same about �
     and has NOT run when step 7b executes, and STEP 13 RUNS BEFORE STEP 12 because
     `from_mapping` stamps the identity while `assign_digests` computes the two
     record digests afterwards.
+    STEP 7 IS THE ONLY EXISTING ADMISSION CHECK THAT RUNS BEFORE AUTHENTICATION.
+    It is NOT the only thing that runs before construction: step 7b runs there too,
+    and so do §7.3.5's V1 (envelope validation) and V2 (the producer-token read).
+    The distinct claim step 7 carries is that it is the one ADMISSION check
+    already in this contract that precedes authentication.
 
 (h) §7.3.7 separates three operations that ordinary speech calls "hashing" —
     deterministic serialization, Ed25519's internal message compression, and
