@@ -703,8 +703,11 @@ FROZEN: WHAT THIS ESTABLISHES, AND WHAT IT DOES NOT. Stated here rather than lef
 
         IT ESTABLISHES   the holder of the private key that this deployment
                          associates with producer token T signed a message that is
-                         exactly the canonical serialization of this record, and
-                         that record names T
+                         EXACTLY signed_input(THIS RECORD) — the DOMAIN TAG, the
+                         SEPARATOR bytes, the PROTOCOL VERSION and the canonical
+                         serialization of the COMPLETE SUBMITTED MAPPING, all four
+                         of them, per §7.3.4 — and that the record being submitted
+                         names T
         IT DOES NOT      prove that a particular CODE COMPONENT executed the
           ESTABLISH      operation, that the component's process is uncompromised,
                          that the claim's CONTENT is true, or that the
@@ -729,8 +732,34 @@ WHAT IT IS NOT  a registry. It creates no §6.5 row, admits no event, and confer
                 no recognition. §6.5 remains the SOLE authority on whether a
                 producer token is recognized (§6.5, §6.6, UNCHANGED by this
                 amendment). A key configured for a token §6.5 does not register is
-                INERT: the §6.6 registry check refuses the record before
-                authentication is consulted, and no clause here changes that.
+                INERT — and it is inert BY CONSTRUCTION, not by ordering: a
+                successful signature for such a token establishes nothing, because
+                the §6.6 registry check inside typed construction REFUSES the
+                record whatever its proof said. NO VALID SIGNATURE FOR AN
+                UNREGISTERED TOKEN CAN RESULT IN ACCEPTANCE.
+```
+
+```text
+FROZEN: AUTHENTICATION MAY RUN BEFORE THE REGISTRY CHECK, AND THAT ORDER IS NOT A
+        HOLE. §7.3.7 puts step 7b before construction, and the §6.5/§6.6 registry
+        and cross-field checks run INSIDE construction (§30 steps 1-4, 4b, 6,
+        8-11, 13). A submission naming an unregistered token can therefore REACH —
+        and can PASS — authentication, and is then REFUSED by §6.6. An earlier
+        revision of this section said the registry check refuses such a record
+        "before authentication is consulted". THAT IS WITHDRAWN: it described an
+        execution order this contract does not have, and it contradicted §7.3.7 and
+        §30 step 7b.
+FROZEN: THE TWO CHECKS ANSWER DIFFERENT QUESTIONS AND NEITHER SUBSTITUTES FOR THE
+        OTHER, which is why the order between them carries no weight:
+            authentication   did the holder of the key this deployment associates
+                             with the CLAIMED token sign this submission?
+            §6.5 / §6.6      does that token APPLY to this record's kind and
+                             family, and is the event representable at all?
+        A REGISTERED token with no configured key is REJECTED at authentication.
+        A configured KEY with no registered token is REJECTED at construction.
+        Neither check can be satisfied by the other, and this amendment adds no
+        path on which either is skipped. A valid signature is NOT a registration,
+        and it is NOT a permission.
 ```
 
 ```text
@@ -4678,14 +4707,30 @@ recorded rather than relied on, exactly as Amendment 4 recorded the same about �
     AUTHENTICATED, what the mechanism establishes, and — in the same place — what it
     does NOT establish. The standard is (a) a designated deployment mapping,
     (b) a key for the claimed token, (c) a proof, (d) a signature that verifies
-    under THAT key over the proof's carried message, and (e) byte equality between
-    that message and the canonical serialization of the submitted mapping.
+    under THAT key over the DECODED carried message, and (e) exact byte equality
+    between those decoded bytes and the COMPLETE verifier-reconstructed
+    `signed_input(submitted mapping)` — the DOMAIN TAG, the SEPARATORS and the
+    PROTOCOL VERSION included, and NOT the bare canonical serialization.
 
 (b) §7.3.2 fixes the trust model: a DEPLOYMENT-LEVEL producer-token-to-public-key
     mapping, read from ONE place by ONE module, with no public AI-05 function
     accepting a caller-selected key, mapping, anchor or verifier. It establishes key
     material ONLY: §6.5 remains the sole recognition authority, and a key configured
-    for an unregistered token is inert.
+    for an unregistered token is INERT.
+    THE INERTNESS IS BY CONSTRUCTION, NOT BY ORDERING. §7.3.2 also records that
+    AUTHENTICATION MAY RUN BEFORE THE §6.6 REGISTRY CHECK, because §7.3.7 puts step
+    7b before construction and the registry and cross-field checks run INSIDE it: a
+    submission naming an unregistered token can REACH and PASS authentication and is
+    then REFUSED by §6.6. NO VALID SIGNATURE FOR AN UNREGISTERED TOKEN CAN RESULT IN
+    ACCEPTANCE. The two checks answer different questions — did the key holder for
+    the CLAIMED token sign this, versus does that token APPLY to this record's kind
+    and family — and neither substitutes for the other. A registered token with no
+    configured key is REJECTED at authentication; a configured key with no registered
+    token is REJECTED at construction.
+    AN EARLIER REVISION OF §7.3.2 SAID THE REGISTRY CHECK REFUSES SUCH A RECORD
+    "before authentication is consulted". THAT IS WITHDRAWN: it described an
+    execution order this contract does not have and contradicted §7.3.7 and §30
+    step 7b. §7.3.2 records the withdrawal in place.
 
 (c) §7.3.2 makes ONE KEY PER PRODUCER TOKEN mandatory and records that a SHARED
     private signing key across two or more tokens is NON-COMPLIANT. It then states
