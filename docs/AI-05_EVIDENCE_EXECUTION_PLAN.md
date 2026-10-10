@@ -605,8 +605,12 @@ FROZEN: THREE DIFFERENT CHECKS, AND §6.5 IS ONLY THE FIRST OF THEM.
                                               actor.type is REJECTED (§6.6)
             producer                        whether the claim actually came
               AUTHENTICATION                  from the component it names.
-                                              AI-05 v1 does NOT do this, and
-                                              this section does not add it
+                                              DEFINED BY §7.3 (Amendment 5).
+                                              Before Amendment 5 AI-05 did not
+                                              do this and this section did not
+                                              add it. §7.3 is the instrument
+                                              that adds it, and THIS section
+                                              still does not
             submitter IDENTITY              who called the admission entry
                                               point. The API does not establish
                                               it: `admit()` and
@@ -646,8 +650,880 @@ FROZEN: it is NOT a claim that the existing implementation already has producer
         authentication, and NOT a claim that §6.5 and §6.6 already enforced this
         reading. They enforce token applicability, kind and family, and the
         field type constraints — which they enforced before this section and
-        still do. Whether a producer claim is trustworthy remains OPEN, and
-        this section does not close it.
+        still do. Whether a producer claim is trustworthy was OPEN when this
+        section was written, and this section does not close it. §7.3, added by
+        Amendment 5, is where the standard is DEFINED — and §6.5 and §6.6 are
+        UNCHANGED by that amendment.
+```
+
+### 7.3 Producer authentication — FROZEN (Amendment 5)
+
+§7.2 separated three checks and recorded that AI-05 performed only the first. This
+section defines the second.
+
+It is AI-05's answer to the question recorded as **AI15-OPEN-1** — how a producer
+claim is ESTABLISHED, as against merely well-formed — and it is made here, in AI-05's
+contract, under AI-05's amendment rule, because §6.5, §6.6 and §7 are AI-05's.
+
+```text
+FROZEN: THIS SECTION DEFINES A STANDARD. IT DOES NOT CLAIM THE STANDARD IS
+        IMPLEMENTED. AI-15 §15.2 STEP 0b requires a mechanism AND its
+        implementation AND tests showing it holds. This amendment supplies the
+        FIRST of those three. The other two are implementation obligations that
+        this amendment neither discharges nor may be reported as discharging.
+FROZEN: this section does not reopen, re-argue or weaken §7.2. The submitter MAY
+        differ from the producer (Reading A, Amendment 4). This section adds a
+        check on the producer claim and changes nothing about who may submit.
+```
+
+#### 7.3.1 The standard, stated exactly
+
+```text
+THE STANDARD
+    A producer claim is AUTHENTICATED when, and only when, all of the following
+    hold for the record being submitted:
+
+      (a) the deployment has a designated producer trust mapping (§7.3.2)
+      (b) that mapping holds a public key for the producer token the record names
+      (c) the submission carries a proof (§7.3.3)
+      (d) the proof's signature verifies, under THAT key, over the DECODED
+          `message_b64u` bytes
+      (e) those decoded bytes ARE signed_input(submitted mapping) — the FULL
+          COMPOSITE of §7.3.4, domain tag and version INCLUDED, and not the bare
+          canonical serialization — byte for byte
+
+    Any of (a)-(e) failing means the claim is NOT authenticated, and the record is
+    REJECTED (§7.3.8). There is no partial authentication and no warning state.
+```
+
+```text
+FROZEN: WHAT THIS ESTABLISHES, AND WHAT IT DOES NOT. Stated here rather than left
+        to a reader, because overstating it is the failure this section exists to
+        prevent:
+
+        IT ESTABLISHES   the holder of the private key that this deployment
+                         associates with producer token T signed a message that is
+                         exactly the canonical serialization of this record, and
+                         that record names T
+        IT DOES NOT      prove that a particular CODE COMPONENT executed the
+          ESTABLISH      operation, that the component's process is uncompromised,
+                         that the claim's CONTENT is true, or that the
+                         deployment's mapping is correct
+
+        The step from "the holder of T's key signed" to "component T produced
+        this" is a DEPLOYMENT ASSERTION, not a cryptographic one. This contract
+        records that assertion as its trust assumption and does not present it as
+        proof.
+FROZEN: this is NOT a claim about the SUBMITTER. A submitter that is not the
+        producer may present a producer's proof (§7.2, Reading A). Producer
+        authentication and submitter identity are the second and third checks of
+        §7.2 and remain different checks.
+```
+
+#### 7.3.2 The designated producer trust mapping
+
+```text
+WHAT IT IS      a DEPLOYMENT-level mapping from producer token to Ed25519 PUBLIC
+                key, read from exactly ONE place, by exactly one module.
+WHAT IT IS NOT  a registry. It creates no §6.5 row, admits no event, and confers
+                no recognition. §6.5 remains the SOLE authority on whether a
+                producer token is recognized (§6.5, §6.6, UNCHANGED by this
+                amendment). A key configured for a token §6.5 does not register is
+                INERT: the §6.6 registry check refuses the record before
+                authentication is consulted, and no clause here changes that.
+```
+
+```text
+FROZEN: NO PUBLIC AI-05 FUNCTION MAY ACCEPT A CALLER-SELECTED PUBLIC KEY, MAPPING,
+        ANCHOR OR VERIFIER AS A PARAMETER. A function that takes one has a caller
+        who selects what is trusted, and a caller who selects the trust root can
+        install their own and mint proofs that verify. The mapping is a DEPLOYMENT
+        FACT, read from one place that is not a parameter.
+FROZEN: ONE READER. Exactly one module reads the designated mapping, and the
+        verification site ASKS that module which key applies rather than deciding
+        for itself. A second reader is a second place the phase decides what to
+        trust.
+FROZEN: NO DEFAULT, NO BYPASS. There is no default mapping, no development
+        mapping, no test mapping reachable from production code, no `verify=False`
+        switch, and no configuration under which a proof is accepted without
+        verification. A test supplies its keys through the SAME designated
+        mechanism a deployment uses (§7.3.7); it does not get a second path.
+FROZEN: FAIL CLOSED. A deployment with no designated mapping authenticates
+        NOTHING, and every submission is REJECTED under §7.3.8. The absence of the
+        mapping is not a degraded mode.
+```
+
+```text
+FROZEN: ONE KEY PER PRODUCER TOKEN. Each producer token that can be authenticated
+        MUST have its own private signing key, and the corresponding public key is
+        what the mapping holds for that token.
+FROZEN: A SHARED PRIVATE SIGNING KEY ACROSS TWO OR MORE PRODUCER TOKENS IS
+        NON-COMPLIANT, AND A DEPLOYMENT CONFIGURED THAT WAY DOES NOT SATISFY THIS
+        SECTION. The reason is mechanical rather than stylistic: verification
+        selects the key BY THE CLAIMED TOKEN, so two tokens holding one key are
+        indistinguishable to the verifier, and either holder could sign a claim
+        naming the other that verifies. That is precisely the forgery §9.2 names,
+        and a shared key would leave §6.5's string comparison as the only thing
+        refusing it — which §7.2 already records is not an authentication check.
+```
+
+#### 7.3.3 The proof, and where it lives
+
+```text
+PROOF     a value carried ALONGSIDE the submitted mapping, as a separate argument
+          to the admission entry point. It is NOT a field of the EvidenceRecord.
+
+          producer_proof
+              message_b64u  string   the signed input of §7.3.4, carried as
+                                    canonical UNPADDED Base64url (RFC 4648 §5:
+                                    alphabet A-Z a-z 0-9 - _ , and no '=')
+              signature     string   exactly 128 lowercase hexadecimal characters,
+                                    a 64-byte Ed25519 signature over the DECODED
+                                    bytes of message_b64u
+```
+
+```text
+FROZEN: message_b64u IS A CARRIER, AND ITS DECODING IS STRICT. The signed input is
+        what it DECODES to (§7.3.4), never the encoded string itself. Decoding
+        MUST refuse a character outside the alphabet rather than skipping it, MUST
+        refuse '=' padding, and MUST be CANONICAL: re-encoding the decoded bytes
+        MUST reproduce the submitted string exactly, so a value whose final quantum
+        carries non-zero unused bits is REFUSED as malformed rather than accepted
+        as an alias of a valid one. Two distinct strings therefore never decode to
+        the same signed input, and no raw-NUL transport ambiguity exists — the
+        signed input's 0x00 separators travel inside the encoding, not beside it.
+FROZEN: THE SIGNATURE IS OVER THE DECODED BYTES. Not over the encoded string, and
+        not over a re-encoding of it.
+FROZEN: THE PROOF IS A REQUIRED ARGUMENT OF BOTH PUBLIC ENTRY POINTS.
+            admit(raw, ...)
+            admit_to_store(raw, *, store, ...)
+        Neither returns ACCEPTED for a submission whose producer claim is not
+        authenticated (§7.3.1). `admit_to_store()` passes the proof THROUGH to
+        `admit()` rather than verifying a second time, so one verification runs and
+        one verdict is reached; it MUST NOT contact the store on a non-ACCEPTED
+        result (§7.3.8).
+FROZEN: A MISSING PROOF IS A REJECTED RESULT, NOT A TypeError. Omitting the proof,
+        or passing `None` explicitly, MUST produce REJECTED with
+        AUTHENTICATION_PROOF_MISSING — the outcome §7.3.8 prescribes. A required
+        positional parameter would raise TypeError and leave the caller with no
+        admission result at all, which is not what this contract defines. The
+        default MUST NOT be a value that can authenticate: it fails closed by
+        construction, and NO argument, configuration or default makes its absence
+        yield ACCEPTED. There is no unauthenticated success path.
+```
+
+```text
+FROZEN: THE PROOF IS NOT PART OF THE RECORD. No field is added to EvidenceRecord,
+        no canonical collection changes, no digest input changes, and the stored
+        form is unchanged. The record schema is NOT what this amendment touches.
+FROZEN: THE PROOF ENVELOPE IS OUTSIDE THE SIGNED INPUT. `message_b64u` and
+        `signature` are not fields of the mapping and are not covered by the
+        signature — a signature cannot cover itself, and the envelope that CARRIES
+        the signed input is not part of it. What the signature covers is defined in
+        §7.3.4 and nothing else.
+FROZEN: the proof is NOT stored. §20.3's promotion copies a staged record's bytes
+        unchanged; a proof is not among them, and this amendment adds no stored
+        field that would carry one.
+```
+
+#### 7.3.4 The signed input, exactly
+
+This is the definition a signer and a verifier must agree on byte for byte. It is
+stated as bytes and ordering rather than as an instruction to "sign the mapping",
+because an instruction admits two readings and two readings are two formats.
+
+```text
+DOMAIN_TAG      the ASCII bytes  workbench.evidence.producer-proof
+PROOF_VERSION   the ASCII bytes  1
+SEPARATOR       a single 0x00 byte
+
+signed_input(mapping) =
+        DOMAIN_TAG
+     || SEPARATOR
+     || PROOF_VERSION
+     || SEPARATOR
+     || canonical_serialization(mapping) encoded as UTF-8
+
+and the message a producer signs, and a verifier checks, is exactly those bytes.
+```
+
+```text
+WHY THE SEPARATOR IS UNAMBIGUOUS: canonical_serialization emits JSON, and JSON
+escapes every control character below U+0020 as a \uXXXX sequence. A raw 0x00 byte
+therefore CANNOT appear in the serialized mapping, so the two separators are
+positions and not merely conventions — no mapping content can forge one.
+```
+
+```text
+FROZEN: DOMAIN SEPARATION IS EXPLICIT AND IS PART OF THE SIGNED INPUT. The tag
+        states which protocol the bytes belong to, and it is covered by the
+        signature rather than checked beside it.
+FROZEN: WHAT THE TAG GUARANTEES, STATED PRECISELY RATHER THAN UNIVERSALLY. A prefix
+        cannot make a signature unverifiable in the abstract; it fixes the one
+        preimage shape THIS verifier accepts. The guarantee is therefore narrower
+        than "no signature can ever be reused", and is exactly this:
+            this verifier reconstructs signed_input from the submitted mapping —
+              including the expected DOMAIN_TAG and PROOF_VERSION — and accepts
+              only a carried message that equals it BYTE FOR BYTE
+            a signature over any other byte sequence verifies only if that
+              sequence IS byte-identical to this protocol's expected preimage
+        Separation is therefore bought by two protocols using two DIFFERENT tags,
+        and no single protocol can buy it alone. It is stated as what it is: an
+        OBLIGATION ON ANY OTHER PROTOCOL that shares key material with this one to
+        use its own distinct DOMAIN_TAG. The tag is 33 ASCII bytes, and its hex is
+        given in §7.3.6's vectors.
+FROZEN: PROOF_VERSION IS PART OF THE SIGNED INPUT AND IS NOT NEGOTIATED. A
+        verifier implements the versions it implements and no others; a carried
+        message built under another version does not equal the verifier's own
+        reconstruction and fails §7.3.5's comparison. There is no downgrade path,
+        no "try each version", and no accepted-but-unverified version.
+```
+
+```text
+FROZEN: WHAT THE SIGNED INPUT CONTAINS. It is the COMPLETE SUPPLIED MAPPING — every
+        top-level field §30 admits and every nested supplied field — serialized as
+        one value. It therefore covers, among everything else:
+            provenance.producer          the claimed token, so re-pointing a proof
+                                         at another producer changes the bytes
+            identity.kind                and the payload, so kind and family are
+            payload.family                 covered
+            provenance.workspace_id      the record's scope
+            provenance.actor             attribution, as authored
+        No security-relevant supplied field is outside it.
+FROZEN: AI-05-GENERATED VALUES ARE ABSENT BY CONSTRUCTION. §30 step 10 already
+        REJECTS a supplied `content_digest`, `record_digest` or
+        `ContextRef.value_digest`, and `evidence_id` is generated at step 13. The
+        signed input therefore never contains a value AI-05 will later compute,
+        and it does not depend on one.
+FROZEN: NO UNSIGNED ACCEPTED FIELD. §30 step 1 REJECTS a field the contract does
+        not define rather than ignoring it ("a field that is silently dropped
+        cannot be audited"), and every per-type parse is closed-keyed. Combined
+        with the clause above, it follows that every field of an ACCEPTED record
+        was inside the signed input. There is no accepted field a signature does
+        not cover.
+```
+
+#### 7.3.5 Verification, as two separate operations
+
+```text
+V1  THE PROOF ENVELOPE IS VALIDATED. `message_b64u` is a string in the Base64url
+    alphabet with no padding; `signature` is exactly 128 lowercase hexadecimal
+    characters. A failure here is AUTHENTICATION_PROOF_MALFORMED.
+V2  THE CLAIMED PRODUCER IS READ. `provenance` is read as an object and
+    `provenance.producer` as a non-empty string, from the SUPPLIED mapping. This is
+    a read FOR KEY SELECTION, and it is the only part of the record inspected
+    before authentication. A failure here is NOT an authentication failure: it
+    takes the shape reason §7.3.8 assigns it. NO KEY LOOKUP AND NO CRYPTOGRAPHY
+    PROCEED WITHOUT A READABLE PRODUCER TOKEN.
+V3  THE DESIGNATED MAPPING IS CONSULTED for that token (§7.3.2). No designated
+    mapping at all, or no entry for the claimed token, is
+    AUTHENTICATION_KEY_UNAVAILABLE.
+V4  message_b64u IS DECODED STRICTLY, and the signature is checked against THAT
+    key over the DECODED BYTES. A malformed or non-canonical encoding is
+    AUTHENTICATION_PROOF_MALFORMED; a signature that does not verify is
+    AUTHENTICATION_SIGNATURE_INVALID.
+V5  THE VERIFIER RECONSTRUCTS signed_input FROM THE SUBMITTED MAPPING and requires
+    exact byte equality with the decoded carried message. Bytes that differ are
+    AUTHENTICATION_INPUT_MISMATCH. A submitted mapping that has NO canonical
+    serialization at all under §7.3.6 is AUTHENTICATION_INPUT_UNSERIALIZABLE —
+    a DIFFERENT failure from "the bytes differ", because here there are no bytes
+    to compare.
+```
+
+```text
+FROZEN: V4 AND V5 ARE DIFFERENT OPERATIONS AND BOTH MUST PASS. V4 proves a
+        signature by a key holder; V5 proves the signed bytes are THIS submission.
+        Neither implies the other, and a design that ran only one would accept
+        either a proof for a different record or an unsigned submission.
+FROZEN: V4 IS PERFORMED OVER BYTES THE VERIFIER HAS OBTAINED — the decoded carried
+        message — and never over bytes it has not yet reconstructed. Any
+        description of this mechanism that places verification before the verifier
+        holds the message is wrong about the mechanism.
+FROZEN: V2's READ IS A PRECONDITION, NOT A SECOND SHAPE RULE. Step 7b runs before
+        typed construction, so it cannot rely on construction's checks having run.
+        It therefore reads exactly two things — that `provenance` is an object and
+        that `provenance.producer` is a non-empty string — and reports failure with
+        the SAME reason codes construction would report for the same defect. The
+        FULL shape, required-field, vocabulary and class checks remain
+        construction's (§30 steps 1-4, 4b, 6), and this clause neither replaces,
+        duplicates nor weakens any of them. §14.10's rule set is likewise untouched:
+        `check_admission_rules` returns early for a non-mapping precisely because
+        shape is not its question, and V2 does not make it one.
+FROZEN: A SUBMISSION WHOSE PRODUCER TOKEN CANNOT BE READ IS REJECTED, and it is
+        rejected BEFORE any key lookup, any decoding of proof material and any
+        signature verification. It MUST NOT raise an unhandled exception and MUST
+        NOT produce an unspecified result: an unreadable producer is an ordinary
+        REJECTED outcome with an existing shape reason.
+```
+
+#### 7.3.6 The canonical serialization — AI-05-CJ-1
+
+The signed input needs a serialization that determines bytes, not one that is merely
+deterministic in practice. Naming properties is not defining a format: two
+implementations can agree on "sorted keys, no whitespace, no NaN" and still disagree
+about escaping or number rendering, and a proof that verifies in a test then fails in
+a deployment — or, worse, verifies against bytes that are not the record.
+
+```text
+THE PROFILE IS NAMED AND VERSIONED:  AI-05-CJ-1
+ITS BASIS IS A PUBLISHED STANDARD:   RFC 8785, JSON Canonicalization Scheme (JCS)
+
+USING A PUBLISHED STANDARD, RATHER THAN THIS DOCUMENT'S OWN PROSE, IS THE POINT.
+        A format specified by a document that a neighbouring phase's implementation
+        can drift away from is not normative. RFC 8785 fixes key order, escaping,
+        encoding and number rendering, and it is maintained outside this
+        repository, so AI-05 depends on a SPECIFICATION rather than on an
+        implementation happening to stay still.
+```
+
+**The compatibility evaluation, and its one result.** RFC 8785 operates on the I-JSON
+data model, whose numbers are IEEE-754 doubles, so integers are bounded to
+±(2^53 − 1). The Evidence input domain is **not** bounded that way: §11.1's `ordinal`
+is validated by `g_ordinal`, which requires a non-negative integer and imposes **no
+upper bound** (`plugins/evidence/grammar.py:380-392`). A large integer is therefore
+admissible Evidence input today, and adopting RFC 8785 unchanged would reject input
+the existing contract admits — a schema change this amendment has no mandate to make.
+
+```text
+FROZEN: AI-05-CJ-1 IS RFC 8785 WITH EXACTLY ONE STATED EXTENSION, AND NO OTHER:
+
+        INTEGERS   are serialized in PLAIN DECIMAL with arbitrary precision — an
+                   optional leading '-' and digits, no exponent, no leading zeros,
+                   no '+', no decimal point. This SUPERSET of RFC 8785's number
+                   domain is what preserves `g_ordinal`'s existing bound.
+                   WHERE RFC 8785 AND AI-05-CJ-1 DIFFER, THEY DIFFER HERE AND
+                   ONLY HERE, and the difference is recorded rather than implied.
+
+        EVERYTHING ELSE IS RFC 8785 VERBATIM, and is restated below so that an
+        implementer needs no second document.
+```
+
+```text
+THE COMPLETE NORMATIVE RULES — AI-05-CJ-1, version 1
+
+ 1 ACCEPTED TYPES, and their rendering
+       object (Mapping)   -> a JSON object; keys are strings
+       array  (list/tuple) -> a JSON array; ORDER IS PRESERVED, not sorted
+       string (str)       -> a JSON string (§4 below)
+       integer (int)      -> plain decimal, arbitrary precision (§7 below)
+       boolean (bool)     -> true | false. A bool is NOT an integer: it MUST be
+                             rendered as a boolean and MUST NOT reach the integer
+                             rule, which in Python it would otherwise satisfy
+       null (None)        -> null
+       enum (StrEnum)     -> the member's canonical string value. RFC 8785 does
+                             not know enums; rendering the member's value is this
+                             profile's rule, and it matches the value the same
+                             field carries once parsed.
+    EVERY OTHER TYPE IS OUT OF DOMAIN and is REFUSED, never coerced: float,
+    Decimal, bytes, set, frozenset, datetime, and any object without a rule above.
+
+ 2 OBJECT KEY ORDERING — RFC 8785: keys sorted by their UTF-16 CODE UNITS,
+    compared as unsigned 16-bit values, shorter-first on a prefix.
+    NOTE, and it is a real trap: this is NOT the same as Unicode code-point order,
+    which is what a naive `sorted()` over Python strings produces. The two orders
+    differ only for keys containing characters ABOVE the BMP. Every field name the
+    Evidence schema admits is ASCII, so on conforming input the two orders
+    coincide — the normative rule is nevertheless RFC 8785's, and an implementation
+    that sorts by code point is non-conforming even where the output matches.
+
+ 3 UNICODE NORMALIZATION — NONE. RFC 8785 forbids it and so does this profile. A
+    string is serialized as the code points it carries. Two strings that are
+    canonically equivalent but differently composed — "é" as U+00E9 and as
+    U+0065 U+0301 — are DIFFERENT strings, produce DIFFERENT bytes, and are
+    different signed inputs. Signers MUST NOT normalize, and verifiers MUST NOT
+    either.
+
+ 4 STRING ESCAPING — RFC 8785's minimal set, and NOTHING ELSE is escaped:
+       U+0022  "   ->  \"          U+005C  \   ->  \\
+       U+0008      ->  \b          U+0009      ->  \t
+       U+000A      ->  \n          U+000C      ->  \f
+       U+000D      ->  \r
+       other U+0000..U+001F        ->  \u00xx with LOWERCASE hex digits
+    EVERY other character is emitted LITERALLY, including U+007F and every
+    non-ASCII character. Non-ASCII is NEVER \u-escaped: "café" is five UTF-8 bytes
+    (63 61 66 c3 a9), not eleven ASCII characters. A solidus '/' is NOT escaped.
+    Hex digits in \u escapes are LOWERCASE.
+
+ 5 UTF-8 ENCODING — the serialized text is encoded as UTF-8 with no BOM and no
+    normalization. This is the last step and produces the bytes that are signed.
+
+ 6 SEPARATORS AND WHITESPACE — ',' between array elements and between object
+    members, ':' between a key and its value, and NO whitespace anywhere outside
+    string values. No trailing newline.
+
+ 7 NUMBERS — integers per the extension above. NEGATIVE ZERO, EXPONENT NOTATION,
+    DECIMAL POINTS AND NON-FINITE VALUES CANNOT ARISE: the only numeric type in
+    domain is `int`, so -0, 1e21, 1.0, NaN and Infinity are all OUT OF DOMAIN and
+    are REFUSED by rule 1. RFC 8785's ES6 number-rendering rules are therefore
+    never exercised on conforming input, and this profile does not restate them.
+
+ 8 DUPLICATE KEYS — NOT REPRESENTABLE. Both entry points take a MAPPING, and a
+    Python Mapping cannot carry one key twice, so the case cannot arise at the API.
+    A transport that delivers a record as JSON TEXT MUST refuse a duplicate key
+    rather than keeping the last one: keeping the last is a silent choice about
+    which value was signed, and this repository refuses silent choices.
+
+ 9 INVALID UNICODE — a string containing an UNPAIRED SURROGATE is OUT OF DOMAIN
+    and is REFUSED. Such a string is not encodable as UTF-8, so rule 5 cannot be
+    applied to it. (Noted for the record, not as a change: the EXISTING digest path
+    would fail on such a value at §30 step 12 rather than refuse it at admission.
+    §7.3.7 puts authentication before construction, so on the authenticated path
+    this profile refuses it first, as an AUTHENTICATION_INPUT_UNSERIALIZABLE
+    result rather than a thrown exception.)
+
+10 UNKNOWN FIELDS — a serialization concern only in that they are serialized like
+    any other key. They are NOT ignored: §30 step 1 REJECTS them, and §7.3.4
+    records that no ACCEPTED record carries a field outside the signed input.
+```
+
+```text
+FROZEN: WHAT IS UNSERIALIZABLE IS REJECTED, NOT APPROXIMATED. If the submitted
+        mapping is out of domain under rules 1, 5 or 9, no canonical bytes exist,
+        V5 cannot form a comparison, and the submission is REJECTED with
+        AUTHENTICATION_INPUT_UNSERIALIZABLE. It MUST NOT be coerced, partially
+        serialized, skipped or repaired — a coercion would mean the producer and
+        the verifier signed different bytes while both believing otherwise.
+FROZEN: THIS PROFILE IS NEW AND CHANGES NOTHING THAT EXISTS. §15.2's digest input,
+        §14.6.1's generated digests and the stored form's serialization are
+        UNCHANGED and continue to use what they used before. AI-05-CJ-1 governs the
+        SIGNED INPUT and nothing else — a different function, over a different
+        value, for a different purpose. Unifying the two is NOT proposed here, and
+        would be a separate amendment with its own compatibility argument.
+FROZEN: A CHANGE TO AI-05-CJ-1 IS A BREAKING CHANGE TO THIS PROTOCOL AND REQUIRES
+        A NEW PROOF_VERSION. It is not a refactor. The version is inside the signed
+        input, so a verifier that reconstructs under a changed profile produces
+        different bytes, the comparison fails, and the submission is REJECTED —
+        the correct and visible outcome, not a silent mis-verification. A change
+        that alters the serialization of ANY field the signed input covers is such
+        a change, whether or not it alters the field's meaning. Profile and version
+        move together or neither moves.
+```
+
+**Normative test vectors.** These are computed values, given so that an implementation
+can be checked against the profile rather than against a description of it. Byte
+strings are hexadecimal; `‖` marks a concatenation boundary and is not a byte.
+
+```text
+THE FIXED PREFIX — the same in every vector, and what the domain/version rule costs:
+    DOMAIN_TAG     776f726b62656e63682e65766964656e63652e70726f64756365722d70726f6f66
+                   (33 ASCII bytes: "workbench.evidence.producer-proof")
+    SEPARATOR      00
+    PROOF_VERSION  31            ("1")
+    SEPARATOR      00
+    so every signed input begins 776f...726f6f66 00 31 00
+```
+
+```text
+VECTOR 1 — ASCII, nested objects, and key ordering that is NOT the input's order
+
+    mapping (as supplied, deliberately unsorted)
+        {"schema_version":1,"kind":"OBSERVATION",
+         "provenance":{"producer":"ai-03","producer_type":"service",
+                       "workspace_id":"ws-1"},
+         "payload":{"family":"SOURCE_READ"}}
+
+    AI-05-CJ-1 canonical text (four keys reordered; no whitespace)
+        {"kind":"OBSERVATION","payload":{"family":"SOURCE_READ"},"provenance":
+        {"producer":"ai-03","producer_type":"service","workspace_id":"ws-1"},
+        "schema_version":1}
+      sha256 over its UTF-8 bytes, for cross-checking only:
+        f4a1d5fcd69667991fde630a1df304c0d704926986e307a2203de6d3bb33e1ec
+
+    SIGNED INPUT, 194 bytes
+        776f726b62656e63682e65766964656e63652e70726f64756365722d70726f6f66
+        0031 00
+        7b226b696e64223a224f42534552564154494f4e222c227061796c6f6164223a7b
+        2266616d696c79223a22534f555243455f52454144227d2c2270726f76656e616e
+        6365223a7b2270726f6475636572223a2261692d3033222c2270726f6475636572
+        5f74797065223a2273657276696365222c22776f726b73706163655f6964223a22
+        77732d31227d2c22736368656d615f76657273696f6e223a317d
+
+    message_b64u, 259 characters
+        d29ya2JlbmNoLmV2aWRlbmNlLnByb2R1Y2VyLXByb29mADEAeyJraW5kIjoiT0JTRVJW
+        QVRJT04iLCJwYXlsb2FkIjp7ImZhbWlseSI6IlNPVVJDRV9SRUFEIn0sInByb3ZlbmFu
+        Y2UiOnsicHJvZHVjZXIiOiJhaS0wMyIsInByb2R1Y2VyX3R5cGUiOiJzZXJ2aWNlIiwid2
+        9ya3NwYWNlX2lkIjoid3MtMSJ9LCJzY2hlbWFfdmVyc2lvbiI6MX0
+      (wrapped here for the page; the value carries NO line breaks)
+```
+
+```text
+VECTOR 2 — a NON-ASCII string, and the rule that matters for it
+
+    mapping
+        {"payload":{"subject":"café"},"kind":"OBSERVATION","schema_version":1}
+      where "café" is c,a,f,U+00E9 (NFC — NOT normalized, see rule 3)
+
+    AI-05-CJ-1 canonical text
+        {"kind":"OBSERVATION","payload":{"subject":"café"},"schema_version":1}
+
+    the "café" value's UTF-8 bytes, and the whole point of the vector
+        63 61 66 c3 a9         <- FIVE bytes. NOT é, NOT c3 83 c2 a9
+        22 63 61 66 c3 a9 22   <- as it appears inside the canonical text
+
+    SIGNED INPUT (prefix, then the canonical bytes)
+        776f726b62656e63682e65766964656e63652e70726f64756365722d70726f6f66
+        0031 00
+        7b226b696e64223a224f42534552564154494f4e222c227061796c6f6164223a7b
+        227375626a656374223a22636166 c3a9 227d2c22736368656d615f7665727369
+        6f6e223a317d
+
+    message_b64u
+        d29ya2JlbmNoLmV2aWRlbmNlLnByb2R1Y2VyLXByb29mADEAeyJraW5kIjoiT0JTRVJW
+        QVRJT04iLCJwYXlsb2FkIjp7InN1YmplY3QiOiJjYWbDqSJ9LCJzY2hlbWFfdmVyc2lv
+        biI6MX0
+      (the fragment "YWbDqS" is where "café" is carried — 9 bytes of Base64url for
+       5 bytes of UTF-8)
+```
+
+```text
+VECTOR 3 — NEGATIVE CONTROL: the version byte is covered by the signature
+
+    Same mapping as VECTOR 1, with PROOF_VERSION "2" instead of "1".
+
+    SIGNED INPUT — identical to VECTOR 1 EXCEPT for ONE byte
+        776f...726f6f66 00 32 00 7b226b696e64...317d
+                            ^^
+        byte offset 34, hexadecimal 32 ("2") where VECTOR 1 has 31 ("1")
+
+    CONSEQUENCE  a signature minted over VECTOR 1's bytes does NOT verify over this
+        one, and a verifier at version 1 reconstructs 31, compares against a carried
+        message carrying 32, and REJECTS with AUTHENTICATION_INPUT_MISMATCH. A
+        version cannot be changed, downgraded or upgraded without invalidating
+        every proof minted under the other one, which is exactly what §7.3.4's
+        "PROOF_VERSION IS PART OF THE SIGNED INPUT AND IS NOT NEGOTIATED" requires.
+
+    VECTOR 4 — NEGATIVE CONTROL: the domain tag is covered by the signature
+        Replace byte 0 with 78 ("x"): the tag no longer matches, reconstruction
+        differs at offset 0, and the comparison fails for the same reason.
+```
+
+#### 7.3.7 The order in which this runs, and the tests it obliges
+
+```text
+FROZEN: THE ORDER IS FIXED, AND IT IS STATED IN TERMS OF WHAT ACTUALLY RUNS WHERE.
+        §30's NUMBERS IDENTIFY steps; they are NOT an execution order, and this
+        section does not pretend otherwise. The order that runs is:
+
+            1  §30 step 7         THE RULE SET, over the SUPPLIED values. The ONLY
+                                  check that runs before construction, and
+                                  `check_admission_rules` is written for exactly
+                                  that position (admission.py:199)
+            2  §30 step 7b        PRODUCER AUTHENTICATION — this section. No
+                                  implementation of it exists anywhere
+            3  §30 steps 1-4, 4b, 6, 8-11
+                                  TYPED CONSTRUCTION, inside
+                                  `EvidenceRecord.from_mapping` (models.py): the
+                                  shape, required-field, closed-key, vocabulary
+                                  and class checks, the §6.5/§6.6 cross-field
+                                  check, and reference and artifact parsing. It
+                                  ALSO derives ContextRef.value_digest. It does
+                                  NOT compute content_digest or record_digest —
+                                  it builds `integrity=Integrity()`, empty
+            4  §30 step 13        EVIDENCE IDENTITY, ALSO inside `from_mapping`
+                                  (`new_evidence_id()`, models.py:1698) and
+                                  therefore BEFORE step 12, whose number is lower.
+                                  The inversion is the implementation's and is
+                                  RECORDED here, not reordered
+            5  §30 step 5         WORKSPACE AGREEMENT, in
+                                  `check_workspace_agreement` (admission.py:201).
+                                  It runs AFTER construction because it compares
+                                  fields on the constructed record
+            6  §30 step 12        content_digest and record_digest, in
+                                  `assign_digests` (digests.py:65, called at
+                                  admission.py:202). THIS is the only place the
+                                  two record-level Evidence digests are computed
+            7  §30 step 14        DUPLICATE CHECK, then the store
+                                  (admission.py:271, :276)
+```
+
+```text
+FROZEN: NO STEP APPEARS IN TWO STAGES. Steps 12 and 13 are executed by two DIFFERENT
+        functions at two DIFFERENT points — 13 inside `from_mapping`, 12 inside
+        `assign_digests` — and an earlier revision of this section attributed the
+        range "8-13" to construction, which put step 12 in TWO places at once. THAT
+        RANGE IS WITHDRAWN: construction covers 8-11 and 13, step 12 is stage 6 and
+        nothing else, and no clause of this document may restore the range.
+FROZEN: `ContextRef.value_digest` HAS NO §30 STEP NUMBER OF ITS OWN. §14.6.1 names
+        it as AI-05-generated, and it is derived during construction, in
+        `ContextRef.from_mapping` (models.py:414), from a value whose class check has
+        already passed. §30 step 12 names `content_digest` and `record_digest` ONLY.
+        This amendment does not renumber §30 and adds no step for it.
+FROZEN: WITHIN A STAGE, THE ORDER AMONG THE STEPS THAT STAGE LISTS IS THE
+        IMPLEMENTATION'S, and this section does not fix it. What it fixes is each
+        step's position RELATIVE TO THE STAGES: authentication precedes
+        construction, construction precedes the workspace agreement, step 13
+        (identity) precedes step 12 (the two record digests), and step 12 precedes
+        persistence. It does NOT fix — and MUST NOT be read as fixing — a
+        statement-level order inside `from_mapping`, where the steps of stage 3 are
+        interleaved by the parser rather than executed in numeric sequence.
+```
+
+```text
+FROZEN: EXACTLY ONE CHECK HAS RUN WHEN AUTHENTICATION RUNS — STEP 7'S RULE SET.
+        NO shape check, NO required-field check, NO class check, NO vocabulary
+        check and NO §6.5/§6.6 registry check has run at that point: those are
+        step 3's, and step 3 comes AFTER. No clause of this section may say or
+        imply that "the class rules" have already passed when step 7b executes.
+        The one thing step 7b needs from the record is the claimed producer token,
+        and §7.3.5 V2 reads exactly that and nothing else.
+FROZEN: THE POSITION IS FORCED BY §14.6 R2, AND THE ARGUMENT HAS TWO PARTS THAT
+        MUST NOT BE MERGED:
+
+            R2 FORCES STEP 7 FIRST. R2 forbids AI-05 computing a digest over a
+              value it did not admit, and R2 defines "admitted" as "its class
+              rules pass". Construction derives references.context[].value_digest
+              from the supplied `value` (§12.1), so a value that has not passed the
+              rule set must not reach construction.
+            THIS CONTRACT ADDS STEP 7b BEFORE CONSTRUCTION. Construction is where a
+              typed record comes into existence and where the first Evidence
+              digest is derived. Neither may happen for a claim that has not been
+              authenticated, so authentication precedes both — not because R2 says
+              so, but because a record built from an unauthenticated claim should
+              not be built at all.
+        NOTHING HERE CLAIMS STEP 6 HAS RUN BEFORE STEP 7b. Step 6 runs INSIDE
+        step 3, and within construction each field's class check precedes the
+        digest derived from it: `ContextRef.from_mapping` validates `value` as text
+        before deriving `value_digest` from it, so R2 holds per field as well as
+        per stage.
+```
+
+```text
+FROZEN: THREE OPERATIONS THAT MUST NOT BE CONFLATED, because "hashing" is used for
+        all three in ordinary speech and the contract's rule is about ONE of them:
+
+            deterministic serialization      produces the signed input. NOT a
+                                             digest, and produces no Evidence
+                                             field.
+            Ed25519 signature verification   hashes its message internally. That is
+                                             the ALGORITHM's compression, not an
+                                             Evidence digest, and it produces no
+                                             Evidence field. §14.6 R2 does not
+                                             reach it.
+            Evidence digest computation      content_digest, record_digest and
+                                             ContextRef.value_digest. THIS is what
+                                             R2 governs. It happens at §30 steps
+                                             5 (value_digest, inside construction)
+                                             and 12 (the other two) — BOTH after
+                                             step 7's rule set and after
+                                             authentication.
+```
+
+```text
+FROZEN: WHAT IS GUARANTEED ON EVERY REJECTION PATH IN THIS SECTION:
+            no Evidence digest over an unadmitted value — step 7's rule set ran
+              first, and construction's per-field class checks precede the digest
+              each field yields
+            no persistent write — rejected input is never stored
+            no store contact — the store is not touched on any non-ACCEPTED path
+            no typed record and no final digest — steps 3, 5 and 12 are unreachable
+              once step 7b rejects
+        AND, STATED SO IT IS NOT OVER-CLAIMED: Ed25519 verification hashes its
+        message. The guarantee is that no EVIDENCE digest is computed and nothing
+        is persisted before authentication succeeds — NOT that no hashing occurs.
+```
+
+```text
+FROZEN: THE TEST OBLIGATION THIS SECTION CREATES, for the implementation that
+        follows it. Each of these is an acceptance test and each MUST exist before
+        the standard may be reported as holding:
+            a valid proof and an accepted producer claim
+            no proof, and no designated mapping at all
+            a mapping with no entry for the claimed token
+            a malformed envelope: a non-Base64url character, '=' padding, and a
+              NON-CANONICAL encoding whose final quantum carries unused bits
+            a signature that does not verify
+            a signer using ANOTHER token's private key — the cross-producer case
+            a proof replayed against a changed producer, kind, family, workspace
+              or payload
+            a mapping with NO canonical serialization under §7.3.6 — a value out
+              of domain, and a string carrying an unpaired surrogate
+            an unreadable producer token, asserting an EXISTING shape reason AND
+              asserting that no key lookup occurred
+            a proof omitted, and a proof passed as None, at BOTH entry points,
+              each asserting REJECTED rather than TypeError
+            an unknown or malformed field
+            rejection without persistence and without store contact, at both
+              entry points
+            the absence of a production non-test writer
+            the absence of any caller-selectable trust root
+            no coupling from an authentication failure to a Guard outcome
+            the reason-code precedence of §7.3.8 when step 7's published rule and
+              authentication both fail
+            AI-05-CJ-1's vectors (§7.3.6) reproduced BYTE FOR BYTE, including the
+              non-ASCII vector and both negative controls
+        Tests MUST use a distinct keypair per producer token and MUST go through
+        the real verification path, supplied through the SAME designated
+        configuration mechanism a deployment uses. A test-only bypass is
+        FORBIDDEN.
+        NO TEST IN THIS LIST HAS BEEN RUN. They are obligations on the
+        implementation, not evidence about it.
+```
+
+#### 7.3.8 Failure semantics
+
+```text
+FROZEN: THE OUTCOME IS `REJECTED`. NO OUTCOME MEMBER IS ADDED. §22.1's three
+        outcomes are unchanged, and this amendment adds none: an unauthenticated
+        submission is a content violation, not a fourth kind of result.
+
+FROZEN: SIX REASON CODES, ONE PER MANDATORY FAILURE CLASS, because a caller that
+        cannot distinguish "you sent no proof" from "your key was removed" cannot
+        act on either:
+
+            AUTHENTICATION_PROOF_MISSING       no proof was supplied — the argument
+                                               omitted, or passed as None
+            AUTHENTICATION_PROOF_MALFORMED     the envelope is not well formed:
+                                               `message_b64u` is not a string, is
+                                               not in the Base64url alphabet, is
+                                               padded, or is NON-CANONICAL on
+                                               re-encoding; or `signature` is not
+                                               exactly 128 lowercase hexadecimal
+                                               characters
+            AUTHENTICATION_KEY_UNAVAILABLE     no designated mapping, or no entry
+                                               in it for the claimed token
+            AUTHENTICATION_SIGNATURE_INVALID   the signature does not verify, under
+                                               the designated key for that token,
+                                               over the DECODED carried message
+            AUTHENTICATION_INPUT_MISMATCH      the decoded carried message is not
+                                               the signed input reconstructed from
+                                               the submitted mapping
+            AUTHENTICATION_INPUT_UNSERIALIZABLE
+                                               the submitted mapping is OUT OF
+                                               DOMAIN under §7.3.6, so no signed
+                                               input exists to compare against.
+                                               DISTINCT from _INPUT_MISMATCH:
+                                               there bytes exist and differ; here
+                                               there are no bytes at all
+
+        These group under one authentication concern and remain DISTINCT labels.
+        They are not reducible to one another and MUST NOT be collapsed into a
+        single code. The last is a statement about the MAPPING, not about the
+        producer token — an unreadable token is reported separately, below.
+```
+
+```text
+FROZEN: AN UNREADABLE PRODUCER TOKEN IS NOT AN AUTHENTICATION FAILURE AND GETS NO
+        CODE OF ITS OWN. §7.3.5 V2 must read `provenance` and `provenance.producer`
+        before it can select a key, and step 7b runs before the checks that
+        normally validate them. Rather than invent a parallel shape vocabulary,
+        V2 reports the SAME reason the corresponding construction-time check
+        reports, from codes §30 already defines:
+
+            the supplied value is not a mapping       RECORD_MALFORMED
+            `provenance` is absent or null            MISSING_REQUIRED_FIELD
+            `provenance` is not an object             RECORD_MALFORMED
+            `provenance.producer` is absent or null   MISSING_REQUIRED_FIELD
+            `provenance.producer` is not a string,
+              is empty, or is otherwise not the
+              bounded text §7 requires                FIELD_CLASS_VIOLATION
+
+        The outcome is REJECTED, and NO key lookup, NO decoding and NO signature
+        verification occurs on any of these paths. This is not a second,
+        disagreeing shape rule: it is a PRECONDITION READ whose failure carries the
+        reason the full check would have carried, and the full check still runs at
+        step 3 for every submission that gets that far.
+```
+
+```text
+FROZEN: WHEN STEP 7'S RULE AND AUTHENTICATION BOTH FAIL, STEP 7's REASON IS THE ONE
+        REPORTED. Step 7 runs before step 7b (§7.3.7), so a submission that trips a
+        published rule AND carries a bad proof is REJECTED with the rule's
+        reason_code and authentication is never reached. This is the same
+        precedence §30 already records for a record violating both a shape rule and
+        a published rule ("it reports the RULE"), and it is stated here because the
+        precedence is observable.
+FROZEN: WHAT THIS PRECEDENCE IS NOT. It is NOT a statement that "class validation"
+        precedes authentication, because §30 step 6's class checks run INSIDE
+        construction (step 3) and have NOT run when step 7b executes (§7.3.7). The
+        only check that precedes authentication is step 7's rule set. A submission
+        whose class checks would ALSO fail reaches step 7b unchecked on that axis,
+        and is rejected there for whichever authentication reason applies — the
+        class failure is never reached, and no clause may describe it as having
+        been detected first.
+FROZEN: THE STORE IS NOT CONTACTED ON ANY OF THESE PATHS. This is a property of
+        the entry point rather than a promise: `admit()` takes no store at all,
+        and `admit_to_store()` returns before touching one whenever the outcome is
+        not ACCEPTED (§30 step 14's position).
+FROZEN: AN AUTHENTICATION FAILURE IS NOT A GUARD DENY. It is not reported as one,
+        not recorded as one, and not translated into one. Guard's vocabulary and
+        Guard's outcomes are Guard's (§23), and this section adds no path from an
+        Evidence outcome into them.
+FROZEN: AUTHENTICATION IS NOT AUTHORIZATION. An authenticated producer claim is
+        not a permission, not a capability, not a verification and not a
+        measurement. It changes no row of any authority matrix and confers nothing
+        on the producer, the submitter, the record or the deployment (§23, §24).
+```
+
+#### 7.3.9 Revocation, and the residual risks
+
+```text
+THE REVOCATION MODEL, AS IT ACTUALLY IS — stated plainly rather than implied:
+
+    Revocation is performed by REMOVING the token's entry from the designated
+    mapping and deploying the updated mapping. After that, no further claim naming
+    that token can be authenticated.
+
+    IT DOES NOT REACH BACKWARDS. This amendment provides no mechanism to
+    invalidate, re-grade or re-examine a record that is already stored. A stored
+    record stays readable, its digests stay valid, and no stored-form load re-runs
+    admission over it (§17). A record admitted before a revocation is EXACTLY AS
+    STRONG AS IT WAS WHEN ADMITTED, and no stronger.
+
+    There is therefore NO time-bounded validity in this version, no certificate
+    expiry and no revocation list. If a future requirement needs them, that is a
+    further amendment and not an implication of this one.
+```
+
+```text
+FROZEN: THE RESIDUAL RISKS, RECORDED SO THEY ARE NOT MISTAKEN FOR CLOSED:
+
+    PROCESS CONTROL     an adversary who controls this process's address space can
+                        control the mapping and defeat any in-process check. An
+                        in-process library cannot defend its own address space,
+                        and this section does not claim to survive such an
+                        adversary. What it claims is that no API PATH lets a
+                        caller choose the trust root.
+
+    KEY CUSTODY         that a private key is held only by the party entitled to
+                        speak for its token, and that the mapping is correct, are
+                        TRUST ASSUMPTIONS. Key generation, storage, backup,
+                        rotation and destruction are OUTSIDE this contract.
+
+    KEY HOLDER, NOT     §7.3.1's limit, restated because it is the one most likely
+      CODE COMPONENT    to be lost in a summary: this authenticates a key holder.
+                        It does not establish which code ran.
+
+    NOT SUBMITTER       producer authentication is not submitter identity (§7.2).
+      IDENTITY
+    NOT AUTHORIZATION   it is not a grant, a capability, a Guard verdict or a
+                        verified measurement.
+    NOT CONTENT TRUTH   it says who signed, never that the claim is true.
+```
+
+#### 7.3.10 What this section does not change
+
+```text
+FROZEN: §6.5's registry and §6.6's cross-field rules are UNCHANGED. They remain the
+        recognition authority, they remain keyed by kind and family, and they
+        continue to enforce exactly what they enforced before.
+FROZEN: §7.2 and Amendment 4 are UNCHANGED. Reading A stands, the submitter may
+        differ from the producer, and the three checks remain three.
+FROZEN: §22.1's outcome vocabulary is UNCHANGED. §14.10's rule set, §14.2's field
+        classes and the detection-not-sanitization rule are UNCHANGED.
+FROZEN: the EvidenceRecord schema, the canonical collections, the digest inputs and
+        the stored form are UNCHANGED. No field is added anywhere.
+FROZEN: no producer token, registry row, Evidence kind, family, producer_type or
+        admission outcome is added or removed. This section adds a CHECK and a
+        PROOF CARRIER, and nothing else.
+FROZEN: the mechanism defined here is AI-05's and is SEPARATE from human approval.
+        AI-13's designated approval ingress (§13.3), its anchor and its Ed25519
+        verification site are NOT repurposed, NOT read, and NOT widened by this
+        section, and this section creates no approval path. Producer authenticity
+        and human approval are different trust domains with different anchors.
+FROZEN: the composition is NOT a party to this mechanism. It does not read the
+        designated producer mapping, does not mint, hold or verify a proof, and
+        acquires no authority, permission or capability from a producer claim
+        being authenticated.
 ```
 
 ---
@@ -2309,6 +3185,25 @@ missing required field        REJECTED      required is per-kind (§11)
 unsupported enum              REJECTED      never silently ordinary (§30)
 producer_type = human         REJECTED      role constraint, not a vocabulary
                                             member (§7.1)
+producer claim not            REJECTED      §30 step 7b, §7.3. One of SIX reason
+  authenticated                             codes: AUTHENTICATION_PROOF_MISSING,
+                                            AUTHENTICATION_PROOF_MALFORMED,
+                                            AUTHENTICATION_KEY_UNAVAILABLE,
+                                            AUTHENTICATION_SIGNATURE_INVALID,
+                                            AUTHENTICATION_INPUT_MISMATCH,
+                                            AUTHENTICATION_INPUT_UNSERIALIZABLE.
+                                            No outcome member is added (§22.1), and
+                                            an authentication failure is never a
+                                            Guard DENY (§7.3.8). Where step 7's
+                                            published rule ALSO fails, STEP 7's
+                                            reason is the one reported
+producer token not            REJECTED      §30 step 7b, §7.3.5 V2. Reported with an
+  readable                                  EXISTING shape reason —
+                                            RECORD_MALFORMED,
+                                            MISSING_REQUIRED_FIELD or
+                                            FIELD_CLASS_VIOLATION — and NOT with an
+                                            authentication code. No key lookup and
+                                            no cryptography occur
 undeclared raw-content field  REJECTED      a raw payload, raw log, raw provider
                                             body or raw tool output is not reshaped
                                             into an artifact; the producer stores
@@ -2668,6 +3563,37 @@ FROZEN. The single entry condition for storing a record.
                       was not admitted. A record violating both a shape rule and a
                       published rule therefore reports the rule; both are REJECTED
                       and nothing is stored
+ 7b. producer      the producer claim is AUTHENTICATED against the deployment's
+     authentication designated producer trust mapping (§7.3, Amendment 5)
+                   -> RUNS AFTER STEP 7, AND BEFORE CONSTRUCTION. Construction is
+                      steps 1-4, 4b, 6, 8-11 AND 13 — and NOT step 12, which is
+                      computed later, in `assign_digests`. §30's numbers IDENTIFY
+                      steps; they are not an execution order, and step 13 runs
+                      before step 12. STEP 6 IS PART OF CONSTRUCTION and has NOT
+                      run when this step executes (§7.3.7's stage table)
+                   -> step 7 runs first because R2 forbids hashing a value that
+                      was not admitted, and construction derives
+                      ContextRef.value_digest from the supplied value. This step
+                      runs next because no typed record, and therefore no Evidence
+                      digest, may be derived from a claim that is not authenticated
+                   -> REJECTED when the mapping is absent, when it holds no key for
+                      the claimed token, when the proof envelope is malformed, when
+                      the signature does not verify under that key, when the signed
+                      input is not the canonical serialization of this mapping, or
+                      when this mapping HAS no canonical serialization under
+                      §7.3.6. SIX reason codes; §7.3.8
+                   -> REJECTED with an EXISTING shape reason when the claimed
+                      producer token cannot be read at all: no key lookup and no
+                      cryptography proceed without one (§7.3.5 V2)
+                   -> NOT an Evidence digest. Signature verification is not a
+                      digest computation under §14.6 and produces no Evidence
+                      field; §7.3.7 separates the three operations that ordinary
+                      speech calls "hashing"
+                   -> a submission with NO proof is REJECTED exactly as one with a
+                      bad proof is. There is no unauthenticated admission path
+                   -> where step 7's rule ALSO fails, STEP 7's reason is the one
+                      reported, by the same precedence the step-7 note above
+                      already records for a shape-vs-rule collision
  8. references     references are well-formed and their identity is complete (§12)
  9. artifacts      artifact entries satisfy §13.1/§13.2
 10. digest origin  content_digest, record_digest and every ContextRef.value_digest
@@ -2688,6 +3614,21 @@ Any failure produces `REJECTED` with a named reason and **stores nothing**.
 unknown top-level field        REJECTED   — a field that is silently dropped cannot
                                             be audited (AI-04 §4.2 precedent)
 unsupported schema_version     REJECTED
+producer claim not             REJECTED   step 7b. Absent proof, absent mapping,
+  authenticated                             absent key for the claimed token, a
+                                            malformed envelope, a signature that
+                                            does not verify, a signed input that
+                                            is not this mapping, or a mapping with
+                                            no canonical serialization at all.
+                                            SIX named reason codes (§7.3.8). A
+                                            shared signing key across tokens is
+                                            NON-COMPLIANT and cannot authenticate
+                                            (§7.3.2)
+producer token not             REJECTED   step 7b, §7.3.5 V2. An existing shape
+  readable                                  reason — RECORD_MALFORMED,
+                                            MISSING_REQUIRED_FIELD or
+                                            FIELD_CLASS_VIOLATION — never an
+                                            authentication code
 caller-supplied digest for an
   AI-05-generated field        REJECTED   (R1, §14.6.1)
 uppercase hex in Class 1       REJECTED   (§14.5.1)
@@ -3563,6 +4504,278 @@ here because the original wording left it open and two readings were available.
 
 **AI-05 remains INCOMPLETE.** This amendment closes nothing: not AI-11 §21.1's
 OPEN-1, not any AI-15 open item, and not §35.1's deferrals.
+
+---
+
+#### Amendment 5 — producer authentication is defined (2026-10-10)
+
+Found while answering the question AI-15 recorded as **AI15-OPEN-1**: how a producer
+claim is ESTABLISHED, as against merely well-formed. §7.2 separated three checks and
+recorded that AI-05 performed only the first; the second had no definition anywhere.
+This amendment supplies one. It is authored on a docs-only branch based on main
+`97e9e8cd37b328eff934ee4e311ca31c63ca6d6c`.
+
+**Why this is an amendment rather than a clarification made in place.** §34.1's list
+of changes requiring an amendment enumerates evidence kind, canonical collection,
+digest input, workspace rule, secret boundary, authority relation, identity field and
+admission outcome. This amendment changes **none** of them. §34's preamble is broader
+than its list, though — a frozen contract "changes only through an explicit amendment
+recorded in §34.3" — and this amendment adds a NEW STEP to §30 and a NEW CHECK to §7.
+That is a change however it is described, so the instrument is an amendment, recorded
+here. The fact that §30's step list and §7 are absent from §34.1's enumeration is
+recorded rather than relied on, exactly as Amendment 4 recorded the same about §7.
+
+```text
+(a) NEW §7.3 defines the producer-authenticity standard: what makes a producer claim
+    AUTHENTICATED, what the mechanism establishes, and — in the same place — what it
+    does NOT establish. The standard is (a) a designated deployment mapping,
+    (b) a key for the claimed token, (c) a proof, (d) a signature that verifies
+    under THAT key over the proof's carried message, and (e) byte equality between
+    that message and the canonical serialization of the submitted mapping.
+
+(b) §7.3.2 fixes the trust model: a DEPLOYMENT-LEVEL producer-token-to-public-key
+    mapping, read from ONE place by ONE module, with no public AI-05 function
+    accepting a caller-selected key, mapping, anchor or verifier. It establishes key
+    material ONLY: §6.5 remains the sole recognition authority, and a key configured
+    for an unregistered token is inert.
+
+(c) §7.3.2 makes ONE KEY PER PRODUCER TOKEN mandatory and records that a SHARED
+    private signing key across two or more tokens is NON-COMPLIANT. This is stated
+    as a compliance condition of the mechanism rather than as advice, because a
+    shared key leaves §6.5's string comparison as the only thing refusing a
+    cross-producer forgery — and §7.2 already records that a registry check is not
+    an authentication check.
+
+(d) §7.3.3 and §7.3.4 define the PROOF: a `message_b64u` field carrying the signed
+    input as canonical UNPADDED Base64url, and an Ed25519 `signature` over the
+    DECODED bytes. The proof is carried ALONGSIDE the submitted mapping and NOT as a
+    field of the EvidenceRecord, and it is required at BOTH public entry points —
+    `admit()` and `admit_to_store()` — with an omitted or `None` proof producing
+    REJECTED rather than a TypeError. The signed input is specified as BYTES AND
+    ORDERING — a fixed domain tag, a separator, a protocol version, a separator, and
+    the canonical serialization of the complete supplied mapping encoded as UTF-8 —
+    rather than as an instruction to sign a mapping. Both the tag and the version
+    are INSIDE the signed bytes. §7.3.4 records what a prefix does and does not
+    guarantee about cross-protocol reuse, as an obligation on other protocols rather
+    than as a universal claim.
+
+(e) §7.3.5 separates VERIFICATION from BINDING as two operations that must both
+    pass: the signature is checked over the bytes the verifier HAS OBTAINED (the
+    carried message), and the carried message is then required to equal the
+    verifier's own reconstruction. Neither operation implies the other.
+
+(f) §7.3.6 defines AI-05-CJ-1, a COMPLETE canonical-JSON profile, rather than
+    describing a serializer by its properties. It is RFC 8785 (JCS) with exactly ONE
+    stated extension — arbitrary-precision plain-decimal integers, which is what
+    preserves `g_ordinal`'s existing unbounded non-negative integer rule — and every
+    other rule is RFC 8785 verbatim: UTF-16 code-unit key ordering, literal UTF-8
+    for non-ASCII, NO Unicode normalization, minimal escaping with lowercase \u
+    hex, no whitespace outside strings, and an explicit out-of-domain set. It
+    carries NORMATIVE TEST VECTORS with exact bytes. It records that any change is a
+    BREAKING change requiring a new PROOF_VERSION, and that §15.2's digest input,
+    §14.6.1's generated digests and the stored form are UNCHANGED: AI-05-CJ-1
+    governs the SIGNED INPUT and nothing else.
+
+(g) NEW §30 step 7b places authentication AFTER step 7's rule set and BEFORE
+    CONSTRUCTION — steps 1-4, 4b, 6, 8-11 and 13, and NOT step 12. §7.3.7 carries
+    the full seven-stage table, in which EVERY §30 step appears EXACTLY ONCE. The
+    position has TWO parts and they MUST NOT be merged: §14.6 R2 forces STEP 7
+    first, because construction derives ContextRef.value_digest and R2 forbids
+    hashing a value that was not admitted; and this contract places AUTHENTICATION
+    before construction, because no typed record — and therefore no Evidence
+    digest — may be derived from a claim that is not authenticated. §30's NUMBERS
+    IDENTIFY STEPS AND ARE NOT AN EXECUTION ORDER: step 6 is part of construction
+    and has NOT run when step 7b executes, and STEP 13 RUNS BEFORE STEP 12 because
+    `from_mapping` stamps the identity while `assign_digests` computes the two
+    record digests afterwards.
+
+(h) §7.3.7 separates three operations that ordinary speech calls "hashing" —
+    deterministic serialization, Ed25519's internal message compression, and
+    Evidence digest computation — and records that R2 governs only the third.
+
+(i) §7.3.8 fixes the failure semantics: the outcome stays REJECTED, NO outcome
+    member is added, and SIX distinct reason codes cover every mandatory
+    authentication failure. An UNREADABLE PRODUCER TOKEN gets no code of its own: it
+    is reported with an existing shape reason (RECORD_MALFORMED,
+    MISSING_REQUIRED_FIELD or FIELD_CLASS_VIOLATION), and no key lookup or
+    cryptography runs on that path.
+    Where step 7's published rule and authentication both fail, STEP 7's reason is
+    reported, by the precedence §30's step-7 note already establishes for a
+    shape-vs-rule collision. The precedence is NOT a statement that class validation
+    precedes authentication: step 6's class checks run inside construction and have
+    not run when step 7b executes.
+
+(j) §7.3.9 records the revocation model as it actually is — removal from the
+    mapping stops new claims and does NOT reach backwards — and states the residual
+    risks: process control, key custody, and the limit that this authenticates a KEY
+    HOLDER and not the execution identity of a code component.
+
+(k) §22.2's condition table gains the authentication rows, so the failure appears
+    where every other rejection already appears.
+```
+
+```text
+WHAT THIS AMENDMENT DOES NOT DO, stated because each is a thing it could be read as
+doing:
+
+    it does NOT implement the mechanism. §7.3 DEFINES a standard; §30 step 7b
+      REQUIRES it. Neither is code, and neither is a test.
+    it does NOT claim the standard currently holds. THE IMPLEMENTATION DOES NOT
+      PERFORM §30 STEP 7b TODAY, and this amendment does not pretend otherwise.
+      That divergence is RECORDED below rather than left to be discovered.
+    it does NOT close AI15-OPEN-1. AI-15 §15.2 STEP 0b requires a mechanism AND its
+      implementation AND tests showing it holds; this amendment supplies the first
+      of the three. Whether that closes AI-15's record of the item is AI-15's act,
+      not this amendment's.
+    it does NOT reopen or weaken Amendment 4. Reading A stands, the submitter MAY
+      differ from the producer, and §7.2's three checks remain three.
+    it does NOT touch AI-11 §21.1's OPEN-1 — WHICH PRODUCERS EXIST. Adding a key
+      mapping creates no registry row and admits no event. It is a different
+      question with the same owner.
+    it does NOT add a producer token, registry row, Evidence kind, family,
+      producer_type, admission outcome, identity field, canonical collection or
+      digest input.
+    it does NOT add a stored field. The proof is not stored, and the stored form is
+      unchanged.
+    it does NOT change the record schema. The proof is carried beside the mapping.
+    it does NOT repurpose AI-13's approval ingress, its anchor or its Ed25519
+      verification site. Producer authenticity and human approval are different
+      trust domains (§7.3.10).
+    it does NOT change any authority relation. An authenticated producer claim is
+      not a permission, and no authority matrix row moves (§7.3.8).
+    it does NOT authorize a production Evidence writer to be created or run.
+    it does NOT make any of its acceptance tests pass. NO TEST NAMED IN §7.3.7 HAS
+      BEEN RUN.
+```
+
+```text
+STATUS DISCIPLINE — WHAT THIS AMENDMENT DOES AND DOES NOT MOVE. Stated as explicit
+non-movements, because a reader reaching for a status line is exactly the reader most
+likely to over-read it:
+
+    AI15-OPEN-1             REMAINS OPEN. This amendment DEFINES a standard for it.
+                            It does not show the standard holds. Only AI-05, by
+                            implementing the mechanism and shipping the mandatory
+                            tests, supplies the evidence that closes it.
+    AI-15 STEP 0b           REMAINS UNSATISFIED. STEP 0b requires a mechanism AND its
+                            implementation AND tests showing it holds. This amendment
+                            supplies the FIRST of the three, and MUST NOT be reported
+                            as having satisfied the other two.
+    production writer       NOT AUTHORIZED. No production non-test caller that can
+                            execute admission and persist a record is authorized to
+                            be created, merged or run by this amendment, and AI-15
+                            §17.2b's prohibition is NOT lifted by it.
+    AI-14 STEP 1            NOT AMENDED, NOT MADE, NOT PRE-EMPTED. It is AI-14's act,
+                            on AI-14's contract, under AI-14's amendment rule. This
+                            amendment neither authorizes the composition -> Evidence
+                            edge nor speaks for AI-14.
+    B5                      REMAINS BLOCKED, AND IS NOT CLASSIFIED CONNECTED. No
+                            clause here may be read as classifying it. §8.3's
+                            conditions remain unsatisfied, including 11 and 12.
+    AI15-OPEN-3,            REMAIN INDEPENDENT AND UNSOLVED. This amendment does not
+      AI15-OPEN-4,          touch DecisionRecord.evidence_ref (AI-04's), a
+      AI-11 §21.1 OPEN-1    workflow-driven step's routing input (AI-13/AI-14's), or
+                            WHICH PRODUCERS EXIST (AI-05's own, and a DIFFERENT
+                            question from OPEN-1: admitting a token would not
+                            authenticate a claim, and authenticating a claim would
+                            not admit a token).
+    AI15-OPEN-2             REMAINS CLOSED under AI-05 Amendment 4 (READING A). It is
+                            NOT reopened, re-argued or re-decided here, and no clause
+                            of this amendment restates it in weaker words.
+```
+
+```text
+RECORDED DIVERGENCE — THE CONTRACT NOW REQUIRES A STEP THE IMPLEMENTATION LACKS.
+
+    §34.2 forbids an implementation silently diverging from this contract, and this
+    amendment creates a divergence by construction: §30 step 7b is now part of the
+    admission contract, and `admit()` / `admit_to_store()` do not perform it. That
+    is stated here rather than left to be found.
+
+    WHY IT IS CURRENTLY CONSEQUENCE-FREE, in three parts that MUST NOT be merged:
+        NO CALLER      no production non-test caller of admission exists anywhere in
+                       the repository. A step no caller reaches cannot be skipped
+                       by one.
+        NO WRITER      AI-15 §17.2b forbids creating a production call site that can
+                       execute admission and persist a record while AI15-OPEN-1 is
+                       open. That prohibition is NOT lifted by this amendment.
+        CONTRACT FIRST AI-05-A is the frozen contract and AI-05-B is NOT STARTED
+                       (§35.3). This project freezes the contract before the code
+                       that satisfies it.
+
+    WHAT IT MEANS UNTIL IMPLEMENTED, stated so nothing is over-reported:
+        a record admitted by the CURRENT implementation has NOT had its producer
+          claim authenticated, and NO document, caller or result may describe it as
+          having had one
+        §8.3 condition 11 of the AI-15 plan remains UNSATISFIED
+        §30 step 7b MUST NOT be reported as satisfied, and this amendment MUST NOT
+          be reported as having closed AI15-OPEN-1
+```
+
+```text
+SECURITY IMPACT
+
+    NO NEW RUNTIME CONTROL SHIPS WITH THIS AMENDMENT, AND NO ATTACK IS DEFEATED BY
+    IT TODAY — stated precisely, because the broader claim "AI-05 now authenticates
+    producers" would be false.
+
+    WHAT THIS AMENDMENT DOES
+        defines, in enforceable and testable terms, the standard a producer claim
+          must meet, so that an implementation has something exact to satisfy and a
+          review has something exact to check
+        fixes the trust model's shape BEFORE any code exists, which is when it is
+          cheapest to get right: one reader, no caller-selected trust root, no
+          default, no bypass, fail closed
+        requires DISTINCT key material per producer token, closing the shared-key
+          forgery the design admits if that is left implicit
+        gives domain separation and protocol versioning a defined byte form, so a
+          signature minted for this protocol cannot be replayed into another
+        records what the mechanism does NOT establish, which is the failure mode
+          most likely to be summarised away
+
+    WHAT IT DOES NOT DO
+        it implements nothing, tests nothing, and changes no runtime behaviour. The
+          implementation of §30 step 7b is an AI-05-B obligation
+        it defeats no attack at this baseline, because no caller reaches admission
+        it authenticates no key holder, because no key is configured anywhere
+        it provides NO time-bounded validity and NO revocation list; revocation is
+          removal from a deployment mapping and does not reach stored records
+        it does not defend against an adversary who controls the process address
+          space, and does not claim to
+
+    RESIDUAL RISKS — RECORDED, NOT CLOSED
+        an in-process library cannot defend its own address space; the mapping is
+          only as trustworthy as the deployment that supplies it
+        key custody is a trust assumption and is outside this contract
+        the mechanism authenticates a KEY HOLDER, not the execution identity of a
+          code component; the step from one to the other is a deployment assertion
+        producer authentication is not submitter identity, not authorization, and
+          not evidence that a claim's content is true
+```
+
+```text
+AUTHORITY IMPACT
+    None. §7.3.8 states that an authenticated producer claim is not a permission, a
+    capability, a verification or a measurement, and that it changes no row of any
+    authority matrix. An authentication failure is not a Guard DENY and is never
+    translated into one. §23 and §24 are unchanged.
+
+CONTRACT IMPACT
+    ADDED        §7.3 (new), §30 step 7b, §22.2 rows, this amendment record
+    AMENDED      §7.2's authentication row and its closing FROZEN block, to point at
+                 §7.3 rather than to record the check as absent. Both edits are
+                 annotations; no requirement of §7.2 changes
+    UNCHANGED    §6.5, §6.6, §7.1, §11, §12, §13, §14 (all), §15, §17, §18, §20,
+                 §22.1, §22.3, §22.4, §23, §24, §25, §26, §30's other steps, §34.1,
+                 §34.2, §35
+    NO CHANGE TO   the record schema, the canonical collections, the digest inputs,
+                 the stored form, the outcome vocabulary, the registry, or any
+                 authority relation
+```
+
+**AI-05 remains INCOMPLETE.** This amendment defines a standard and records that it
+is not implemented. It closes nothing: not AI-11 §21.1's OPEN-1, not AI15-OPEN-1, not
+AI15-OPEN-3, not AI15-OPEN-4, and not §35.1's deferrals.
 
 ---
 
