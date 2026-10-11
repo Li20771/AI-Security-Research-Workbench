@@ -70,6 +70,18 @@ from plugins.evidence.admission import (
     check_admission_rules,
     check_workspace_agreement,
 )
+
+# §7.3.11's INITIALIZATION EDGE, and the reason it is stated here rather than
+# left implicit: importing this package must initialize the producer trust
+# reader, so that any process able to call `admit()` or `admit_to_store()` has
+# NECESSARILY already initialized it. The ordering guarantee is structural
+# rather than a sequence someone has to remember to observe.
+#
+# It is an import edge WITHIN the Evidence package, between a module and the
+# package that owns it. It creates no caller and no entry point: no production
+# component outside this package gains a path to admission, and AI-15 §17.2b's
+# prohibition on a production call site is untouched.
+from plugins.evidence.producer_auth import authenticate, designated_key_for
 from plugins.evidence.rules import (
     ADMISSION_RULES,
     CLASS_3_PATHS,
@@ -297,7 +309,9 @@ __all__ = [
     "SCANNED_PATHS",
     "admit",
     "admit_to_store",
+    "authenticate",
     "check_admission_rules",
+    "designated_key_for",
     "first_match",
     "admitted_events_for",
     "assign_digests",

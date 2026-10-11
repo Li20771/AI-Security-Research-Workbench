@@ -24,6 +24,8 @@ import json
 
 import pytest
 
+from trust_harness import proof_for_record
+
 from plugins.evidence import (
     AdmissionOutcome,
     PromotedEvidenceStore,
@@ -48,7 +50,9 @@ CLK = lambda: FIXED_CLOCK  # noqa: E731 - a pinned clock, as the other modules u
 
 
 def _admit(raw, store):
-    return admit_to_store(raw, store=store, clock=CLK)
+    return admit_to_store(
+        raw, store=store, producer_proof=proof_for_record(raw), clock=CLK
+    )
 
 
 @pytest.fixture
@@ -85,7 +89,10 @@ class TestThePipeline:
         """Composition must not change the answer admission already gives."""
         raw = make_observation(references={"context": [make_context_ref()]})
 
-        assert admit(raw, clock=CLK).outcome is _admit(raw, store).outcome
+        assert (
+            admit(raw, producer_proof=proof_for_record(raw), clock=CLK).outcome
+            is _admit(raw, store).outcome
+        )
 
     def test_the_supplied_mapping_is_never_modified(self, store):
         import copy

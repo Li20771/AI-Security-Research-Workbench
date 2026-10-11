@@ -45,6 +45,8 @@ from dataclasses import replace
 
 import pytest
 
+from trust_harness import proof_for_record
+
 from plugins.evidence import (
     EvidenceRecord,
     StoredIntegrityFailure,
@@ -315,14 +317,22 @@ class TestR4CallerBoundaryRemainsClosed:
 
     def test_admit_still_rejects_a_stored_form(self):
         """The §22.1 outcome path is closed to it too."""
-        result = admit(_observation().to_stored_mapping(), clock=lambda: FIXED_CLOCK)
+        _supplied = _observation().to_stored_mapping()
+        result = admit(
+            _supplied, producer_proof=proof_for_record(_supplied),
+            clock=lambda: FIXED_CLOCK,
+        )
 
         assert result.outcome.value == "REJECTED"
         assert result.record is None
 
     def test_admission_of_a_valid_caller_record_is_unaffected(self):
         """The control: R1 was not tightened into refusing ordinary records."""
-        result = admit(make_observation(), clock=lambda: FIXED_CLOCK)
+        _supplied = make_observation()
+        result = admit(
+            _supplied, producer_proof=proof_for_record(_supplied),
+            clock=lambda: FIXED_CLOCK,
+        )
 
         assert result.outcome.value == "ACCEPTED"
 

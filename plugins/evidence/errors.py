@@ -378,9 +378,89 @@ class DuplicateOrdinal(DuplicateElement):
     reason_code = "DUPLICATE_ORDINAL"
 
 
+# --------------------------------------------------------------------------
+# Producer authentication (§7.3, §30 step 7b) — added by Amendment 5's
+# implementation. SIX codes and no seventh: §7.3.8 fixes the set, and §22.1
+# adds no outcome member.
+#
+# All six descend directly from `EvidenceError`, which is what lets
+# `admission.admit`'s single `except EvidenceError` turn each of them into a
+# REJECTED RESULT rather than a thrown exception. A subclass that did not
+# descend from it would escape that handler.
+#
+# None of them is a Guard outcome and none is translated into one: §7.3.8
+# records that an authentication failure is not a DENY.
+# --------------------------------------------------------------------------
+
+
+class AuthenticationProofMissing(EvidenceError):
+    """No proof was supplied — the argument omitted, or passed as `None`.
+
+    §7.3.3: a missing proof is a REJECTED RESULT, not a `TypeError`. A required
+    positional parameter would raise before admission could return anything,
+    and §22.1 defines three outcomes of which an exception is not one.
+    """
+
+    reason_code = "AUTHENTICATION_PROOF_MISSING"
+
+
+class AuthenticationProofMalformed(EvidenceError):
+    """The proof envelope is not well formed (§7.3.5 V1).
+
+    `message_b64u` is not a string, is not in the Base64url alphabet, is
+    padded, or is NON-CANONICAL on re-encoding; or `signature` is not exactly
+    128 lowercase hexadecimal characters.
+    """
+
+    reason_code = "AUTHENTICATION_PROOF_MALFORMED"
+
+
+class AuthenticationKeyUnavailable(EvidenceError):
+    """There is no designated mapping, or no entry in it for the claimed token.
+
+    Also the code for a mapping the reader REFUSES under §7.3.2's group rule: a
+    refused mapping is a deployment with no usable mapping, which §7.3.2 and
+    §7.3.5 V3 already report under this same code.
+    """
+
+    reason_code = "AUTHENTICATION_KEY_UNAVAILABLE"
+
+
+class AuthenticationSignatureInvalid(EvidenceError):
+    """The signature does not verify under the designated key (§7.3.5 V4)."""
+
+    reason_code = "AUTHENTICATION_SIGNATURE_INVALID"
+
+
+class AuthenticationInputMismatch(EvidenceError):
+    """The decoded carried message is not the signed input of this mapping.
+
+    §7.3.5 V5. Distinct from `AuthenticationInputUnserializable`: here bytes
+    exist and differ; there no bytes exist at all.
+    """
+
+    reason_code = "AUTHENTICATION_INPUT_MISMATCH"
+
+
+class AuthenticationInputUnserializable(EvidenceError):
+    """The submitted mapping is out of domain under §7.3.6, so no signed input
+    exists to compare against (§7.3.5 V5).
+
+    A statement about the MAPPING rather than about the producer token.
+    """
+
+    reason_code = "AUTHENTICATION_INPUT_UNSERIALIZABLE"
+
+
 __all__ = [
     "ActorTypeNotAdmitted",
     "AdmissionRuleViolation",
+    "AuthenticationInputMismatch",
+    "AuthenticationInputUnserializable",
+    "AuthenticationKeyUnavailable",
+    "AuthenticationProofMalformed",
+    "AuthenticationProofMissing",
+    "AuthenticationSignatureInvalid",
     "BindingArmMismatch",
     "CallerSuppliedDigest",
     "CallerSuppliedGeneratedField",

@@ -26,6 +26,8 @@ import re
 
 import pytest
 
+from trust_harness import proof_for_record
+
 from plugins.evidence import (
     ADMISSION_RULES,
     CLASS_3_PATHS,
@@ -53,7 +55,7 @@ CLK = lambda: FIXED_CLOCK  # noqa: E731
 
 
 def _admit(raw):
-    return admit(raw, clock=CLK)
+    return admit(raw, producer_proof=proof_for_record(raw), clock=CLK)
 
 
 def _with_observed(value: str) -> dict:
@@ -538,7 +540,10 @@ class TestTheRefusalLeaksNothing:
         from plugins.evidence import StagedEvidenceStore, admit_to_store
 
         store = StagedEvidenceStore(tmp_path / "staged")
-        result = admit_to_store(_with_observed(self.SECRET), store=store, clock=CLK)
+        record = _with_observed(self.SECRET)
+        result = admit_to_store(
+            record, store=store, producer_proof=proof_for_record(record), clock=CLK
+        )
 
         assert result.outcome is AdmissionOutcome.REJECTED
         assert result.record is None

@@ -25,6 +25,8 @@ from __future__ import annotations
 
 import pytest
 
+from trust_harness import proof_for_record
+
 from plugins.evidence import errors as ev_errors
 from plugins.evidence import (
     EvidenceRecord,
@@ -120,7 +122,9 @@ class TestT20cBoundedSourceRuleSet:
         raw = make_observation()
         raw["payload"]["observed"] = SHA256
 
-        result = admit(raw, clock=lambda: FIXED_CLOCK)
+        result = admit(
+            raw, producer_proof=proof_for_record(raw), clock=lambda: FIXED_CLOCK
+        )
 
         assert result.outcome is AdmissionOutcome.REJECTED
         assert result.reason_code == "ADMISSION_RULE_VIOLATION"
@@ -145,7 +149,12 @@ class TestT20cBoundedSourceRuleSet:
             }
         )
 
-        assert admit(raw, clock=lambda: FIXED_CLOCK).outcome is AdmissionOutcome.ACCEPTED
+        assert (
+            admit(
+                raw, producer_proof=proof_for_record(raw), clock=lambda: FIXED_CLOCK
+            ).outcome
+            is AdmissionOutcome.ACCEPTED
+        )
 
 
 class TestT21StructuralFieldShape:

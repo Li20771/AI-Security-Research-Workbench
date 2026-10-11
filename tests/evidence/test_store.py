@@ -19,6 +19,8 @@ import json
 
 import pytest
 
+from trust_harness import proof_for_record
+
 from plugins.evidence import (
     EvidenceRecord,
     PromotedEvidenceStore,
@@ -492,11 +494,19 @@ class TestThePromotedTierCannotBeWritten:
     def test_a_promoted_store_cannot_be_handed_to_admission(self, promoted):
         """The other half: admission cannot be aimed at the durable tier."""
         with pytest.raises(TypeError):
-            admit_to_store(make_observation(), store=promoted, clock=lambda: FIXED_CLOCK)
+            _record = make_observation()
+            admit_to_store(
+                _record, store=promoted, producer_proof=proof_for_record(_record),
+                clock=lambda: FIXED_CLOCK,
+            )
 
     def test_that_refusal_creates_nothing(self, promoted):
         with pytest.raises(TypeError):
-            admit_to_store(make_observation(), store=promoted, clock=lambda: FIXED_CLOCK)
+            _record = make_observation()
+            admit_to_store(
+                _record, store=promoted, producer_proof=proof_for_record(_record),
+                clock=lambda: FIXED_CLOCK,
+            )
 
         assert promoted.list_ids() == ()
         assert not promoted.root.exists()

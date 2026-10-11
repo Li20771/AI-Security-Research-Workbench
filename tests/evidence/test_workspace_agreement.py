@@ -43,6 +43,8 @@ import copy
 
 import pytest
 
+from trust_harness import proof_for_record
+
 from plugins.evidence import (
     AdmissionOutcome,
     admit,
@@ -71,8 +73,15 @@ REASON = "WORKSPACE_AGREEMENT_VIOLATION"
 
 
 def _admit(raw):
-    """Admit with the clock pinned, so a digest comparison is not a clock read."""
-    return admit(raw, clock=lambda: FIXED_CLOCK)
+    """Admit with the clock pinned, so a digest comparison is not a clock read.
+
+    The producer proof is supplied because §30 step 7b now runs before
+    construction: without one, every case here would stop at
+    `AUTHENTICATION_PROOF_MISSING` and never reach the §18.1 behaviour it is
+    about. The proof is built from the REAL `signed_input`, so admitting here
+    exercises one protocol and not a second one (§7.3.7's key-material rule).
+    """
+    return admit(raw, producer_proof=proof_for_record(raw), clock=lambda: FIXED_CLOCK)
 
 
 def _parse(raw) -> EvidenceRecord:
