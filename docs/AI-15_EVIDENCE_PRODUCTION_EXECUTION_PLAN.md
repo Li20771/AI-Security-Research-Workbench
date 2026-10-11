@@ -1257,9 +1257,23 @@ SEPARATE FACTS, AND THEY MUST NOT BE MERGED INTO ONE.
                  of admission exists (§3.1-§3.3). This is a RECORDED negative
                  finding about the repository AT THAT BASELINE, and it is the
                  weakest of the three: it says what HAS been written, not what CAN
-                 run. ^ KEPT DATED BECAUSE THAT IS WHAT IT IS. The finding is about
-                 37f354c and has not been re-measured at the current head; what this
-                 document records is that NEITHER PR #87 NOR PR #88 ADDED A CALLER.
+                 run.
+                 ^ RE-MEASURED AT main @ 9e1b4c45, AND IT STILL HOLDS. The baseline
+                 finding was checked again on the tree this record is based on
+                 rather than inherited from 37f354c. The measurement parses every
+                 tracked `*.py` file and matches CALL EXPRESSIONS, not text, so a
+                 docstring, a definition or a comment cannot be mistaken for a
+                 call: 46 calls to `admit`/`admit_to_store` exist, 45 in `tests/`
+                 and ONE outside it — `admit_to_store()` invoking `admit()`
+                 internally, at `plugins/evidence/admission.py:288`. No wildcard
+                 import, no `importlib`/`__import__` path and no string-literal
+                 lookup reaches either entry point. The only importer outside the
+                 package remains AI-06's type-only projection
+                 (`plugins/security_tools/evidence.py:12`, which imports two TYPES
+                 and calls neither), and the only non-test `EvidenceRecord(...)`
+                 remains the stored-form loader (`stored.py:172`). NEITHER PR #87
+                 NOR PR #88 ADDED A CALLER — and that is now a measurement at the
+                 current baseline rather than an inheritance from the freeze.
   the check      a change adding such a caller TO ONE OF THE FIVE DIRECTORIES
                  THAT CARRY A RULE would fail the BUILD-TIME checks in §3.4.
                  That is a constraint on what may be MERGED. It is NOT global:
@@ -1333,30 +1347,73 @@ AI15-OPEN-1  PRODUCER AUTHENTICITY — how is a producer claim ESTABLISHED, as
                          the item there too (Amendment 7). AI-15 records it and
                          did not produce it.
         WHAT KEEPS IT FROM MATTERING TODAY  THE GATE THIS ITEM HELD IS GONE, AND
-                         WHAT REMAINS IS A FACT RATHER THAN A GATE. The RECORDED
-                         finding in §3.1-§3.3 — no production caller exists at
-                         this baseline — still holds, and it is now the only thing
-                         standing between the API and a stored record. §15.2 STEP
-                         0b no longer forbids creating a caller, because STEP 0b
-                         is satisfied; what forbids it is §17.2 (STEP 1, AI-14's)
-                         and §16.2 rows 1, 1′, 2 and 3. NEITHER IS A RUNTIME
-                         BARRIER, and neither was the item.
-        STATUS, STATED PRECISELY  TWO DIFFERENT STATEMENTS, AND THIS RECORD KEEPS
-                         THEM APART. AI15-OPEN-1 IS SOLVED, AND THE API IS STILL
-                         NOT SAFE ON ITS OWN. What changed is the MECHANISM:
-                         `admit()` authenticates the producer claim (§30 step 7b)
-                         before any typed record exists, against a designated
-                         trust mapping read once at process initialization, and a
-                         submission with no proof is REJECTED exactly as one with
-                         a bad proof is. What did NOT change is WHO MAY CALL IT:
-                         the API still accepts any caller, and the only thing
-                         between a caller-supplied claim and a stored record
-                         remains that nobody has written the caller. "No caller
-                         exists" is still a fact about the tree, and it is still
-                         not a property that keeps anything safe. WHAT IS
-                         DIFFERENT IS THAT THE MECHANISM NO LONGER HAS TO CARRY
-                         THAT ARGUMENT ALONE: a caller written tomorrow would have
-                         to present an authenticated claim to store anything.
+                         WHAT REMAINS IS A FACT RATHER THAN A GATE. The finding
+                         that no production caller exists HAS BEEN RE-MEASURED at
+                         the current baseline and still holds (see "the tree"
+                         above) — but it is NOT the only thing standing between a
+                         claim and a stored record, and it MUST NOT be written as
+                         though it were:
+                             THE AUTHENTICATION IS NO LONGER ABSENT. A caller
+                               written today would have to present a producer
+                               proof that authenticates, because §30 step 7b runs
+                               inside `admit()` before any typed record is
+                               constructed. That is a REAL CONTROL, and it is the
+                               one this item was about.
+                             THE REPOSITORY GATES ARE STILL IN FRONT OF THE WRITE.
+                               §17.2 refuses the import and the call until AI-14's
+                               STEP 1, and §16.2 rows 1, 1′, 2 and 3 stand.
+                             WHAT IS ACTUALLY ABSENT IS A CALLER — and its absence
+                               is what makes the API UNREACHABLE IN PRACTICE. It is
+                               a FACT ABOUT THE TREE and NOT a runtime security
+                               control: nothing enforces it at runtime, and this
+                               document MUST NOT present it as one.
+                         §15.2 STEP 0b no longer forbids creating a caller, because
+                         STEP 0b is satisfied; the prohibition is §17.2's and
+                         §16.2's, and NEITHER OF THOSE IS A RUNTIME BARRIER either.
+        STATUS, STATED PRECISELY  FOUR SEPARATE THINGS, AND THIS RECORD KEEPS
+                         THEM APART — merging any two of them either overstates or
+                         understates the position.
+
+                             THE MECHANISM       IMPLEMENTED. `admit()` performs
+                                                 §30 step 7b BEFORE any typed record
+                                                 is constructed, against a designated
+                                                 trust mapping read once at process
+                                                 initialization; a submission with
+                                                 no proof is REJECTED exactly as one
+                                                 with a bad proof is. THIS IS THE PART
+                                                 PR #87 CHANGED, and it is the part
+                                                 this item was about.
+                             THE API BOUNDARY    UNCHANGED, AND NOT A CONSEQUENCE OF
+                                                 THE MECHANISM. The API still takes no
+                                                 submitter identity and still accepts
+                                                 any caller. AUTHENTICATING A PRODUCER
+                                                 CLAIM DOES NOT IDENTIFY THE
+                                                 SUBMITTER, DOES NOT AUTHORIZE THE
+                                                 CALLER, AND WAS NEVER MEANT TO
+                                                 (§4.1, §9.5). A caller that passes
+                                                 authentication is a caller whose
+                                                 CLAIM checked out — not a caller the
+                                                 API approved.
+                             THE PRODUCTION      NONE — RE-MEASURED at the current
+                               CALLER STATE      baseline, with the method and the
+                                                 counts stated under "the tree" above.
+                                                 The absence is what makes the API
+                                                 unreachable in practice.
+                             THE GATES           §17.2, row 1′, STEP 2's precondition,
+                                                 and the remaining STEP 3 and
+                                                 joint-delivery requirements — ALL
+                                                 still unsatisfied, NONE of them
+                                                 AI-05's, and NONE moved by this
+                                                 closure.
+
+                         THE SENTENCE THIS PARAGRAPH USED TO CARRY — that the only
+                         thing between a caller-supplied claim and a stored record
+                         is that nobody has written the caller — WAS TRUE BEFORE
+                         PR #87 AND IS NOT TRUE NOW. A caller would ALSO have to
+                         authenticate, and would ALSO have to pass a gate that is
+                         still closed. "No caller exists" remains a fact about the
+                         tree and is still NOT a property that keeps anything safe;
+                         it has simply stopped being the whole of the story.
         WHY IT IS STILL A B5 PREREQUISITE, AND WHAT THAT NOW MEANS  because the
                          first caller to be written would run — which is what B5
                          is, and writing it is still gated. WHAT GATES IT IS NO
