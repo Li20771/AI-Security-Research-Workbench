@@ -12,7 +12,7 @@ other phase's contract touched. It **froze a contract**; it connected no seam.
 **AI-15-B is NOT STARTED and BLOCKED**, and **B5 (composition → Evidence) remains
 BLOCKED / NOT STARTED**.
 
-**AI-15's contract has since been AMENDED TWICE.**
+**AI-15's contract has since been AMENDED THREE TIMES.**
 
 **§19 Amendment 1** (2026-10-09) records AI-05 Amendment 4's answer to **AI15-OPEN-2** —
 **READING A**, merged as PR #80 (`03d42681cb8b2110773654822655117daea44ad5`) — so
@@ -20,7 +20,7 @@ BLOCKED / NOT STARTED**.
 which has **NOT** been made.
 
 **§19 Amendment 2** (2026-10-11) records **AI-05 Amendment 5** and **AI-05 Amendment 6**
-and corrects the reason **AI15-OPEN-1** remains OPEN:
+and corrected the reason **AI15-OPEN-1** was *then* still OPEN:
 
 ```text
 AI-05 Amendment 5   DEFINES the producer-authentication standard.
@@ -29,23 +29,48 @@ AI-05 Amendment 5   DEFINES the producer-authentication standard.
 AI-05 Amendment 6   FREEZES the designated trust configuration and its lifecycle.
                     merged as cee1f8c9ae07837e0ebae0be3f8ab2e0113e6973  (PR #85)
                     AI-05 §7.3.11 and §31.3
-
-BOTH ARE DOCUMENTATION CHANGES. Neither implements authentication, adds a test or
-changes Layer 0.
 ```
 
-**AI15-OPEN-1 remains OPEN and §15.2 STEP 0b remains UNSATISFIED.** The reason is no
-longer that the standard is undefined — **the standard is DEFINED and the control is
-NOT IMPLEMENTED**. Against §15.2 STEP 0b's **three** parts, and against those three
-only: the **MECHANISM is DEFINED** — AI-05 Amendments 5 and 6 supply it **ONCE**,
-because the trust configuration Amendment 6 froze is **part of defining the mechanism**,
-not a second part beside it — the **RUNTIME IMPLEMENTATION is NOT IMPLEMENTED**, and the
-**ACCEPTANCE TESTS are NOT_RUN**. What AI-05 still owes is the implementation, including
-the Layer 0 enforcement Amendment 6 obliges (that belongs to implementing the mechanism,
-not to a separate deliverable), and the **§7.3.7 acceptance tests**. **No §7.3.7
-acceptance test has been run, and CI success on the two documentation PRs is not
-evidence that producer authentication works.** **No seam is CONNECTED and no production
-Evidence writer exists.** See [AI-15 status](#ai-15-status) and [AI-05](#ai-05--evidence--audit-plugin).
+**§19 Amendment 3** (2026-10-11) records that **AI-05 IMPLEMENTED and TESTED the
+mechanism and CLOSED AI15-OPEN-1 in its own contract** — the owner's act, in the owner's
+contract, under the owner's amendment rule. AI-15 recorded it; AI-15 did not do it.
+
+```text
+PR #87              the RUNTIME IMPLEMENTATION. §30 step 7b is performed by
+                    plugins/evidence/producer_auth.py, called from admission.admit()
+                    BEFORE any typed record exists; §7.3.11's startup edge is in
+                    plugins/evidence/__init__.py; and §31.3's four Layer 0 rules are
+                    ENFORCED by scripts/ci/layer0_policy.py.
+                    merged as d09ce69ec1c0975c6d638d7861df2f11c44ec1d1
+AI-05 Amendment 7   RECORDS the implementation and CLOSES AI15-OPEN-1. Made by AI-05,
+                    in AI-05's contract (its §34.3), under AI-05's amendment rule.
+                    merged by PR #88 (9e1b4c451deed34605d021b4203fccd16dad4cd0)
+CI run #301         46 process-isolated cases RAN, 0 skipped;
+                    `Layer 0 = PASS (24 checks)`.
+                    https://github.com/Li20771/AI-Security-Research-Workbench/actions/runs/38146118977
+```
+
+**AI15-OPEN-1 is CLOSED, and §15.2 STEP 0b is SATISFIED — all THREE of its parts.** The
+**MECHANISM is DEFINED** (AI-05 Amendments 5 and 6, counted **ONCE**, because the trust
+configuration Amendment 6 froze is **part of defining the mechanism**, not a second part
+beside it); the **RUNTIME IMPLEMENTATION is IMPLEMENTED** (PR #87); and the **ACCEPTANCE
+TESTS are RUN** (run #301). The Layer 0 enforcement Amendment 6 obliged belongs to the
+implementation rather than to a separate deliverable — and it is **enforced, not merely
+written down**: run #301 reports `Layer 0 = PASS (24 checks)`, including
+`evidence producer authentication boundary`.
+
+**THE NUMBER, NOT THE RUN'S STATUS.** AI-05 §31.3 requires a report to carry the number of
+process-isolated cases that **RAN** rather than a run's result, because that suite exits 0
+whether its cases pass or are skipped. **46 RAN, 0 SKIPPED.**
+
+**WHAT THE CLOSURE DOES NOT DO.** Satisfying a blocker is not satisfying the item:
+**B5 remains BLOCKED and is NOT CONNECTED**, **AI-15-B remains NOT STARTED / BLOCKED**,
+**no seam is CONNECTED**, and **no production Evidence writer exists or is authorized**.
+§15.2 STEP 0b **no longer gates the write**, because it is satisfied; what refuses it now
+is **§17.2 (AI-14's STEP 1)**, **row 1′**, and **STEP 2's own precondition**.
+**AI-11 §21.1's OPEN-1 (WHICH PRODUCERS EXIST) remains OPEN** and is a **different item**:
+no §6.5 row was added, and the registry still holds **six rows over four tokens**. See
+[AI-15 status](#ai-15-status) and [AI-05](#ai-05--evidence--audit-plugin).
 
 **AI-14 — Long-term AI Workbench — AI-14-A and AI-14-B are COMPLETE / MERGED.** The
 architecture freeze (AI-14-A) merged to `main` as
@@ -392,14 +417,16 @@ has not been made — and §35.1's deferrals.
 
 ```text
 AI-05 contract      = frozen, docs/AI-05_EVIDENCE_EXECUTION_PLAN.md
-AI-05 contract blob = b89c811e9ee8da2f576b938378501c0578151dd1
-                      current, after Amendment 6 (producer trust configuration)
+AI-05 contract blob = a399cf44654875a5cbffd3a6dd1e235a4e2993ce
+                      current, after Amendment 7 (producer authentication
+                      implemented; AI15-OPEN-1 closed by its owner)
+                      was b89c811e9ee8da2f576b938378501c0578151dd1, after Amendment 6
                       was 3e5eab98b1c7af4662a7f6bff34818b2d41358b0, after Amendment 3
                       was dd062148938f902109b49a496bb6051c3331a349, after Amendment 2
 B2 Decision Record  = docs/AI-05-B2_DECISIONS_2026-10-01.md
 B2 decision blob    = e6249c856d23afba5b97143bec60be06168a4a48
 
-AI-05-A             = COMPLETE / MERGED   contract frozen, 6 amendments
+AI-05-A             = COMPLETE / MERGED   contract frozen, 7 amendments
 AI-05-B1            = COMPLETE / MERGED   offline logical core
 AI-05-B1 merge      = 0403fcd83b740f0603af7204e77f6e6905a84cf0  (PR #34, merged)
 
@@ -420,23 +447,25 @@ C-1                 = CLOSED              Amendment 3 published the rule set
                                           (§14.10); §30 step 7 implemented;
                                           T20c real, T22a/T22b/T22c enforceable;
                                           §32 C6 CLOSED
-AI-05 overall       = INCOMPLETE          NOT because of C-1. TWO SEPARATE ITEMS
-                                          REMAIN AND THEY ARE NOT SUBSTITUTES:
+AI-05 overall       = INCOMPLETE          NOT because of C-1. OF THE TWO SEPARATE
+                                          ITEMS RECORDED HERE, ONE REMAINS AND IT
+                                          IS THE ONE THAT WAS NEVER AI-05'S ALONE:
                                           AI-11 §21.1 OPEN-1 (an AI-05
                                           producer-token amendment) = OPEN — that
-                                          one asks WHICH PRODUCERS EXIST; and
-                                          §30 step 7b, whose standard is DEFINED
-                                          (Amendment 5) and whose configuration is
-                                          FROZEN (Amendment 6) but whose
-                                          IMPLEMENTATION and §7.3.7 ACCEPTANCE
-                                          TESTS do not exist. §35.1's deferrals
-                                          stand
+                                          one asks WHICH PRODUCERS EXIST. THE
+                                          SECOND IS NO LONGER OUTSTANDING: §30
+                                          step 7b's standard is DEFINED (Amendments
+                                          5 and 6), IMPLEMENTED (PR #87) and
+                                          TESTED IN CI (run #301, 46 RAN / 0
+                                          skipped), and AI-05 CLOSED AI15-OPEN-1
+                                          in its own contract (Amendment 7, PR #88).
+                                          §35.1's deferrals stand
 
 B1 verification-time contract blob
                     = a1df976deea70daea754d89574c47165140d00d0
 ```
 
-AI-04 is closed. AI-05-A is closed: the contract was frozen and then **amended six times**.
+AI-04 is closed. AI-05-A is closed: the contract was frozen and then **amended seven times**.
 
 **Amendment 1** established the B1 implementation-ready schema — the leaf-level §15.2 digest table
 in place of the container table, the §6.5 admitted-producer registry, the §14.9 grammar table, and
@@ -453,11 +482,21 @@ representable in v1, so the T4c matrix row now expects `REJECTED`, consistent wi
 **Amendment 6** **froze** the designated producer trust configuration and its lifecycle (§7.3.11,
 §31.3), merged as `cee1f8c9ae07837e0ebae0be3f8ab2e0113e6973` (PR #85).
 
-**Amendments 5 and 6 are documentation changes.** They DEFINE the standard and FREEZE its
-configuration. They do not implement it, they add no test, they change no Layer 0 rule, and **no
-§7.3.7 acceptance test has been run**. The standard is **DEFINED**; the control is **NOT BUILT**.
+**Amendment 7** **records the implementation and closes AI15-OPEN-1** — the owner's act, in the
+owner's contract, under the owner's amendment rule. It implements nothing itself; what it records
+is PR #87 (`d09ce69ec1c0975c6d638d7861df2f11c44ec1d1`) and CI run #301, in which **46
+process-isolated cases RAN, 0 skipped**, with `Layer 0 = PASS (24 checks)`. Merged by PR #88
+(`9e1b4c451deed34605d021b4203fccd16dad4cd0`).
 
-The current contract blob is `b89c811e9ee8da2f576b938378501c0578151dd1`, after Amendment 6. The
+**Amendments 5 and 6 are documentation changes.** They DEFINE the standard and FREEZE its
+configuration. The implementation arrived separately, in PR #87, and the amendment that records
+it — Amendment 7 — is documentation too. **WHAT CHANGED IS NOT THE COUNT OF DOCUMENTS BUT THE
+STATE OF THE CODE:** the standard is **DEFINED**, and the control is now **BUILT AND TESTED**.
+`plugins/evidence/producer_auth.py` exists, §30 step 7b is performed by `admission.admit()` before
+any typed record exists, and §31.3's four Layer 0 rules are **enforced** by
+`scripts/ci/layer0_policy.py` rather than merely stated.
+
+The current contract blob is `a399cf44654875a5cbffd3a6dd1e235a4e2993ce`, after Amendment 7. The
 blob that B1 was built, verified and merged **against** is
 `a1df976deea70daea754d89574c47165140d00d0`; Amendment 2 came afterwards. B1's own evidence records
 the earlier value, and that is the correct historical fact rather than a stale pointer. The value
@@ -882,25 +921,31 @@ main           = contains AI-04
 AI-05 is not closed, and the reason is no longer C-1: **C-1 was CLOSED on 2026-10-04** by
 Amendment 3.
 
-**TWO SEPARATE ITEMS REMAIN, AND THEY ARE NOT SUBSTITUTES:**
+**ONE OF THE TWO ITEMS RECORDED HERE REMAINS, AND IT IS THE ONE THAT WAS NEVER AI-05'S ALONE:**
 
 1. **AI-11 §21.1's OPEN-1** — an AI-05 producer-token amendment that has not been made. It asks
    **WHICH PRODUCERS EXIST**: no §6.5 row exists for AI-08 / AI-10 / AI-11 / AI-13, so no record
-   from those phases can be admitted at all.
-2. **§30 step 7b — producer authentication: DEFINED, NOT BUILT.** AI-05 **Amendment 5** defines the
-   standard (§7.3) and AI-05 **Amendment 6** freezes its designated trust configuration and
-   lifecycle (§7.3.11, §31.3), merged as documentation on PR #83
-   (`7017bf577f654cb6dea0e8d5e50a27f334117b73`) and PR #85
-   (`cee1f8c9ae07837e0ebae0be3f8ab2e0113e6973`). It asks **WHETHER A PRODUCER CLAIM IS
-   TRUSTWORTHY**. **Nothing implements it**, the Layer 0 enforcement Amendment 6 obliges has not
-   been written, `plugins/evidence/producer_auth.py` does not exist, and **no §7.3.7 acceptance
-   test has been run**.
+   from those phases can be admitted at all. **REMAINS OPEN.**
+2. **§30 step 7b — producer authentication: IMPLEMENTED, ENFORCED AND TESTED.** It asks **WHETHER A
+   PRODUCER CLAIM IS TRUSTWORTHY**. AI-05 **Amendment 5** defined the standard (§7.3, §30 step 7b)
+   and **Amendment 6** froze its designated trust configuration and lifecycle (§7.3.11, §31.3);
+   **PR #87** (`d09ce69ec1c0975c6d638d7861df2f11c44ec1d1`) implements it; and **AI-05 Amendment 7**
+   (PR #88, `9e1b4c451deed34605d021b4203fccd16dad4cd0`) recorded the result and **CLOSED
+   AI15-OPEN-1**. `plugins/evidence/producer_auth.py` **EXISTS**, §30 step 7b is performed by
+   `admission.admit()` **before any typed record exists**, and §31.3's four Layer 0 rules are
+   **ENFORCED** by `scripts/ci/layer0_policy.py` rather than merely stated. **CI run #301 executed
+   the §7.3.7 acceptance tests on the merged head: 46 process-isolated cases RAN, 0 skipped**, with
+   `Layer 0 = PASS (24 checks)`. **CLOSED.**
 
-**THE TWO ARE INDEPENDENT IN BOTH DIRECTIONS.** Admitting a token would not authenticate a claim,
-and authenticating a claim would not admit a token. Neither blocks the other's resolution, and
-closing one must not be reported as progress on the other. **A DEFINED STANDARD IS NOT A BUILT
-CONTROL, AND CI SUCCESS ON EITHER DOCUMENTATION PR IS NOT EVIDENCE THAT PRODUCER AUTHENTICATION
-WORKS.**
+**THE TWO REMAIN INDEPENDENT IN BOTH DIRECTIONS, AND CLOSING ONE MOVED THE OTHER NOWHERE.**
+Admitting a token would not authenticate a claim, and authenticating a claim does not admit a
+token: **no §6.5 row was added by any of this**, and the registry still holds **six rows over four
+tokens**. Closing one must not be reported as progress on the other, and it is not reported as any.
+
+**A BUILT AND TESTED CONTROL IS STILL NOT A CONNECTED SEAM.** B5 remains **BLOCKED and NOT
+CONNECTED**; AI-15-B remains **NOT STARTED / BLOCKED**; and no production Evidence writer exists or
+is authorized. §15.2 STEP 0b **no longer gates the write**, because it is satisfied — what refuses
+it now is **§17.2 (AI-14's STEP 1)**, **row 1′**, and **STEP 2's own precondition**.
 
 Also remaining: §35.1's deferrals (F-10, and the storage-backend record).
 Full evidence in [AI-05-B1_EVIDENCE_2026-10-01.md](AI-05-B1_EVIDENCE_2026-10-01.md),
@@ -908,7 +953,7 @@ Full evidence in [AI-05-B1_EVIDENCE_2026-10-01.md](AI-05-B1_EVIDENCE_2026-10-01.
 [AI-05-B2-P3_EVIDENCE_2026-10-01.md](AI-05-B2-P3_EVIDENCE_2026-10-01.md).
 
 ```text
-AI-05-A     = COMPLETE / MERGED   contract frozen, 6 amendments
+AI-05-A     = COMPLETE / MERGED   contract frozen, 7 amendments
 AI-05-B1    = COMPLETE / MERGED   offline logical core
 AI-05-B2-P1 = COMPLETE / MERGED   §18.1 workspace agreement, T12/T13
 AI-05-B2-P2 = COMPLETE / MERGED   §17 stored-form round-trip
@@ -918,14 +963,16 @@ AI-05-B2-P3 = COMPLETE / MERGED   admission pipeline, filesystem Store,
 AI-05-B2    = COMPLETE            its frozen scope is implemented and merged
 C-1         = CLOSED              Amendment 3 (§14.10); §30 step 7 implemented;
                                   T20c/T22a-c enforceable; §32 C6 CLOSED
-AI-05       = INCOMPLETE          TWO ITEMS, INDEPENDENT AND NOT SUBSTITUTES:
+AI-05       = INCOMPLETE          ONE OF THE TWO ITEMS RECORDED HERE REMAINS:
                                   AI-11 §21.1 OPEN-1 (producer-token amendment) =
                                   OPEN — WHICH PRODUCERS EXIST;
-                                  §30 step 7b = DEFINED by Amendments 5/6 and NOT
-                                  BUILT, §7.3.7 tests NOT_RUN — WHETHER A PRODUCER
-                                  CLAIM IS TRUSTWORTHY;
+                                  §30 step 7b = DEFINED (Amendments 5 and 6),
+                                  IMPLEMENTED (PR #87) and TESTED IN CI (run #301,
+                                  46 RAN / 0 skipped) — WHETHER A PRODUCER CLAIM
+                                  IS TRUSTWORTHY — CLOSED by AI-05 Amendment 7
+                                  (PR #88) in its own contract;
                                   §35.1 = DEFERRED
-plugins/evidence/producer_auth.py = DOES NOT EXIST (§7.3.11 names it)
+plugins/evidence/producer_auth.py = EXISTS — the ONE READER §7.3.11 names
 
 B1 merge SHA    = 0403fcd83b740f0603af7204e77f6e6905a84cf0   (PR #34)
 B1 merged head  = de63631ad88b42ad8a4bc1dbbc3997b25ab93d53
@@ -1937,18 +1984,28 @@ AI-15-A  = COMPLETE / MERGED   architecture / contract freeze — DOCS ONLY
 AI-15-B  = NOT STARTED         BLOCKED — the AI-15 plan §16.2 lists every blocker,
                                each with an owner and the §15.2 step it gates
 contract = docs/AI-15_EVIDENCE_PRODUCTION_EXECUTION_PLAN.md
-                           FROZEN @ PR #78; AMENDED TWICE
-                           (§19 Amendment 1, 2026-10-09; §19 Amendment 2, 2026-10-11)
+                           FROZEN @ PR #78; AMENDED THREE TIMES
+                           (§19 Amendment 1, 2026-10-09; §19 Amendment 2, 2026-10-11;
+                            §19 Amendment 3, 2026-10-11)
                            contract blob = a206d90d0d357f08a214b0731a0b7f63d3771ea2
-                                         (the blob at the freeze; the two amendments
+                                         (the blob at the freeze; the three amendments
                                           supersede it and are the current text)
 amendment= Amendment 1         records AI-05 Amendment 4's answer to AI15-OPEN-2
                                (READING A), merged as PR #80
                                03d42681cb8b2110773654822655117daea44ad5
-           Amendment 2         records AI-05 Amendments 5 and 6 and corrects the
-                               reason AI15-OPEN-1 remains OPEN: the producer
-                               authentication STANDARD IS DEFINED and the CONTROL IS
-                               NOT BUILT. It closes nothing and satisfies no step.
+           Amendment 2         recorded AI-05 Amendments 5 and 6 and corrected the
+                               reason AI15-OPEN-1 was THEN still OPEN: the producer
+                               authentication STANDARD WAS DEFINED and the CONTROL
+                               WAS NOT BUILT. It closed nothing and satisfied no step.
+           Amendment 3         records AI-05 Amendment 7 — the standard IMPLEMENTED
+                               (PR #87) and TESTED (run #301: 46 RAN, 0 skipped) —
+                               and AI15-OPEN-1 CLOSED BY ITS OWNER, in AI-05's
+                               contract, under AI-05's amendment rule (PR #88
+                               9e1b4c451deed34605d021b4203fccd16dad4cd0). It also
+                               syncs this document's status records. AI-15 RECORDED
+                               THE CLOSURE AND DID NOT MAKE IT. STEP 0b IS NOW
+                               SATISFIED; B5 REMAINS BLOCKED AND IS NOT CONNECTED,
+                               and AI-15-B remains NOT STARTED / BLOCKED.
 
 merge    = 6e814a8b6d214a0203deb73b1abbf21ae50b68cc
                      true two-parent merge; not squashed, not rebased
@@ -1996,9 +2053,19 @@ WHAT IT ESTABLISHES, each point re-checkable at a file:line in the document
                                      the registry and compares nothing else. It is a
                                      WELL-FORMEDNESS check; producer AUTHENTICATION is a
                                      different question. §30 step 7b is the step that
-                                     answers it (AI-05 Amendment 5) and NOTHING PERFORMS
-                                     THAT STEP — it is contract text, not code — so a
-                                     non-test call site does not supply the answer either
+                                     answers it (AI-05 Amendment 5) — and at the AI-15-A
+                                     freeze NOTHING PERFORMED THAT STEP: it was contract
+                                     text, not code, so a non-test call site did not
+                                     supply the answer either. ^ THAT LAST CLAUSE IS NO
+                                     LONGER TRUE AND IS CORRECTED HERE IN PLACE, because
+                                     this block claims each point is re-checkable: PR #87
+                                     implements the step (`plugins/evidence/producer_auth.py`,
+                                     called from `admission.admit()` before any typed
+                                     record exists), so a non-test call site WOULD now
+                                     reach an authentication check. The finding is kept
+                                     in its original words and dated to the freeze; the
+                                     current fact is AI-15 §19 Amendment 3 and this
+                                     file's AI-15 status section.
     the B5 CONNECTED definition      twelve checkable conditions (§8.3). Condition 11
                                      — producer authenticity — is UNSATISFIED while
                                      AI15-OPEN-1 is OPEN, and §15.2 STEP 0b gates the
@@ -2131,6 +2198,21 @@ row 1′                                  UNSATISFIED and SEPARATE — it asks W
                                         PRODUCERS EXIST, and Amendments 5/6 admit
                                         no token and do not move it
 ```
+
+> **SUPERSEDED IN PART BY AI-15 §19 AMENDMENT 3 (2026-10-11).** The block above is kept
+> verbatim as the record it is, and **THREE OF ITS LINES NO LONGER STATE THE CURRENT
+> FACT**. Take the current values from this file's AI-15 status section above and from
+> [AI-15 §19 Amendment 3](AI-15_EVIDENCE_PRODUCTION_EXECUTION_PLAN.md):
+>
+> - `§30 step 7b (… NOT BUILT, §7.3.7 tests NOT_RUN …)` → **IMPLEMENTED and TESTED** —
+>   PR #87, CI run #301: **46 RAN / 0 skipped**.
+> - `plugins/evidence/producer_auth.py  DOES NOT EXIST` → **EXISTS** — the ONE READER
+>   §7.3.11 names, and §30 step 7b is performed by `admission.admit()`.
+> - `OPEN, not closed by AI-15  AI15-OPEN-1 …` → **AI15-OPEN-1 = CLOSED BY AI-05
+>   AMENDMENT 7**, and `STEP 0b` → **SATISFIED**.
+>
+> Everything else in the block stands unchanged, **including `AI-11 §21.1 OPEN-1 = OPEN`
+> and `row 1′ = UNSATISFIED and SEPARATE`** — neither is moved by the closure.
 
 ### Measured this round
 
