@@ -6412,6 +6412,514 @@ been run, and no production Evidence writer is authorized.
 
 ---
 
+#### Amendment 7 — producer authentication is implemented, and its owner closes AI15-OPEN-1 (2026-10-11)
+
+Found while performing the post-merge closeout of the change that implements §30
+step 7b. Amendments 5 and 6 supplied a mechanism — a standard and then its trust
+configuration — and **both recorded, in their own words, that nothing performed the
+step**. That change has merged. This amendment records what it delivered, the
+evidence that it runs, and the owner's conclusion on the item AI-15 holds as
+**AI15-OPEN-1**. It is authored on a docs-only branch based on main
+`d09ce69ec1c0975c6d638d7861df2f11c44ec1d1`.
+
+**Why this is an amendment rather than a clarification made in place.** This
+amendment changes **no clause** of §7.3, §7.3.7, §7.3.11, §30 or §31. It adds no
+outcome, no reason code, no registry row, no producer token, no digest input, no
+stored field and no authority relation — none of §34.1's enumerated triggers is
+touched. What it does is correct the contract's **current-status records**, which
+§35.3 and `## Status` are, and §34's preamble requires that be done through an
+explicit amendment recorded here rather than by editing a frozen clause in place.
+The status of an implemented mechanism is a recorded fact, and a recorded fact that
+stops being true "is corrected by updating the record, never by arguing with it"
+(AI-14 §2, quoted in §35.3).
+
+```text
+(a) WHY §30 STEP 7b STOOD AT "NOT IMPLEMENTED" UNTIL THIS CHANGE MERGED
+
+    THE STEP WAS DEFINED BY AMENDMENT 5 AND ITS CONFIGURATION WAS FROZEN BY
+    AMENDMENT 6, AND BOTH ARE DOCUMENTATION CHANGES.
+
+        Amendment 5   §7.3 and §30 step 7b — DEFINES what makes a producer claim
+                      authenticated. Merged as
+                      7017bf577f654cb6dea0e8d5e50a27f334117b73 (PR #83).
+        Amendment 6   §7.3.11 and §31.3 — NAMES the one source, the ONE READER, the
+                      process-lifetime lifecycle and the static enforcement the
+                      reader requires. Merged as
+                      cee1f8c9ae07837e0ebae0be3f8ab2e0113e6973 (PR #85).
+
+    Neither wrote any code, and both said so in their own records. Amendment 6's
+    log states that it "does NOT write plugins/evidence/producer_auth.py" and "does
+    NOT change scripts/ci/layer0_policy.py". A contract can REQUIRE a property, and
+    REQUIRING IT IS NOT HAVING IT (§7.3.11, in those words).
+
+    SO THE STATUS COULD NOT MOVE BY DOCUMENTATION. §7.3.11 imposes FOUR obligations
+    on the change that implements it, and EVERY ONE OF THEM IS A CODE ACT:
+
+        the reader module          plugins/evidence/producer_auth.py must EXIST
+        the startup edge           plugins/evidence/__init__.py must IMPORT it, so
+                                   that no lazy path, first-call initialization or
+                                   admission-time read can exist
+        the Layer 0 enforcement    §31.3's four rules must be CHECKED by
+                                   scripts/ci/layer0_policy.py, not merely stated
+        the acceptance tests       §7.3.7's obligations must RUN, through the real
+                                   verification path, under the SAME configuration
+                                   mechanism a deployment uses
+
+    AND THE CHANGE COULD NOT BE SPLIT INTO SMALLER ONES THAT MOVED THE STATUS
+    PARTIALLY. §7.3.11 makes the read a module-INITIALIZATION act, so a reader
+    without the package's import edge would not have the ordering that section
+    requires; §31.3 makes Layer 0 the enforcement of §7.3.11's rules, so an
+    implementation without it would be unenforced in the one place the contract
+    names; and §7.3.11 makes the acceptance tests supply their configuration
+    through the deployment mechanism, so tests without the launcher would be a
+    bypass §31.3 forbids. Delivering step 7b meant delivering all four together,
+    and UNTIL THAT LANDED THE HONEST STATUS WAS THE ONE §35.3 CARRIED: §7.3 DEFINES
+    the standard, §7.3.11 fixes its configuration, and NO CODE PERFORMS IT.
+
+    ONE FURTHER CONSTRAINT SHAPED THE CHANGE AND IS RECORDED BECAUSE IT IS EASY TO
+    MISREAD AS AN OMISSION. AI-15 §17.2b forbids creating a production, non-test
+    call site that can execute admission and persist a record while AI15-OPEN-1 is
+    open. The implementing change therefore had to deliver step 7b WITHOUT creating
+    a caller, and it did: the only call site of `admit()` in the repository is
+    `admit_to_store()`'s own, and no production component reaches either.
+```
+
+```text
+(b) WHAT THE CHANGE DELIVERED
+
+    PR #87, "feat(ai05): authenticate producer claims before evidence construction",
+    https://github.com/Li20771/AI-Security-Research-Workbench/pull/87
+
+    THE IMPLEMENTATION
+
+        plugins/evidence/producer_auth.py     NEW — §7.3.11's ONE READER.
+            `_ENV_NAME` is the only occurrence of the variable's name outside the
+            test launcher, and the read is a MODULE-LEVEL ACT: `_SUPPLIED_VALUE =
+            os.environ.get(_ENV_NAME)` followed by `_STATE = _build_state(...)`.
+            THERE IS NO FUNCTION THAT READS THE VARIABLE, which is what makes a
+            second read unrepresentable rather than merely forbidden.
+            The state has §7.3.11's two shapes and both are final: `_Designated`
+            (frozen, slotted, keys behind a read-only mapping view) and `_Invalid`
+            (a singleton). INITIALIZATION DOES NOT RAISE — an invalid configuration
+            is a state the process holds, so a deployment misconfiguration arrives
+            as the REJECTED outcome §7.3.8 defines rather than as an ImportError.
+            Validation is whole-mapping: duplicate object keys are refused at every
+            level, `NaN`/`Infinity`/`-Infinity` are refused, and every refusal path
+            returns the same `_Invalid` — there is no partial acceptance.
+            `authenticate()` runs §7.3.5 V1-V5 in order, and V2 reads the claimed
+            producer token BEFORE V3 so that no key lookup and no cryptography
+            proceed without a readable token.
+            `designated_key_for()` answers a PER-TOKEN question and exposes neither
+            the mapping, the policy table nor the parsed document.
+
+        plugins/evidence/signed_input.py      NEW — §7.3.4's signed input, produced
+            by the AI-05-CJ-1 serializer (§7.3.6) and by nothing else. §7.3.11
+            forbids the configuration's JSON tolerance leaking into this path, and
+            the two are separate functions over separate values.
+
+        plugins/evidence/errors.py            +80 — the SIX §7.3.8 reason codes and
+            no seventh: PROOF_MISSING, PROOF_MALFORMED, KEY_UNAVAILABLE,
+            SIGNATURE_INVALID, INPUT_MISMATCH, INPUT_UNSERIALIZABLE. An unreadable
+            producer token carries an EXISTING shape reason instead, as §7.3.5 V2
+            and §7.3.8 require.
+
+        plugins/evidence/admission.py         +29/-6 — §30 step 7b placed in the
+            pipeline. `admit()` now composes, in this order:
+
+                check_admission_rules(raw)        §30 step 7, over SUPPLIED values
+                authenticate(raw, producer_proof) §30 step 7b  <- THE NEW STEP
+                EvidenceRecord.from_mapping(raw)  construction: 1-4, 4b, 6, 8-11, 13
+                check_workspace_agreement(record) §30 step 5's agreement half
+                assign_digests(record)            §30 step 12
+
+            AUTHENTICATION RUNS BEFORE ANY TYPED RECORD EXISTS AND BEFORE ANY
+            EVIDENCE DIGEST IS DERIVED, which is exactly the position §7.3.7 fixes:
+            no record, and therefore no Evidence digest, may be built from a claim
+            that is not authenticated. `admit_to_store()` passes the proof THROUGH
+            to `admit()` — ONE verification and one verdict, never two — and returns
+            before touching the store on every non-ACCEPTED result.
+
+        plugins/evidence/__init__.py          +14 — §7.3.11's STARTUP EDGE. The
+            package imports `producer_auth`, so importing the package initializes
+            the reader and any process able to call `admit()` or `admit_to_store()`
+            has NECESSARILY already initialized it. The ordering guarantee is
+            STRUCTURAL rather than a sequence someone must remember to observe.
+            NO CALLER IS CREATED: the edge is between a module and the package that
+            owns it, and AI-15 §17.2b is untouched by it.
+
+    THE ENFORCEMENT
+
+        scripts/ci/layer0_policy.py           +340 —
+            `check_evidence_producer_authentication()`, registered in `main()` and
+            reported as the Layer 0 check "evidence producer authentication
+            boundary". It enforces, as §31.3 obliges:
+
+                ONE READER              the variable's declared name is read FROM
+                                        the reader module itself — so this file
+                                        need not contain the literal — and is then
+                                        searched repository-wide. Outside the
+                                        reader it may appear ONLY in
+                                        tests/evidence/trust_harness.py.
+                NO MUTATION             an AST scan of the package for
+                                        `os.environ[...] = ...`,
+                                        `.setdefault`/`.pop`/`.update`/`.clear`,
+                                        `os.putenv` and `os.unsetenv`; plus a
+                                        repository-wide scan for
+                                        `importlib.reload(producer_auth)` and for
+                                        rebinding an attribute of `producer_auth`.
+                IMMUTABLE STATE         no public function of the reader returns
+                                        the captured state.
+                NO CALLER-SELECTED      no public function of the reader accepts a
+                  TRUST ROOT            parameter named as a key, mapping, anchor,
+                                        verifier, configuration or path.
+                plus the STARTUP EDGE   plugins/evidence/__init__.py must import
+                                        producer_auth, or the check fails.
+
+    THE ACCEPTANCE TESTS
+
+        tests/evidence/test_producer_authentication.py   NEW — §7.3.7's obligations
+            as an acceptance module: twenty-two obligation groups (01-22, several
+            with lettered cases) plus the corrective-patch regressions. Tests use a
+            DISTINCT KEYPAIR PER PRODUCER TOKEN, go through the REAL verification
+            path, and are supplied through the SAME designated configuration
+            mechanism a deployment uses — §7.3.7 forbids a test-only bypass and
+            none is used.
+
+        tests/evidence/trust_harness.py                  NEW — the child-process
+            launcher. It is the one place outside the reader permitted to name the
+            variable, and it supplies it to a SEPARATE process's environment BEFORE
+            that process starts, which is what a deployment does; only the process
+            boundary differs. §31.3's boundary is that it MUST NOT mutate the
+            running test process's environment and MUST NOT inject a mapping, a key,
+            a verifier or a parsed state into the reader.
+
+    THE GATE
+
+        .github/workflows/preflight.yml       +112/-1 — layer 1 now runs THROUGH the
+            launcher, because the evidence tests call admission and the
+            configuration must reach a process that has not started yet; and a new
+            step runs the acceptance module as EIGHT separate launcher invocations,
+            each its own process. Running it as one process would put one
+            configuration's state behind another group's name and report a result
+            for a configuration that was never in effect.
+```
+
+```text
+(c) THE MERGE EVIDENCE
+
+    PULL REQUEST   #87 — feat(ai05): authenticate producer claims before evidence
+                   construction
+                   head branch  feature/ai-05-producer-authentication
+                   base         main
+                   merged       2026-10-11T14:16:56Z
+                   final head   fc6fa10fe998abd2792b0e651e210c4d6d27d2ea
+                   merge commit d09ce69ec1c0975c6d638d7861df2f11c44ec1d1
+
+    THE MERGE COMMIT IS A TRUE TWO-PARENT MERGE, and this is checked rather than
+    assumed:
+        parent 1  c4691153bc7cf7377dcea444e5ce37a95d8042f3   main before the merge
+        parent 2  fc6fa10fe998abd2792b0e651e210c4d6d27d2ea   the pull request's head
+
+    ACTIONS RUN #301   https://github.com/Li20771/AI-Security-Research-Workbench/actions/runs/38146118977
+                   workflow     preflight
+                   event        pull_request
+                   head_sha     fc6fa10fe998abd2792b0e651e210c4d6d27d2ea
+                                ^ THE RUN EXECUTED THE HEAD THIS RECORD NAMES. A
+                                  run against any other revision would evidence
+                                  nothing about this merge.
+                   conclusion   success
+
+    ITS TWO JOBS, BOTH `completed / success`:
+
+        "Layer 0 — repository policy"                  job 114489720281
+            The job log ends `Layer 0 = PASS (24 checks)`, and the checks include
+            `ok  evidence producer authentication boundary`. THE FOUR RULES OF
+            §31.3 ARE NOT MERELY IMPLEMENTED — THEY RUN, AND THEY PASSED.
+
+        "Layers 1-3 — offline model and context layers"  job 114489720414
+            Step "Layer 1 — producer authentication acceptance matrix
+            (8 configurations)" — SUCCESS. This is the step §7.3.7's obligations
+            execute in, and it is the one (d) counts.
+```
+
+```text
+(d) WHAT CI RAN, AND THE COUNT §31.3 REQUIRES
+
+    §31.3 FROZE A REPORTING RULE when it imposed this obligation, and it is the rule
+    this record is written to: "WHAT A REPORT MUST CARRY, WHEN THE TIME COMES: the
+    number of process-isolated cases that RAN, not the number that passed or the
+    run's status. A count of skips is a count of NOT_RUN, and NOT_RUN != PASS."
+
+    So the count comes first and the job status second.
+
+    THE MATRIX STEP IS EIGHT LAUNCHER INVOCATIONS — eight `trust_harness.py`
+    processes, each with its own pytest child and its own configuration — because
+    §7.3.11 reads the configuration once per process and §31.3 makes that state
+    final for the process's life. The run's own job log shows, in order:
+
+        G1  regression                      34 cases   [100%]
+        G2  absent                           2 cases   [100%]
+        G3  no_entry_for_token               1 case    [100%]
+        G4  collision_recognized             2 cases   [100%]
+        G5  collision_mixed                  1 case    [100%]
+        G6  collision_unregistered           3 cases   [100%]
+        G7  collision_unregistered_b         2 cases   [100%]
+        G8  distinct_control                 1 case    [100%]
+        ----------------------------------------------------
+        PROCESS-ISOLATED CASES THAT RAN              46
+        OF WHICH SKIPPED                              0
+        OF WHICH FAILED                               0
+
+    ZERO OF THE EIGHT PROGRESS LINES CARRIES AN `s`, AN `F` OR AN `E`. That is the
+    check the clause above exists to make a reader perform: a skip is visible in the
+    same line as the count, and there is none. THE NUMBER THIS RECORD CARRIES IS
+    THEREFORE 46 RAN AND 0 NOT_RUN — not "passed", and not "the step was green".
+
+    THE STEP'S CONCLUSION IS `success`, THE JOB'S IS `success`, AND THE RUN'S IS
+    `success`. THOSE ARE STATED AFTER THE COUNT BECAUSE THEY ARE THE WEAKER
+    EVIDENCE: §31.3 records that this suite exits 0 when its cases pass AND when a
+    case was skipped, so the exit status alone cannot distinguish the two.
+
+    THE EIGHT CONFIGURATIONS COVER §7.3.7's LIST WITHOUT A GAP. Each named
+    obligation has a group it runs in: 01, 09a-09d, 10, 11, 12a-12c, 13a-13b,
+    14a-14c, 15a-15b, 16, 17a-17b, 18a-18b, 19, 20, 21 and 22a-22f in G1; 02a-02b in
+    G2; 03 in G3; 04 and 07 in G4; 05 in G5; 06a, 06c and 07 in G6; 06b and 06c in
+    G7; 08 in G8. G6 and G7 are §7.3.2's TWO POLICIES for the one case they differ
+    on; both run `test_obligation_06c_reader_is_consistent`, their results are NEVER
+    MERGED, and each is evidence only for its own configuration.
+```
+
+```text
+(e) AI-15 §15.2 STEP 0b's THREE PARTS, COUNTED SEPARATELY
+
+    AI-15 §15.2 states STEP 0b's OUTPUT as "a mechanism, PLUS its implementation and
+    tests". THE THREE ARE STATED HERE AS THREE, because collapsing them into one
+    word is the error both contracts warn against, and because a reader who reads
+    one line must not be able to conclude that a definition was a delivery.
+
+        MECHANISM                 SUPPLIED — DEFINED.
+                                  AI-05 Amendment 5 (§7.3, §30 step 7b) DEFINES the
+                                  standard; AI-05 Amendment 6 (§7.3.11, §31.3)
+                                  FREEZES its configuration, its ONE READER, its
+                                  lifecycle and the static enforcement it requires.
+                                  AI-15 §15.2 already records these two as ONE
+                                  part, counted ONCE, and this amendment does not
+                                  re-count them.
+
+        RUNTIME IMPLEMENTATION    SUPPLIED — IMPLEMENTED AND MERGED.
+                                  PR #87, merge commit
+                                  d09ce69ec1c0975c6d638d7861df2f11c44ec1d1.
+                                  §30 step 7b is performed by
+                                  plugins/evidence/producer_auth.py, called from
+                                  `admission.admit()` BEFORE any typed record
+                                  exists; §7.3.11's startup edge is in
+                                  plugins/evidence/__init__.py; and §31.3's four
+                                  rules are ENFORCED — not merely implemented — by
+                                  `check_evidence_producer_authentication()` in
+                                  scripts/ci/layer0_policy.py, which ran and passed
+                                  in run #301.
+
+        ACCEPTANCE TESTS          SUPPLIED — RUN. 46 CASES RAN, 0 SKIPPED.
+                                  §7.3.7's obligations, executed in CI on the merged
+                                  head, in the eight configurations (d) counts.
+                                  The evidence is an EXECUTION of the real
+                                  verification path under the deployment's own
+                                  configuration mechanism, not a description of one.
+
+    ALL THREE ARE NOW SUPPLIED, AND THEY ARE SUPPLIED BY THREE DIFFERENT KINDS OF
+    ACT: one is a definition in this contract, one is a merge into `main`, and one
+    is a counted CI execution against that merge's head. Each is cited above on its
+    own evidence, and no one of them is offered as evidence for another.
+
+    §7.3.7's OWN CLOSING LINE — "NO TEST IN THIS LIST HAS BEEN RUN" — was true when
+    it was written and is FALSE NOW. IT IS KEPT WHERE IT IS, because it is
+    Amendment 5's record of the position at Amendment 5's merge and §34.3 keeps
+    such records as what they were. THE CORRECTED STATEMENT IS IN §35.3 AND
+    `## Status`, WHICH ARE THIS CONTRACT'S CURRENT-STATUS RECORDS; §7.3.7's
+    obligation LIST is untouched, and every obligation in it is now discharged by a
+    case that ran.
+```
+
+```text
+(f) AI15-OPEN-1 — THE OWNER'S CONCLUSION, RECORDED BY THE OWNER
+
+    AI15-OPEN-1 is "how a producer claim is ESTABLISHED, as against merely
+    well-formed" (AI-15 §9.2). ITS OWNER IS AI-05. AI-15 §16.1 records the only
+    route by which an OPEN item leaves that list:
+
+        "AI15-OPEN-2 left this list the only way an OPEN item may leave it — its
+         OWNER closed it, in the owner's contract, under the owner's amendment
+         rule."
+
+    THIS IS THAT ACT, and it is made HERE, in AI-05's contract, under AI-05's
+    amendment rule, rather than asserted anywhere else.
+
+    AMENDMENT 5 ALREADY NAMED THE CLOSING EVIDENCE AND LEFT THE ACT OUTSTANDING:
+    "Only AI-05, by implementing the mechanism and shipping the mandatory tests,
+    supplies the evidence that closes it." Both halves now exist:
+
+        IMPLEMENTATION   PR #87, merge commit d09ce69e…      -> (b) and (c)
+        TESTS            46 process-isolated cases RAN, 0 skipped, run #301, head
+                         fc6fa10f…                            -> (d)
+
+    THE OWNER'S CONCLUSION, STATED ONCE:
+
+        AI15-OPEN-1 IS RESOLVED. The question it names — how a producer claim is
+        established to §7's standard — has been ANSWERED by the owner (Amendments 5
+        and 6), IMPLEMENTED by the owner (PR #87), and SHOWN TO HOLD by tests the
+        owner shipped and CI executed on the merged head (run #301). The owner
+        closes it.
+
+    WHAT THIS CONCLUSION IS NOT, AND WHAT IT DOES NOT REACH. Each of these is a
+    thing the paragraph above could be misread as saying:
+
+        IT IS NOT AI-15's RECORD. AI-15 is the custodian of the AI15-OPEN-N list,
+        and it records STEP 0b as UNSATISFIED as of its Amendment 2. It will say
+        otherwise only when AI-15 makes its own amendment under §19 — AI-15's act,
+        on AI-15's contract, which is NOT made here. UNTIL THEN AI-15'S DOCUMENT
+        SAYS WHAT IT SAYS, and a reader MUST NOT cite this record as AI-15's.
+
+        IT IS NOT A STATEMENT ABOUT AI-11 §21.1's OPEN-1. WHICH PRODUCERS EXIST is
+        a different question with the same owner (AI-15 §9.2). This change adds no
+        §6.5 row and admits no event: the registry still holds EXACTLY SIX ROWS
+        OVER FOUR TOKENS, and `plugins/evidence/models.py` is not touched by PR #87
+        at all. Resolving either question does not resolve the other, and neither
+        is presented here as resolving the other.
+
+        IT CONNECTS NOTHING AND IT CLASSIFIES NOTHING CONNECTED. B5's remaining
+        blockers, AI-14's STEP 1 and §8.3's other CONNECTED conditions are other
+        owners' acts (AI-15 §16.2, §15.2). Satisfying a blocker is NOT satisfying
+        the item — AI-15 §16.2 says so about row 0a in terms — and B5 remains
+        BLOCKED.
+
+        IT AUTHORIZES NO WRITER. Recording that a condition is satisfied is not
+        creating the thing the condition gated. This amendment creates no call
+        site, no seam, no composition edge and no production Evidence writer, and
+        it does not lift AI-15 §17.2b — §17.2b is AI-15's clause, and whether its
+        stated condition still obtains is AI-15's to record, not this document's.
+        NO PRODUCTION COMPONENT GAINED A PATH TO ADMISSION IN THIS CHANGE: the only
+        call site of `admit()` in the repository is `admit_to_store()`'s own.
+```
+
+```text
+(g) WHAT THIS AMENDMENT DOES NOT DO, stated because each is a thing it could be
+    read as doing:
+
+    it does NOT change §7.3, §7.3.7, §7.3.11, §30 or §31. No clause of the standard,
+      of its configuration, of the step, or of the test matrix is reworded, added to
+      or weakened. The one new obligation-bearing text in this document is this
+      record, and it records rather than legislates.
+    it does NOT add a seventh reason code, an outcome member, a §6.5 row, a producer
+      token, an Evidence kind, a family, a producer_type, an identity field, a
+      canonical collection, a digest input or a stored field. The proof is still not
+      stored and the stored form is unchanged.
+    it does NOT authorize a production Evidence writer to be created, merged or run,
+      and does NOT lift AI-15 §17.2b.
+    it does NOT close AI-11 §21.1's OPEN-1, and does NOT add the §6.5 row that would.
+    it does NOT close §35.1's deferrals — F-10's legacy evidence_ref rename, the
+      storage-backend decision, or the record_digest physical round-trip. None is
+      touched, and none becomes closable by this change.
+    it does NOT close AI15-OPEN-3 or AI15-OPEN-4, which are not AI-05's.
+    it does NOT mark AI-15-B complete, B5 CONNECTED, AI-14 STEP 1 made, or AI-05
+      complete. It marks none of them.
+    it does NOT claim the §7.3 standard makes a record PROVEN to have been produced
+      by the component its token names. What it records is that the THREE conditions
+      AI-15 §6.1 attaches to that description — defined, implemented, and shown to
+      hold by tests — are now satisfied. §7.3.9's residual risks (process control,
+      key custody, and the limit that this authenticates a KEY HOLDER and not a code
+      component's execution identity) are unchanged and are not narrowed here.
+    it does NOT repurpose AI-13's approval ingress, anchor or verification site, and
+      creates no approval path. An authenticated producer claim remains not an
+      approval, not a permission, not a capability and not a Guard result.
+    it does NOT touch §32's exit gates, §33's non-goals, or any AI-00..AI-14
+      contract. A later AI-15 amendment will record the upstream consequence of
+      (f); it is AI-15's act and is not made, pre-empted or drafted here.
+```
+
+```text
+AUTHORITY IMPACT
+
+    None. Nothing here grants a permission, changes AI-14 §4.1's authority matrix,
+    introduces an authorizing subject, or moves any responsibility into AI-05. Guard
+    remains the only component with an AUTHORIZES entry. An authenticated producer
+    claim is not an approval, a permission, a capability or a Guard result (§7.3.8),
+    and the mechanism this record activates confers nothing on the producer, the
+    submitter, the record or the deployment beyond the one thing §7.3.1 states: the
+    claim is authenticated. No producer token, registry row or §6.5 constraint is
+    added, removed or relaxed.
+```
+
+```text
+CONTRACT IMPACT
+
+    ADDED        this amendment record
+    AMENDED      §35.3 — the current-state block now states what is true after the
+                 merge, and the four-states paragraph is corrected to match; the
+                 freeze-time record is kept and labelled as before
+                 `## Status` — the AI-05-B line and the closing note
+    UNCHANGED    §6.5, §6.6, §7.1, §7.2, §7.3 and every subsection of it including
+                 §7.3.1-§7.3.11, §8-§29, §30 and every step in it including step 7b,
+                 §31 and every row and note in it including §31.3, §32, §33, §34.1,
+                 §34.2, §35.1, §35.2, and the Amendment 1-6 records
+    KEPT AS WHAT §7.3's "IN FORCE" banner and §7.3.11's "THE CURRENT STATUS" block.
+      THEY WERE  Both describe the position at the merges they belong to — Amendment
+                 5's and Amendment 6's respectively — and both are left EXACTLY as
+                 written. Neither is corrected in place: they are those amendments'
+                 records of what was true then, and §35.3 is where this contract
+                 states what is true now. A reader who finds the banner saying
+                 "AI15-OPEN-1 remains OPEN" is reading a dated record, not a current
+                 one, and the pointer to the current one is this block.
+    NO CHANGE TO the record schema, the canonical collections, the digest inputs, the
+                 stored form, the outcome vocabulary, the registry, the reason-code
+                 set, the acceptance obligation list, or any authority relation
+```
+
+```text
+STATUS DISCIPLINE — WHAT THIS AMENDMENT MOVES, AND WHAT IT DOES NOT. Stated as
+explicit movements AND non-movements, because a reader reaching for a status line is
+exactly the reader most likely to over-read it:
+
+    MOVES
+
+    AI15-OPEN-1             RESOLVED, AND CLOSED BY ITS OWNER. Answered (Amendments
+                            5, 6), implemented (PR #87), and shown to hold by tests
+                            that ran (run #301, 46 ran / 0 skipped). See (f).
+    AI-15 §15.2 STEP 0b     ITS THREE PARTS ARE NOW SUPPLIED — mechanism, runtime
+                            implementation, acceptance tests — stated separately in
+                            (e). AI-15 owns the STATUS line that says so (§19
+                            Amendment 2 wrote the current one) and this document
+                            does not write it.
+    §30 step 7b             IMPLEMENTED AND RUNNING. Not "defined"; not
+                            "unreachable". `admit()` performs it before any typed
+                            record exists.
+
+    DOES NOT MOVE
+
+    AI-05 as a whole        REMAINS INCOMPLETE. See the closing note below.
+    AI-11 §21.1 OPEN-1      REMAINS OPEN. WHICH PRODUCERS EXIST. No registry row was
+                            added, and none was authorized.
+    §35.1's deferrals       REMAIN DEFERRED. F-10, the storage backend, and the
+                            record_digest round-trip.
+    production writer       NOT AUTHORIZED AND NOT CREATED. Unchanged from
+                            Amendments 5 and 6.
+    B5                      REMAINS BLOCKED and is NOT classified CONNECTED.
+    AI-14 STEP 1            NOT AMENDED, NOT MADE, NOT PRE-EMPTED.
+    AI15-OPEN-3,            REMAIN INDEPENDENT AND UNSOLVED. This amendment does not
+      AI15-OPEN-4           touch DecisionRecord.evidence_ref (AI-04's) or a
+                            workflow-driven step's routing input (AI-13/AI-14's).
+```
+
+**AI-05 remains INCOMPLETE.** This amendment records an implementation and does not
+complete a phase. Producer authentication now exists, runs, and is enforced and
+tested — and the registry it authenticates against still holds six rows over four
+tokens, so no record from AI-08, AI-10, AI-11 or AI-13 can be admitted at all
+(AI-11 §21.1 OPEN-1). §35.1's deferrals are untouched. No production writer exists,
+no Evidence record has been written, and §32's exit gates are not reached. **AI-05
+owns an implemented, enforced and tested producer-authentication mechanism, and it
+is not a complete phase.**
+
+---
+
 ## 35. Open Future Work
 
 DEFERRED. Declared so that absence is auditable rather than inferred.
@@ -6442,7 +6950,7 @@ F-12  durability
       not durable
 ```
 
-### 35.3 Not started, and not implemented — corrected by Amendment 6
+### 35.3 Not started, and not implemented — corrected by Amendments 6 and 7
 
 ```text
 CORRECTED. This subsection previously read, in the PRESENT TENSE:
@@ -6472,23 +6980,34 @@ WHAT IS TRUE NOW, STATED SO NO READER HAS TO RECONCILE TWO DOCUMENTS
     AI-05-B2-P2           COMPLETE / MERGED   §17 stored-form round-trip
     AI-05-B2-P3           COMPLETE / MERGED   admission pipeline, filesystem Store,
                                                §31 Layer 0 evidence check
-    plugins/evidence/     ELEVEN MODULES      not a placeholder
+    plugins/evidence/     THIRTEEN MODULES    not a placeholder
     §30 steps 1-14        IMPLEMENTED         step 7 included, published by
                                                Amendment 3 (§14.10)
-    §30 step 7b           NOT IMPLEMENTED     §7.3 DEFINES the standard (Amendment 5)
-                                               and §7.3.11 fixes its configuration
-                                               (Amendment 6); NO CODE PERFORMS IT
-    §7.3 acceptance tests NOT RUN             no case named in §7.3.7 has been run
+    §30 step 7b           IMPLEMENTED         performed by
+                                               plugins/evidence/producer_auth.py,
+                                               called from `admission.admit()`
+                                               BEFORE any typed record exists
+                                               (Amendment 7, PR #87)
+    §7.3 acceptance tests RUN                 §7.3.7's obligations executed in CI on
+                                               the merged head: 46 process-isolated
+                                               cases RAN, 0 skipped (Amendment 7,
+                                               run #301)
     a production writer   NONE                no non-test caller of `admit()` or
                                                `admit_to_store()` exists anywhere
     any Evidence record   none exists         `evidence/runs/` and `evidence/promoted/`
                                                hold no record, only `.gitkeep`
+    AI15-OPEN-1           CLOSED BY ITS OWNER answered, implemented and shown to
+                                               hold; closed in this contract under
+                                               §34 (Amendment 7)
+    Layer 0 enforcement   RUNNING AND PASSING §31.3's four rules are checked by
+                                               `check_evidence_producer_authentication()`
+                                               and passed in run #301
 ```
 
 ```text
 FROZEN: THESE ARE FOUR DIFFERENT STATES AND MUST NOT BE COLLAPSED INTO ONE.
             the record model and the admission pipeline   BUILT
-            the producer-authentication mechanism         DEFINED, NOT BUILT
+            the producer-authentication mechanism         BUILT (Amendment 7)
             a production writer / non-test caller         ABSENT
             a stored Evidence record                      NONE
         A reader who collapses them reports either more or less than is true. A
@@ -6496,6 +7015,14 @@ FROZEN: THESE ARE FOUR DIFFERENT STATES AND MUST NOT BE COLLAPSED INTO ONE.
         implements every admission step except 7b is not "not started". Both errors
         are live ones — the first over-reports a control, the second hides work that
         has been done and reviewed.
+        THE SECOND LINE READ "DEFINED, NOT BUILT" AND WAS TRUE UNTIL PR #87 MERGED.
+        It is corrected here to BUILT, and correcting it SWAPS WHICH OF THE TWO
+        ERRORS IS LIVE rather than retiring either: the mechanism is now the state
+        that must not be UNDER-reported. IMPLEMENTING §30 step 7b did NOT build a
+        production writer, DID NOT store a record and DID NOT admit a producer
+        token, so the third and fourth lines are UNMOVED — and a reader who lets a
+        built mechanism stand in for any of them has made exactly the first error
+        this clause names.
 FROZEN: THE CORRECTION DOES NOT WEAKEN AMENDMENT 5's RECORDED DIVERGENCE, and this
         is recorded rather than left to be re-derived. That record argued the
         divergence was consequence-free partly on the ground that "AI-05-B is NOT
@@ -6506,6 +7033,28 @@ FROZEN: THE CORRECTION DOES NOT WEAKEN AMENDMENT 5's RECORDED DIVERGENCE, and th
         AI15-OPEN-1 is open. Step 7b is unimplemented AND unreachable, and it is the
         second fact that carries the argument. Correcting a citation does not move
         the conclusion it was cited for.
+
+        ^ AMENDMENT 6's RECORD, KEPT AS WHAT IT WAS. ITS LAST SENTENCE IS NOW
+        SUPERSEDED, and it is the only sentence in it that is. The divergence
+        Amendment 5 recorded was that the implementation did not perform §30 step
+        7b. PR #87 implements it, so THE DIVERGENCE IS CLOSED — not argued away and
+        not narrowed: `admit()` performs step 7b on every submission, before any
+        typed record exists.
+        WHAT SURVIVES THE CLOSURE IS THE PART THAT WAS NEVER ABOUT THE DIVERGENCE.
+        Amendment 5's other two grounds are unchanged, and they are still the reason
+        no record is exposed to an unauthenticated claim:
+            NO CALLER   still true, and deliberately so. PR #87 created no call
+                        site: the only call site of `admit()` in the repository is
+                        `admit_to_store()`'s own.
+            NO WRITER   still true. No production call site that can execute
+                        admission and persist a record exists anywhere. Whether
+                        AI-15 §17.2b's prohibition continues to apply now that its
+                        owner has closed AI15-OPEN-1 is AI-15's clause to read, and
+                        THIS CONTRACT DOES NOT CONSTRUE IT — no writer is
+                        authorized here either way.
+        A CLOSED DIVERGENCE ALSO CLOSES THE DIVERGENCE'S OWN REASONING, and it is
+        recorded here so that no reader re-derives a conclusion whose premise has
+        gone.
 ```
 
 ---
@@ -6515,10 +7064,17 @@ FROZEN: THE CORRECTION DOES NOT WEAKEN AMENDMENT 5's RECORDED DIVERGENCE, and th
 ```text
 AI-05-A  = FROZEN          this document
 AI-05-B  = PARTIAL         B1 and B2 are COMPLETE / MERGED; §30 steps 1-14 are
-                           implemented; §30 step 7b is NOT implemented and no
+                           implemented, step 7b included; producer authentication
+                           is ENFORCED by Layer 0 and TESTED in CI; and no
                            production caller or writer exists
 
 main at freeze = b76dd681ee3f5422d87d0cae5e2a0a181353512d
+main now       = d09ce69ec1c0975c6d638d7861df2f11c44ec1d1
+                 the merge of PR #87, against which the producer-authentication
+                 acceptance tests ran (Amendment 7)
+
+AI15-OPEN-1    = CLOSED BY ITS OWNER   answered, implemented and shown to hold
+                                       (Amendment 7)
 ```
 
 ```text
@@ -6530,14 +7086,36 @@ than presented as current.
 ```
 
 ```text
+CORRECTED BY AMENDMENT 7. The AI-05-B line read "§30 step 7b is NOT implemented
+and no production caller or writer exists". THE FIRST HALF OF THAT SENTENCE IS NO
+LONGER TRUE and is corrected above; THE SECOND HALF STILL IS, and is kept in the
+same sentence deliberately, so that the two are read together. A reader who takes
+"step 7b is implemented" as "a writer exists" has read the correction backwards.
+
+    WHY THE CORRECTION IS THIS SMALL. AI-05-B was PARTIAL before PR #87 and is
+    PARTIAL after it. What changed is not the phase's status but one of the facts
+    the status line enumerates — and the fact changed from NOT implemented to
+    implemented, enforced and tested. A status word that had been accurate would
+    have hidden the movement; a status word that overstated it would have claimed
+    a phase that is not finished.
+
+    WHAT MAKES IT LEGIBLE RATHER THAN MERELY SHORTER. The current facts are
+    enumerated in §35.3, the evidence is in Amendment 7, and the freeze-time value
+    of `main` is kept beside the current one so neither has to be inferred.
+```
+
+```text
 AI-02 / AI-03 / AI-04  = UNCHANGED
 SecurityLab            = UNCHANGED
 Router (AI-07)         = DEFERRED / UNIMPLEMENTED
 ```
 
-> **AI-05 is not complete.** This document freezes a contract, and the contract is
-> now frozen in part for a mechanism no code performs: §7.3's producer
-> authentication is DEFINED (Amendment 5) and its configuration is FROZEN
-> (Amendment 6), but no component implements it, no production caller or writer
-> exists, and no Evidence record has been written. No record exists, and no
-> component has been authorized by any of this.
+> **AI-05 is not complete.** This document freezes a contract, and the contract's
+> producer-authentication mechanism is now BUILT: §7.3's standard is DEFINED
+> (Amendment 5), its configuration is FROZEN (Amendment 6), and §30 step 7b is
+> IMPLEMENTED, enforced by Layer 0 and tested in CI (Amendment 7, PR #87). **None
+> of that completes the phase.** No production caller or writer exists, no Evidence
+> record has been written, no §6.5 row has been added, and §35.1's deferrals are
+> open — so no component has been authorized by any of this, there is no record
+> for any of it to be said about, and `evidence/runs/` and `evidence/promoted/`
+> still hold no record at all.
