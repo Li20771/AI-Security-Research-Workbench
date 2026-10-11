@@ -820,15 +820,24 @@ FROZEN: THE RULE IS ABOUT GROUPS, NOT ABOUT PAIRS OF RECOGNIZED TOKENS. Group th
         TOKEN makes the WHOLE MAPPING non-compliant, however many unregistered
         tokens sit beside it. Only a group consisting ENTIRELY of unregistered
         tokens may be tolerated, and only by POLICY A.
-FROZEN: A MAPPING THAT VIOLATES INJECTIVITY FAILS CLOSED, AND NO AUTHENTICATION
-        PROCEEDS UNDER IT. Validation happens IN THE DESIGNATED READER — §7.3.2's
-        ONE READER — which refuses to produce a mapping it finds non-injective.
-        The deployment therefore has NO usable designated mapping, and every
-        submission is REJECTED under §7.3.8 with AUTHENTICATION_KEY_UNAVAILABLE:
-        the same outcome as a deployment with no mapping at all, because that is
-        what it now has. The reader MUST NOT return the valid subset, MUST NOT keep
-        the first or last entry it saw, and MUST NOT warn and continue — a mapping
-        it cannot vouch for is not a mapping it may hand out.
+FROZEN: A MAPPING THAT BREAKS ITS READER'S POLICY FAILS CLOSED, AND NO
+        AUTHENTICATION PROCEEDS UNDER IT. Validation happens IN THE DESIGNATED
+        READER — §7.3.2's ONE READER — which refuses to produce a mapping that
+        breaks the rule THAT POLICY enforces: under BOTH policies, a duplicate
+        group containing a recognized token; and under POLICY B additionally ANY
+        duplicate group at all. THE UNQUALIFIED WORD "INJECTIVITY" IS NOT THE TEST,
+        and a reader MUST NOT use it as one: a mapping carrying a duplicate group
+        of unregistered tokens is NOT injective as a whole, and under POLICY A that
+        mapping is COMPLIANT AND MUST BE USED. A reader that tolerates a group its
+        OWN policy permits HAS NOT BROKEN THIS CLAUSE, and refusing the mapping for
+        it would itself be the defect.
+        When the reader does refuse, the deployment has NO usable designated
+        mapping, and every submission is REJECTED under §7.3.8 with
+        AUTHENTICATION_KEY_UNAVAILABLE: the same outcome as a deployment with no
+        mapping at all, because that is what it now has. The reader MUST NOT return
+        the valid subset, MUST NOT keep the first or last entry it saw, and MUST NOT
+        warn and continue — a mapping it cannot vouch for is not a mapping it may
+        hand out.
 FROZEN: A DUPLICATE GROUP CONSISTING ENTIRELY OF UNREGISTERED TOKENS IS HARMLESS,
         AND IT IS THE ONLY CASE THE TWO POLICIES TREAT DIFFERENTLY. Every group that
         contains a recognized token fails the mapping closed under BOTH.
@@ -4834,10 +4843,14 @@ recorded rather than relied on, exactly as Amendment 4 recorded the same about �
     PUBLIC KEY WITH ANY OTHER TOKEN IN THE MAPPING, REGISTERED OR NOT. The contract
     never sees a private key, but it does see the public keys the mapping holds, and
     one public key under two tokens IS the shared-key defect in terms a reader can
-    check. A mapping that violates it FAILS CLOSED: the designated READER refuses
-    it, the deployment therefore has NO usable mapping, and EVERY submission is
-    REJECTED with AUTHENTICATION_KEY_UNAVAILABLE. The reader MUST NOT return the
-    valid subset, keep the first or last entry it saw, or warn and continue.
+    check. A mapping that violates THAT RULE FAILS CLOSED: the designated READER
+    refuses it, the deployment therefore has NO usable mapping, and EVERY submission
+    is REJECTED with AUTHENTICATION_KEY_UNAVAILABLE. The reader MUST NOT return the
+    valid subset, keep the first or last entry it saw, or warn and continue. The
+    clausal subject matters: it is THE RECOGNIZED-TOKEN SHARING RULE that triggers
+    this, NOT a duplicate public key as such, and NOT the unqualified word
+    "injectivity" — a mapping whose only duplicate group is made up of unregistered
+    tokens is COMPLIANT under POLICY A and MUST NOT be refused for it.
     THE RULE IS STATED OVER GROUPS, NOT OVER PAIRS OF RECOGNIZED TOKENS: a duplicate
     public-key group containing AT LEAST ONE RECOGNIZED TOKEN makes the WHOLE MAPPING
     non-compliant, however many unregistered tokens sit beside it. AN INJECTIVITY
