@@ -2144,6 +2144,20 @@ FROZEN: WHAT IS CLAIMED, AND IT IS NARROWER AND CHECKABLE — AND IT IS CLAIMED 
         claim that the code exists. UNTIL THE IMPLEMENTING CHANGE LANDS, THE HONEST
         STATEMENT IS THE ONE §35.3 ALREADY CARRIES: AI-05 has no producer
         authentication at all, and §30 step 7b is performed by nothing.
+FROZEN: THE IMMUTABILITY THIS SECTION REQUIRES OF THE CAPTURED STATE IS A RULE ON
+        REPOSITORY CODE AND NOT A CLAIM OF TAMPER-PROOFNESS. The state is required to
+        be held privately, never returned as a whole, never handed out as a mutable
+        structure, free of any public initializer, reset or setter, and not rebound by
+        any code in this repository — and §31.3 obliges Layer 0 to check exactly those
+        SOURCE-TREE rules. NONE OF THAT IS A RUNTIME SANDBOX. Code able to execute
+        inside the same process — arbitrary reflection, monkeypatching, a debugger, a
+        hook from a library that came from outside this repository, or hostile code
+        with equivalent privileges — can reach in-memory state that no source-tree
+        rule protects, which §7.3.9 already records as PROCESS CONTROL and which this
+        section does not contradict. WHAT IS CLAIMED IS NARROWER AND IS THE CLAIM THAT
+        MATTERS HERE: REPOSITORY CODE DOES NOT DO IT, AND THE REPOSITORY WILL NOT
+        MERGE CODE THAT DOES. §31.3 states the qualification in full, and the two
+        clauses are one rule.
 FROZEN: A DEPLOYMENT OBLIGATION IS STATED SO THE ORDERING IS ACTIONABLE, AND IT IS
         NOT A NEW COMPOSITION ENTRY POINT. The process MUST import the Evidence
         package as part of its own startup, before it begins application work. A
@@ -4638,17 +4652,18 @@ FROZEN: LAYER 0 MUST ALSO ENFORCE, FOR THIS MODULE, THE FOUR RULES §7.3.2 AND
                          initialization: an `importlib.reload` of it, or any other
                          route by which its module-level read runs a second time, is a
                          second read and is refused as one.
-            IMMUTABLE    the captured state is not a mutable object anything may
-              STATE      alter. The mapping and the policy are held privately, are
-                         never returned as a whole by any public function, and are
-                         never handed to another module as a structure it could
-                         mutate. The reader answers a PER-TOKEN question — which key
-                         applies to THIS claimed token — and exposes neither the
-                         mapping, the policy table nor the parsed document. The
-                         module's captured state is not rebindable from outside: no
-                         assignment to, `setattr` on, or monkeypatch of it succeeds,
-                         and there is no public initializer, no reset, no setter and
-                         no "load for tests" entry point.
+            IMMUTABLE    the captured state is not a mutable object this repository's
+              STATE      code may alter. The mapping and the policy are held
+                         privately, are never returned as a whole by any public
+                         function, and are never handed to another module as a
+                         structure it could mutate. The reader answers a PER-TOKEN
+                         question — which key applies to THIS claimed token — and
+                         exposes neither the mapping, the policy table nor the parsed
+                         document. The state is not rebindable BY REPOSITORY CODE: no
+                         assignment to, `setattr` on, or monkeypatch of it appears
+                         anywhere in this repository, and there is no public
+                         initializer, no reset, no setter and no "load for tests"
+                         entry point.
             NO CALLER-SELECTED TRUST ROOT   no public function accepts a public key,
                          a mapping, an anchor, a verifier, a configuration object or
                          a configuration path as a parameter.
@@ -4665,6 +4680,47 @@ FROZEN: LAYER 0 MUST ALSO ENFORCE, FOR THIS MODULE, THE FOUR RULES §7.3.2 AND
         that is never re-read is neither a mapping a fallback could be built from nor
         a structure a caller could reach into; §7.3.10 keeps the two domains apart
         while the enforcement shape is the same shape.
+FROZEN: WHAT THESE RULES ARE, AND WHAT THEY ARE NOT. A TRUST-BOUNDARY QUALIFICATION,
+        recorded so the four rules above are not read as more than they are — and
+        recorded HERE, beside them, because a qualification kept somewhere else is one
+        a reader meets too late.
+            WHAT THEY ARE    a set of declared SOURCE-TREE rules, enforced over the
+                             files this repository contains. They establish that no
+                             code IN THIS REPOSITORY reads the variable in a second
+                             place, writes the running process's environment, hands
+                             the mapping out, replaces the captured state, or accepts
+                             a trust root as a parameter — and they DETECT those
+                             patterns within their stated coverage.
+            WHAT THEY ARE    a runtime sandbox, and NOT a proof of immunity. A static
+              NOT            check reads SOURCE; it does not constrain what a process
+                             does once it is running. Code with the ability to
+                             execute inside the SAME Python process — through
+                             arbitrary reflection, monkeypatching, a debugger, a hook
+                             installed by a library that came from outside this
+                             repository, or simply hostile code running with
+                             equivalent privileges — can alter in-memory state that no
+                             source-tree rule protects. §7.3.9 already records exactly
+                             this as PROCESS CONTROL: "an adversary who controls this
+                             process's address space can control the mapping and
+                             defeat any in-process check. An in-process library cannot
+                             defend its own address space, and this section does not
+                             claim to survive such an adversary."
+FROZEN: PYTHON MODULE STATE IS NOT INTRINSICALLY TAMPER-PROOF, AND NO CLAUSE HERE MAY
+        CLAIM OTHERWISE. Attributes can be rebound, module globals can be reassigned,
+        and an actor inside the process can reach past any arrangement of them.
+        NOTHING IN THIS SECTION CLAIMS THAT PYTHON PREVENTS THAT, and the IMMUTABLE
+        STATE rule above MUST NOT be read as such a claim: it is a rule about what
+        REPOSITORY CODE MAY DO, not a property of the language. What the four rules
+        establish is narrower and checkable — REPOSITORY CODE DOES NOT DO IT, AND THE
+        REPOSITORY WILL NOT MERGE CODE THAT DOES.
+FROZEN: THIS QUALIFICATION IS NOT PERMISSION, AND IT RELAXES NOTHING. It bounds WHAT
+        STATIC ENFORCEMENT CAN DELIVER; it does not narrow a single requirement above.
+        For normal repository code the requirements are ABSOLUTE: a module that writes
+        the variable, replaces the captured state, hands out the mapping or accepts a
+        caller-selected trust root is a FINDING and MUST NOT be merged. NO READER MAY
+        CITE THIS CLAUSE to argue that such code is tolerable because an adversary
+        with in-process execution could do worse — THE DEFECT AND THE LIMIT ARE
+        DIFFERENT THINGS, AND THE LIMIT DOES NOT EXCUSE THE DEFECT.
 FROZEN: THE NO-MUTATION RULE IS SHAPE-BASED, AND IT HAS TO BE. A name-based ban —
         "the variable's name appearing outside the reader is itself the finding" —
         would forbid the very mechanism §7.3.7's cases require, because A CHILD
@@ -6116,22 +6172,27 @@ recorded the same about §7.
     A FOURTH ENFORCEMENT RULE IS ADDED: IMMUTABLE STATE. §31.3 now requires that the
     captured mapping and policy are held privately, are never returned as a whole by
     any public function, are never handed to another module as a structure it could
-    mutate, and cannot be rebound, replaced, `setattr`-ed or monkeypatched from
-    outside — with no public initializer, reset, setter or "load for tests" entry
-    point. The reader answers a PER-TOKEN question and exposes neither the mapping,
-    the policy nor the parsed document. This is what stops a test from passing by
-    REPLACING the state it was supposed to exercise, and what stops repository code
+    mutate, and are not rebound, replaced, `setattr`-ed or monkeypatched BY ANY CODE IN
+    THIS REPOSITORY — with no public initializer, reset, setter or "load for tests"
+    entry point. The reader answers a PER-TOKEN question and exposes neither the
+    mapping, the policy nor the parsed document. This is what stops a test from passing
+    by REPLACING the state it was supposed to exercise, and what stops repository code
     from replacing a trust root it is not allowed to write.
-    STARTUP ORDER IS NOW STATED. §7.3.11 records that initialization IS the module's
-    import, that `plugins/evidence/__init__.py` imports the reader, and that the
-    ordering guarantee is therefore STRUCTURAL: any process able to call `admit()`
-    has necessarily already initialized the reader. It also separates CONFIGURATION
-    SUPPLIED WHEN A PROCESS STARTS from A VARIABLE READ AFTER ARBITRARY APPLICATION
-    CODE HAS RUN, and records what the guarantee does NOT cover — code outside this
-    repository writing the process environment before the first import — as a
-    RESIDUAL RISK on the same footing as §7.3.9's, rather than claiming it closed.
-    THIS CREATES NO CALLER AND NO ENTRY POINT. The import edge is within the Evidence
-    package, between a module and the package that owns it.
+    THE RULE IS A SOURCE-TREE RULE AND NOT A CLAIM OF TAMPER-PROOFNESS. It was
+    corrected to say so, and the correction is recorded in (n).
+    STARTUP ORDER IS NOW STATED. §7.3.11 gained a REQUIREMENT that the implementing
+    change initialize the reader through the Evidence package's own initialization
+    path, and it separates CONFIGURATION SUPPLIED WHEN A PROCESS STARTS from A VARIABLE
+    READ AFTER ARBITRARY APPLICATION CODE HAS RUN. It records what the guarantee does
+    NOT cover — code outside this repository writing the process environment before the
+    first import — as a RESIDUAL RISK on the same footing as §7.3.9's, rather than
+    claiming it closed. THIS CREATES NO CALLER AND NO ENTRY POINT: the import edge is
+    within the Evidence package, between a module and the package that owns it.
+    THIS PARAGRAPH DESCRIBED THAT CLAUSE IN THE PRESENT TENSE, AS THOUGH THE IMPORT
+    EDGE AND THE ORDERING IT BUYS ALREADY EXISTED. THEY DO NOT, AND (m) CORRECTED THE
+    CLAUSE. This paragraph is kept as the record of what this item did, with the
+    correction named rather than restated; THE CLAUSE ITSELF, NOT THIS SUMMARY, IS THE
+    AUTHORITY for what §7.3.11 now says.
 
 (m) §7.3.11's STARTUP-ORDER CLAUSE WAS WRITTEN IN THE PRESENT TENSE ABOUT CODE THAT
     DOES NOT EXIST, AND IS CORRECTED. The block "WHEN THE READ HAPPENS, AND WHY THAT
@@ -6174,6 +6235,51 @@ recorded the same about §7.
     §8.3 condition 11 is discharged by exactly those cases, a skipped case leaves
     condition 11 UNSATISFIED however green the run is, and a report must carry the
     number of process-isolated cases that RAN rather than the run's status.
+
+(n) THE IMMUTABLE-STATE RULE WAS STATED AS A PROPERTY OF PYTHON. IT IS A RULE ABOUT
+    THIS REPOSITORY, AND THE SCOPE IS NOW PRECISE. §31.3's IMMUTABLE STATE rule said
+    the captured state is one that "no assignment to, `setattr` on, or monkeypatch of
+    it SUCCEEDS", and (l) summarised it as state that "cannot be rebound, replaced,
+    `setattr`-ed or monkeypatched from outside". BOTH READ AS CLAIMS ABOUT THE
+    LANGUAGE, AND NEITHER IS TRUE: attributes can be rebound, module globals can be
+    reassigned, and an actor inside the process can reach past any arrangement of
+    them. A contract that claims otherwise would be claiming a sandbox it does not
+    have.
+    THE REQUIREMENT IS UNCHANGED AND IS NOW STATED AS WHAT IT IS: the state must be
+    held privately, never returned as a whole, never handed out as a mutable
+    structure, free of any public initializer, reset or setter, and not rebound by any
+    code IN THIS REPOSITORY — and §31.3 obliges Layer 0 to CHECK THOSE SOURCE-TREE
+    RULES. The enforcement is static, over the files this repository contains.
+    THE QUALIFICATION IS RECORDED IN TWO PLACES, BESIDE THE RULES IT BOUNDS:
+        §31.3     the four rules now carry WHAT THESE RULES ARE, AND WHAT THEY ARE
+                  NOT: declared source-tree rules that DETECT the prohibited patterns
+                  within their coverage, and NOT a runtime sandbox and NOT a proof of
+                  immunity.
+        §7.3.11   the same limitation, in the section that requires the immutability:
+                  code able to execute inside the same process can reach in-memory
+                  state no source-tree rule protects, and the section does not
+                  contradict it.
+    THIS ADDS NO ARCHITECTURE AND DESIGNS NOTHING NEW. §7.3.9 ALREADY RECORDS EXACTLY
+    THIS LIMIT as PROCESS CONTROL — "an adversary who controls this process's address
+    space can control the mapping and defeat any in-process check. An in-process
+    library cannot defend its own address space, and this section does not claim to
+    survive such an adversary." The correction ALIGNS the immutability clause with a
+    residual risk the contract has carried since Amendment 5; it does not introduce
+    one.
+    THE QUALIFICATION IS NOT PERMISSION, AND IT RELAXES NOTHING. It bounds WHAT STATIC
+    ENFORCEMENT CAN DELIVER. For normal repository code the requirements are ABSOLUTE:
+    a module that writes the variable, replaces the captured state, hands out the
+    mapping or accepts a caller-selected trust root is a FINDING and MUST NOT be
+    merged. No reader may cite the qualification to argue that such code is tolerable
+    because an adversary with in-process execution could do worse — the defect and the
+    limit are different things, and the limit does not excuse the defect. §31.3 states
+    this in the same clause.
+    ONE RESIDUAL WAS CORRECTED WHILE INSPECTING THIS RECORD. (l)'s own summary still
+    described §7.3.11's startup-order clause in the PRESENT TENSE — that
+    `plugins/evidence/__init__.py` "imports the reader" and that the ordering
+    "is therefore STRUCTURAL" — although (m) had already corrected the clause itself.
+    The summary now states the clause as a REQUIREMENT and names (m); A SUMMARY IN
+    THIS LOG DOES NOT OVERRIDE THE CLAUSE IT SUMMARISES.
 ```
 
 ```text
@@ -6252,11 +6358,14 @@ SECURITY IMPACT
         it puts the variable beyond the reach of the code that reads it: nothing in
           the repository writes the running process's environment, and the reader is
           not reloaded to re-read it
-        it makes the captured state itself unreachable: held privately, never
-          returned as a whole, never handed out as a structure another module could
-          mutate, and not rebindable — so a test cannot pass by REPLACING the state
-          it was meant to exercise, and repository code cannot replace a trust root
-          it may not write
+        it makes the captured state itself unreachable TO REPOSITORY CODE: held
+          privately, never returned as a whole, never handed out as a structure
+          another module could mutate, and not rebound by any module here — so a test
+          cannot pass by REPLACING the state it was meant to exercise, and repository
+          code cannot replace a trust root it may not write. THIS IS A SOURCE-TREE
+          RULE AND NOT A RUNTIME SANDBOX: §31.3 and §7.3.11 both record that code able
+          to execute inside the same process can reach in-memory state no static rule
+          protects, which §7.3.9 already carries as PROCESS CONTROL
         it keeps the configuration's JSON tolerance out of the signed-input path,
           where it would silently change what a proof means
 
