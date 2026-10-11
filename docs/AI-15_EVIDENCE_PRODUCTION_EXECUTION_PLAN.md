@@ -1225,16 +1225,19 @@ AI15-OPEN-1  PRODUCER AUTHENTICITY — how is a producer claim ESTABLISHED, as
                          "WHAT IS MISSING NOW" below and §19 Amendment 2.
         WHAT IS MISSING NOW  the decision is made; the mechanism is NOT BUILT.
                          AI-05 Amendment 5 DEFINES the standard and AI-05
-                         Amendment 6 FREEZES the trust configuration, its
-                         encoding, its ONE READER, its lifecycle and the static
-                         enforcement it requires. Both are DOCUMENTATION changes:
-                         nothing implements either, NO §7.3.7 acceptance test has
-                         been run, and the Layer 0 rules §31.3 obliges have not
-                         been written. THREE THINGS ARE DISTINGUISHED HERE AND
-                         MUST NOT BE COLLAPSED: the standard is DEFINED, the
-                         control is NOT IMPLEMENTED, and no test has DEMONSTRATED
-                         that it holds. Only the first has moved, and it moved in
-                         AI-05's contract, not in the runtime.
+                         Amendment 6 FREEZES that standard's trust configuration,
+                         its encoding, its ONE READER, its lifecycle and the static
+                         enforcement it requires. THE CONFIGURATION FREEZE IS PART
+                         OF DEFINING THE MECHANISM, NOT A DELIVERY BESIDE IT: the
+                         two amendments together supply ONE part, and this section
+                         counts them ONCE. Both are DOCUMENTATION changes: nothing
+                         implements either, NO §7.3.7 acceptance test has been run,
+                         and the Layer 0 rules §31.3 obliges have not been written.
+                         MEASURED AGAINST §15.2 STEP 0b's THREE PARTS, AND AGAINST
+                         THOSE THREE ONLY — the MECHANISM is DEFINED; the RUNTIME
+                         IMPLEMENTATION is NOT IMPLEMENTED; the ACCEPTANCE TESTS are
+                         NOT_RUN. ONE of the three has moved, and it moved in AI-05's
+                         contract, not in the runtime.
         WHAT AI-15 DOES NOT DO   it does not add a token, a check, a hook, a
                          signature, a key, a registry service or a "producer
                          verification" seam. §17.4 forbids all of them.
@@ -1835,11 +1838,15 @@ AI-15 dependency
            merge cee1f8c9ae07837e0ebae0be3f8ab2e0113e6973) FREEZES its
            designated trust configuration, its encoding, its ONE READER, its
            lifecycle and the static enforcement it requires. BOTH ARE
-           DOCUMENTATION CHANGES. WHAT AI-05 STILL OWES IS THE RUNTIME: the
-           implementation, the Layer 0 rules Amendment 6 obliges, and the §7.3.7
-           acceptance tests that would show the standard holds — NONE OF WHICH
-           EXISTS, AND NONE OF WHICH EITHER AMENDMENT SUPPLIED. §15.2 STEP 0b
-           gates the WRITE on it. Neither is scheduled by AI-15.
+           DOCUMENTATION CHANGES, AND TOGETHER THEY SUPPLY ONE OF §15.2 STEP 0b's
+           THREE PARTS — the mechanism — because the configuration freeze is part of
+           defining it. WHAT AI-05 STILL OWES IS THE OTHER TWO: the RUNTIME
+           IMPLEMENTATION, and the §7.3.7 ACCEPTANCE TESTS that would show the
+           standard holds. The Layer 0 rules Amendment 6 obliges belong to the FIRST
+           of those, being obligations on the change that implements the mechanism,
+           not a third deliverable. NONE OF IT EXISTS, AND NEITHER AMENDMENT SUPPLIED
+           ANY OF IT. §15.2 STEP 0b gates the WRITE on it. Neither is scheduled by
+           AI-15.
            AI-11 §21.1's OPEN-1 IS A DIFFERENT ITEM AND IS NOT MOVED BY EITHER
            AMENDMENT: it asks WHICH PRODUCERS EXIST, and no amendment above
            admits a token.
@@ -2078,16 +2085,21 @@ THE ORDER — each step names its owner, its precondition and its output
            OUTPUT        a mechanism, PLUS its implementation and tests — not a
                          prose decision alone, because §8.3 condition 11 requires
                          that the standard be implemented and shown to hold.
-           STATUS        PARTIAL, AND THE MISSING PART IS THE PART THAT MATTERS.
+           STATUS        PARTIAL, AND WHAT IS MISSING IS WHAT MATTERS.
                          AI-05 Amendment 5 DEFINES the mechanism and AI-05
-                         Amendment 6 FREEZES its configuration — the FIRST of the
-                         three things OUTPUT names, delivered by the owner in the
-                         owner's contract. The IMPLEMENTATION and the TESTS are NOT
-                         supplied, no §7.3.7 case has been run, and the Layer 0
-                         rules Amendment 6 obliges do not exist (§19 Amendment 2).
-                         THE STEP IS UNSATISFIED: two of three is not three, and a
-                         defined mechanism does not gate a write the way an
-                         implemented one does.
+                         Amendment 6 FREEZES that mechanism's configuration. BOTH
+                         ARE THE FIRST OF THE THREE THINGS OUTPUT NAMES: the
+                         configuration is PART OF the mechanism's definition, NOT a
+                         second delivery standing beside it. The owner delivered it
+                         in the owner's contract, and it counts ONCE.
+                         THE OTHER TWO ARE NOT SUPPLIED. The RUNTIME IMPLEMENTATION
+                         is NOT IMPLEMENTED — the Layer 0 rules Amendment 6 obliges
+                         belong to IT, being obligations on the implementing change
+                         rather than a part of their own — and the §7.3.7 ACCEPTANCE
+                         TESTS are NOT_RUN (§19 Amendment 2).
+                         THE STEP IS UNSATISFIED: ONE of the three is supplied and
+                         TWO are not, and a defined mechanism does not gate a write
+                         the way an implemented one does.
            GATES         STEP 2 AND STEP 3. BOTH.
            FROZEN: STEP 0b GATES THE WRITE, NOT ONLY THE LABEL. No production,
                    non-test call site that can actually execute §30 admission and
@@ -3208,9 +3220,12 @@ WHY THE CORRECTION, AND WHAT IT IS FOR
 
     THIS MATTERS MOST FOR §15.2 STEP 0b, WHICH IS WHERE A READER CHECKS WHETHER THE
     WRITE MAY PROCEED. STEP 0b requires a mechanism AND its implementation AND tests
-    showing it holds. TWO OF ITS THREE PARTS ARE SUPPLIED AND THE THIRD IS NOT, so
-    the step is UNSATISFIED — and it would stay unsatisfied if both amendments were
-    ten times longer, because neither is code.
+    showing it holds. ONLY THE FIRST OF THOSE THREE IS SUPPLIED: the mechanism is
+    DEFINED, and the trust configuration Amendment 6 froze is PART OF that definition
+    rather than a second delivery beside it. THE RUNTIME IMPLEMENTATION IS NOT
+    IMPLEMENTED AND THE ACCEPTANCE TESTS ARE NOT_RUN, so the step is UNSATISFIED — and
+    it would stay unsatisfied if both amendments were ten times longer, because
+    neither is code.
 ```
 
 ```text
@@ -3221,8 +3236,10 @@ SECURITY IMPACT
     WHAT THIS AMENDMENT DOES
         it RECORDS two AI-05 amendments and corrects the description of what AI-05
           still owes
-        it keeps the three states apart that a summary is most likely to merge: a
-          DEFINED standard, an UNBUILT control, and an UNRUN test
+        it keeps §15.2 STEP 0b's three parts apart — a MECHANISM that is DEFINED,
+          a RUNTIME IMPLEMENTATION that is NOT IMPLEMENTED, and ACCEPTANCE TESTS
+          that are NOT_RUN — and records that Amendments 5 and 6 supply the FIRST
+          of them ONCE, the configuration freeze being part of the definition
 
     WHAT IT DOES NOT ADD
         no authentication, no check, no key, no configuration, no Layer 0 rule and no
@@ -3250,10 +3267,12 @@ STATUSES UNCHANGED — EVERY ONE OF THEM
 
     AI15-OPEN-1             OPEN, and the OWNER is unchanged: AI-05. WHAT MOVED IS
                             THE REASON, NOT THE STATUS. Neither amendment closes it.
-    AI-15 §15.2 STEP 0b     UNSATISFIED. It requires a mechanism AND its
-                            implementation AND tests. The mechanism is defined and
-                            the configuration frozen; the implementation and the
-                            tests do not exist. Two of three is not three.
+    AI-15 §15.2 STEP 0b     UNSATISFIED. It requires THREE things: a mechanism, its
+                            implementation, and tests showing it holds. ONE IS
+                            SUPPLIED — the mechanism is DEFINED, and Amendment 6's
+                            configuration freeze is PART OF that definition, not a
+                            delivery beside it. THE RUNTIME IMPLEMENTATION IS NOT
+                            IMPLEMENTED and the ACCEPTANCE TESTS ARE NOT_RUN.
     §8.3 condition 11       UNSATISFIED. It is discharged by §7.3.7's tests, and
                             none has been run.
     AI15-OPEN-2             CLOSED under AI-05 Amendment 4 (READING A), under the

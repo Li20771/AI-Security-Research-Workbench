@@ -1048,7 +1048,10 @@ AI-15 的 Amendment 2（§19）2026-10-11：记录 AI-05 Amendment 5 与 6，并
     **两者都是纯文档变更。** 不实现认证、不新增测试、不改 Layer 0、不连接任何 seam。
     AI15-OPEN-1 = 仍 OPEN。理由不再是「标准未定义」——
                   **标准已 DEFINED，控制未 IMPLEMENTED**。
-                  三态不可合并：标准 DEFINED / 控制未 BUILT / 无测试 DEMONSTRATED。
+                  按 §15.2 的**三项**（且仅此三项）计：MECHANISM 已 DEFINED
+                  （Amendments 5/6 合计只算**一次** —— 配置冻结属于机制定义本身，
+                  不是并列的第二项）/ RUNTIME IMPLEMENTATION 未实现 /
+                  ACCEPTANCE TESTS 未运行。
                   两项文档 PR 的 CI 绿灯**不是** producer 认证可用的证据。
 
 AI-15 不解除它不拥有的任何其他 BLOCKER：
@@ -1057,7 +1060,10 @@ AI-15 不解除它不拥有的任何其他 BLOCKER：
     AI15-OPEN-1 = OPEN（AI-05，producer authentication）— 标准已定义、配置已冻结，
                   但实现与 §7.3.7 测试均不存在；仍 gate 写入本身
     AI15-OPEN-3 = OPEN（AI-04）· AI15-OPEN-4 = OPEN（AI-13 / AI-14）
-    STEP 0b = UNSATISFIED（机制已 DEFINED，实现与测试 NOT —— 三缺二不等于三）
+    STEP 0b = UNSATISFIED（§15.2 的三项中**只交付了一项**：MECHANISM 已 DEFINED
+              —— Amendments 5/6 合计只算**一次**，配置冻结属于机制定义本身，
+              不是并列的第二项；RUNTIME IMPLEMENTATION 未实现；ACCEPTANCE TESTS
+              未运行）
               · STEP 1 / 1' / 2 / 3 = 未完成
     row 1' = 未满足，且与 STEP 0b 相互独立
     B5 = BLOCKED / NOT STARTED（无 seam CONNECTED，无生产 Evidence writer）

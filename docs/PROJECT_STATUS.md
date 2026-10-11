@@ -36,10 +36,13 @@ changes Layer 0.
 
 **AI15-OPEN-1 remains OPEN and §15.2 STEP 0b remains UNSATISFIED.** The reason is no
 longer that the standard is undefined — **the standard is DEFINED and the control is
-NOT IMPLEMENTED**. Three states are kept apart and must not be collapsed: the standard
-is **DEFINED**, the control is **NOT BUILT**, and no test has **DEMONSTRATED** it holds.
-What AI-05 still owes is the runtime implementation, the Layer 0 enforcement Amendment 6
-obliges, and the **§7.3.7 acceptance tests**, which remain **NOT_RUN**. **No §7.3.7
+NOT IMPLEMENTED**. Against §15.2 STEP 0b's **three** parts, and against those three
+only: the **MECHANISM is DEFINED** — AI-05 Amendments 5 and 6 supply it **ONCE**,
+because the trust configuration Amendment 6 froze is **part of defining the mechanism**,
+not a second part beside it — the **RUNTIME IMPLEMENTATION is NOT IMPLEMENTED**, and the
+**ACCEPTANCE TESTS are NOT_RUN**. What AI-05 still owes is the implementation, including
+the Layer 0 enforcement Amendment 6 obliges (that belongs to implementing the mechanism,
+not to a separate deliverable), and the **§7.3.7 acceptance tests**. **No §7.3.7
 acceptance test has been run, and CI success on the two documentation PRs is not
 evidence that producer authentication works.** **No seam is CONNECTED and no production
 Evidence writer exists.** See [AI-15 status](#ai-15-status) and [AI-05](#ai-05--evidence--audit-plugin).
@@ -2116,10 +2119,14 @@ OPEN, not closed by AI-15               AI15-OPEN-1 (AI-05, producer authenticat
                                         The item stays OPEN.
 STEP 0a                                 ANSWERED — AI-14's STEP 1 is unblocked and
                                         NOT made
-STEP 0b                                 UNSATISFIED — the MECHANISM is DEFINED
-                                        (Amendments 5/6) and the IMPLEMENTATION and
-                                        TESTS are NOT. Two of three is not three.
-                                        It still gates the WRITE.
+STEP 0b                                 UNSATISFIED — of §15.2's THREE parts, ONE
+                                        is supplied: the MECHANISM is DEFINED
+                                        (Amendments 5/6 supply it ONCE; the
+                                        configuration freeze is part of the
+                                        definition, not a second part). The RUNTIME
+                                        IMPLEMENTATION is NOT IMPLEMENTED and the
+                                        ACCEPTANCE TESTS are NOT_RUN. It still gates
+                                        the WRITE.
 row 1′                                  UNSATISFIED and SEPARATE — it asks WHICH
                                         PRODUCERS EXIST, and Amendments 5/6 admit
                                         no token and do not move it
