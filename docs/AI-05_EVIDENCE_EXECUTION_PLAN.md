@@ -812,24 +812,45 @@ FROZEN: A MAPPING THAT VIOLATES INJECTIVITY FAILS CLOSED, AND NO AUTHENTICATION
 FROZEN: THE REQUIREMENT IS STATED OVER RECOGNIZED TOKENS BECAUSE THAT IS WHERE IT
         BITES — AND A DUPLICATE INVOLVING ONLY AN UNREGISTERED TOKEN IS HARMLESS
         FOR A REASON THAT MUST NOT BE MISSTATED.
+
+        TWO READER POLICIES ARE PERMITTED, AND THE CONTRACT REQUIRES NEITHER. A
+        reader MUST BE CONSISTENT: it may not refuse the mapping for some duplicates
+        and tolerate others of the same kind. Which policy a deployment runs is a
+        DEPLOYMENT FACT, not a choice any caller makes.
+
+            POLICY A   INJECTIVITY OVER RECOGNIZED TOKENS ONLY.
+                       The mapping stays usable when the only duplicate involves a
+                       token §6.5 does not register. Under §7.3.7's order a
+                       signature over that token's claim MAY STILL VERIFY, because
+                       step 7b runs before construction; the record is then REFUSED
+                       BY §6.6 during construction, whatever the proof said.
+                       HARMLESS THROUGH THE REGISTRY.
+
+            POLICY B   FAIL CLOSED ON ANY DUPLICATE PUBLIC KEY.
+                       The reader refuses the mapping over ALL its entries, so the
+                       deployment has NO usable mapping. The submission is REFUSED
+                       with AUTHENTICATION_KEY_UNAVAILABLE, and NO signature
+                       verification and NO construction occur.
+                       HARMLESS THROUGH A REFUSED MAPPING.
+
+        FROZEN: WHAT HOLDS UNDER BOTH, AND IT IS THE WHOLE OF THE REQUIREMENT
             a mapping entry for a token §6.5 does not register GRANTS NO §6.5
-              IDENTITY, and creates no registry row
-            under §7.3.7's order a signature over that token's claim MAY STILL
-              VERIFY, because step 7b runs before construction and §7.3.2 requires
-              that it does
-            the record is then REFUSED BY §6.6 during construction, whatever the
-              proof said
-            so a duplicate public key involving only such a token does NOT, BY THAT
-              DUPLICATION ITSELF, bypass the registry check or cause an unregistered
-              record to be accepted. IT IS HARMLESS THROUGH THE REGISTRY, NOT
-              THROUGH A FAILED AUTHENTICATION
+              IDENTITY and creates no registry row
+            a duplicate involving only such a token does NOT, BY THAT DUPLICATION
+              ITSELF, bypass the registry check or cause an unregistered record to
+              be accepted
+            a submission naming that token MUST NOT BE ACCEPTED on EITHER path
+            a valid signature is NOT a registration and NOT a permission
+        NEITHER POLICY IS HARMLESS BECAUSE "AUTHENTICATION FAILS" AS A PROPERTY OF
+        THE CLAIM. Under POLICY A the signature may well succeed; under POLICY B it
+        is never attempted.
+
         AN EARLIER REVISION OF THIS CLAUSE SAID SUCH A COLLISION "AUTHENTICATES
-        NOTHING". THAT IS WITHDRAWN: it is false under the execution order this
-        contract fixes, and it is precisely the confusion between authenticating a
-        CLAIM and admitting a RECORD that §7.2 and §7.3.8 exist to prevent.
+        NOTHING". THAT IS WITHDRAWN: it is false under POLICY A, and it is precisely
+        the confusion between authenticating a CLAIM and admitting a RECORD that
+        §7.2 and §7.3.8 exist to prevent.
         A reader MAY refuse a mapping for ANY duplicate public key over ALL its
-        entries, which is strictly stronger and cannot reject a deployment that was
-        not already broken.
+        entries — that IS POLICY B — and it is strictly stronger.
 FROZEN: INJECTIVITY IS NOT RECOGNITION, AND A PUBLIC-KEY MAPPING CONFERS NOTHING.
         §6.5 remains the SOLE authority on whether a producer token is recognized;
         a key configured for an unrecognized token creates no registry entry and
@@ -1515,10 +1536,20 @@ FROZEN: THE TEST OBLIGATION THIS SECTION CREATES, for the implementation that
               token whose entry was not part of the collision, because the reader
               refuses the mapping rather than trimming it
             a mapping whose only duplicate public key involves a token §6.5 does
-              NOT register, asserting that a submission naming that token is still
-              REFUSED — by §6.6 during construction, and NOT at authentication,
-              whose signature MAY verify — and that the unrecognized token stays
-              unrecognized either way
+              NOT register. §7.3.2 PERMITS TWO READER POLICIES, and this criterion
+              MUST ACCEPT EITHER ONE — a test asserting a single outcome as the ONLY
+              permitted one would FAIL a compliant deployment that chose the other:
+                  POLICY A  the mapping stays usable, a signature over that
+                            token's claim MAY VERIFY, and §6.6 MUST then REFUSE the
+                            record during construction
+                  POLICY B  the mapping is refused over all entries, and the
+                            submission MUST be REFUSED with
+                            AUTHENTICATION_KEY_UNAVAILABLE, with NO signature
+                            verification and NO construction
+              Under BOTH policies the test MUST assert that a submission naming
+              that token is NOT ACCEPTED, that the token acquires NO §6.5 identity,
+              and that the reader is CONSISTENT — refusing every duplicate of a kind
+              or tolerating every duplicate of that kind, never a mixture
             a mapping in which every recognized token holds DISTINCT key material,
               asserting that the same submissions that failed above now succeed —
               the control that shows the two tests above are testing injectivity
@@ -4759,13 +4790,22 @@ recorded rather than relied on, exactly as Amendment 4 recorded the same about �
     CLOSED: the designated READER refuses it, the deployment therefore has NO usable
     mapping, and EVERY submission is REJECTED with AUTHENTICATION_KEY_UNAVAILABLE.
     The reader MUST NOT return the valid subset, keep the first or last entry it
-    saw, or warn and continue. The requirement is stated over RECOGNIZED tokens
-    because a duplicate involving only an unregistered token cannot produce an
-    ACCEPTED record — a signature over that token's claim MAY VERIFY, and §6.6 then
-    REFUSES the record during construction — so the collision is harmless THROUGH
-    THE REGISTRY, not through a failed authentication. A reader MAY refuse on any
-    duplicate over all entries, which is strictly stronger and cannot reject a
-    deployment that was not already broken. This is a compliance condition of the
+    saw, or warn and continue. The requirement is stated over RECOGNIZED tokens,
+    and TWO READER POLICIES ARE PERMITTED for a duplicate that involves only an
+    unregistered one, because NEITHER can produce an ACCEPTED record:
+        POLICY A  the mapping stays usable; a signature over that token's claim MAY
+                  VERIFY, and §6.6 then REFUSES the record during construction. The
+                  collision is harmless THROUGH THE REGISTRY
+        POLICY B  the reader fails closed on ANY duplicate and refuses the mapping
+                  over all its entries; the submission is REFUSED with
+                  AUTHENTICATION_KEY_UNAVAILABLE, with no signature verification and
+                  no construction. The collision is harmless THROUGH A REFUSED
+                  MAPPING
+    A reader MUST BE CONSISTENT between them, and NEITHER policy is harmless because
+    "authentication fails" as a property of the claim — under A the signature may
+    succeed, and under B it is never attempted. What holds under BOTH is the
+    INVARIANT the record must express: the token acquires NO §6.5 identity, and a
+    submission naming it is NEVER ACCEPTED. This is a compliance condition of the
     mechanism rather than advice, because a shared key leaves §6.5's string
     comparison as the only thing refusing a cross-producer forgery — and §7.2
     already records that a registry check is not an authentication check.
