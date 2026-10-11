@@ -613,8 +613,16 @@ FROZEN: §6.5 REGISTRY MEMBERSHIP PROVES REGISTRATION AND NOTHING ELSE. A value
         produced the record, that the submitter is that component, or that the
         submitter is entitled to speak for it. Registry validation is a
         WELL-FORMEDNESS check; producer AUTHENTICATION is a different question.
-        §30 step 7b is the step that ANSWERS it (AI-05 Amendment 5), and NOTHING
-        PERFORMS THAT STEP — it is contract text, not code (§19 Amendment 2).
+        §30 step 7b is the step that ANSWERS it (AI-05 Amendment 5), AND PR #87
+        NOW PERFORMS IT: `plugins/evidence/producer_auth.py` runs the check inside
+        `admission.admit()`, before any typed record exists (§19 Amendment 3).
+        ^ THE CLAUSE READ "AND NOTHING PERFORMS THAT STEP — it is contract text,
+        not code (§19 Amendment 2)" UNTIL PR #87 MERGED, and it is corrected here
+        rather than deleted because the rule AROUND it is the point. WHY THE RULE
+        IS UNCHANGED: what `g_registered` proves is exactly what it proved before —
+        registration, and nothing else. An authentication step running elsewhere
+        does not make the registry check an authenticity check, and the two remain
+        SEPARATE CHECKS (§9.3).
 FROZEN: A NON-TEST CALL SITE IS NOT PRODUCER PROVENANCE. Wiring a caller to
         `admit_to_store` establishes that records can be WRITTEN. It establishes
         nothing about WHO wrote them. §8.3 carries this as its own condition,
@@ -807,11 +815,19 @@ RECORDED — THE DISPOSITION, AND ITS LIMITS.
     WHAT THIS CLOSES    AI15-OPEN-2, and only it: the semantic relation between
                         the producer named on a record and the caller that
                         submits it.
-    WHAT THIS DOES NOT  establish producer authentication. AI15-OPEN-1 remains
-      CLOSE             OPEN, and AI-05 Amendment 4 records the same: it builds
-                        no authentication mechanism and claims no claim is
-                        trustworthy. It does not touch AI-11 §21.1's OPEN-1,
-                        which asks a different question with the same owner.
+    WHAT THIS DOES NOT  establish producer authentication. AI-05 Amendment 4
+      CLOSE             builds no authentication mechanism and claims no claim is
+                        trustworthy — that was AI-05's SECOND question, and it was
+                        answered and closed SEPARATELY, by AI-05 Amendments 5, 6
+                        and 7 (§9.2, §19 Amendment 3).
+                        ^ THIS PARAGRAPH SAID "AI15-OPEN-1 remains OPEN" UNTIL
+                        §19 AMENDMENT 3. The item is now CLOSED BY ITS OWNER, and
+                        NOTHING ABOUT AMENDMENT 4's SCOPE MOVES because of it:
+                        Amendment 4 answered the READING question and not the
+                        AUTHENTICITY one, and it is still the answer to the
+                        reading question. It does not touch AI-11 §21.1's OPEN-1,
+                        which asks a different question with the same owner and
+                        REMAINS OPEN.
 ```
 
 ```text
@@ -1220,18 +1236,30 @@ FROZEN: whether AI-05's eventual answer to AI15-OPEN-1 involves a new trust root
 ### 9.2 Threat 1 — component A writes a record claiming to be component B
 
 ```text
-STATUS TODAY: THE GAP IS OPEN, AND NO CALLER EXISTS. THREE SEPARATE FACTS, AND
-THEY MUST NOT BE MERGED INTO ONE.
+STATUS TODAY: THE AUTHENTICATION GAP IS CLOSED AND THE CALLER GAP IS NOT. THREE
+SEPARATE FACTS, AND THEY MUST NOT BE MERGED INTO ONE.
 
   the API        admit() takes no submitter identity (§4.3). ANY code that can
-                 import `plugins.evidence` and call `admit` can submit
-                 producer="ai-04" with a well-formed DECISION. This is a property
-                 of the API, and it does not depend on what is in the tree today.
+                 import `plugins.evidence` and call `admit` can submit a
+                 producer="ai-04" claim with a well-formed DECISION — AND, SINCE
+                 PR #87, THAT IS NOT SUFFICIENT. §30 step 7b runs BEFORE any typed
+                 record is constructed, so the submission must also carry a
+                 producer proof that authenticates under the deployment's
+                 designated trust mapping; a submission with NO proof is REJECTED
+                 exactly as one with a bad proof is (AI-05 §7.3). WHAT REMAINS A
+                 PROPERTY OF THE API IS THE REST OF IT: it still takes no submitter
+                 identity, and it still accepts any caller. AUTHENTICATING THE
+                 PRODUCER TOKEN DOES NOT IDENTIFY THE SUBMITTER, and it is not
+                 meant to — §4.1 keeps producer, actor and submitter apart, and §9.5
+                 keeps authentication out of the authority matrix.
   the tree       at main @ 37f354c, no production module imports the package
                  outside AI-06's type-only projection, and no production caller
                  of admission exists (§3.1-§3.3). This is a RECORDED negative
-                 finding about the repository, and it is the weakest of the three:
-                 it says what HAS been written, not what CAN run.
+                 finding about the repository AT THAT BASELINE, and it is the
+                 weakest of the three: it says what HAS been written, not what CAN
+                 run. ^ KEPT DATED BECAUSE THAT IS WHAT IT IS. The finding is about
+                 37f354c and has not been re-measured at the current head; what this
+                 document records is that NEITHER PR #87 NOR PR #88 ADDED A CALLER.
   the check      a change adding such a caller TO ONE OF THE FIVE DIRECTORIES
                  THAT CARRY A RULE would fail the BUILD-TIME checks in §3.4.
                  That is a constraint on what may be MERGED. It is NOT global:
@@ -1239,10 +1267,18 @@ THEY MUST NOT BE MERGED INTO ONE.
                  there would be refused by its phase's contract rather than by
                  a check.
   NOT claimed    that any of the three makes the API unreachable at RUNTIME.
-                 There is no runtime sandbox and no runtime authentication here.
-                 Committed code that imported the package WOULD RUN (§3.4); the
-                 constraint is that this repository will not merge it, and
-                 §15.2 STEP 0b says it must not be created in the first place.
+                 THERE IS STILL NO RUNTIME SANDBOX — Layer 0 is a BUILD-TIME
+                 repository-policy check, not a runtime barrier (§3.4) — AND THERE
+                 IS NOW RUNTIME AUTHENTICATION, WHICH IS A DIFFERENT THING AND IS
+                 NOT A SANDBOX. §30 step 7b runs inside admission, in the process
+                 that called it; it authenticates a CLAIM, and it does not contain a
+                 CALLER. Committed code that imported the package WOULD STILL RUN
+                 (§3.4). What refuses it is that this repository will not merge it,
+                 and §17.2, which blocks the import and the call until AI-14's
+                 STEP 1. ^ THIS CLAUSE CITED §15.2 STEP 0b UNTIL §19 AMENDMENT 3.
+                 STEP 0b IS SATISFIED AND NO LONGER REFUSES ANYTHING; the
+                 prohibition on creating the writer is UNCHANGED and now rests on
+                 §17.2 and §16.2's remaining rows.
 
 AI15-OPEN-1  PRODUCER AUTHENTICITY — how is a producer claim ESTABLISHED, as
              against merely well-formed?
@@ -1367,16 +1403,44 @@ FROZEN: AI-15 MUST NOT close, weaken, rename or claim to have resolved AI-11
 ### 9.3 Threat 2 — a caller fills in any producer token it likes
 
 ```text
-STATUS TODAY: THE FIELD IS CALLER-SUPPLIED AND IS CHECKED ONLY FOR REGISTRATION.
+STATUS TODAY: THE FIELD IS STILL CALLER-SUPPLIED, AND REGISTRATION IS STILL THE
+ONLY THING §6.5/§6.6 CHECK ABOUT IT — WHICH IS WHY A SEPARATE STEP EXISTS.
 
   `provenance.producer` is a Class 3, G-REGISTERED leaf in §15.2's field table
   (plugins/evidence/canonical.py:104), validated by g_text at
   plugins/evidence/models.py:1211 and by the registry at models.py:193.
   It is caller-supplied, and AI-05 §14.10's C1-R06 opaque-token rule scans it.
 
-RECORDED: a value "looking right" is EXACTLY the condition that makes it pass.
-          `ai-04` passes because it IS the registered token for a DECISION, not
-          because anything verified who wrote it.
+THREE THINGS THAT MUST NOT BE COLLAPSED, AND THE ORDER THEY RUN IN:
+
+  1  THE CLAIM. `provenance.producer` remains a SUBMITTED string. §6.5/§6.6
+     check REGISTRATION — whether the token is the registered one for that kind
+     and family, and whether it is applicable. That comparison is a
+     WELL-FORMEDNESS check and is NOT authentication.
+  2  THE AUTHENTICATION. A SEPARATE mechanism, §30 step 7b, requires a producer
+     PROOF; it verifies the signature under the key the deployment's designated
+     trust configuration holds for the claimed token; and it requires the signed
+     input to be the canonical serialization of THIS submitted mapping. It runs
+     BEFORE construction, and none of its six reason codes is a registry code
+     (§7.3.8).
+  3  THE CONSEQUENCE. A value that passes the REGISTRY check does NOT by itself
+     mean the whole admission succeeds. Registration is NECESSARY AND NOT
+     SUFFICIENT: `ai-04` still has to authenticate, and it does so only if the
+     submission carries a proof that verifies under `ai-04`'s designated key over
+     this exact mapping.
+
+RECORDED: a value "looking right" is EXACTLY the condition that makes it pass
+          REGISTRATION. `ai-04` passes the registry because it IS the registered
+          token for a DECISION — not because anything verified who wrote it.
+          ^ THAT SENTENCE WAS THE WHOLE STORY UNTIL PR #87 AND IS NOW ONE HALF OF
+          IT: registration still says nothing about authorship, and what says
+          something about it is the separate step in 2 above. THE DISTINCTION THE
+          PARAGRAPH EXISTS TO DRAW IS UNCHANGED AND IS NOW SHARPER — registry
+          membership and producer authentication are SEPARATE CHECKS, and the
+          second does not replace the first: §6.5 is still the sole authority on
+          which tokens are RECOGNIZED, so an authenticated claim naming an
+          unregistered token is still REFUSED, during construction (§7.3.2,
+          §7.3.7).
 ```
 
 ```text

@@ -1028,13 +1028,23 @@ AI-15-A 记录的核心事实（全部可按 file:line 复核）
                             比对，不比对别的。它是 WELL-FORMEDNESS 检查；
                             producer AUTHENTICATION 是另一个问题。
                             §30 step 7b 就是回答它的那一步（AI-05
-                            Amendment 5），但**没有任何东西执行这一步** ——
-                            它是契约文本，不是代码 —— 所以非测试 call site
-                            同样不提供答案
+                            Amendment 5）。**^ 本条在 AI-15-A 冻结时为真，现已更正：**
+                            当时**没有任何东西执行这一步**（它是契约文本，不是代码），
+                            PR #87 之后由 `plugins/evidence/producer_auth.py` 在
+                            `admission.admit()` 内、构建任何 typed record 之前执行
+                            （AI-15 §19 Amendment 3）。**规则本身不变**：g_registered
+                            证明的仍然只是「注册」，与认证是两项独立的检查。
     B5 CONNECTED 定义   十二个可核验条件（§8.3）。条件 11（producer
-                            authenticity）在 AI15-OPEN-1 未关闭时不满足；
-                            且 §15.2 STEP 0b gate 的是写入本身，所以“未标
-                            CONNECTED”不是合法中间态 — writer 根本不得存在
+                            authenticity）是**针对记录**的条件；它要求机制已定义、
+                            已实现且有测试证明其成立 —— 这三项现均已具备
+                            （§19 Amendment 3），**但没有记录存在**，所以条件 11
+                            对任何记录而言是 UNVERIFIED，而非 satisfied。
+                            **B5 仍 BLOCKED、未 CONNECTED**：没有非测试 call site、
+                            没有按 file:line 具名的调用点、没有已存储记录
+                            （§8.3 条件 1、2、3、9）。**^ 本条在 AI-15-A 冻结时写作
+                            「在 AI15-OPEN-1 未关闭时不满足；且 §15.2 STEP 0b gate
+                            的是写入本身」；STEP 0b 现已 SATISFIED，拒绝写入的是
+                            §17.2（AI-14 的 STEP 1）、row 1' 与 STEP 2 的前置条件。**
     B5 依赖顺序          STEP 0a（AI-05 回答 AI15-OPEN-2）→ STEP 1（AI-14
                             授权，仅改规则，绝不标 CONNECTED）→ STEP 0b
                             （AI-05 回答、实现并测试 AI15-OPEN-1）→ STEP 2
@@ -1223,7 +1233,7 @@ SecurityLab
 | AI-02 | **COMPLETE** — closed 2026-09-29, see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-03 | **COMPLETE** — C0–C8 PASS; merged as `548bc041` (PR #28); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-04 | **COMPLETE** — merged as `254823f7` (PR #32); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
-| AI-05 | **B1 COMPLETE** (PR #34); **B2 COMPLETE** — P1 `844df7be` (PR #41), P2 `b8692c18` (PR #42) and P3 `67515ff9` (PR #44) merged; **C-1 CLOSED** by Amendment 3 (§14.10) — §30 step 7 implemented, §32 C6 closed; **Amendments 5 and 6 MERGED / DOCS ONLY** (PR #83 `7017bf57`, PR #85 `cee1f8c9`) — the producer-authentication **standard is DEFINED** and its trust configuration **FROZEN**, but **NOTHING IS BUILT and no §7.3.7 acceptance test has been run**; **AI-05 INCOMPLETE** on **two independent items that are not substitutes** — AI-11 §21.1 OPEN-1 (an AI-05 producer-token amendment, OPEN: WHICH PRODUCERS EXIST) and §30 step 7b (DEFINED, NOT BUILT: WHETHER A CLAIM IS TRUSTWORTHY) — plus §35.1 (DEFERRED); see [PROJECT_STATUS.md](PROJECT_STATUS.md) and [AI-05-C1_EVIDENCE_2026-10-04.md](AI-05-C1_EVIDENCE_2026-10-04.md) |
+| AI-05 | **B1 COMPLETE** (PR #34); **B2 COMPLETE** — P1 `844df7be` (PR #41), P2 `b8692c18` (PR #42) and P3 `67515ff9` (PR #44) merged; **C-1 CLOSED** by Amendment 3 (§14.10) — §30 step 7 implemented, §32 C6 closed; **Amendments 5 and 6 MERGED / DOCS ONLY** (PR #83 `7017bf57`, PR #85 `cee1f8c9`) — the producer-authentication **standard DEFINED** and its trust configuration **FROZEN**; **PR #87 `d09ce69e` IMPLEMENTS it** — §30 step 7b runs inside `admission.admit()` **before any typed record exists**, and §31.3's four Layer 0 rules are **ENFORCED**, not merely written down, by `scripts/ci/layer0_policy.py`; **CI run #301: 46 process-isolated cases RAN, 0 skipped, `Layer 0 = PASS (24 checks)`**; **AI-05 Amendment 7 CLOSED `AI15-OPEN-1` in AI-05's own contract**, under AI-05's amendment rule, recorded by PR #88 merge `9e1b4c451deed34605d021b4203fccd16dad4cd0`; **AI-05 INCOMPLETE** on **AI-11 §21.1 OPEN-1** (an AI-05 producer-token amendment, **OPEN**: WHICH PRODUCERS EXIST — **the authentication implementation added no producer token and no §6.5 registry row**, so this item is not moved by it) plus §35.1 (DEFERRED); see [PROJECT_STATUS.md](PROJECT_STATUS.md) and [AI-05-C1_EVIDENCE_2026-10-04.md](AI-05-C1_EVIDENCE_2026-10-04.md) |
 | AI-06 | **COMPLETE** — merged as `3b1917ab` (PR #47); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-07 | **COMPLETE** — contract `963c181c` (PR #48), implementation `e57541f9` (PR #49) merged; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-08 | **COMPLETE** — merged as `edb7dfc82ce51123482ac357fb9319dca2fa0d9a` (PR #52); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
@@ -1233,7 +1243,7 @@ SecurityLab
 | AI-12 | **AI-12-A COMPLETE / MERGED** (`60c630d8`), **AI-12-B COMPLETE / MERGED** (`fa892eb1`, PR #67) — the policy core; **AI-12-C BLOCKED / NOT STARTED**, **AI-12 NOT CLOSED**, model-comparative prerequisite BLOCKED; see [AI-12-B_EVIDENCE_2026-10-03.md](AI-12-B_EVIDENCE_2026-10-03.md) |
 | AI-13 | **COMPLETE / MERGED / CLOSED** — contract `1e0a7fdf4dd96230a6177d3ca21bda03ec9c19ba` (PR #69), workflow core `95f0d08c47c8137813013ad7fe318e8fd0ebf12a` (PR #70), human approval point `98d4f57ad0bd78a54b9eb2ea44f30d2db394ee97` (PR #71), Amendments 1–4 applied; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-14 | **COMPLETE** — AI-14-A (freeze) `4b1058a4c764a613127800426fdd95e34d164bf3` (PR #72) and AI-14-B (composition) `adf6db2476b7e3de33a585954610e9ab568b498c` (PR #73) both merged; contract **FROZEN + AMENDED ONCE** (§25); **B5 (composition → Evidence) BLOCKED / NOT STARTED**; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
-| AI-15 | **AI-15-A COMPLETE / MERGED** — architecture / contract freeze, **DOCS ONLY** `6e814a8b6d214a0203deb73b1abbf21ae50b68cc` (PR #78), a true two-parent merge of `37f354c`; contract **FROZEN + AMENDED THREE TIMES** — §19 Amendment 1 (2026-10-09) closed **AI15-OPEN-2** (*AI-05 Amendment 4, READING A*), so **STEP 0a is satisfied** and AI-14's STEP 1 is unblocked but NOT made; §19 Amendment 2 (2026-10-11) recorded **AI-05 Amendments 5 and 6** — the producer-authentication **standard DEFINED, trust configuration FROZEN, both DOCS ONLY**; §19 Amendment 3 (2026-10-11) records **AI-05 Amendment 7** — **AI-05 IMPLEMENTED and TESTED the mechanism** (PR #87 `d09ce69e…`; CI run #301: **46 cases RAN, 0 skipped**, `Layer 0 = PASS (24 checks)`) and **CLOSED AI15-OPEN-1 by its OWNER, in AI-05's contract** (`9e1b4c45…`) — so **AI15-OPEN-1 is CLOSED** and **STEP 0b is SATISFIED**; AI-15 only RECORDED it. **AI-15-B NOT STARTED / BLOCKED**, **B5 still BLOCKED / NOT STARTED**, no seam CONNECTED, no production Evidence writer; **AI-11 §21.1 OPEN-1 and row 1′ remain OPEN, INDEPENDENT and UNRESOLVED** and are NOT moved by the closure; see [PROJECT_STATUS.md](PROJECT_STATUS.md) and [AI-15_EVIDENCE_PRODUCTION_EXECUTION_PLAN.md](AI-15_EVIDENCE_PRODUCTION_EXECUTION_PLAN.md) |
+| AI-15 | **AI-15-A COMPLETE / MERGED** — architecture / contract freeze, **DOCS ONLY** `6e814a8b6d214a0203deb73b1abbf21ae50b68cc` (PR #78), a true two-parent merge of `37f354c`; contract **FROZEN + AMENDED THREE TIMES** — §19 Amendment 1 (2026-10-09) closed **AI15-OPEN-2** (*AI-05 Amendment 4, READING A*), so **STEP 0a is satisfied** and AI-14's STEP 1 is unblocked but NOT made; §19 Amendment 2 (2026-10-11) recorded **AI-05 Amendments 5 and 6** — the producer-authentication **standard DEFINED, trust configuration FROZEN, both DOCS ONLY**; §19 Amendment 3 (2026-10-11) records **AI-05 Amendment 7** — **AI-05 IMPLEMENTED and TESTED the mechanism** (PR #87 `d09ce69e…`; CI run #301: **46 cases RAN, 0 skipped**, `Layer 0 = PASS (24 checks)`) and **CLOSED AI15-OPEN-1 by its OWNER, in AI-05's contract** (`9e1b4c45…`) — so **AI15-OPEN-1 is CLOSED** and **STEP 0b is SATISFIED**; AI-15 only RECORDED it. **AI-15-B NOT STARTED / BLOCKED**, **B5 still BLOCKED / NOT STARTED**, no seam CONNECTED, no production Evidence writer; **AI-11 §21.1 OPEN-1 remains OPEN**, and **row 1′** — which asks a different question — remains **UNSATISFIED / UNRESOLVED**; **the two are INDEPENDENT of each other and of the closure**, and neither is moved by it; see [PROJECT_STATUS.md](PROJECT_STATUS.md) and [AI-15_EVIDENCE_PRODUCTION_EXECUTION_PLAN.md](AI-15_EVIDENCE_PRODUCTION_EXECUTION_PLAN.md) |
 
 ---
 

@@ -632,14 +632,19 @@ AI-14   Long-term AI Workbench                COMPLETE  AI-14-A MERGED (PR #72)
   (AI-02, AI-03, AI-04, AI-06) **do** hold a §6.5 row — what none of them has is a
   WRITER — and the rows that exist accept a caller-supplied producer token, which
   `g_registered` (`plugins/evidence/models.py:193`) checks for registration and nothing
-  else. Those are **two independent OPEN items, both owned by AI-05**: AI-11 §21.1's
-  OPEN-1 (WHICH PRODUCERS EXIST) and **AI15-OPEN-1** (WHETHER A PRODUCER CLAIM IS
-  TRUSTWORTHY). AI-15-B's blockers are listed with owners and the §15.2 step each gates
-  in the AI-15 plan §16.2; **B5 remains BLOCKED**, and while AI15-OPEN-1 is OPEN **no
-  production call site that can execute admission and persist a record may be created,
-  merged or run** (AI-15 plan §15.2 STEP 0b, §17.2b). **AI15-OPEN-2 is no longer one
-  of them**: AI-05 Amendment 4 answered it as READING A and AI-15 recorded the answer
-  (§19 Amendment 1), so STEP 0a is satisfied and AI-14's STEP 1 may begin. It has not
+  else. **ONE OF THOSE TWO IS NOW CLOSED.** AI-11 §21.1's OPEN-1 (WHICH PRODUCERS
+  EXIST) **remains OPEN**; **AI15-OPEN-1** (WHETHER A PRODUCER CLAIM IS TRUSTWORTHY) is
+  **CLOSED BY ITS OWNER** — AI-05 implemented and tested the mechanism (PR #87; CI run
+  #301: 46 process-isolated cases RAN, 0 skipped, `Layer 0 = PASS (24 checks)`) and
+  closed the item in AI-05's own contract, under AI-05's amendment rule (Amendment 7,
+  PR #88 `9e1b4c451deed34605d021b4203fccd16dad4cd0`). AI-15-B's blockers are listed
+  with owners and the §15.2 step each gates in the AI-15 plan §16.2; **B5 remains
+  BLOCKED**, and **no production call site that can execute admission and persist a
+  record may be created, merged or run** — the refusal now comes from **§17.2
+  (AI-14's STEP 1)**, **row 1′** and **STEP 2's own precondition**, NOT from §15.2
+  STEP 0b, which is **SATISFIED**. **AI15-OPEN-2 is no longer one of them either**:
+  AI-05 Amendment 4 answered it as READING A and AI-15 recorded the answer (§19
+  Amendment 1), so STEP 0a is satisfied and AI-14's STEP 1 may begin. It has not
   begun, and satisfying a blocker is not satisfying B5
 
 ## AI-00 final gate status
