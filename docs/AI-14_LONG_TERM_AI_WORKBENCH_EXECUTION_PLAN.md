@@ -401,10 +401,15 @@ Router -> model invocation                    DOES NOT EXIST              Router
   RouterDecision -> Invoker                                               is the provider binding's, and
                                                                           no path carries a decision into
                                                                           an Invoker (§4.2 rule 1)
-Any producer -> Evidence                      IMPLEMENTED BUT NOT         B5 is BLOCKED (AI-05 C-1
-  admit() / admit_to_store()                     CONNECTED                DEFERRED); no producer token
-                                                                          exists, and composition/ MUST
-                                                                          NOT import plugins.evidence
+Any producer -> Evidence                      IMPLEMENTED BUT NOT         B5 is BLOCKED. The IMPORT is
+  admit() / admit_to_store()                     CONNECTED                AUTHORIZED by AI-14 Amendment 2
+                                                                          (§22.1 B5) and NO CALL SITE
+                                                                          EXISTS, which is what keeps
+                                                                          this row NOT CONNECTED. No
+                                                                          producer token exists for any
+                                                                          phase without a §6.5 row, and
+                                                                          composition/ MUST NOT mint,
+                                                                          choose or borrow one
 AI-06 -> AI-05 projection                     IMPLEMENTED BUT NOT         plugins/security_tools/
   tool_call_for(), execution_payload_for()       CONNECTED                evidence.py:19,40
 ```
@@ -438,6 +443,12 @@ RECORDED: what is still NOT connected, and MUST be reported as such: the Workflo
           Provider and Workflow -> Guard/Tools paths (refused by contract), a
           RouterDecision reaching an Invoker (refused by §4.2 rule 1), any producer
           writing Evidence (B5 BLOCKED), and the AI-06 -> AI-05 projection.
+RECORDED (AI-14 Amendment 2): the composition -> Evidence row LOST ITS "BY RULE"
+          ANNOTATION and KEPT ITS CLASSIFICATION. Its import is now AUTHORIZED; its
+          class is still IMPLEMENTED BUT NOT CONNECTED, because §2 defines that class
+          as "both sides exist; the only callers/implementors are tests or nothing at
+          all" and NOTHING CALLS THIS EDGE. AUTHORIZATION IS NOT CONNECTION: an import
+          a change is permitted to write is not a call site, and B5 stays BLOCKED.
 FROZEN:   AI-14-B MUST NOT describe a SEAM as a working path. Any user-facing statement
           about the system MUST carry the classification above.
 ```
@@ -1432,25 +1443,72 @@ B4 — AI-10 CONTROLLED VERIFICATION CALLER -> AI-06 SINGLE TOOL PATH
 ```
 
 ```text
-B5 — COMPOSITION -> EVIDENCE   (gated: AI-05 producer contract)
+B5 — COMPOSITION -> EVIDENCE   (gated: the producing phase's own contract, and a call site)
 
   work item        wiring a phase's run facts into Evidence admission — ONLY for a
                    producer AI-05 has admitted
-  seam today       no production writer; AI-05 C-1 is DEFERRED and §30 step 7 is
-                   unimplemented, so an ACCEPTED is NOT a full §30 admission
+  seam today       THE IMPORT IS AUTHORIZED (AI-14 Amendment 2) AND NO PRODUCTION
+                   WRITER EXISTS. Nothing in production code calls admit() or
+                   admit_to_store() anywhere in this repository, so the edge is
+                   IMPLEMENTED BUT NOT CONNECTED in §2's sense: both sides exist, and
+                   no non-test caller does. AI-05 C-1 IS CLOSED (AI-05 Amendment 3)
+                   and §30 step 7 is implemented, so an ACCEPTED is a full §30
+                   admission — the earlier ground for this row, that it was not, has
+                   lapsed with C-1
   entry points     plugins.evidence.admission.admit() / admit_to_store(store=...)
   composition MAY  call admission with a record the OWNING phase produced, under the
-                   producer token that phase holds
+                   producer token that phase holds, and carry that phase's producer
+                   PROOF through to §30 step 7b — passing both through WITHOUT
+                   choosing, minting or altering either
   NEVER            register a producer, invent or borrow a token, add a row to the §6.5
-                   registry (that is an AI-05 amendment and only AI-05 may make it), read
-                   ACCEPTED as a full §30 admission, treat a stored record as an
-                   authorization, or admit raw content
+                   registry (that is an AI-05 amendment and only AI-05 may make it),
+                   treat a stored record as an authorization, treat an authenticated
+                   producer claim as the SUBMITTER's identity or as an authorization
+                   (§4.2 rule 4), or admit raw content
   after            §14/§5/Appendix A updated together; a test that shows no record is
                    admitted without an admitted producer
-  blocked by       AI-05 C-1 = DEFERRED. THIS ITEM DOES NOT START until AI-05 amends its
-                   producer registry. Until then the composition reports those facts as
+  blocked by       (i)   THE ABSENCE OF A CALL SITE. This item is not started. The
+                         change that starts it is governed by B6's same-change rule
+                         below and by §5: the call site and the classification update
+                         merge as ONE change, in ONE review.
+                   (ii)  ROW 1′ — the §6.5 row AND the own-contract clause for each
+                         phase whose facts are to be admitted. AI-11 §21.1's OPEN-1
+                         records that no §6.5 row exists for AI-08 / AI-10 / AI-11 /
+                         AI-13, and adding one is an AI-05 amendment that AI-14 MUST
+                         NOT make. A phase whose contract forbids it to write must
+                         also be amended by THAT phase.
+                   (iii) THE JOINT-DELIVERY MECHANISM. This change has two authors —
+                         the implementer's runtime part and AI-14's own contract,
+                         Layer 0 and test parts — and no mechanism has been agreed for
+                         delivering both as ONE change while AI-14 retains ownership
+                         of its parts. Until one is, this item stays blocked; §22.1 B6
+                         and §24 both forbid splitting the merge or authoring another
+                         owner's clauses.
+                   Until those are resolved the composition reports those facts as
                    RUN DATA, and no document may call them durable evidence. Durable
                    review evidence stays DEFERRED for the same reason
+```
+
+```text
+RECORDED (AI-14 Amendment 2) — WHAT THIS AMENDMENT DID AND DID NOT RECONCILE.
+
+    IT CHANGED THE AUTHORIZATION, NOT THE CLASSIFICATION. Before it, a
+    `plugins.evidence` import from `composition/` was refused BY RULE, and that
+    refusal was the reason this row could not be connected. THE REFUSAL IS
+    WITHDRAWN; THE ROW IS STILL IMPLEMENTED BUT NOT CONNECTED, and it is still
+    BLOCKED by (i), (ii) and (iii) above. §2's vocabulary already expressed
+    "authorized but not yet connected" — that IS the IMPLEMENTED BUT NOT CONNECTED
+    member — so this amendment invents no member and renames none.
+
+    IT DID NOT RECONCILE THE C-1 RECORDS ELSEWHERE IN THIS DOCUMENT. AI-05 C-1 was
+    closed on 2026-10-04 by AI-05 Amendment 3, and this document still carries the
+    older record as DEFERRED in §3's inventory line, in §14's RECORDED block, in
+    §20.2's decision table, in §20.3's rule table and at §3's AI-05 summary row.
+    AI-15 §14.9 records the same finding and assigns the reconciliation to an AI-14
+    owner amendment. THIS AMENDMENT DOES NOT MAKE IT, and the stale lines are NAMED
+    HERE rather than left to be discovered: a future reader must NOT take them as
+    the current status. What AI-14 records as current, this amendment states; what
+    it did not touch, it labels.
 ```
 
 ```text
@@ -1517,11 +1575,17 @@ B3  Workflow StepExecutor -> execution     DONE      composition/executor.py
                                                      declare routing input is OPEN and
                                                      this phase invents none
 B4  controlled verification caller         DONE      composition/verification.py
-B5  composition -> Evidence                BLOCKED   NOT STARTED. AI-05 C-1 is still
-                                                     DEFERRED, no producer token exists,
-                                                     and `composition/` MUST NOT import
-                                                     `plugins.evidence` — the layer 0
-                                                     check refuses it structurally
+B5  composition -> Evidence                BLOCKED   NOT STARTED. AI-14 STEP 1 is
+                                                     MADE (Amendment 2): the import is
+                                                     AUTHORIZED and layer 0 no longer
+                                                     refuses it. STILL BLOCKED BY: no
+                                                     call site; row 1′ (the §6.5 row and
+                                                     the own-contract clause for each
+                                                     phase whose facts would be
+                                                     admitted); and the unresolved
+                                                     joint-delivery mechanism. NO
+                                                     PRODUCER TOKEN WAS ADDED and none
+                                                     exists for AI-08/AI-10/AI-11/AI-13
 B6  end-to-end composition + boundaries    DONE      composition/root.py, and
                                                      tests/composition/test_boundaries.py
 
@@ -1700,6 +1764,179 @@ AND IT DOES NOT CLOSE THE B3 OPEN ITEM
     (§22.1 B3), and this amendment neither invents one nor amends AI-13.
 ```
 
+```text
+AMENDMENT 2 — 2026-10-11 — B5 IS AUTHORIZED. THE CLASSIFICATION DOES NOT MOVE.
+
+IN FORCE on the merge of the change that carries it. The merge IS the approval, and
+the text below is the final text.
+
+AUTHORIZATION ONLY. This amendment changes the RULES that stood in front of the
+composition -> Evidence edge. It connects nothing, classifies nothing and writes no
+runtime code: after it, as before it, NO PRODUCTION CALLER OF `admit` OR
+`admit_to_store` EXISTS, B5 is BLOCKED, and the edge is IMPLEMENTED BUT NOT CONNECTED.
+
+This is STEP 1 of the order AI-15 §15.2 fixes for this edge. It is AI-14's step and
+AI-14's act, made in AI-14's contract under AI-14 §24. Its precondition, STEP 0a,
+was satisfied by AI-05 Amendment 4 (READING A); STEP 0b — how a producer claim is
+established — was satisfied by AI-05 Amendments 5, 6 and 7 together with the runtime
+implementation PR #87 and its acceptance run #301. AI-14 records those as the basis
+and claims no part of them.
+
+CHANGED CLAUSES
+    §5.1        the composition -> Evidence row: the "by rule" reason is REMOVED and
+                the classification is KEPT. The row remains IMPLEMENTED BUT NOT
+                CONNECTED, and a RECORDED line now states why that is not a
+                contradiction — §2 defines the member as "both sides exist; the only
+                callers/implementors are tests or nothing at all", and nothing calls
+                this edge.
+    §22.1 B5    the work item's `seam today`, `composition MAY`, `NEVER` and
+                `blocked by` clauses, and the per-item STATUS row. The stale ground —
+                "AI-05 C-1 is DEFERRED" and the §30-step-7 consequence drawn from it
+                — is replaced. AI-05 C-1 was CLOSED on 2026-10-04 by AI-05 Amendment
+                3 and §30 step 7 is implemented, so an ACCEPTED is a full §30
+                admission. What BLOCKS this item now is stated instead: no call site;
+                row 1′ (the §6.5 row AND the own-contract clause for each phase whose
+                facts would be admitted); and the unresolved joint-delivery
+                mechanism.
+    Appendix A  the composition -> Evidence row: "DOES NOT EXIST (by rule)" ->
+                "IMPLEMENTED BUT NOT CONNECTED", with the authorization and the absent
+                call site named.
+
+AND, IN THE SAME CHANGE, THE ENFORCEMENT THAT RECORDED THE OLD RULE
+    scripts/ci/layer0_policy.py    AI14_FORBIDDEN_IMPORTS is now EMPTY. The constant
+                is KEPT rather than deleted, so the one place a forbidden import would
+                be recorded is still one line. No other composition rule is relaxed:
+                the forbidden stdlib roots, the foreign-root rule, the forbidden
+                identifiers, the forbidden callables and the one-way rule all stand.
+    tests/composition/test_composition_boundaries.py
+                `test_the_composition_reaches_no_evidence_writer` no longer refuses
+                the IMPORT — an authorized import is permission to write a call, not a
+                call — and CHECKS THE CALL, which is the current-state fact that keeps
+                the edge NOT CONNECTED.
+    tests/composition/test_composition_layer0.py
+                the non-vacuity test that planted an evidence import becomes the
+                CONTROL for the authorization. THE BLOCK IS STILL PROVEN NON-VACUOUS:
+                every other planted violation in that file still fails the check.
+                THIS FILE IS NOT IN AI-15 §15.2's LIST FOR STEP 1 and is changed only
+                because the Layer 0 change would otherwise leave a failing test.
+
+WHY
+    AI-15 §15.2 fixes the order in which this edge may be connected, and STEP 1 is the
+    authorization that must precede the call site. Until it is made, a change that
+    wrote the call site could not be merged: the import was refused by rule, and the
+    refusal is what made the row structurally unconnectable. Making the authorization
+    FIRST is what lets STEP 2 be a reviewed wiring change rather than a change that
+    also has to argue about whether it was allowed to exist.
+    §24 requires an amendment for a change to this document's frozen clauses, and the
+    §5.1 row and Appendix A are both part of it.
+
+SECURITY IMPACT
+    NARROW, AND IT IS A WITHDRAWAL OF A STRUCTURAL BLOCK RATHER THAN A GRANT OF A NEW
+    POWER. Stated as what it does and does not move.
+
+    WHAT IT MOVES
+        a `plugins.evidence` import from `composition/` is PERMITTED rather than
+          refused, and Layer 0 no longer reports it
+        the "by rule" reason for the row is withdrawn, and the row is restated as
+          blocked by what actually blocks it
+
+    WHAT IT DOES NOT MOVE
+        no CONNECTED classification. The row stays IMPLEMENTED BUT NOT CONNECTED and
+          B5 stays BLOCKED
+        NO CALL SITE IS CREATED, and none is authorized to be created by THIS
+          amendment. STEP 2 is a separate step, owned by the implementing party, and
+          §22.1 B6's same-change rule governs it
+        no runtime file under `composition/` is touched
+        no producer token, no §6.5 registry row, no authentication mechanism and no
+          trust root is added or changed
+        the composition still MUST NOT mint, choose or borrow a producer token; the
+          identifier rule and the authority-vocabulary test that enforce that are
+          UNCHANGED
+        an authenticated producer claim is still NOT the submitter's identity and
+          still NOT an authorization (§4.2 rule 4)
+        no authority relation moves, and Guard remains the only AUTHORIZES entry
+        UNKNOWN / BLOCKED / NOT_RUN / UNAVAILABLE still do not become PASS
+
+AUTHORITY IMPACT
+    None. The composition gains a PERMISSION TO IMPORT a layer whose public entry
+    point §19 already lists among the entry points a layer is reached through; it
+    gains no decision, no grant and no authority of its own (§3, §4). No layer gained
+    a power it did not already hold, and no responsibility moved into the composition.
+
+CONTRACT IMPACT
+    ADDED        this amendment record
+    AMENDED      §5.1's composition -> Evidence row and a RECORDED line beneath it
+                 §22.1 B5's work-item block and its per-item STATUS row
+                 Appendix A's composition -> Evidence row
+    UNCHANGED    §2's classification vocabulary — NO MEMBER IS ADDED, RENAMED OR
+                 WEAKENED; the row uses IMPLEMENTED BUT NOT CONNECTED, which already
+                 expressed "authorized but not yet connected"
+                 §3, §4 and the ten rules, §6, §13, §14, §17, §18, §19, §20, §21,
+                 §22.1's other work items, §23, and §24's procedure
+                 every other row of §5.1 and of Appendix A
+                 the authority matrix, the component list and the one-way rule
+
+WHAT THIS AMENDMENT DOES NOT DO
+    it does not record B5 as CONNECTED, and it does not satisfy §22.1 B6
+    it does not create, authorize or pre-approve a call site: STEP 2 is not begun
+    it does not resolve row 1′, and it does not close AI-11 §21.1's OPEN-1 — no
+      producer token and no §6.5 row was added, and none may be added here
+    it does not resolve the joint-delivery mechanism for the future STEP 2 + STEP 3
+      change, and it does not pre-empt the classification that step owns
+    it does not make AI-15's STEP 3, and it does not classify anything
+    it does not amend AI-15, AI-05, AI-11 or any other phase's contract
+    it does not treat producer authentication as submitter identity or as authority
+    it does not reconcile the AI-05 C-1 records that remain elsewhere in THIS
+      document. See the finding below.
+
+RECORDED FINDING — REPORTED AND NOT FIXED, AND NAMED SO IT IS NOT DISCOVERED
+    AI-05 C-1 was closed on 2026-10-04 by AI-05 Amendment 3, and this document still
+    carries the older record as DEFERRED in places this amendment did NOT touch:
+
+        §3          the AI-05 summary row — "INCOMPLETE (C-1 DEFERRED)"
+        §14         the RECORDED block stating that C-1 is DEFERRED, that §30 step 7
+                    is unimplemented, that plugins/evidence/rules.py does not exist
+                    and that T22a/T22b/T22c are unrunnable; and the FROZEN clause
+                    conditioned on it ("... while C-1 is DEFERRED"), whose condition
+                    has lapsed
+        §20.2       the decision table's C-1 row and its "AI-05 C-1 — DEFER" rationale
+        §20.3       the rule table's "a full §30 admission claim -> BLOCKED until C-1
+                    is published"
+        Appendix A  the row "evidence §30 step 7 (C-1) — DEFERRED"
+
+    AI-15 §14.9 records the same finding and assigns the reconciliation to an AI-14
+    owner amendment. THIS AMENDMENT IS NOT THAT ONE. It corrects the C-1 ground ONLY
+    where that ground was B5's OWN rationale — which is what AI-15 §15.2's STEP 1
+    names — and it leaves the §30-ADMISSION-COMPLETENESS records alone, because they
+    answer a different question, and because §22.1 B6 already requires the change
+    that connects the edge to restate §5 and Appendix A, which is where they have to
+    be reconciled.
+    TWO FURTHER LINES WERE CHECKED AND ARE NOT STALE, recorded so a later reader does
+    not re-open them: §22's C6 item ("dependency decisions made and argued for AI-05
+    C-1 and AI-12-C") states what §20 must CONTAIN and not what C-1's status is; and
+    Appendix A's "evidence producers (AI-08/10/11/13) — DECLARES ONLY / DEFERRED" is
+    still true, because no §6.5 row exists for those phases.
+    A READER MUST NOT TAKE AN UNTOUCHED LINE AS THE CURRENT STATUS.
+
+RECORDED — ONE ITEM IN AI-15 §15.2's STEP 1 LIST WAS NOT PERFORMED, AND IS REPORTED
+    AI-15 §15.2 lists, among the things STEP 1 changes, "§13's `producer_token`
+    identifier refusal, where it reaches the SUBMITTING caller rather than the
+    composition". NO SUCH REFUSAL EXISTS IN §13: AI-14 §13 is the human-approval
+    architecture, it contains no producer-token rule, and the word "identifier" does
+    not appear in this document at all. The refusal that does exist is
+    `AI14_FORBIDDEN_IDENTIFIERS`' `producer_token` entry and the composition's
+    authority-vocabulary test, and BOTH APPLY TO `composition/` AND TO NOTHING ELSE —
+    there is no separate refusal reaching a submitting caller for this amendment to
+    narrow.
+    ACCORDINGLY THIS AMENDMENT DOES NOT CHANGE THAT REFUSAL, on the instruction that
+    a requirement appearing inconsistent with the actual source is REPORTED rather
+    than replaced by an invented substitute. The refusal is also exactly what the
+    remaining invariant requires: the composition MUST NOT mint, choose or borrow a
+    producer token, and §22.1 B5's `NEVER` clause states that independently of the
+    identifier list. If AI-15's owner intends a DIFFERENT rule than the one that
+    exists, that is a new finding for AI-15 to state precisely.
+```
+
 ---
 
 ## Appendix A — Architecture inventory (evidence)
@@ -1786,9 +2023,14 @@ composition  the package                  IMPLEMENTED                    composi
                                                                          — 63 tests; Layer 0 check
                                                                          `composition layer boundary
                                                                          and authority absence`
-composition  -> Evidence                 DOES NOT EXIST (by rule)       B5 BLOCKED; layer 0 refuses
-                                                                         a `plugins.evidence` import
-                                                                         from composition/
+composition  -> Evidence                 IMPLEMENTED BUT NOT CONNECTED  B5 BLOCKED. AI-14 Amendment 2
+                                                                         (§22.1 B5) AUTHORIZES the
+                                                                         import — layer 0 no longer
+                                                                         refuses a `plugins.evidence`
+                                                                         import from composition/ — and
+                                                                         NO CALL SITE EXISTS, which is
+                                                                         what keeps this row NOT
+                                                                         CONNECTED
 ```
 
 ```text

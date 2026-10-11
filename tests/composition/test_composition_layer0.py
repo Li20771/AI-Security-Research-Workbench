@@ -4,6 +4,13 @@ A boundary check that cannot fail proves nothing. Every test below plants ONE
 violation in a scratch tree and requires `check_ai14_composition_layer` to report
 it, and the first test requires it to report NOTHING on the real repository — a
 check that fires on a clean tree is equally useless.
+
+ONE TEST BELOW IS A CONTROL RATHER THAN A VIOLATION:
+`test_the_check_allows_the_authorized_evidence_import` plants the import AI-14
+Amendment 2 authorized and requires the check to report NOTHING. The block is still
+proven non-vacuous by the other planted violations — a foreign root, a forbidden
+process root, an authority vocabulary, a forbidden callable, a layer importing the
+composition — every one of which still fails.
 """
 
 from __future__ import annotations
@@ -95,12 +102,24 @@ def test_the_check_catches_a_foreign_root(tmp_path: Path) -> None:
     assert any("numpy" in problem for problem in problems), problems
 
 
-def test_the_check_catches_an_evidence_import(tmp_path: Path) -> None:
-    """§22.1 B5 is BLOCKED, and the block is structural: no import, no writer."""
+def test_the_check_allows_the_authorized_evidence_import(tmp_path: Path) -> None:
+    """AI-14 Amendment 2 AUTHORIZES `plugins.evidence`; the check no longer refuses it.
+
+    THIS IS THE ONE TEST IN THIS FILE THAT PLANTS AN ALLOWED CHANGE rather than a
+    violation, and it is the control for STEP 1's authorization: the rule stopped
+    refusing this import, and the check must therefore report NOTHING here. It is
+    also the guard against the opposite error — a rule re-widened by accident would
+    be caught by the `numpy` and `socket` cases below, which still fail.
+
+    THE AUTHORIZATION IS NARROW. It permits an IMPORT and says nothing about a CALL:
+    no production code calls `admit` or `admit_to_store` anywhere in this repository,
+    so B5 remains BLOCKED and the edge remains IMPLEMENTED BUT NOT CONNECTED (§5.1,
+    §22.1 B5).
+    """
     problems = _LAYER0.check_ai14_composition_layer(
         _scratch(tmp_path, extra_source="from plugins.evidence import admit\n")
     )
-    assert any("plugins.evidence" in problem for problem in problems), problems
+    assert problems == [], problems
 
 
 @pytest.mark.parametrize(

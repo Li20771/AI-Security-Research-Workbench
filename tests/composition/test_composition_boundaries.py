@@ -149,12 +149,22 @@ def test_wiring_did_not_verify_a_capability(tmp_path) -> None:
 
 
 def test_the_composition_reaches_no_evidence_writer() -> None:
-    """B5 stays BLOCKED: no module here imports, admits or stores a record.
+    """B5 stays BLOCKED: no module here CALLS admission, and that is the boundary.
 
-    Checked by IMPORT and by CALL rather than by the word: the docstrings explain
-    the rule, and a word scan would flag the explanation as the violation — the
-    same distinction `layer0_policy` makes when it reads identifiers rather than
-    text.
+    THE IMPORT IS NO LONGER THE BOUNDARY. AI-14 Amendment 2 (§22.1 B5, STEP 1)
+    AUTHORIZED the composition -> Evidence edge, so `plugins.evidence` is a layer
+    this package may import and this test no longer refuses it. AN AUTHORIZED IMPORT
+    IS PERMISSION TO WRITE A CALL, NOT A CALL.
+
+    WHAT IS STILL CHECKED IS THE CALL — the current-state fact §5.1 and Appendix A
+    depend on: no module in this package calls `admit` or `admit_to_store`, which is
+    what keeps the edge IMPLEMENTED BUT NOT CONNECTED. If a call appears here, the
+    edge is being connected, and §22.1 requires that change to carry the
+    classification update in the SAME merged change rather than after it.
+
+    Checked by CALL rather than by the word: the docstrings explain the rule, and a
+    word scan would flag the explanation as the violation — the same distinction
+    `layer0_policy` makes when it reads identifiers rather than text.
     """
     import ast
 
@@ -162,13 +172,7 @@ def test_the_composition_reaches_no_evidence_writer() -> None:
     for path in sorted(package.glob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                assert not any(
-                    alias.name.startswith("plugins.evidence") for alias in node.names
-                ), path.name
-            elif isinstance(node, ast.ImportFrom):
-                assert not (node.module or "").startswith("plugins.evidence"), path.name
-            elif isinstance(node, ast.Call):
+            if isinstance(node, ast.Call):
                 called = getattr(node.func, "id", None) or getattr(
                     node.func, "attr", None
                 )

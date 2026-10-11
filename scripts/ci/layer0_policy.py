@@ -3565,10 +3565,22 @@ AI14_FORBIDDEN_STDLIB_ROOTS = (
     "urllib",
 )
 
-#: B5 is BLOCKED: AI-05 C-1 is DEFERRED, no producer token exists for any of these
-#: phases, and the composition MUST NOT become the writer that papers over it
-#: (§14, §20, §22.1 B5). The rule is an IMPORT rule, so the block is structural.
-AI14_FORBIDDEN_IMPORTS = ("plugins.evidence",)
+#: EMPTY BY AI-14 AMENDMENT 2 (§22.1 B5, STEP 1 of the authorization order).
+#:
+#: STEP 1 AUTHORIZES the composition -> Evidence edge, so `plugins.evidence` is no
+#: longer refused here. THE PROHIBITION THAT REMAINS IS NOT AN IMPORT RULE: the
+#: composition must still not MINT, CHOOSE or BORROW a producer token, and that is
+#: enforced by `AI14_FORBIDDEN_IDENTIFIERS` below and by the composition's own
+#: authority-vocabulary test.
+#:
+#: THE TUPLE IS KEPT RATHER THAN DELETED so that the single place a forbidden import
+#: would be recorded stays one line to change if the contract ever refuses one again.
+#:
+#: AN AUTHORIZED IMPORT IS NOT A CALL SITE. This constant's emptiness says NOTHING
+#: about whether the edge is CONNECTED: no production caller of `admit` or
+#: `admit_to_store` exists, the row stays IMPLEMENTED BUT NOT CONNECTED, and B5 stays
+#: BLOCKED (§5.1, §22.1 B5).
+AI14_FORBIDDEN_IMPORTS: tuple[str, ...] = ()
 
 #: Names that would mean the composition had acquired an authority of its own:
 #: a trust root, an approval vocabulary, a producer token, a Guard verdict it
@@ -3613,8 +3625,13 @@ def check_ai14_composition_layer(base: "Path | None" = None) -> list[str]:
     ```text
     identity      composition/ is the glue between frozen layers -- not a
                   component (§3) and not an authority (§4)
-    reach         it calls public entry points, and reaches no process, no
-                  network and no Evidence writer
+    reach         it calls public entry points, and reaches no process and no
+                  network. THE composition -> Evidence EDGE IS AUTHORIZED BY
+                  AI-14 AMENDMENT 2, WHICH IS A PERMISSION TO IMPORT
+                  `plugins.evidence` AND NOT A CALL SITE: nothing here calls
+                  `admit` or `admit_to_store`, and THAT ABSENCE -- not an import
+                  rule, which no longer exists for this edge -- is what keeps the
+                  edge IMPLEMENTED BUT NOT CONNECTED
     authority     it constructs no trust root, no approval, no producer token,
                   no Guard decision and no Invoker
     one-way       it may import a layer; a layer MUST NOT import it
@@ -3681,8 +3698,8 @@ def check_ai14_composition_layer(base: "Path | None" = None) -> list[str]:
             if name.startswith(AI14_FORBIDDEN_IMPORTS) or top in AI14_FORBIDDEN_STDLIB_ROOTS:
                 problems.append(
                     f"{_display(path)} imports {name!r}; the composition calls "
-                    "public entry points and reaches no process, no transport and "
-                    "no Evidence writer (§19, §22.1 B5)"
+                    "public entry points and reaches no process and no transport "
+                    "(§18, §19)"
                 )
             elif top in sys.stdlib_module_names:
                 # The inert parts of the standard library are fine: a dataclass,
