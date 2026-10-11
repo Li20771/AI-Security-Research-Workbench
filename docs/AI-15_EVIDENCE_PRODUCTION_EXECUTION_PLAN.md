@@ -606,8 +606,9 @@ FROZEN: §6.5 REGISTRY MEMBERSHIP PROVES REGISTRATION AND NOTHING ELSE. A value
         holds for this (kind, family). It does NOT prove that the named component
         produced the record, that the submitter is that component, or that the
         submitter is entitled to speak for it. Registry validation is a
-        WELL-FORMEDNESS check; producer AUTHENTICATION is a different question,
-        and no step of §30 answers it.
+        WELL-FORMEDNESS check; producer AUTHENTICATION is a different question.
+        §30 step 7b is the step that ANSWERS it (AI-05 Amendment 5), and NOTHING
+        PERFORMS THAT STEP — it is contract text, not code (§19 Amendment 2).
 FROZEN: A NON-TEST CALL SITE IS NOT PRODUCER PROVENANCE. Wiring a caller to
         `admit_to_store` establishes that records can be WRITTEN. It establishes
         nothing about WHO wrote them. §8.3 carries this as its own condition,
@@ -1217,17 +1218,32 @@ AI15-OPEN-1  PRODUCER AUTHENTICITY — how is a producer claim ESTABLISHED, as
                          question about AI-05's admission contract, and neither
                          AI-15 nor any other phase may answer it for AI-05.
         STATUS           OPEN. Not a TODO for AI-15-B.
-        WHAT IS MISSING  a decision about HOW a claim is established. §6.5/§6.6
+        WHAT WAS MISSING  a decision about HOW a claim is established. §6.5/§6.6
                          answer "is this token the registered one for this kind
-                         and family"; nothing answers "did the named component
-                         submit it".
+                         and family"; nothing answered "did the named component
+                         submit it". AI-05 HAS SINCE MADE THAT DECISION — see
+                         "WHAT IS MISSING NOW" below and §19 Amendment 2.
+        WHAT IS MISSING NOW  the decision is made; the mechanism is NOT BUILT.
+                         AI-05 Amendment 5 DEFINES the standard and AI-05
+                         Amendment 6 FREEZES the trust configuration, its
+                         encoding, its ONE READER, its lifecycle and the static
+                         enforcement it requires. Both are DOCUMENTATION changes:
+                         nothing implements either, NO §7.3.7 acceptance test has
+                         been run, and the Layer 0 rules §31.3 obliges have not
+                         been written. THREE THINGS ARE DISTINGUISHED HERE AND
+                         MUST NOT BE COLLAPSED: the standard is DEFINED, the
+                         control is NOT IMPLEMENTED, and no test has DEMONSTRATED
+                         that it holds. Only the first has moved, and it moved in
+                         AI-05's contract, not in the runtime.
         WHAT AI-15 DOES NOT DO   it does not add a token, a check, a hook, a
                          signature, a key, a registry service or a "producer
                          verification" seam. §17.4 forbids all of them.
-        HOW THE QUESTION IS ANSWERED   that is AI-05's design act, and AI-15
+        HOW THE QUESTION WAS ANSWERED   that was AI-05's design act, and AI-15
                          states no preference among mechanisms. §9.5 fixes only
                          that whatever AI-05 chooses MUST NOT enter the authority
-                         matrix.
+                         matrix. AI-05 made that act in its own contract, under
+                         its own amendment rule (Amendments 5 and 6); AI-15
+                         records it and did not produce it.
         WHAT KEEPS IT FROM MATTERING TODAY  the RECORDED finding in §3.1-§3.3 — no
                          production caller exists at this baseline — together
                          with §15.2 STEP 0b, which forbids creating one while
@@ -1254,8 +1270,10 @@ AI15-OPEN-1 IS NOT AI-11 §21.1's OPEN-1. They share an owner and nothing else.
 
     AI15-OPEN-1          WHETHER A PRODUCER CLAIM IS TRUSTWORTHY
                          the rows that DO exist accept a caller-supplied string.
-                         Resolving it means DECIDING HOW A CLAIM IS ESTABLISHED.
-                         (§4.3, §8.3 condition 11)
+                         AI-05 has DECIDED how a claim is established (Amendments
+                         5 and 6); resolving the item now means IMPLEMENTING that
+                         decision and TESTING it, not choosing it. (§4.3, §8.3
+                         condition 11)
 
     ADMITTING A TOKEN DOES NOT RESOLVE AI15-OPEN-1. A newly admitted `ai-11` row
     would accept a caller-supplied "ai-11" for exactly the reason the `ai-06` row
@@ -1810,9 +1828,21 @@ evidence   an ACCEPTED from either entry point IS a full §30 admission as of
 AI-15 dependency
            none outstanding for the semantic question. §5.3's AI15-OPEN-2 was
            answered by AI-05 Amendment 4 (READING A) and is CLOSED (§16.1).
-           §9.2's AI15-OPEN-1 remains OPEN: AI-05 still owes a producer
-           authentication standard, implemented and tested, and §15.2 STEP 0b
+           §9.2's AI15-OPEN-1 remains OPEN, and THE REASON IS NO LONGER THAT THE
+           STANDARD IS UNDEFINED. AI-05 Amendment 5 (§19, Amendment 2; PR #83,
+           merge 7017bf577f654cb6dea0e8d5e50a27f334117b73) DEFINES the
+           producer-authentication standard, and AI-05 Amendment 6 (PR #85,
+           merge cee1f8c9ae07837e0ebae0be3f8ab2e0113e6973) FREEZES its
+           designated trust configuration, its encoding, its ONE READER, its
+           lifecycle and the static enforcement it requires. BOTH ARE
+           DOCUMENTATION CHANGES. WHAT AI-05 STILL OWES IS THE RUNTIME: the
+           implementation, the Layer 0 rules Amendment 6 obliges, and the §7.3.7
+           acceptance tests that would show the standard holds — NONE OF WHICH
+           EXISTS, AND NONE OF WHICH EITHER AMENDMENT SUPPLIED. §15.2 STEP 0b
            gates the WRITE on it. Neither is scheduled by AI-15.
+           AI-11 §21.1's OPEN-1 IS A DIFFERENT ITEM AND IS NOT MOVED BY EITHER
+           AMENDMENT: it asks WHICH PRODUCERS EXIST, and no amendment above
+           admits a token.
 ```
 
 ### 14.3 AI-06
@@ -2048,6 +2078,16 @@ THE ORDER — each step names its owner, its precondition and its output
            OUTPUT        a mechanism, PLUS its implementation and tests — not a
                          prose decision alone, because §8.3 condition 11 requires
                          that the standard be implemented and shown to hold.
+           STATUS        PARTIAL, AND THE MISSING PART IS THE PART THAT MATTERS.
+                         AI-05 Amendment 5 DEFINES the mechanism and AI-05
+                         Amendment 6 FREEZES its configuration — the FIRST of the
+                         three things OUTPUT names, delivered by the owner in the
+                         owner's contract. The IMPLEMENTATION and the TESTS are NOT
+                         supplied, no §7.3.7 case has been run, and the Layer 0
+                         rules Amendment 6 obliges do not exist (§19 Amendment 2).
+                         THE STEP IS UNSATISFIED: two of three is not three, and a
+                         defined mechanism does not gate a write the way an
+                         implemented one does.
            GATES         STEP 2 AND STEP 3. BOTH.
            FROZEN: STEP 0b GATES THE WRITE, NOT ONLY THE LABEL. No production,
                    non-test call site that can actually execute §30 admission and
@@ -2331,6 +2371,12 @@ AI15-OPEN-1  PRODUCER AUTHENTICITY — how is a producer claim ESTABLISHED, as
                 this baseline (a RECORDED negative finding, §3.1-§3.3) and that
                 §15.2 STEP 0b forbids writing one. That is why it is a
                 PREREQUISITE for B5's completion rather than a follow-up.
+        RECORDED  AI-05 has DEFINED the standard (Amendment 5) and FROZEN its
+                trust configuration (Amendment 6). THE ITEM STAYS OPEN. What is
+                outstanding is the RUNTIME IMPLEMENTATION, the Layer 0 rules
+                Amendment 6 obliges, and the §7.3.7 ACCEPTANCE TESTS — a DEFINED
+                standard is not a BUILT control, and NEITHER AMENDMENT CLOSES THIS
+                ITEM (§9.2, §19 Amendment 2).
         NOT     AI-11 §21.1's OPEN-1. That one is WHICH PRODUCERS EXIST; this one
                 is WHETHER A PRODUCER CLAIM IS TRUSTWORTHY. §9.2 works the
                 independence argument in both directions, and §16.2 keeps both as
@@ -2843,7 +2889,7 @@ AI-15-A IS NOT DONE IF
 
 ```text
 FROZEN. This document was frozen by the merge of PR #78, and it has been amended
-once since — Amendment 1, below. The line this block replaced read
+TWICE since — Amendment 1 and Amendment 2, below. The line this block replaced read
 "PROPOSED (this document's class until the merge that freezes it)", which was
 true while the freeze was a proposal and false once it merged. It is corrected
 here rather than left to contradict the amendment log beside it.
@@ -3046,6 +3092,209 @@ WHAT THIS AMENDMENT DOES NOT DO
 
 ---
 
+#### Amendment 2 — AI-05 Amendments 5 and 6 are recorded, and the OPEN-1 reason is corrected
+(2026-10-11)
+
+```text
+IN FORCE on the merge of the change that carries it. The merge IS the approval, and
+the text below is the final text.
+```
+
+```text
+WHAT WAS FOUND
+
+    This contract described AI15-OPEN-1 AS THOUGH THE STANDARD WERE STILL UNDECIDED.
+    §9.2 asked "how is a producer claim ESTABLISHED" and recorded that the answer was
+    MISSING; §14.2 said "AI-05 still owes a producer authentication standard,
+    implemented and tested". Both were true when they were written and NEITHER IS TRUE
+    NOW: AI-05 has defined the standard and frozen its configuration, in its own
+    contract, under its own amendment rule.
+
+    The correction is a RECORD of AI-05's acts, not a new AI-15 rule. Nothing here
+    resolves AI15-OPEN-1, and nothing here is progress on it.
+
+    It is also the SAME KIND of correction Amendment 1 made for AI15-OPEN-2, and it is
+    made the same way: AI-15 records what the owner did, in the owner's contract, and
+    claims no part of it.
+```
+
+```text
+THE TWO UPSTREAM AI-05 AMENDMENTS, AND THEIR MERGE EVIDENCE
+
+    AI-05 Amendment 5   DEFINES the producer-authentication standard.
+                        merged as   7017bf577f654cb6dea0e8d5e50a27f334117b73
+                                    (PR #83, a true two-parent merge)
+                        what it adds to AI-05   §7.3 (the standard: a designated
+                                    deployment mapping, a proof, Ed25519
+                                    verification over a byte-exact signed input, the
+                                    AI-05-CJ-1 canonical profile, six reason codes,
+                                    fail-closed semantics) and §30 step 7b.
+
+    AI-05 Amendment 6   FREEZES the trust configuration and its lifecycle.
+                        merged as   cee1f8c9ae07837e0ebae0be3f8ab2e0113e6973
+                                    (PR #85)
+                        what it adds to AI-05   §7.3.11 (the ONE source
+                                    WORKBENCH_EVIDENCE_PRODUCER_TRUST_CONFIG, its
+                                    strict JSON shape, its key encoding, its ONE
+                                    READER plugins/evidence/producer_auth.py, the
+                                    process-lifetime lifecycle, the startup-order
+                                    requirement, and the failure code) and §31.3
+                                    (the Layer 0 exception, the four static
+                                    enforcement rules, the test-harness boundary and
+                                    the trust-boundary qualification).
+
+    EVIDENCE BASE   docs/AI-05_EVIDENCE_EXECUTION_PLAN.md, blob
+                    b89c811e9ee8da2f576b938378501c0578151dd1 at the merge commit
+                    above. Both amendments are recorded in that contract's own
+                    §34.3 amendment log, as Amendments 5 and 6.
+
+    BOTH ARE DOCUMENTATION CHANGES. Neither ships a runtime control, implements §30
+    step 7b, adds a test, or changes Layer 0. AI-05's own record says so.
+```
+
+```text
+WHAT CHANGED IN THIS DOCUMENT
+
+    §9.2      "WHAT IS MISSING — a decision about HOW a claim is established" is
+              replaced. The decision HAS BEEN MADE, and the clause now states what is
+              actually missing: the implementation, the Layer 0 enforcement and the
+              §7.3.7 acceptance tests. It also states, in the clause, the THREE
+              THINGS THAT MUST NOT BE COLLAPSED — the standard is DEFINED, the
+              control is NOT IMPLEMENTED, and no test has DEMONSTRATED that it holds.
+              "HOW THE QUESTION IS ANSWERED" is put in the past tense and records
+              that AI-05 made the act; the independence argument from AI-11 §21.1's
+              OPEN-1 immediately below it is UNCHANGED.
+    §14.2     "AI-05 still owes a producer authentication standard, implemented and
+              tested" is replaced. The reason AI15-OPEN-1 remains OPEN is no longer
+              that the standard is undefined; what AI-05 owes is the RUNTIME. Both
+              upstream merges are named with their SHAs, and the row states that
+              AI-11 §21.1's OPEN-1 is not moved by either amendment.
+    §16.1     the AI15-OPEN-1 inventory row gains a RECORDED line naming the two
+              amendments and restating that the item stays OPEN. NO FIELD OF THE ROW
+              MOVES: OWNER, STATUS, GATES and NOT are as they were, and the row's
+              separation from AI-11 §21.1's OPEN-1 is untouched.
+    §4.3      the FROZEN clause "no step of §30 answers it" is corrected to "§30
+              step 7b IS the step that answers it, and NOTHING PERFORMS THAT STEP".
+              THE RULE IS UNCHANGED AND IS NOT WEAKENED — registry membership is
+              still a well-formedness check and is still not producer authentication.
+              What is corrected is the FACT: §30 now contains such a step (Amendment
+              5) and no code executes it. Leaving the clause as written would have
+              asserted that §30 has no step 7b, in a document that describes step 7b.
+    §15.2     STEP 0b gains a STATUS line. NO REQUIREMENT MOVES: OWNER,
+              PRECONDITION, OUTPUT and GATES are as they were, and OUTPUT still
+              demands a mechanism AND its implementation AND its tests. The STATUS
+              line records that ONE OF THE THREE is supplied and the step is
+              therefore UNSATISFIED.
+    §16.2     row 0b's description is unchanged. The status block in §17/Status is
+              corrected: "STEP 0b has no answer" becomes "STEP 0b is UNSATISFIED —
+              the MECHANISM is DEFINED and the IMPLEMENTATION and TESTS are NOT".
+    §19 head  the preamble now says the document has been amended TWICE and names
+              both amendments.
+
+    NOTHING ELSE IN THIS DOCUMENT CHANGED. No clause of §6, §8, §10-§13, §17.1-§17.2d
+    or §20 moves, no row of §16.2 moves, no ownership changes, and §19's amendment
+    rule is not restated in weaker words.
+```
+
+```text
+WHY THE CORRECTION, AND WHAT IT IS FOR
+
+    A reader arriving at §9.2 or §14.2 was told the standard did not exist. That
+    reader would draw one of two wrong conclusions: that AI-05 had done nothing, or —
+    worse — that because the gap was "undefined", closing it was somebody's design
+    work still to be scheduled. Both are wrong now. THE STANDARD EXISTS AND IS
+    FROZEN; THE CODE DOES NOT. A contract that leaves the first half unsaid makes the
+    second half look like an omission rather than the whole of the remaining work.
+
+    THIS MATTERS MOST FOR §15.2 STEP 0b, WHICH IS WHERE A READER CHECKS WHETHER THE
+    WRITE MAY PROCEED. STEP 0b requires a mechanism AND its implementation AND tests
+    showing it holds. TWO OF ITS THREE PARTS ARE SUPPLIED AND THE THIRD IS NOT, so
+    the step is UNSATISFIED — and it would stay unsatisfied if both amendments were
+    ten times longer, because neither is code.
+```
+
+```text
+SECURITY IMPACT
+
+    NONE, AND THE POINT IS THAT DEFINING A CONTROL IS NOT DEPLOYING ONE.
+
+    WHAT THIS AMENDMENT DOES
+        it RECORDS two AI-05 amendments and corrects the description of what AI-05
+          still owes
+        it keeps the three states apart that a summary is most likely to merge: a
+          DEFINED standard, an UNBUILT control, and an UNRUN test
+
+    WHAT IT DOES NOT ADD
+        no authentication, no check, no key, no configuration, no Layer 0 rule and no
+          runtime behaviour of any kind — this amendment is documentation, and so are
+          the two it records
+        no claim that a producer claim is authenticated, or that any record's
+          producer has been established
+        NO ATTACK IS DEFEATED BY IT. §30 step 7b is performed by nothing today, and
+          §7.3's standard binds a code path no caller reaches.
+        no change to what AI-05 admits or rejects
+```
+
+```text
+AUTHORITY IMPACT
+
+    None. Nothing here grants a permission, changes AI-14 §4.1's authority matrix,
+    introduces an authorizing subject, or moves any responsibility into AI-15. Guard
+    remains the only component with an AUTHORIZES entry. An authenticated producer
+    claim is not an approval, a permission, a capability or a Guard result. No
+    producer token is admitted, no §6.5 row is added, and no ownership changes.
+```
+
+```text
+STATUSES UNCHANGED — EVERY ONE OF THEM
+
+    AI15-OPEN-1             OPEN, and the OWNER is unchanged: AI-05. WHAT MOVED IS
+                            THE REASON, NOT THE STATUS. Neither amendment closes it.
+    AI-15 §15.2 STEP 0b     UNSATISFIED. It requires a mechanism AND its
+                            implementation AND tests. The mechanism is defined and
+                            the configuration frozen; the implementation and the
+                            tests do not exist. Two of three is not three.
+    §8.3 condition 11       UNSATISFIED. It is discharged by §7.3.7's tests, and
+                            none has been run.
+    AI15-OPEN-2             CLOSED under AI-05 Amendment 4 (READING A), under the
+                            owner's act, exactly as Amendment 1 recorded. NOT
+                            reopened, re-argued or restated in weaker words.
+    AI15-OPEN-3             OPEN (AI-04). Untouched.
+    AI15-OPEN-4             OPEN (AI-13 / AI-14). Untouched.
+    AI-11 §21.1's OPEN-1    OPEN, INDEPENDENT, AND UNRESOLVED. It asks WHICH
+                            PRODUCERS EXIST. A DEFINED STANDARD DOES NOT ADMIT A
+                            TOKEN, A FROZEN CONFIGURATION DOES NOT ADMIT A TOKEN,
+                            AND AN AUTHENTICATION IMPLEMENTATION WOULD NOT ADMIT
+                            ONE EITHER. §9.2's independence argument holds in both
+                            directions and is unchanged.
+    row 1′                  UNSATISFIED and SEPARATE, for the same reason. §16.2's
+                            FROZEN clause that 0b is independent of 1 and 1′ is
+                            untouched.
+    production writer       NONE, and NOT AUTHORIZED. §17.2b's prohibition is not
+                            lifted by a definition, by a frozen configuration, or by
+                            both together.
+    B5                      BLOCKED, and NOT CONNECTED. No classification moves.
+```
+
+```text
+WHAT THIS AMENDMENT DOES NOT DO
+
+    it does not close AI15-OPEN-1, and no clause here may be cited to suggest it did
+    it does not satisfy §15.2 STEP 0b, §8.3 condition 11, or any part of either
+    it does not treat a DOCUMENTATION change as an IMPLEMENTATION
+    it does not close, weaken, rename or claim progress on AI-11 §21.1's OPEN-1
+    it does not close AI15-OPEN-3 or AI15-OPEN-4
+    it does not mark B5 CONNECTED or authorize a production Evidence writer
+    it does not modify AI-05, AI-11, AI-13 or AI-14's contract, or any other phase's
+    it does not make AI-14's STEP 1 or STEP 3
+    it does not run any §7.3.7 acceptance test, and claims no result from one
+    it does not turn any NOT_RUN, BLOCKED or UNKNOWN into PASS
+    it does not assert that CI success on a documentation PR is evidence about
+      producer authentication — it is evidence about documentation, and nothing else
+```
+
+---
+
 ```text
 THE NORMATIVE CLASSES, USED AS AI-14 §2 DEFINES THEM
     FROZEN      settled here; AI-15-B implements it; changing it needs an amendment
@@ -3203,14 +3452,22 @@ BLOCKED: B5 (composition -> Evidence) is unchanged by this document. §16.2 list
          every blocker with its owner and the §15.2 step it gates. ONE IS NOW
          SATISFIED — STEP 0a, answered as READING A by AI-05 Amendment 4 — and
          STEP 1 may therefore begin, but it has NOT begun and it is AI-14's to
-         make. The rest stand: STEP 0b has no answer, STEP 1 has not been made,
-         there is no call site, the joint-delivery mechanism is unnamed, and STEP
-         3 cannot be recorded. Satisfying a blocker is not satisfying the item.
+         make. The rest stand: STEP 0b is UNSATISFIED — the MECHANISM is now
+         DEFINED (Amendments 5 and 6) and the IMPLEMENTATION and TESTS are NOT
+         (§19 Amendment 2) — STEP 1 has not been made, there is no call site, the
+         joint-delivery mechanism is unnamed, and STEP 3 cannot be recorded.
+         Satisfying a blocker is not satisfying the item, AND DEFINING A MECHANISM
+         IS NOT SATISFYING IT EITHER.
          NO PRODUCTION WRITER EXISTS, and none may be created while AI15-OPEN-1 is
          OPEN: §15.2 STEP 0b gates the WRITE, not only the label (§17.2b).
 
-AMENDED: this document has been amended ONCE since it was frozen — §19 Amendment 1,
-         which records AI-05's answer to AI15-OPEN-2. That is the only amendment.
+AMENDED: this document has been amended TWICE since it was frozen.
+         §19 Amendment 1 records AI-05's answer to AI15-OPEN-2.
+         §19 Amendment 2 records AI-05 Amendments 5 and 6 — the producer
+         authentication standard DEFINED and its trust configuration FROZEN — and
+         corrects the reason AI15-OPEN-1 remains OPEN. THE STANDARD IS NOW DEFINED
+         AND THE CONTROL IS NOT BUILT: NEITHER AMENDMENT IS PROGRESS ON THE ITEM,
+         and both are documentation changes.
 
 OPEN:    AI15-OPEN-1 (AI-05) · AI15-OPEN-3 (AI-04) · AI15-OPEN-4 (AI-13/AI-14)
          — local ids, prefixed so they cannot be confused with AI-11 §21.1's

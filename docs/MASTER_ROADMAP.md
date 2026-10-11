@@ -282,8 +282,25 @@ C0-C10    = all PASS
 **Status: INCOMPLETE.** B1 (the offline logical core) is complete and merged, and so is the whole
 of B2. AI-05 is not closed, and the reason is no longer C-1 — **C-1 was CLOSED on 2026-10-04 by
 Amendment 3**, which published the admission rule set (§14.10) so that §30 step 7 could be
-implemented. What remains is AI-11 §21.1's OPEN-1 tension — an AI-05 producer-token
-amendment that has not been made — and §35.1's deferrals.
+implemented.
+
+**Two separate items remain, and they are not substitutes:**
+
+- **AI-11 §21.1's OPEN-1** — an AI-05 producer-token amendment that has not been made. It asks
+  **WHICH PRODUCERS EXIST**.
+- **§30 step 7b — producer authentication: DEFINED, NOT BUILT.** **Amendment 5** defines the
+  standard (§7.3) and **Amendment 6** freezes its designated trust configuration and lifecycle
+  (§7.3.11, §31.3), merged as documentation on PR #83
+  (`7017bf577f654cb6dea0e8d5e50a27f334117b73`) and PR #85
+  (`cee1f8c9ae07837e0ebae0be3f8ab2e0113e6973`). It asks **WHETHER A PRODUCER CLAIM IS
+  TRUSTWORTHY**. **Nothing implements it**, the Layer 0 enforcement Amendment 6 requires has not
+  been written, `plugins/evidence/producer_auth.py` does not exist, and **no §7.3.7 acceptance test
+  has been run**.
+
+**A DEFINED STANDARD IS NOT A BUILT CONTROL, AND CI SUCCESS ON EITHER DOCUMENTATION PR IS NOT
+EVIDENCE THAT PRODUCER AUTHENTICATION WORKS.** Neither amendment is progress on the other item, and
+neither closes AI-05. Also remaining: §35.1's deferrals.
+
 This section keeps the original design as written — B1 and B2 completing do not change what AI-05
 is for, and they do not change any later stage's dependency on it.
 
@@ -298,8 +315,16 @@ AI-05-B2-P3 = COMPLETE / MERGED   admission pipeline, filesystem Store,
 AI-05-B2    = COMPLETE            its frozen scope is implemented and merged
 C-1         = CLOSED              Amendment 3 (§14.10): §30 step 7 implemented,
                                   T20c/T22a-c enforceable, §32 C6 CLOSED
-AI-05       = INCOMPLETE          AI-11 §21.1 OPEN-1 (an AI-05 producer-token
-                                  amendment) = OPEN; §35.1 = DEFERRED
+AI-05       = INCOMPLETE          TWO ITEMS, INDEPENDENT AND NOT SUBSTITUTES:
+                                  AI-11 §21.1 OPEN-1 = OPEN — WHICH PRODUCERS EXIST;
+                                  §30 step 7b = DEFINED by Amendments 5/6 and NOT
+                                  BUILT, §7.3.7 tests NOT_RUN — WHETHER A PRODUCER
+                                  CLAIM IS TRUSTWORTHY;
+                                  §35.1 = DEFERRED
+amendments 5/6 = MERGED / DOCS ONLY   PR #83 @ 7017bf57…, PR #85 @ cee1f8c9…
+                                  the STANDARD is DEFINED and the trust
+                                  configuration FROZEN; nothing is built
+plugins/evidence/producer_auth.py = DOES NOT EXIST
 
 B1 merge SHA = 0403fcd83b740f0603af7204e77f6e6905a84cf0   (PR #34)
 B1 evidence  = docs/AI-05-B1_EVIDENCE_2026-10-01.md
@@ -945,14 +970,19 @@ AI-15 不新增能力，也不绕过任何 phase：GPT 定义它为**“证据�
 
 ```text
 contract = docs/AI-15_EVIDENCE_PRODUCTION_EXECUTION_PLAN.md
-                           FROZEN @ PR #78; AMENDED ONCE (§19 Amendment 1)
+                           FROZEN @ PR #78; AMENDED TWICE
+                           (§19 Amendment 1, 2026-10-09; Amendment 2, 2026-10-11)
                            contract blob = a206d90d0d357f08a214b0731a0b7f63d3771ea2
-                                           (the blob at the freeze; Amendment 1
-                                            supersedes it and is the current text)
+                                           (the blob at the freeze; both amendments
+                                            supersede it and are the current text)
 AI-15-A  = COMPLETE / MERGED   architecture / contract freeze — DOCS ONLY
                                (PR #78 @ 6e814a8b6d214a0203deb73b1abbf21ae50b68cc)
-amendment= AMENDED ONCE        §19 Amendment 1 records AI-05's answer to AI15-OPEN-2
-                               (2026-10-09); it is the only amendment
+amendment= AMENDED TWICE       §19 Amendment 1 (2026-10-09) records AI-05's answer to
+                               AI15-OPEN-2 (READING A).
+                               §19 Amendment 2 (2026-10-11) records AI-05 Amendments
+                               5 and 6 and corrects the REASON AI15-OPEN-1 remains
+                               OPEN — the standard is DEFINED, the control is NOT
+                               BUILT. It closes nothing and satisfies no step.
 AI-15-B  = NOT STARTED         BLOCKED
 AI-15    = NOT COMPLETE        B5 (composition -> Evidence) remains BLOCKED / NOT STARTED
 base     = main @ 37f354cbb3c007f2d92021fa560a443a53591372
@@ -974,9 +1004,11 @@ AI-15-A 记录的核心事实（全部可按 file:line 复核）
                             其余 phase 一个 token 也没有
     producer 真实性 gate     g_registered（models.py:193）只把 token 与注册表
                             比对，不比对别的。它是 WELL-FORMEDNESS 检查；
-                            producer AUTHENTICATION 是另一个问题，
-                            §30 没有任何一步回答它，非测试 call site
-                            也不提供答案
+                            producer AUTHENTICATION 是另一个问题。
+                            §30 step 7b 就是回答它的那一步（AI-05
+                            Amendment 5），但**没有任何东西执行这一步** ——
+                            它是契约文本，不是代码 —— 所以非测试 call site
+                            同样不提供答案
     B5 CONNECTED 定义   十二个可核验条件（§8.3）。条件 11（producer
                             authenticity）在 AI15-OPEN-1 未关闭时不满足；
                             且 §15.2 STEP 0b gate 的是写入本身，所以“未标
@@ -1007,13 +1039,29 @@ AI-15 的 Amendment 1（§19）2026-10-09：记录 AI-05 Amendment 4 对 AI15-OP
                    由 AI-05 在其自己的契约中作出（PR #80，03d42681）；AI-15 只记录。
     STEP 0a     = 已回答，因此 AI-14 的 STEP 1 已解除该前置条件（但尚未动手）
 
+AI-15 的 Amendment 2（§19）2026-10-11：记录 AI-05 Amendment 5 与 6，并更正 AI15-OPEN-1
+    仍为 OPEN 的**理由**
+    AI-05 Amendment 5 = DEFINES producer 认证标准（§7.3、§30 step 7b）
+                        merged as 7017bf577f654cb6dea0e8d5e50a27f334117b73（PR #83）
+    AI-05 Amendment 6 = FREEZES 指定信任配置及其生命周期（§7.3.11、§31.3）
+                        merged as cee1f8c9ae07837e0ebae0be3f8ab2e0113e6973（PR #85）
+    **两者都是纯文档变更。** 不实现认证、不新增测试、不改 Layer 0、不连接任何 seam。
+    AI15-OPEN-1 = 仍 OPEN。理由不再是「标准未定义」——
+                  **标准已 DEFINED，控制未 IMPLEMENTED**。
+                  三态不可合并：标准 DEFINED / 控制未 BUILT / 无测试 DEMONSTRATED。
+                  两项文档 PR 的 CI 绿灯**不是** producer 认证可用的证据。
+
 AI-15 不解除它不拥有的任何其他 BLOCKER：
-    AI-11 §21.1 OPEN-1 = OPEN（producer-token amendment）
-    AI15-OPEN-1 = OPEN（AI-05，producer authentication）— 仍 gate 写入本身
+    AI-11 §21.1 OPEN-1 = OPEN（producer-token amendment）— 问的是 WHICH PRODUCERS
+                         EXIST，与 AI15-OPEN-1 独立；Amendments 5/6 不移动它
+    AI15-OPEN-1 = OPEN（AI-05，producer authentication）— 标准已定义、配置已冻结，
+                  但实现与 §7.3.7 测试均不存在；仍 gate 写入本身
     AI15-OPEN-3 = OPEN（AI-04）· AI15-OPEN-4 = OPEN（AI-13 / AI-14）
-    STEP 0b = 未完成（仍阻止生产写入）· STEP 1 / 1' / 2 / 3 = 未完成
+    STEP 0b = UNSATISFIED（机制已 DEFINED，实现与测试 NOT —— 三缺二不等于三）
+              · STEP 1 / 1' / 2 / 3 = 未完成
+    row 1' = 未满足，且与 STEP 0b 相互独立
     B5 = BLOCKED / NOT STARTED（无 seam CONNECTED，无生产 Evidence writer）
-    AI-05 = INCOMPLETE（§35.1 DEFERRED）
+    AI-05 = INCOMPLETE（§35.1 DEFERRED；`plugins/evidence/producer_auth.py` 不存在）
     AI-12-C = BLOCKED / NOT STARTED；model-comparative = BLOCKED
     live provider verification = NOT_RUN（NOT_RUN != PASS）
     durable review evidence = DEFERRED
@@ -1131,7 +1179,7 @@ SecurityLab
 | AI-02 | **COMPLETE** — closed 2026-09-29, see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-03 | **COMPLETE** — C0–C8 PASS; merged as `548bc041` (PR #28); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-04 | **COMPLETE** — merged as `254823f7` (PR #32); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
-| AI-05 | **B1 COMPLETE** (PR #34); **B2 COMPLETE** — P1 `844df7be` (PR #41), P2 `b8692c18` (PR #42) and P3 `67515ff9` (PR #44) merged; **C-1 CLOSED** by Amendment 3 (§14.10) — §30 step 7 implemented, §32 C6 closed; **AI-05 INCOMPLETE** on AI-11 §21.1 OPEN-1 (an AI-05 producer-token amendment, OPEN) and §35.1 (DEFERRED); see [PROJECT_STATUS.md](PROJECT_STATUS.md) and [AI-05-C1_EVIDENCE_2026-10-04.md](AI-05-C1_EVIDENCE_2026-10-04.md) |
+| AI-05 | **B1 COMPLETE** (PR #34); **B2 COMPLETE** — P1 `844df7be` (PR #41), P2 `b8692c18` (PR #42) and P3 `67515ff9` (PR #44) merged; **C-1 CLOSED** by Amendment 3 (§14.10) — §30 step 7 implemented, §32 C6 closed; **Amendments 5 and 6 MERGED / DOCS ONLY** (PR #83 `7017bf57`, PR #85 `cee1f8c9`) — the producer-authentication **standard is DEFINED** and its trust configuration **FROZEN**, but **NOTHING IS BUILT and no §7.3.7 acceptance test has been run**; **AI-05 INCOMPLETE** on **two independent items that are not substitutes** — AI-11 §21.1 OPEN-1 (an AI-05 producer-token amendment, OPEN: WHICH PRODUCERS EXIST) and §30 step 7b (DEFINED, NOT BUILT: WHETHER A CLAIM IS TRUSTWORTHY) — plus §35.1 (DEFERRED); see [PROJECT_STATUS.md](PROJECT_STATUS.md) and [AI-05-C1_EVIDENCE_2026-10-04.md](AI-05-C1_EVIDENCE_2026-10-04.md) |
 | AI-06 | **COMPLETE** — merged as `3b1917ab` (PR #47); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-07 | **COMPLETE** — contract `963c181c` (PR #48), implementation `e57541f9` (PR #49) merged; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-08 | **COMPLETE** — merged as `edb7dfc82ce51123482ac357fb9319dca2fa0d9a` (PR #52); see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
@@ -1141,7 +1189,7 @@ SecurityLab
 | AI-12 | **AI-12-A COMPLETE / MERGED** (`60c630d8`), **AI-12-B COMPLETE / MERGED** (`fa892eb1`, PR #67) — the policy core; **AI-12-C BLOCKED / NOT STARTED**, **AI-12 NOT CLOSED**, model-comparative prerequisite BLOCKED; see [AI-12-B_EVIDENCE_2026-10-03.md](AI-12-B_EVIDENCE_2026-10-03.md) |
 | AI-13 | **COMPLETE / MERGED / CLOSED** — contract `1e0a7fdf4dd96230a6177d3ca21bda03ec9c19ba` (PR #69), workflow core `95f0d08c47c8137813013ad7fe318e8fd0ebf12a` (PR #70), human approval point `98d4f57ad0bd78a54b9eb2ea44f30d2db394ee97` (PR #71), Amendments 1–4 applied; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-14 | **COMPLETE** — AI-14-A (freeze) `4b1058a4c764a613127800426fdd95e34d164bf3` (PR #72) and AI-14-B (composition) `adf6db2476b7e3de33a585954610e9ab568b498c` (PR #73) both merged; contract **FROZEN + AMENDED ONCE** (§25); **B5 (composition → Evidence) BLOCKED / NOT STARTED**; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
-| AI-15 | **AI-15-A COMPLETE / MERGED** — architecture / contract freeze, **DOCS ONLY** `6e814a8b6d214a0203deb73b1abbf21ae50b68cc` (PR #78), a true two-parent merge of `37f354c`; contract **FROZEN + AMENDED ONCE** (§19 Amendment 1, 2026-10-09) — **AI15-OPEN-2 CLOSED / ANSWERED BY AI-05 AMENDMENT 4 as READING A**, so **STEP 0a is satisfied** and AI-14's STEP 1 is unblocked but NOT made; **AI15-OPEN-1 remains OPEN** and STEP 0b still gates the write; **AI-15-B NOT STARTED / BLOCKED**, **B5 still BLOCKED / NOT STARTED**, no seam CONNECTED; see [PROJECT_STATUS.md](PROJECT_STATUS.md) and [AI-15_EVIDENCE_PRODUCTION_EXECUTION_PLAN.md](AI-15_EVIDENCE_PRODUCTION_EXECUTION_PLAN.md) |
+| AI-15 | **AI-15-A COMPLETE / MERGED** — architecture / contract freeze, **DOCS ONLY** `6e814a8b6d214a0203deb73b1abbf21ae50b68cc` (PR #78), a true two-parent merge of `37f354c`; contract **FROZEN + AMENDED TWICE** — §19 Amendment 1 (2026-10-09) closed **AI15-OPEN-2** (*AI-05 Amendment 4, READING A*), so **STEP 0a is satisfied** and AI-14's STEP 1 is unblocked but NOT made; §19 Amendment 2 (2026-10-11) records **AI-05 Amendments 5 and 6** — the producer-authentication **standard DEFINED, trust configuration FROZEN, both DOCS ONLY** — so **AI15-OPEN-1's reason is corrected, not its status**: it **remains OPEN** and **STEP 0b remains UNSATISFIED** (mechanism defined; implementation and §7.3.7 tests do not exist); **AI-11 §21.1 OPEN-1 and row 1′ remain OPEN, INDEPENDENT and UNRESOLVED**; **AI-15-B NOT STARTED / BLOCKED**, **B5 still BLOCKED / NOT STARTED**, no seam CONNECTED, no production Evidence writer; see [PROJECT_STATUS.md](PROJECT_STATUS.md) and [AI-15_EVIDENCE_PRODUCTION_EXECUTION_PLAN.md](AI-15_EVIDENCE_PRODUCTION_EXECUTION_PLAN.md) |
 
 ---
 
