@@ -2079,6 +2079,51 @@ FROZEN: `admit_to_store()` PERFORMS NO SECOND VERIFICATION AND THEREFORE CONSULT
 ```
 
 ```text
+WHEN THE READ HAPPENS, AND WHY THAT ORDER IS THE POINT
+
+FROZEN: INITIALIZATION IS THE MODULE'S IMPORT, AND THE EVIDENCE PACKAGE IMPORTS THAT
+        MODULE. `plugins/evidence/__init__.py` imports `producer_auth`, so ANY
+        PROCESS ABLE TO CALL `admit()` OR `admit_to_store()` HAS NECESSARILY ALREADY
+        INITIALIZED THE READER. There is no lazy path, no first-call initialization
+        and no admission-time read: the ordering guarantee is structural rather than
+        a sequence someone has to remember to observe.
+        THIS CREATES NO CALLER AND NO ENTRY POINT. It is an import edge WITHIN the
+        Evidence package, between a module and the package that owns it. No
+        production component outside the package gains a path to admission, no
+        composition module gains one, and AI-15 §17.2b's prohibition on a production
+        call site is untouched.
+FROZEN: THE RULE DISTINGUISHES CONFIGURATION SUPPLIED WHEN A PROCESS STARTS FROM A
+        VARIABLE READ AFTER ARBITRARY APPLICATION CODE HAS RUN, and it is the FIRST
+        of those the contract relies on. A deployment supplies the variable to the
+        process before it starts; the process then imports the package and captures
+        what it was given. The contract's guarantee is that NO REPOSITORY CODE WRITES
+        THE VARIABLE and NO PATH RE-READS IT, so the captured value is the value the
+        launcher supplied.
+FROZEN: WHAT THAT GUARANTEE DOES NOT COVER, RECORDED RATHER THAN LEFT TO BE ASSUMED.
+        Code OUTSIDE this repository — a third-party library imported before the
+        Evidence package — could write the process environment before the reader
+        initializes, and no static rule over this repository can see it. This is a
+        RESIDUAL RISK of the same kind §7.3.9 records for process control and key
+        custody: an in-process library cannot defend its own address space or the
+        environment it was started in. THE TRUST BOUNDARY IS THE PROCESS ENVIRONMENT
+        AS THE LAUNCHER SET IT, and this section does not claim to survive an
+        adversary who can rewrite it before startup completes.
+FROZEN: WHAT IS CLAIMED, AND IT IS NARROWER AND CHECKABLE. No API PATH lets a caller
+        choose the trust root (§7.3.2); no module in this repository writes the
+        variable or reloads the reader (§31.3); the read happens once and never
+        repeats; and the ordering rule above makes "before admission is available"
+        true by construction rather than by convention.
+FROZEN: A DEPLOYMENT OBLIGATION IS STATED SO THE ORDERING IS ACTIONABLE, AND IT IS
+        NOT A NEW COMPOSITION ENTRY POINT. The process MUST import the Evidence
+        package as part of its own startup, before it begins application work. A
+        deployment that deferred that import until it first needed admission would
+        still be reading the SAME value — because nothing in this repository writes
+        the variable — but it would have widened the residual window above, and it
+        would be relying on that fact rather than on the structure. The obligation is
+        recorded; it is not enforced by a caller this document invents.
+```
+
+```text
 AN IMMUTABLE AUTHORITATIVE SNAPSHOT IS NOT A LAST-KNOWN-GOOD FALLBACK
 
 FROZEN: THE TWO ARE OPPOSITES, AND THE DIFFERENCE IS THE WHOLE REASON THIS SECTION
@@ -4545,37 +4590,109 @@ FROZEN: THE EXCEPTION IS TWO IMPORTS IN ONE NAMED MODULE, AND IT IS NOT A RELAXA
         configuration source would each break the property the exception exists to
         preserve: that exactly one module reads the trust root, and that the rest of
         the package stays pure.
-FROZEN: LAYER 0 MUST ALSO ENFORCE, FOR THIS MODULE, THE THREE RULES §7.3.2 AND
+FROZEN: LAYER 0 MUST ALSO ENFORCE, FOR THIS MODULE, THE FOUR RULES §7.3.2 AND
         §7.3.11 STATE IN PROSE — and stating them is not enforcing them:
             ONE READER   the designated environment variable is read in
                          `producer_auth.py` and in no other module. A second read is
                          a second place the deployment's trust root is decided,
                          whether or not it calls the accessor.
             NO MUTATION  the variable is a DEPLOYMENT INPUT and not a control
-                         surface. No other module ASSIGNS it, mutates it, unsets it
-                         or writes it by any route — `os.environ[...] = ...`,
-                         `os.environ.setdefault`, `os.environ.pop`, `os.environ.update`,
-                         `os.putenv`, or any other. The variable name appearing
-                         outside the reader is itself the finding, because a second
-                         module that can NAME it can write it.
+                         surface. No module writes the RUNNING process's
+                         environment — no `os.environ[...] = ...`, no
+                         `os.environ.setdefault`, `.pop`, `.update` or `.clear`, no
+                         `os.putenv` or `os.unsetenv`, and no helper that performs
+                         any of them. A value repository code can rewrite in place is
+                         not a deployment fact.
                          The reader module is likewise not RELOADED to re-trigger its
                          initialization: an `importlib.reload` of it, or any other
                          route by which its module-level read runs a second time, is a
                          second read and is refused as one.
+            IMMUTABLE    the captured state is not a mutable object anything may
+              STATE      alter. The mapping and the policy are held privately, are
+                         never returned as a whole by any public function, and are
+                         never handed to another module as a structure it could
+                         mutate. The reader answers a PER-TOKEN question — which key
+                         applies to THIS claimed token — and exposes neither the
+                         mapping, the policy table nor the parsed document. The
+                         module's captured state is not rebindable from outside: no
+                         assignment to, `setattr` on, or monkeypatch of it succeeds,
+                         and there is no public initializer, no reset, no setter and
+                         no "load for tests" entry point.
             NO CALLER-SELECTED TRUST ROOT   no public function accepts a public key,
                          a mapping, an anchor, a verifier, a configuration object or
                          a configuration path as a parameter.
         READ AND WRITE ARE DIFFERENT FAILURES AND BOTH ARE CHECKED. A second READER
-        decides a second trust root; a WRITER changes the one there is. A deployment
-        configuration that repository code can rewrite in place is not a deployment
-        fact at all, and §7.3.11's process-lifetime rule would be unenforceable no
-        matter how carefully the read was written.
-        AI-13 §13.3 carries the first and third rules for its own domain, and its
-        Layer 0 check enforces both. This amendment places the same obligation on the
-        AI-05 boundary and adds the second, which AI-13's single-anchor model did not
-        need in the same form because an anchor that is never re-read is not a mapping
-        a fallback could be built from; §7.3.10 keeps the two domains apart while the
-        enforcement shape is the same shape.
+        decides a second trust root; a WRITER changes the one there is; a REPLACER
+        changes what the reader holds. A deployment configuration that repository
+        code can rewrite in place, or replace in memory, is not a deployment fact at
+        all, and §7.3.11's process-lifetime rule would be unenforceable no matter how
+        carefully the read was written.
+        AI-13 §13.3 carries the first and the no-caller-selected-trust-root rules for
+        its own domain, and its Layer 0 check enforces both. This amendment places the
+        same obligation on the AI-05 boundary and adds the second and third, which
+        AI-13's single-anchor model did not need in the same form because an anchor
+        that is never re-read is neither a mapping a fallback could be built from nor
+        a structure a caller could reach into; §7.3.10 keeps the two domains apart
+        while the enforcement shape is the same shape.
+FROZEN: THE NO-MUTATION RULE IS SHAPE-BASED, AND IT HAS TO BE. A name-based ban —
+        "the variable's name appearing outside the reader is itself the finding" —
+        would forbid the very mechanism §7.3.7's cases require, because A CHILD
+        PROCESS CANNOT BE GIVEN A CONFIGURATION WITHOUT THE LAUNCHER NAMING THE
+        VARIABLE. What is forbidden is WRITING THE RUNNING PROCESS'S ENVIRONMENT.
+        What is permitted is HANDING A VALUE TO A PROCESS THAT HAS NOT STARTED. The
+        static rule distinguishes them by the SHAPE of the use, not by the presence
+        of the name, and this section states both shapes so the rule has something
+        exact to check.
+FROZEN: ONE TEST-HARNESS MODULE MAY NAME THE VARIABLE, AND ONLY IN THAT SHAPE.
+
+    tests/evidence/trust_harness.py
+
+        It is the ONLY module outside the reader in which the designated variable's
+        name may appear. WITHIN it, the name may appear ONLY as a key in the
+        environment mapping handed to a child-process launch — never as an
+        assignment to the running process's environment, never in `os.putenv`, and
+        never anywhere else in the repository.
+        It supplies that environment to a SEPARATE process, which imports the real
+        `plugins/evidence/producer_auth.py` and exercises the ORDINARY admission and
+        verification path. It MUST NOT mutate the running test process's active
+        environment to simulate a reload, and it MUST NOT inject a mapping, a key, a
+        verifier or a parsed state into the reader.
+        This is ONE module, ONE shape and ONE variable. It is not an exception for
+        tests in general, and it is not an exception for any production module: a
+        second module naming the variable, or this module naming it in another shape,
+        is the NO MUTATION finding.
+FROZEN: WHY THIS IS PERMITTED BY THE EXISTING ARCHITECTURE, STATED SO IT IS NOT
+        MISTAKEN FOR A NEW PERMISSION. It is not new, and it does not widen anything:
+            a separate interpreter is ALREADY spawned from this suite —
+              `tests/evidence/test_canonical.py:119-143`,
+              `test_a_separate_interpreter_reaches_the_same_value`, runs
+              `subprocess.run([sys.executable, "-c", program], ...)` as "the
+              cross-process half of T7"
+            no Layer 0 rule constrains `tests/` on this axis. The
+              `subprocess` restrictions in `scripts/ci/layer0_policy.py` are scoped
+              to `plugins/evidence` (§31's five checks), to `routing/`, to
+              `benchmarks/`, to `workflows/` and to `composition/`; `tests/` is
+              reached only by `check_layer_markers`, which globs `test_*.py` — so a
+              `trust_harness.py` support module is not a test module and needs no
+              layer marker, exactly as `tests/integrations/support.py` does not
+            the child's environment is supplied BEFORE the process starts, which is
+              what a deployment does with the same variable; the harness adds no
+              path a deployment lacks
+        A SPAWN THAT FAILS ON THIS HOST IS A SKIP AND NOT A PASS. The existing
+        cross-process test already records that a spawned process can fail on handle
+        inheritance before any assertion runs, and reports it as a skip because that
+        is a host limitation rather than a result. The producer cases inherit that
+        treatment: an unrunnable child is NOT_RUN, never a passing authentication
+        test.
+FROZEN: THE LAYER 0 RULE MUST CHECK THE SHAPE, NOT THE NAME. Two obligations, both
+        static:
+            the variable's name appears outside `plugins/evidence/producer_auth.py`
+              ONLY in `tests/evidence/trust_harness.py`, and there only as a key in a
+              child-process environment mapping
+            no module anywhere assigns to, or otherwise writes, the RUNNING
+              process's environment for that variable
+        A rule that fired on the name alone would fail the harness; a rule that
+        ignored the assignment would fail to catch a reload written as a `setenv`.
 FROZEN: THIS AMENDMENT DOES NOT MAKE THAT LAYER 0 CHANGE. It is documentation, and
         `scripts/ci/layer0_policy.py` is NOT edited by it. §7.3.11's mechanism and
         the Layer 0 rules that enforce it are obligations on the change that
@@ -4597,8 +4714,10 @@ FROZEN: §7.3.7's KEY-MATERIAL RULE IS UNCHANGED AND IS NOT RELAXED BY §7.3.11'
         honestly.
 
 FROZEN: A CASE THAT NEEDS A PARTICULAR TRUST CONFIGURATION SUPPLIES IT TO A PROCESS
-        THAT HAS NOT YET INITIALIZED THE READER. The variable is set in that process's
-        environment BEFORE the reader module is imported, and the case runs there.
+        THAT HAS NOT YET INITIALIZED THE READER, THROUGH THE LAUNCHER THIS SECTION
+        NAMES. `tests/evidence/trust_harness.py` hands the variable to a child
+        process's environment before that process starts; the child then imports the
+        real reader and runs the ordinary admission and verification path.
         PROCESS-ISOLATED EXECUTION IS THEREFORE THE MECHANISM for every case whose
         expected result depends on the configuration — a valid mapping, a mapping the
         reader refuses, an unreadable value, an absent one, both collision policies,
@@ -4606,6 +4725,12 @@ FROZEN: A CASE THAT NEEDS A PARTICULAR TRUST CONFIGURATION SUPPLIES IT TO A PROC
         EXACTLY what a deployment does, because a deployment also supplies the
         variable to a process that has not started yet. The test and the deployment
         use one mechanism; only the process boundary differs.
+FROZEN: THE LAUNCHER EXCEPTION AND THE NO-MUTATION RULE ARE ONE RULE, READ TOGETHER.
+        The rule above forbids WRITING THE RUNNING PROCESS'S ENVIRONMENT; this clause
+        permits HANDING A VALUE TO A PROCESS THAT HAS NOT STARTED. Stated separately
+        they would read as a prohibition and an exception to it; stated together they
+        are one boundary, and neither is a weakening of the other. A reader who finds
+        only one of them has found half a rule.
 
 FROZEN: CHANGING THE VARIABLE AFTER INITIALIZATION IS NOT A SUPPORTED WAY TO RELOAD
         THE TRUST ROOT, AND IT MUST NOT BE USED AS ONE IN A TEST. Setting it
@@ -5886,11 +6011,11 @@ recorded the same about §7.
     `shutil`, `tempfile` or any other filesystem root, or reach any configuration
     source other than the one variable §7.3.11 names. `store.py` remains the only
     module that touches a filesystem and every other restriction stands. Layer 0 must
-    additionally enforce the ONE READER rule and the NO-CALLER-SELECTED-TRUST-ROOT
-    rule for this module, in the shape AI-13 §13.3's boundary already uses for its
-    own domain.
+    additionally enforce the FOUR rules §31.3 lists for this module — ONE READER,
+    NO MUTATION, IMMUTABLE STATE and NO CALLER-SELECTED TRUST ROOT — in the shape
+    AI-13 §13.3's boundary already uses for its own domain.
     THIS AMENDMENT DOES NOT MAKE THAT LAYER 0 CHANGE. `scripts/ci/layer0_policy.py` is
-    NOT edited here. The exception and the two enforcement rules are obligations on
+    NOT edited here. The exception and the four enforcement rules are obligations on
     the change that IMPLEMENTS producer authentication; until that change lands there
     is nothing for a widened rule to permit, and the existing rule would refuse the
     new module. That refusal is the correct and visible behaviour, not a defect to be
@@ -5911,6 +6036,60 @@ recorded the same about §7.
     AI15-OPEN-1 is open). Step 7b is unimplemented AND unreachable, and it is the
     second fact that carries the argument. Correcting a citation does not move the
     conclusion it was cited for; this is recorded rather than left to be re-derived.
+
+(l) THE NO-MUTATION RULE WAS NAME-BASED, AND NAME-BASED IT CONTRADICTED THIS
+    AMENDMENT'S OWN TEST MECHANISM. As first written it read: "The variable name
+    appearing outside the reader is itself the finding, because a second module that
+    can NAME it can write it." §31.3's testing clause requires the opposite: a child
+    process can only be given a configuration by a launcher that NAMES THE VARIABLE.
+    The contract therefore PROHIBITED AND REQUIRED THE SAME THING, which is the one
+    state a frozen document must never be in.
+    THE RULE IS NOW SHAPE-BASED, BECAUSE IT HAS TO BE. What is forbidden is WRITING
+    THE RUNNING PROCESS'S ENVIRONMENT; what is permitted is HANDING A VALUE TO A
+    PROCESS THAT HAS NOT STARTED. The static rule distinguishes them by the SHAPE of
+    the use and not by the presence of the name.
+    ONE NARROW HARNESS EXCEPTION IS SPECIFIED, AND IT IS NARROW IN THREE WAYS:
+        one module     tests/evidence/trust_harness.py, the only place outside the
+                       reader where the name may appear
+        one shape      only as a key in the environment mapping handed to a
+                       child-process launch — never an assignment to the running
+                       process's environment and never `os.putenv`
+        one variable   the designated one, and no other configuration source
+    It is NOT an exception for tests in general and NOT one for any production
+    module. A second module naming the variable, or this module naming it in another
+    shape, is the NO MUTATION finding.
+    THE EXCEPTION WAS VERIFIED AGAINST THE EXISTING ARCHITECTURE BEFORE IT WAS
+    WRITTEN, because "subprocess is available in Python" is not a permission:
+        a separate interpreter is ALREADY spawned from this suite —
+          `tests/evidence/test_canonical.py:119-143` runs
+          `subprocess.run([sys.executable, "-c", program], ...)` as the cross-process
+          half of T7
+        no Layer 0 rule constrains `tests/` on this axis: the `subprocess`
+          restrictions in `scripts/ci/layer0_policy.py` are scoped to
+          `plugins/evidence`, `routing/`, `benchmarks/`, `workflows/` and
+          `composition/`, and `tests/` is reached only by `check_layer_markers`,
+          which globs `test_*.py`
+        so a `trust_harness.py` support module is not a test module, needs no layer
+          marker, and adds no path a deployment lacks
+    A FOURTH ENFORCEMENT RULE IS ADDED: IMMUTABLE STATE. §31.3 now requires that the
+    captured mapping and policy are held privately, are never returned as a whole by
+    any public function, are never handed to another module as a structure it could
+    mutate, and cannot be rebound, replaced, `setattr`-ed or monkeypatched from
+    outside — with no public initializer, reset, setter or "load for tests" entry
+    point. The reader answers a PER-TOKEN question and exposes neither the mapping,
+    the policy nor the parsed document. This is what stops a test from passing by
+    REPLACING the state it was supposed to exercise, and what stops repository code
+    from replacing a trust root it is not allowed to write.
+    STARTUP ORDER IS NOW STATED. §7.3.11 records that initialization IS the module's
+    import, that `plugins/evidence/__init__.py` imports the reader, and that the
+    ordering guarantee is therefore STRUCTURAL: any process able to call `admit()`
+    has necessarily already initialized the reader. It also separates CONFIGURATION
+    SUPPLIED WHEN A PROCESS STARTS from A VARIABLE READ AFTER ARBITRARY APPLICATION
+    CODE HAS RUN, and records what the guarantee does NOT cover — code outside this
+    repository writing the process environment before the first import — as a
+    RESIDUAL RISK on the same footing as §7.3.9's, rather than claiming it closed.
+    THIS CREATES NO CALLER AND NO ENTRY POINT. The import edge is within the Evidence
+    package, between a module and the package that owns it.
 ```
 
 ```text
@@ -5987,7 +6166,13 @@ SECURITY IMPACT
           not silently kept in service by a fallback — and so no read can occur
           between selecting a key and applying the collision rule
         it puts the variable beyond the reach of the code that reads it: nothing in
-          the repository writes it, and the reader is not reloaded to re-read it
+          the repository writes the running process's environment, and the reader is
+          not reloaded to re-read it
+        it makes the captured state itself unreachable: held privately, never
+          returned as a whole, never handed out as a structure another module could
+          mutate, and not rebindable — so a test cannot pass by REPLACING the state
+          it was meant to exercise, and repository code cannot replace a trust root
+          it may not write
         it keeps the configuration's JSON tolerance out of the signed-input path,
           where it would silently change what a proof means
 
