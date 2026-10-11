@@ -303,6 +303,55 @@ EVIDENCE_FILESYSTEM_IMPORTS = (
     "yaml",
 )
 
+#: AI-05 §31.3 — the ONE narrowly scoped exception, and it is narrow in three
+#: dimensions: one module, two imports, one purpose. `producer_auth.py` reads the
+#: designated trust-configuration variable, which needs `os`, and parses it as
+#: strict JSON, which needs `json`. It may not read a file, call `open()`, walk
+#: a path, import any other filesystem root, or reach any configuration source
+#: other than that one variable — and §31.3 records that widening this into a
+#: package-wide relaxation would break the property it exists to preserve.
+EVIDENCE_CONFIG_MODULE = "producer_auth.py"
+EVIDENCE_CONFIG_IMPORTS = ("json", "os")
+
+#: AI-05 §31.3 — the single test module permitted to NAME that variable, and
+#: only as a key in the environment mapping handed to a child-process launch.
+EVIDENCE_TRUST_HARNESS = "tests/evidence/trust_harness.py"
+
+#: AI-05 §31.3 — the reader's own declaration of the variable's name.
+#:
+#: THIS FILE DOES NOT CONTAIN THE NAME, AND THAT IS DELIBERATE. §31.3 says the
+#: harness "is the ONLY module outside the reader in which the designated
+#: variable's name may appear". A checker that spelled the name here would be a
+#: third module appearing to name it — so the rule is parameterised by the
+#: READER's declaration instead, which is also the stronger arrangement: the
+#: check follows the reader rather than a copy that could drift from it.
+EVIDENCE_TRUST_ENV_ATTRIBUTE = "_ENV_NAME"
+
+#: AI-05 §31.3 — attributes that would write the RUNNING process's environment.
+#: `os.environ.get` is a READ and is how the one reader reads; these are not.
+EVIDENCE_ENV_MUTATORS = (
+    "putenv",
+    "unsetenv",
+)
+
+#: AI-05 §31.3 (NO CALLER-SELECTED TRUST ROOT) — names a caller could use to
+#: CHOOSE what is trusted. A public function of the reader taking one of these
+#: has a caller who selects the trust root, and such a caller can install their
+#: own and mint proofs that verify.
+EVIDENCE_TRUST_PARAMETERS = (
+    "anchor",
+    "configuration",
+    "config_path",
+    "key",
+    "key_bytes",
+    "mapping",
+    "producer_keys",
+    "public_key",
+    "trust",
+    "trust_mapping",
+    "verifier",
+)
+
 EVIDENCE_FORBIDDEN_BUILTINS = ("eval", "exec", "compile", "__import__")
 
 #: Strings the Store may not contain. AI-05 records what happened; it does not
@@ -940,12 +989,24 @@ def check_evidence_plugin_boundary() -> list[str]:
 
         if path.name not in EVIDENCE_IO_MODULES:
             for io_root in EVIDENCE_FILESYSTEM_IMPORTS:
-                if io_root in roots:
-                    problems.append(
-                        f"{_display(path)} imports {io_root!r}; only "
-                        f"{', '.join(EVIDENCE_IO_MODULES)} may touch a "
-                        "filesystem, and this module is not one of them"
-                    )
+                if io_root not in roots:
+                    continue
+                if (
+                    path.name == EVIDENCE_CONFIG_MODULE
+                    and io_root in EVIDENCE_CONFIG_IMPORTS
+                ):
+                    # §31.3's one exception: two imports in one named module, for
+                    # the designated configuration and nothing else. Every other
+                    # filesystem root in this module is still a finding, and so is
+                    # either of these two in any other module.
+                    continue
+                problems.append(
+                    f"{_display(path)} imports {io_root!r}; only "
+                    f"{', '.join(EVIDENCE_IO_MODULES)} may touch a "
+                    "filesystem, and this module is not one of them "
+                    f"(§31.3's exception is {', '.join(EVIDENCE_CONFIG_IMPORTS)} "
+                    f"in {EVIDENCE_CONFIG_MODULE})"
+                )
 
         for name in sorted(imported):
             if name == "providers" or name.startswith("providers."):
@@ -1033,6 +1094,275 @@ def check_evidence_plugin_boundary() -> list[str]:
             problems.append(f"{_display(path)} contains a credential-shaped literal")
 
     return problems
+
+
+def check_evidence_producer_authentication() -> list[str]:
+    """AI-05 §31.3 — the FOUR rules, as a gate. Parsed with `ast`.
+
+    ```text
+    ONE READER                  the variable is read in producer_auth.py and in
+                                no other module
+    NO MUTATION                 no module writes the RUNNING process's
+                                environment, and the reader is not reloaded
+    IMMUTABLE STATE             the captured state is not rebindable from
+                                outside, and no public function returns it whole
+    NO CALLER-SELECTED          no public function of the reader accepts a trust
+      TRUST ROOT                root as a parameter
+    plus §7.3.11's STARTUP EDGE  the package imports the reader, so any process
+                                able to call an admission entry point has
+                                necessarily already initialized it
+    ```
+
+    WHAT THESE CHECKS ARE, AND WHAT THEY ARE NOT. They are declared SOURCE-TREE
+    rules, enforced over the files this repository contains, and they DETECT
+    those patterns within their stated coverage. They are NOT a runtime sandbox
+    and NOT a proof of immunity: Python module state is not intrinsically
+    tamper-proof, and code able to execute inside the same process can reach
+    in-memory state that no source-tree rule protects (§7.3.9 records the same
+    limit as PROCESS CONTROL). What they establish is narrower and checkable —
+    REPOSITORY CODE does not do any of this, and the repository will not merge
+    code that does.
+    """
+    import ast
+
+    problems: list[str] = []
+    package = ROOT / "plugins" / "evidence"
+    reader = package / EVIDENCE_CONFIG_MODULE
+    if not reader.is_file():
+        return [
+            f"plugins/evidence/{EVIDENCE_CONFIG_MODULE} is absent; AI-05 §7.3.11 "
+            "names it as the ONE READER of the designated trust configuration"
+        ]
+
+    harness = ROOT / "tests" / "evidence" / "trust_harness.py"
+    namers = {reader.resolve()}
+    if harness.is_file():
+        namers.add(harness.resolve())
+
+    # (1) ONE READER and NO MUTATION, by NAME, repository-wide. A second module
+    # that can NAME the variable can write it, and §31.3 permits exactly one
+    # test module to name it — as a key in a child-process environment mapping.
+    #
+    # The name itself comes from the READER, so this file need not contain it.
+    declared = _declared_trust_env_name(reader)
+    if declared is None:
+        problems.append(
+            f"{_display(reader)} declares no module-level "
+            f"{EVIDENCE_TRUST_ENV_ATTRIBUTE}; §7.3.11 requires the one reader to "
+            "name the variable it reads"
+        )
+    else:
+        for path in sorted(ROOT.rglob("*.py")):
+            if ".git" in path.parts or "__pycache__" in path.parts:
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            if declared in text and path.resolve() not in namers:
+                problems.append(
+                    f"{_display(path)} names {declared}; the variable is read in "
+                    f"{EVIDENCE_CONFIG_MODULE} and named nowhere else except the "
+                    f"child-process launcher {EVIDENCE_TRUST_HARNESS} (§31.3, "
+                    "ONE READER / NO MUTATION)"
+                )
+        if harness.is_file() and declared not in harness.read_text(
+            encoding="utf-8"
+        ):  # pragma: no cover - a drift guard
+            problems.append(
+                f"{EVIDENCE_TRUST_HARNESS} does not name {declared}; the launcher "
+                "must supply the SAME variable the reader reads (§31.3)"
+            )
+
+    # (2) NO MUTATION, as syntax: the package must not write the RUNNING
+    # process's environment, and nothing may reload the reader.
+    for path in sorted(package.glob("*.py")):
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        except SyntaxError:  # pragma: no cover - reported by (1) above
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if _is_environ_subscript(target):
+                        problems.append(
+                            f"{_display(path)}:{node.lineno} writes the running "
+                            "process's environment; §31.3 forbids repository code "
+                            "setting the designated trust variable"
+                        )
+            elif isinstance(node, ast.Call):
+                if _is_environ_mutator(node.func) or _is_environ_mutating_method(
+                    node.func
+                ):
+                    problems.append(
+                        f"{_display(path)}:{node.lineno} mutates the running "
+                        "process's environment; §31.3's NO MUTATION rule forbids it"
+                    )
+
+    for path in sorted(ROOT.rglob("*.py")):
+        if ".git" in path.parts or "__pycache__" in path.parts:
+            continue
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        except (SyntaxError, UnicodeDecodeError, OSError):
+            continue
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "reload"
+                and node.args
+                and getattr(node.args[0], "id", None) == "producer_auth"
+            ):
+                problems.append(
+                    f"{_display(path)}:{node.lineno} reloads producer_auth; §31.3 "
+                    "forbids re-triggering the reader's initialization, because a "
+                    "second read is a second trust root"
+                )
+            if (
+                isinstance(node, ast.Assign)
+                and isinstance(node.value, ast.Attribute)
+                and getattr(node.value.value, "id", None) == "producer_auth"
+            ):
+                for target in node.targets:
+                    if isinstance(target, ast.Attribute):
+                        problems.append(
+                            f"{_display(path)}:{node.lineno} rebinds an attribute "
+                            "of producer_auth; §31.3's IMMUTABLE STATE rule keeps "
+                            "the captured state out of reach of repository code"
+                        )
+
+    # (3) and (4), over the reader's PUBLIC surface.
+    tree = ast.parse(reader.read_text(encoding="utf-8"), filename=str(reader))
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if node.name.startswith("_"):
+            continue
+        for argument in (
+            node.args.args + node.args.kwonlyargs + node.args.posonlyargs
+        ):
+            name = argument.arg
+            if name in ("self", "cls"):
+                continue
+            stem = name.lstrip("_")
+            if stem in EVIDENCE_TRUST_PARAMETERS:
+                problems.append(
+                    f"{_display(reader)}:{node.lineno} public function "
+                    f"{node.name}() accepts {name!r}; §31.3 forbids a public "
+                    "function that lets a caller SELECT the trust root"
+                )
+        for inner in ast.walk(node):
+            if isinstance(inner, ast.Return) and _returns_state(inner.value):
+                problems.append(
+                    f"{_display(reader)}:{inner.lineno} public function "
+                    f"{node.name}() returns the captured trust state; §31.3's "
+                    "IMMUTABLE STATE rule keeps it out of every public return"
+                )
+
+    # (5) §7.3.11's STARTUP EDGE: the package imports the reader.
+    init = package / "__init__.py"
+    if init.is_file() and not _imports_producer_auth(init):
+        problems.append(
+            f"{_display(init)} does not import {EVIDENCE_CONFIG_MODULE}; §7.3.11 "
+            "requires the EVIDENCE PACKAGE to initialize the reader, so that any "
+            "process able to call admit() has necessarily already initialized it"
+        )
+
+    return problems
+
+
+def _declared_trust_env_name(reader: "Path") -> "str | None":
+    """The variable's name, read from the reader's own module-level declaration.
+
+    Parameterising the check this way keeps the NAME out of this file, which
+    §31.3 requires, and keeps the check tied to the reader rather than to a
+    second copy of the string.
+    """
+    import ast
+
+    try:
+        tree = ast.parse(reader.read_text(encoding="utf-8"), filename=str(reader))
+    except (SyntaxError, OSError, UnicodeDecodeError):  # pragma: no cover
+        return None
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        for target in node.targets:
+            if (
+                isinstance(target, ast.Name)
+                and target.id == EVIDENCE_TRUST_ENV_ATTRIBUTE
+                and isinstance(node.value, ast.Constant)
+                and isinstance(node.value.value, str)
+            ):
+                return node.value.value
+    return None
+
+
+def _is_environ_subscript(target: "ast.expr") -> bool:
+    import ast
+
+    return (
+        isinstance(target, ast.Subscript)
+        and isinstance(target.value, ast.Attribute)
+        and target.value.attr == "environ"
+    )
+
+
+def _is_environ_mutator(func: "ast.expr") -> bool:
+    import ast
+
+    return (
+        isinstance(func, ast.Attribute)
+        and func.attr in EVIDENCE_ENV_MUTATORS
+        and isinstance(func.value, ast.Name)
+        and func.value.id == "os"
+    )
+
+
+def _is_environ_mutating_method(func: "ast.expr") -> bool:
+    import ast
+
+    return (
+        isinstance(func, ast.Attribute)
+        and func.attr in ("pop", "update", "setdefault", "clear")
+        and isinstance(func.value, ast.Attribute)
+        and func.value.attr == "environ"
+    )
+
+
+def _returns_state(value: "ast.expr | None") -> bool:
+    import ast
+
+    if value is None:
+        return False
+    if isinstance(value, ast.Name):
+        return value.id.endswith("_STATE") or value.id in ("_STATE", "state")
+    if isinstance(value, ast.Attribute):
+        return _returns_state(value.value)
+    return False
+
+
+def _imports_producer_auth(init: "Path") -> bool:
+    import ast
+
+    try:
+        tree = ast.parse(init.read_text(encoding="utf-8"), filename=str(init))
+    except SyntaxError:  # pragma: no cover
+        return False
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            if (node.module or "").endswith(f".{EVIDENCE_CONFIG_MODULE[:-3]}"):
+                return True
+            if (node.module or "").endswith(".evidence"):
+                for alias in node.names:
+                    if alias.name == EVIDENCE_CONFIG_MODULE[:-3]:
+                        return True
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.endswith(f".{EVIDENCE_CONFIG_MODULE[:-3]}"):
+                    return True
+    return False
 
 
 def check_security_tools_boundary() -> list[str]:
@@ -3472,6 +3802,10 @@ def main() -> int:
     report.check(
         "evidence plugin boundary and durability tiers",
         check_evidence_plugin_boundary(),
+    )
+    report.check(
+        "evidence producer authentication boundary",
+        check_evidence_producer_authentication(),
     )
     report.check(
         "security tools boundary and adapter families",

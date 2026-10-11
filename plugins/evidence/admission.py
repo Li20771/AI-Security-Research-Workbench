@@ -91,6 +91,7 @@ from plugins.evidence.errors import (
     WorkspaceAgreementViolation,
 )
 from plugins.evidence.models import EvidenceRecord
+from plugins.evidence.producer_auth import authenticate
 from plugins.evidence.rules import check_admission_rules
 from plugins.evidence.vocabulary import AdmissionOutcome
 
@@ -173,7 +174,7 @@ class AdmissionResult:
         return self.outcome is AdmissionOutcome.ACCEPTED
 
 
-def admit(raw: object, *, clock=None) -> AdmissionResult:
+def admit(raw: object, *, producer_proof=None, clock=None) -> AdmissionResult:
     """Run the implemented admission boundary over a supplied record (§30).
 
     Composes, in order:
@@ -181,6 +182,8 @@ def admit(raw: object, *, clock=None) -> AdmissionResult:
     ```text
     check_admission_rules         §30 step 7 (§14.10) — over the SUPPLIED values,
                                   before construction hashes the context value
+    authenticate                  §30 step 7b (§7.3, Amendment 5) — the producer
+                                  claim, before any typed record exists
     EvidenceRecord.from_mapping   §30 steps 1-4, 4b, 6, 8-13 (B1)
     check_workspace_agreement     §30 step 5's agreement half (§18.1)
     assign_digests                §30 step 12 (B1)
@@ -191,12 +194,27 @@ def admit(raw: object, *, clock=None) -> AdmissionResult:
     this function takes no store, and §30's "stores nothing" is satisfied
     trivially rather than claimed.
 
+    `producer_proof` is REQUIRED in the sense §7.3.3 means: omitting it, or
+    passing `None`, is REJECTED with `AUTHENTICATION_PROOF_MISSING` rather than
+    a `TypeError`. It is carried BESIDE the mapping and never becomes a field of
+    the record — §7.3.3 makes the proof not part of the record, so no digest
+    input, no stored form and no schema changes because of it.
+
+    The submitted mapping is the signer's input: §7.3.4's signed input is the
+    canonical serialization of the COMPLETE SUPPLIED MAPPING, so authentication
+    must run on what the caller supplied and not on a parsed record. That is
+    also why step 7b runs BEFORE construction — no typed record, and therefore
+    no Evidence digest, may be derived from a claim that is not authenticated
+    (§7.3.7).
+
     The supplied mapping is never modified. `from_mapping` builds new frozen
-    objects, `check_admission_rules` only reads, and `assign_digests` returns a
-    copy, so no code path here writes to the caller's input.
+    objects, `check_admission_rules` only reads, `authenticate` only reads, and
+    `assign_digests` returns a copy, so no code path here writes to the caller's
+    input.
     """
     try:
         check_admission_rules(raw)
+        authenticate(raw, producer_proof)
         record = EvidenceRecord.from_mapping(raw, clock=clock)
         check_workspace_agreement(record)
         record = assign_digests(record)
@@ -208,15 +226,20 @@ def admit(raw: object, *, clock=None) -> AdmissionResult:
 
 
 def admit_to_store(
-    raw: object, *, store, clock=None
+    raw: object, *, store, producer_proof=None, clock=None
 ) -> AdmissionResult:
     """The §30 pipeline through persistence. `admit()`, then steps 14 and store.
 
     ```text
-    admit(raw)                        §30 steps 1-13, unchanged
+    admit(raw, producer_proof=...)    §30 steps 1-13, authentication included
     store.contains(evidence_id)       §30 step 14
     store.write(record)               the write §30 exists to gate
     ```
+
+    **The proof is passed THROUGH to `admit()` rather than verified a second
+    time** (§7.3.3): one verification runs and one verdict is reached. A
+    non-ACCEPTED result returns before the store is touched, so an
+    authentication failure never contacts storage (§7.3.8).
 
     A duplicate `evidence_id` is `REJECTED` with
     `DUPLICATE_EVIDENCE_ID` and **the existing record is untouched**: the
@@ -262,7 +285,7 @@ def admit_to_store(
             "there"
         )
 
-    result = admit(raw, clock=clock)
+    result = admit(raw, producer_proof=producer_proof, clock=clock)
     if result.outcome is not AdmissionOutcome.ACCEPTED:
         return result
 

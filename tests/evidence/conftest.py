@@ -260,3 +260,30 @@ def build():
         return assign_digests(parsed)
 
     return _build
+
+
+#: The producer token every fixture record names, and the key the regression
+#: suite is configured with. §7.3.7 requires a DISTINCT keypair per producer
+#: token, so `trust_harness` holds one key per token and this is the one the
+#: builders below use.
+_DEFAULT_PRODUCER = "ai-03"
+
+
+def proof_for(raw: Any, token: str = _DEFAULT_PRODUCER) -> dict[str, str]:
+    """A valid proof for `raw`, signed under `token`'s configured key.
+
+    §7.3.7's key-material rule reaches this helper: it goes through the REAL
+    verification path, the key material comes from the SAME designated
+    configuration mechanism a deployment uses, and there is no test-only bypass.
+    The signature is produced by `trust_harness`, which is the one module
+    permitted to build the child environment the configuration arrives in.
+    """
+    from trust_harness import proof_for as _proof_for
+
+    return _proof_for(token, raw)
+
+
+@pytest.fixture
+def prove():
+    """The `proof_for` helper, as a fixture."""
+    return proof_for

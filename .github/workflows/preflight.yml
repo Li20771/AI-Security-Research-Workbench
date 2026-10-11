@@ -54,7 +54,116 @@ jobs:
         run: |
           python -m providers.validate
           python -m plugins.context.validate
-          python -m pytest -m layer1
+          # The evidence layer tests call admission, and §30 step 7b now runs
+          # inside it. The producer trust configuration is read ONCE at the
+          # reader's initialization (§7.3.11), so it has to be supplied to a
+          # process that has NOT started yet — which is what this launcher does,
+          # and what a deployment does. Running pytest directly here would leave
+          # the evidence suite in its fail-closed state and report a green run
+          # for tests that never authenticated anything.
+          #
+          # The producer-authentication acceptance module is EXCLUDED here and
+          # run by the matrix step below, because it is not a single-configuration
+          # module: it asserts, per case, the outcome ITS configuration must
+          # produce (§7.3.2's two collision policies, an absent mapping, a mapping
+          # with no entry for the claimed token, and the distinct-key control).
+          # Collected under one configuration it would skip most of its cases and
+          # fail `test_obligation_06c_reader_is_consistent`, whose two permitted
+          # states are the two unregistered-collision policies. Excluding it here
+          # keeps this step's meaning unchanged: every OTHER layer-1 test still
+          # runs, under the same launcher and the same isolation as before.
+          python tests/evidence/trust_harness.py regression -- python -m pytest -m layer1 --ignore=tests/evidence/test_producer_authentication.py
+
+      - name: "Layer 1 — producer authentication acceptance matrix (8 configurations)"
+        run: |
+          # AI-05 §7.3.7's acceptance obligations, run under EIGHT trust
+          # configurations. §7.3.11 reads the configuration ONCE, at the reader's
+          # initialization, and §31.3 makes that state final for the life of the
+          # process — so each group below is its OWN launcher invocation and its
+          # OWN pytest process. Merging two groups into one process would test
+          # the wrong state and report it as the other group's result.
+          #
+          # FAILURE SEMANTICS. This step runs under the default `bash -e`, so the
+          # FIRST non-zero exit fails the step: there is no `|| true`, no
+          # `continue-on-error`, and no exit code is swallowed. A configuration
+          # group that fails fails the job; a group that cannot start its child
+          # fails the job; a missing node id is a pytest usage error and fails
+          # the job. Skips are visible in the log and are NOT a pass.
+          #
+          # `collision_unregistered` (G6) and `collision_unregistered_b` (G7) are
+          # §7.3.2's two policies for the one case they differ on, and both run
+          # `test_obligation_06c_reader_is_consistent`. They are deliberately
+          # separate invocations and their results are never merged.
+          mkdir -p "$RUNNER_TEMP/ai05-acceptance"
+          A=tests/evidence/test_producer_authentication.py
+
+          python tests/evidence/trust_harness.py regression -- python -m pytest \
+            "$A::TestObligation01ValidProofAccepted::test_obligation_01_valid_proof_is_accepted" \
+            "$A::TestObligation09MalformedEnvelope::test_obligation_09a_non_base64url_character" \
+            "$A::TestObligation09MalformedEnvelope::test_obligation_09b_padding" \
+            "$A::TestObligation09MalformedEnvelope::test_obligation_09c_non_canonical_encoding" \
+            "$A::TestObligation09MalformedEnvelope::test_obligation_09d_signature_is_not_lowercase_hex_128" \
+            "$A::TestObligation10SignatureDoesNotVerify::test_obligation_10_signature_does_not_verify" \
+            "$A::TestObligation11CrossProducer::test_obligation_11_cross_producer_key_is_refused" \
+            "$A::TestObligation12Replay::test_obligation_12a_payload_kind_family_workspace_mutations" \
+            "$A::TestObligation12Replay::test_obligation_12b_producer_mutation_to_another_registered_token" \
+            "$A::TestObligation12Replay::test_obligation_12c_producer_mutation_to_an_unregistered_token" \
+            "$A::TestObligation13Unserializable::test_obligation_13a_out_of_domain_value" \
+            "$A::TestObligation13Unserializable::test_obligation_13b_unpaired_surrogate" \
+            "$A::TestObligation14UnreadableToken::test_obligation_14a_existing_shape_reason_for_each_defect" \
+            "$A::TestObligation14UnreadableToken::test_obligation_14b_no_authentication_code_is_used_for_a_shape_defect" \
+            "$A::TestObligation14UnreadableToken::test_obligation_14c_shape_read_precedes_key_selection_decoding_verification" \
+            "$A::TestObligation15ProofMissingAtBothEntryPoints::test_obligation_15a_admit_omitted_and_none" \
+            "$A::TestObligation15ProofMissingAtBothEntryPoints::test_obligation_15b_admit_to_store_omitted_and_none" \
+            "$A::TestObligation16UnknownOrMalformedField::test_obligation_16_unknown_and_malformed_fields" \
+            "$A::TestObligation17RejectionTouchesNoStore::test_obligation_17a_admit_to_store_rejects_without_contact" \
+            "$A::TestObligation17RejectionTouchesNoStore::test_obligation_17b_admit_rejects_an_authentication_failure" \
+            "$A::TestObligation20NoGuardCoupling::test_obligation_20_authentication_failure_is_not_a_guard_deny" \
+            "$A::TestObligation21ReasonPrecedence::test_obligation_21_step7_reason_wins" \
+            "$A::TestObligation22Cj1Vectors::test_obligation_22c_vector_3_case_a_signature_refuses_first" \
+            "$A::TestObligation22Cj1Vectors::test_obligation_22d_vector_3_case_b_reconstruction_refuses" \
+            "$A::TestObligation22Cj1Vectors::test_obligation_22e_vector_4_case_a_signature_refuses_first" \
+            "$A::TestObligation22Cj1Vectors::test_obligation_22f_vector_4_case_b_reconstruction_refuses" \
+            "$A::TestObligation18NoProductionWriter::test_obligation_18a_no_production_call_site_exists" \
+            "$A::TestObligation18NoProductionWriter::test_obligation_18b_the_scan_can_find_a_call_site" \
+            "$A::TestObligation19NoCallerSelectedTrustRoot::test_obligation_19_no_violation_is_reported" \
+            "$A::TestObligation19NoCallerSelectedTrustRoot::test_obligation_19_the_rule_can_identify_its_target_violation" \
+            "$A::TestObligation22Cj1Vectors::test_obligation_22a_vector_1_bytes" \
+            "$A::TestObligation22Cj1Vectors::test_obligation_22b_vector_2_non_ascii" \
+            -q --tb=long --junitxml="$RUNNER_TEMP/ai05-acceptance/G1-regression.xml"
+
+          python tests/evidence/trust_harness.py absent -- python -m pytest \
+            "$A::TestObligation02NoProofAndNoMapping::test_obligation_02a_no_proof_and_no_mapping" \
+            "$A::TestObligation02NoProofAndNoMapping::test_obligation_02b_proof_but_no_mapping" \
+            -q --tb=long --junitxml="$RUNNER_TEMP/ai05-acceptance/G2-absent.xml"
+
+          python tests/evidence/trust_harness.py no_entry_for_token -- python -m pytest \
+            "$A::TestObligation03NoEntryForToken::test_obligation_03_no_entry_for_claimed_token" \
+            -q --tb=long --junitxml="$RUNNER_TEMP/ai05-acceptance/G3-no-entry.xml"
+
+          python tests/evidence/trust_harness.py collision_recognized -- python -m pytest \
+            "$A::TestObligation04RecognizedCollision::test_obligation_04_recognized_collision_refuses_every_submission" \
+            "$A::TestObligation07WholeMappingRefused::test_obligation_07_a_refusing_reader_designates_nothing" \
+            -q --tb=long --junitxml="$RUNNER_TEMP/ai05-acceptance/G4-collision-recognized.xml"
+
+          python tests/evidence/trust_harness.py collision_mixed -- python -m pytest \
+            "$A::TestObligation05MixedCollision::test_obligation_05_mixed_collision_refuses_under_either_policy" \
+            -q --tb=long --junitxml="$RUNNER_TEMP/ai05-acceptance/G5-collision-mixed.xml"
+
+          python tests/evidence/trust_harness.py collision_unregistered -- python -m pytest \
+            "$A::TestObligation06UnregisteredOnlyCollision::test_obligation_06a_policy_a_tolerates_the_mapping_but_never_admits" \
+            "$A::TestObligation06UnregisteredOnlyCollision::test_obligation_06c_reader_is_consistent" \
+            "$A::TestObligation07WholeMappingRefused::test_obligation_07_a_surviving_duplicate_never_authenticates" \
+            -q --tb=long --junitxml="$RUNNER_TEMP/ai05-acceptance/G6-collision-unregistered-policy-a.xml"
+
+          python tests/evidence/trust_harness.py collision_unregistered_b -- python -m pytest \
+            "$A::TestObligation06UnregisteredOnlyCollision::test_obligation_06b_policy_b_refuses_over_all_entries" \
+            "$A::TestObligation06UnregisteredOnlyCollision::test_obligation_06c_reader_is_consistent" \
+            -q --tb=long --junitxml="$RUNNER_TEMP/ai05-acceptance/G7-collision-unregistered-policy-b.xml"
+
+          python tests/evidence/trust_harness.py distinct_control -- python -m pytest \
+            "$A::TestObligation08DistinctKeysControl::test_obligation_08_distinct_keys_control_admits" \
+            -q --tb=long --junitxml="$RUNNER_TEMP/ai05-acceptance/G8-distinct-control.xml"
 
       - name: "Layer 2 — fake-transport unit tests"
         run: |
