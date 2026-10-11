@@ -658,6 +658,19 @@ FROZEN: it is NOT a claim that the existing implementation already has producer
 
 ### 7.3 Producer authentication — FROZEN (Amendment 5)
 
+> **IN FORCE — Amendment 5, merged as PR #83
+> (`7017bf577f654cb6dea0e8d5e50a27f334117b73`).** This section is FROZEN as
+> written, and the text below is unchanged by that activation. See §34.3 for the
+> record.
+>
+> **THIS RECORDS THE CONTRACT'S STATUS, NOT A RUNTIME ONE.** Amendment 5 DEFINES a
+> standard; it does not implement it. Nothing in this repository performs `§30`
+> step 7b, **no producer-authentication acceptance test has been run**, and the
+> RECORDED DIVERGENCE in §34.3 stands. **AI15-OPEN-1 remains OPEN**, **AI-15 §15.2
+> STEP 0b remains UNSATISFIED**, **B5 remains BLOCKED and is not CONNECTED**, and
+> no production non-test Evidence writer is authorized. Being IN FORCE means the
+> clause binds; it does NOT mean the mechanism exists.
+
 §7.2 separated three checks and recorded that AI-05 performed only the first. This
 section defines the second.
 
@@ -4807,6 +4820,31 @@ OPEN-1, not any AI-15 open item, and not §35.1's deferrals.
 ---
 
 #### Amendment 5 — producer authentication is defined (2026-10-10)
+
+```text
+IN FORCE — THE MERGE THIS ENTRY WAS WRITTEN FOR HAS HAPPENED.
+
+    merged as   7017bf577f654cb6dea0e8d5e50a27f334117b73   (PR #83)
+                a true two-parent merge of
+                97e9e8cd37b328eff934ee4e311ca31c63ca6d6c  (main before)
+                and
+                737ce97caa447c835a628bbbd0b14b0d4a20888b  (the branch head)
+
+    merged on   2026-10-11
+
+    WHAT CHANGED       the STATUS of this amendment: authored -> IN FORCE. The
+                       entry named its base main when it was written; it names its
+                       merge here.
+    WHAT DID NOT       any semantic text. §7.3, §30 step 7b and §22.2 are FROZEN
+                       exactly as merged. No clause is reworded, added or removed
+                       by this status record, and no clause of this contract is
+                       edited by it. §34.1's list of amendment-requiring changes
+                       is not engaged: this records an amendment's own merge, it
+                       does not make a new one.
+    WHAT IT DOES NOT   imply that the MECHANISM exists. §30 step 7b is still
+      IMPLY            performed by nothing, and the RECORDED DIVERGENCE below
+                       still stands. IN FORCE is a statement about the CONTRACT.
+```
 
 Found while answering the question AI-15 recorded as **AI15-OPEN-1**: how a producer
 claim is ESTABLISHED, as against merely well-formed. §7.2 separated three checks and
