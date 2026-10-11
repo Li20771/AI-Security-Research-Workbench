@@ -737,6 +737,11 @@ WHAT IT IS NOT  a registry. It creates no §6.5 row, admits no event, and confer
                 the §6.6 registry check inside typed construction REFUSES the
                 record whatever its proof said. NO VALID SIGNATURE FOR AN
                 UNREGISTERED TOKEN CAN RESULT IN ACCEPTANCE.
+                THAT LAST SENTENCE DESCRIBES A KEY THAT COLLIDES WITH NO RECOGNIZED
+                TOKEN'S. A key that DOES collide with one is not inert at all — it
+                makes the WHOLE MAPPING non-compliant and fails it closed under BOTH
+                reader policies. See the group rule below, and §7.3.2's FROZEN clause
+                on why the unregistered half is not optional.
 ```
 
 ```text
@@ -794,12 +799,27 @@ FROZEN: A SHARED PRIVATE SIGNING KEY ACROSS TWO OR MORE PRODUCER TOKENS IS
         naming the other that verifies. That is precisely the forgery §9.2 names,
         and a shared key would leave §6.5's string comparison as the only thing
         refusing it — which §7.2 already records is not an authentication check.
-FROZEN: THE MAPPING MUST BE INJECTIVE OVER THE TOKENS §6.5 RECOGNIZES. The same
-        Ed25519 PUBLIC-KEY BYTES MUST NOT be assigned to two different recognized
-        producer tokens. This is the ENFORCEABLE HALF of the rule above: the
-        contract never sees a private key, but it does see the public keys the
-        mapping holds, and a mapping that gives two tokens one public key IS the
+FROZEN: NO RECOGNIZED PRODUCER TOKEN MAY SHARE ITS PUBLIC KEY WITH ANY OTHER TOKEN
+        IN THE MAPPING — REGISTERED OR NOT. Two recognized tokens MUST NOT hold the
+        same Ed25519 PUBLIC-KEY BYTES, and A RECOGNIZED TOKEN MUST NOT HOLD THE SAME
+        BYTES AS AN UNREGISTERED ONE EITHER. This is the ENFORCEABLE HALF of the
+        rule above: the contract never sees a private key, but it does see the
+        public keys the mapping holds, and one public key under two tokens IS the
         shared-key defect stated in terms a reader can check.
+FROZEN: WHY THE UNREGISTERED HALF IS NOT OPTIONAL, AND WHY "U's OWN RECORDS ARE
+        STILL REFUSED" DOES NOT COVER IT. Suppose R is registered and U is not, and
+        both map to the same key K. An injectivity rule stated over recognized
+        tokens ALONE would tolerate that mapping, because only ONE recognized token
+        is involved — AND IT WOULD BE WRONG. If R and U in fact share the private
+        key, its holder can sign a claim naming `producer = R`. That claim verifies
+        under K, R's own registered key, and §6.6 ADMITS it because R IS registered
+        for that kind and family. THE RESULT IS ACCEPTED. The forgery is never made
+        in U's name, so nothing about U's records being refused touches it.
+FROZEN: THE RULE IS ABOUT GROUPS, NOT ABOUT PAIRS OF RECOGNIZED TOKENS. Group the
+        mapping's entries BY PUBLIC KEY. A group containing AT LEAST ONE RECOGNIZED
+        TOKEN makes the WHOLE MAPPING non-compliant, however many unregistered
+        tokens sit beside it. Only a group consisting ENTIRELY of unregistered
+        tokens may be tolerated, and only by POLICY A.
 FROZEN: A MAPPING THAT VIOLATES INJECTIVITY FAILS CLOSED, AND NO AUTHENTICATION
         PROCEEDS UNDER IT. Validation happens IN THE DESIGNATED READER — §7.3.2's
         ONE READER — which refuses to produce a mapping it finds non-injective.
@@ -809,37 +829,47 @@ FROZEN: A MAPPING THAT VIOLATES INJECTIVITY FAILS CLOSED, AND NO AUTHENTICATION
         what it now has. The reader MUST NOT return the valid subset, MUST NOT keep
         the first or last entry it saw, and MUST NOT warn and continue — a mapping
         it cannot vouch for is not a mapping it may hand out.
-FROZEN: THE REQUIREMENT IS STATED OVER RECOGNIZED TOKENS BECAUSE THAT IS WHERE IT
-        BITES — AND A DUPLICATE INVOLVING ONLY AN UNREGISTERED TOKEN IS HARMLESS
-        FOR A REASON THAT MUST NOT BE MISSTATED.
+FROZEN: A DUPLICATE GROUP CONSISTING ENTIRELY OF UNREGISTERED TOKENS IS HARMLESS,
+        AND IT IS THE ONLY CASE THE TWO POLICIES TREAT DIFFERENTLY. Every group that
+        contains a recognized token fails the mapping closed under BOTH.
 
-        TWO READER POLICIES ARE PERMITTED, AND THE CONTRACT REQUIRES NEITHER. A
-        reader MUST BE CONSISTENT: it may not refuse the mapping for some duplicates
-        and tolerate others of the same kind. Which policy a deployment runs is a
-        DEPLOYMENT FACT, not a choice any caller makes.
+        TWO READER POLICIES ARE PERMITTED FOR THAT ONE CASE, AND THE CONTRACT
+        REQUIRES NEITHER. A reader MUST BE CONSISTENT: it may not refuse the mapping
+        for some duplicates and tolerate others of the same kind. Which policy a
+        deployment runs is a DEPLOYMENT FACT, not a choice any caller makes.
 
-            POLICY A   INJECTIVITY OVER RECOGNIZED TOKENS ONLY.
-                       The mapping stays usable when the only duplicate involves a
-                       token §6.5 does not register. Under §7.3.7's order a
-                       signature over that token's claim MAY STILL VERIFY, because
-                       step 7b runs before construction; the record is then REFUSED
-                       BY §6.6 during construction, whatever the proof said.
+            POLICY A   NO RECOGNIZED TOKEN SHARES ITS KEY WITH ANYTHING; A DUPLICATE
+                       GROUP OF UNREGISTERED TOKENS ALONE IS TOLERATED.
+                       Every group containing a recognized token fails the WHOLE
+                       mapping closed, exactly as under POLICY B. A group consisting
+                       ONLY of unregistered tokens is tolerated and the mapping
+                       stays usable. Under §7.3.7's order a signature over such a
+                       token's claim MAY STILL VERIFY, because step 7b runs before
+                       construction; the record is then REFUSED BY §6.6 during
+                       construction, whatever the proof said.
                        HARMLESS THROUGH THE REGISTRY.
 
-            POLICY B   FAIL CLOSED ON ANY DUPLICATE PUBLIC KEY.
+            POLICY B   FAIL CLOSED ON ANY DUPLICATE PUBLIC KEY, INCLUDING ONE THAT
+                       INVOLVES ONLY UNREGISTERED TOKENS.
                        The reader refuses the mapping over ALL its entries, so the
                        deployment has NO usable mapping. The submission is REFUSED
                        with AUTHENTICATION_KEY_UNAVAILABLE, and NO signature
                        verification and NO construction occur.
                        HARMLESS THROUGH A REFUSED MAPPING.
 
+        FROZEN: THE TWO POLICIES DIFFER IN ONE CASE AND NOWHERE ELSE. A group
+        holding at least one recognized token fails the mapping closed under BOTH,
+        so NO reader policy can admit a mapping on which a recognized token shares a
+        key — with another recognized token, or with an unregistered one.
+
         FROZEN: WHAT HOLDS UNDER BOTH, AND IT IS THE WHOLE OF THE REQUIREMENT
             a mapping entry for a token §6.5 does not register GRANTS NO §6.5
               IDENTITY and creates no registry row
-            a duplicate involving only such a token does NOT, BY THAT DUPLICATION
-              ITSELF, bypass the registry check or cause an unregistered record to
-              be accepted
-            a submission naming that token MUST NOT BE ACCEPTED on EITHER path
+            a duplicate involving only unregistered tokens does NOT, BY THAT
+              DUPLICATION ITSELF, bypass the registry check or cause an unregistered
+              record to be accepted
+            a submission naming an unregistered token MUST NOT BE ACCEPTED on EITHER
+              path
             a valid signature is NOT a registration and NOT a permission
         NEITHER POLICY IS HARMLESS BECAUSE "AUTHENTICATION FAILS" AS A PROPERTY OF
         THE CLAIM. Under POLICY A the signature may well succeed; under POLICY B it
@@ -1530,30 +1560,48 @@ FROZEN: THE TEST OBLIGATION THIS SECTION CREATES, for the implementation that
             no proof, and no designated mapping at all
             a mapping with no entry for the claimed token
             ONE PUBLIC KEY ASSIGNED TO TWO RECOGNIZED PRODUCER TOKENS, asserting
-              that the designated reader REFUSES the mapping, that no mapping is
-              therefore designated, and that EVERY submission is REJECTED with
-              AUTHENTICATION_KEY_UNAVAILABLE — including a submission naming a
-              token whose entry was not part of the collision, because the reader
-              refuses the mapping rather than trimming it
-            a mapping whose only duplicate public key involves a token §6.5 does
-              NOT register. §7.3.2 PERMITS TWO READER POLICIES, and this criterion
-              MUST ACCEPT EITHER ONE — a test asserting a single outcome as the ONLY
-              permitted one would FAIL a compliant deployment that chose the other:
-                  POLICY A  the mapping stays usable, a signature over that
+              that the designated reader REFUSES the mapping under BOTH reader
+              policies, that no mapping is therefore designated, and that EVERY
+              submission is REJECTED with AUTHENTICATION_KEY_UNAVAILABLE —
+              including a submission naming a token whose entry was not part of the
+              collision, because the reader refuses the mapping rather than
+              trimming it
+            ONE PUBLIC KEY ASSIGNED TO A RECOGNIZED TOKEN AND TO AN UNREGISTERED
+              ONE, asserting THE SAME outcome as the case above: BOTH policies
+              REFUSE the WHOLE mapping, no mapping is designated, and every
+              submission is REJECTED with AUTHENTICATION_KEY_UNAVAILABLE. A test
+              MUST NOT accept this mapping shape under POLICY A. Tolerating it would
+              let the holder of the shared private key sign a claim naming the
+              REGISTERED token — which verifies under that token's registered key
+              and is ADMITTED by §6.6 — so the forgery lands on the registered
+              token, not on the unregistered one, and refusing the unregistered
+              token's own records does not touch it
+            a mapping whose only duplicate public key involves tokens §6.5 does NOT
+              register — AND ONLY SUCH TOKENS. §7.3.2 PERMITS TWO READER POLICIES
+              for this one case, and the criterion MUST ACCEPT EITHER ONE — a test
+              asserting a single outcome as the ONLY permitted one would FAIL a
+              compliant deployment that chose the other:
+                  POLICY A  the mapping stays usable, a signature over such a
                             token's claim MAY VERIFY, and §6.6 MUST then REFUSE the
                             record during construction
                   POLICY B  the mapping is refused over all entries, and the
                             submission MUST be REFUSED with
                             AUTHENTICATION_KEY_UNAVAILABLE, with NO signature
                             verification and NO construction
-              Under BOTH policies the test MUST assert that a submission naming
-              that token is NOT ACCEPTED, that the token acquires NO §6.5 identity,
-              and that the reader is CONSISTENT — refusing every duplicate of a kind
-              or tolerating every duplicate of that kind, never a mixture
-            a mapping in which every recognized token holds DISTINCT key material,
+              Under BOTH policies the test MUST assert that a submission naming such
+              a token is NOT ACCEPTED, that the token acquires NO §6.5 identity, and
+              that the reader is CONSISTENT — refusing every duplicate of a kind or
+              tolerating every duplicate of that kind, never a mixture
+            EVERY fail-closed path in BOTH cases above MUST be asserted to refuse
+              THE WHOLE MAPPING: no valid subset returned, no first-or-last entry
+              kept, no warning-and-continue. A reader that trimmed the mapping would
+              leave its surviving entries authenticating as though the collision had
+              never existed
+            a mapping in which EVERY entry holds DISTINCT key material — each
+              recognized token distinct from every other entry, registered or not —
               asserting that the same submissions that failed above now succeed —
-              the control that shows the two tests above are testing injectivity
-              and not merely the absence of a mapping
+              the control that shows the three tests above are testing the collision
+              rule and not merely the absence of a mapping
             a malformed envelope: a non-Base64url character, '=' padding, and a
               NON-CANONICAL encoding whose final quantum carries unused bits
             a signature that does not verify
@@ -4782,33 +4830,46 @@ recorded rather than relied on, exactly as Amendment 4 recorded the same about �
 
 (c) §7.3.2 makes ONE KEY PER PRODUCER TOKEN mandatory and records that a SHARED
     private signing key across two or more tokens is NON-COMPLIANT. It then states
-    the ENFORCEABLE HALF of that rule: THE MAPPING MUST BE INJECTIVE OVER THE TOKENS
-    §6.5 RECOGNIZES, so the same public-key bytes cannot be assigned to two of them.
-    The contract never sees a private key, but it does see the public keys the
-    mapping holds, and a mapping that gives two tokens one key IS the shared-key
-    defect in terms a reader can check. A mapping that VIOLATES INJECTIVITY FAILS
-    CLOSED: the designated READER refuses it, the deployment therefore has NO usable
-    mapping, and EVERY submission is REJECTED with AUTHENTICATION_KEY_UNAVAILABLE.
-    The reader MUST NOT return the valid subset, keep the first or last entry it
-    saw, or warn and continue. The requirement is stated over RECOGNIZED tokens,
-    and TWO READER POLICIES ARE PERMITTED for a duplicate that involves only an
-    unregistered one, because NEITHER can produce an ACCEPTED record:
-        POLICY A  the mapping stays usable; a signature over that token's claim MAY
-                  VERIFY, and §6.6 then REFUSES the record during construction. The
-                  collision is harmless THROUGH THE REGISTRY
-        POLICY B  the reader fails closed on ANY duplicate and refuses the mapping
-                  over all its entries; the submission is REFUSED with
+    the ENFORCEABLE HALF of that rule: NO RECOGNIZED PRODUCER TOKEN MAY SHARE ITS
+    PUBLIC KEY WITH ANY OTHER TOKEN IN THE MAPPING, REGISTERED OR NOT. The contract
+    never sees a private key, but it does see the public keys the mapping holds, and
+    one public key under two tokens IS the shared-key defect in terms a reader can
+    check. A mapping that violates it FAILS CLOSED: the designated READER refuses
+    it, the deployment therefore has NO usable mapping, and EVERY submission is
+    REJECTED with AUTHENTICATION_KEY_UNAVAILABLE. The reader MUST NOT return the
+    valid subset, keep the first or last entry it saw, or warn and continue.
+    THE RULE IS STATED OVER GROUPS, NOT OVER PAIRS OF RECOGNIZED TOKENS: a duplicate
+    public-key group containing AT LEAST ONE RECOGNIZED TOKEN makes the WHOLE MAPPING
+    non-compliant, however many unregistered tokens sit beside it. AN INJECTIVITY
+    RULE OVER RECOGNIZED TOKENS ALONE WOULD BE WRONG, and closing that is what this
+    item now does: if a registered R and an unregistered U share a key K, a holder
+    of K's private key can sign a claim naming `producer = R`, which verifies under
+    R's OWN registered key and is ADMITTED by §6.6. The forgery is never made in U's
+    name, so "U's own records are still refused" does not touch it. An earlier
+    revision of this item stated the rule over recognized tokens only; THAT IS
+    WITHDRAWN.
+    TWO READER POLICIES ARE PERMITTED, AND THEY DIFFER IN ONE CASE AND NOWHERE ELSE
+    — a duplicate group consisting ENTIRELY of unregistered tokens:
+        POLICY A  no recognized token shares a key with anything; a group of
+                  unregistered tokens ALONE is tolerated and the mapping stays
+                  usable. A signature over such a token's claim MAY VERIFY, and
+                  §6.6 then REFUSES the record during construction. Harmless
+                  THROUGH THE REGISTRY
+        POLICY B  the reader fails closed on ANY duplicate, INCLUDING one that
+                  involves only unregistered tokens, and refuses the mapping over
+                  all its entries; the submission is REFUSED with
                   AUTHENTICATION_KEY_UNAVAILABLE, with no signature verification and
-                  no construction. The collision is harmless THROUGH A REFUSED
-                  MAPPING
+                  no construction. Harmless THROUGH A REFUSED MAPPING
+    A group holding a recognized token fails the mapping closed under BOTH policies,
+    so NO reader policy can admit a mapping on which a recognized token shares a key.
     A reader MUST BE CONSISTENT between them, and NEITHER policy is harmless because
     "authentication fails" as a property of the claim — under A the signature may
     succeed, and under B it is never attempted. What holds under BOTH is the
-    INVARIANT the record must express: the token acquires NO §6.5 identity, and a
-    submission naming it is NEVER ACCEPTED. This is a compliance condition of the
-    mechanism rather than advice, because a shared key leaves §6.5's string
-    comparison as the only thing refusing a cross-producer forgery — and §7.2
-    already records that a registry check is not an authentication check.
+    INVARIANT the record must express: an unregistered token acquires NO §6.5
+    identity, and a submission naming it is NEVER ACCEPTED. This is a compliance
+    condition of the mechanism rather than advice, because a shared key leaves
+    §6.5's string comparison as the only thing refusing a cross-producer forgery —
+    and §7.2 already records that a registry check is not an authentication check.
 
 (d) §7.3.3 and §7.3.4 define the PROOF: a `message_b64u` field carrying the signed
     input as canonical UNPADDED Base64url, and an Ed25519 `signature` over the
