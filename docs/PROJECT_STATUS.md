@@ -625,8 +625,10 @@ AI-14   Long-term AI Workbench                COMPLETE  AI-14-A MERGED (PR #72)
 - Provider connectivity tests — live verification is **NOT_RUN** (AI-02-B6 built
   the opt-in path; no provider call has been made)
 - AI-05 C-1 is **CLOSED** (Amendment 3, §14.10; §30 step 7 implemented). The Evidence
-  layer still has **no production writer**: no phase holds an admitted producer token
-  (§6.5). The producer-token question is AI-11 §21.1's OPEN-1 tension, reconciled by a
+  layer still has **no production writer**, and no phase beyond the four with a §6.5
+  row is admitted. **NO COMPONENT "HOLDS" A PRODUCER TOKEN**: a token is a registered
+  name — a namespace claim, not a credential and not a thing that is held (AI-15
+  §4.3). The producer-token question is AI-11 §21.1's OPEN-1 tension, reconciled by a
   future AI-05 producer-token amendment — not by C-1 (AI-14 plan §14, §20)
 - Research tool adapters — the eight adapter families exist under `tools/`; the
   Evidence projection of a tool call has no caller (AI-14 plan Appendix A)

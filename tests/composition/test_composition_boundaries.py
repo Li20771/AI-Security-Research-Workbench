@@ -8,6 +8,7 @@ across the CONNECTED path rather than inside one layer.
 
 from __future__ import annotations
 
+import ast
 import pathlib
 
 import pytest
@@ -148,6 +149,126 @@ def test_wiring_did_not_verify_a_capability(tmp_path) -> None:
     )
 
 
+_EVIDENCE_ROOT = "plugins.evidence"
+_ADMISSION_ENTRY_POINTS = frozenset({"admit", "admit_to_store"})
+
+
+def _dotted(node: ast.expr) -> str | None:
+    """The dotted source of a Name/Attribute chain, or None if it is not one."""
+    parts: list[str] = []
+    current: ast.expr = node
+    while isinstance(current, ast.Attribute):
+        parts.append(current.attr)
+        current = current.value
+    if not isinstance(current, ast.Name):
+        return None
+    parts.append(current.id)
+    return ".".join(reversed(parts))
+
+
+def _admission_calls_in_tree(tree: ast.Module) -> list[tuple[int, str]]:
+    """`(lineno, what)` for every call in ONE parsed module that can reach admission.
+
+    THE POINT OF RESOLVING NAMES RATHER THAN MATCHING THEM is that the same call has
+    several spellings and a name-only check sees one of them:
+
+        from plugins.evidence import admit                  ->  admit(record)
+        from plugins.evidence.admission import
+            admit_to_store as persist                       ->  persist(record, store=..)
+        import plugins.evidence.admission as adm            ->  adm.admit(record)
+        plugins.evidence.admission.admit(record)            (fully qualified)
+
+    plus a name REBOUND from any of those (`f = admit` then `f(record)`), followed to
+    a fixed point.
+
+    A WILDCARD IMPORT FROM THE PACKAGE IS REFUSED RATHER THAN RESOLVED: it makes the
+    call set unknowable from this file, and a static read must not guess at one.
+
+    NOT DETECTED, stated rather than overclaimed. This reads ONE module statically,
+    and these are its limits:
+
+        `getattr(module, "admit")`, `importlib.import_module(...)`,
+          `__import__(...)`, and any name assembled from a string at runtime
+        a name imported from a THIRD module that re-exports an entry point — this
+          walk does not follow imports across files
+        a callable handed in from outside the package and invoked here
+
+    THOSE ARE NOT COVERED BY THIS TEST, and it MUST NOT be described as exhaustive.
+    They are what the Layer 0 rule and review are for.
+    """
+    call_names: set[str] = set()
+    module_roots: set[str] = set()
+    findings: list[tuple[int, str]] = []
+
+    # Pass 1 — every import that could bind an entry point or the package itself.
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            reaches = node.module == _EVIDENCE_ROOT or node.module.startswith(
+                _EVIDENCE_ROOT + "."
+            )
+            if not reaches:
+                continue
+            for alias in node.names:
+                if alias.name == "*":
+                    findings.append(
+                        (
+                            node.lineno,
+                            f"wildcard import from {_EVIDENCE_ROOT}: the call set "
+                            "cannot be resolved statically",
+                        )
+                    )
+                elif alias.name in _ADMISSION_ENTRY_POINTS:
+                    call_names.add(alias.asname or alias.name)
+                elif alias.name == "admission":
+                    module_roots.add(alias.asname or alias.name)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == _EVIDENCE_ROOT or alias.name.startswith(
+                    _EVIDENCE_ROOT + "."
+                ):
+                    module_roots.add(alias.asname or alias.name.split(".")[0])
+
+    # Pass 2 — names rebound from an already-resolved alias, to a fixed point.
+    for _ in range(len(call_names) + 1):
+        before = set(call_names)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign) and isinstance(node.value, ast.Name):
+                if node.value.id in call_names:
+                    for target in node.targets:
+                        if isinstance(target, ast.Name):
+                            call_names.add(target.id)
+        if call_names == before:
+            break
+
+    # Pass 3 — the calls themselves.
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if isinstance(func, ast.Name) and func.id in call_names:
+            findings.append((node.lineno, f"calls {func.id}()"))
+        elif isinstance(func, ast.Attribute) and func.attr in _ADMISSION_ENTRY_POINTS:
+            dotted = _dotted(func.value)
+            if dotted is None:
+                continue
+            if dotted.split(".")[0] in module_roots or dotted.startswith(_EVIDENCE_ROOT):
+                findings.append((node.lineno, f"calls {dotted}.{func.attr}()"))
+
+    return findings
+
+
+def _admission_call_sites(package: pathlib.Path) -> list[str]:
+    """Every call under `package/*.py` that can reach an admission entry point."""
+    findings: list[str] = []
+    for path in sorted(package.glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        findings.extend(
+            f"{path.name}:{line} {what}"
+            for line, what in _admission_calls_in_tree(tree)
+        )
+    return findings
+
+
 def test_the_composition_reaches_no_evidence_writer() -> None:
     """B5 stays BLOCKED: no module here CALLS admission, and that is the boundary.
 
@@ -166,17 +287,91 @@ def test_the_composition_reaches_no_evidence_writer() -> None:
     word scan would flag the explanation as the violation — the same distinction
     `layer0_policy` makes when it reads identifiers rather than text.
     """
-    import ast
-
     package = pathlib.Path(__file__).resolve().parents[2] / "composition"
-    for path in sorted(package.glob("*.py")):
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Call):
-                called = getattr(node.func, "id", None) or getattr(
-                    node.func, "attr", None
-                )
-                assert called not in {"admit", "admit_to_store"}, path.name
+    assert _admission_call_sites(package) == []
+
+
+def test_the_absence_check_allows_an_authorized_import_with_no_call(
+    tmp_path: pathlib.Path,
+) -> None:
+    """The import is PERMITTED; only the call is refused. A control, not a violation.
+
+    Without this, a check that fired on the import as well would still pass the
+    absence test above while contradicting AI-14 STEP 1.
+    """
+    package = tmp_path / "composition"
+    package.mkdir()
+    (package / "zz_imported.py").write_text(
+        "from plugins.evidence import ExecutionPayload, ToolCall\n"
+        "from plugins.evidence.admission import admit_to_store as persist\n"
+        "\n"
+        "__all__ = ['ExecutionPayload', 'ToolCall', 'persist']\n",
+        encoding="utf-8",
+    )
+    assert _admission_call_sites(package) == []
+
+
+@pytest.mark.parametrize(
+    "planted",
+    [
+        pytest.param(
+            "from plugins.evidence.admission import admit_to_store as persist\n"
+            "\n"
+            "\n"
+            "def submit(record, store):\n"
+            "    return persist(record, store=store)\n",
+            id="renamed-import-of-an-entry-point",
+        ),
+        pytest.param(
+            "from plugins.evidence import admit as submit_record\n"
+            "\n"
+            "\n"
+            "def submit(record):\n"
+            "    return submit_record(record)\n",
+            id="renamed-package-level-import",
+        ),
+        pytest.param(
+            "import plugins.evidence.admission as adm\n"
+            "\n"
+            "\n"
+            "def submit(record):\n"
+            "    return adm.admit(record)\n",
+            id="module-alias-attribute-call",
+        ),
+        pytest.param(
+            "import plugins.evidence.admission\n"
+            "\n"
+            "\n"
+            "def submit(record):\n"
+            "    return plugins.evidence.admission.admit(record)\n",
+            id="fully-qualified-call",
+        ),
+        pytest.param(
+            "from plugins.evidence import admit\n"
+            "\n"
+            "submit = admit\n"
+            "\n"
+            "\n"
+            "def go(record):\n"
+            "    return submit(record)\n",
+            id="entry-point-rebound-to-another-name",
+        ),
+    ],
+)
+def test_the_absence_check_catches_an_aliased_admission_call(
+    planted: str, tmp_path: pathlib.Path
+) -> None:
+    """THE CONTROL THAT MAKES THE ABSENCE TEST MEAN SOMETHING.
+
+    Each case below is the SAME call the absence test refuses, written so that a
+    name-only match would miss it. If any of them stopped being reported, the
+    absence test above would still pass — and would have stopped meaning anything.
+    """
+    package = tmp_path / "composition"
+    package.mkdir()
+    (package / "zz_planted.py").write_text(planted, encoding="utf-8")
+    findings = _admission_call_sites(package)
+    assert findings, f"an admission call was planted and NOT detected:\n{planted}"
 
 
 def test_the_composition_adds_no_authority_vocabulary() -> None:

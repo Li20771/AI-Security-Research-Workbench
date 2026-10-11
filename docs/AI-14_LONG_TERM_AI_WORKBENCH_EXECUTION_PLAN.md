@@ -1456,15 +1456,26 @@ B5 — COMPOSITION -> EVIDENCE   (gated: the producing phase's own contract, and
                    admission — the earlier ground for this row, that it was not, has
                    lapsed with C-1
   entry points     plugins.evidence.admission.admit() / admit_to_store(store=...)
-  composition MAY  call admission with a record the OWNING phase produced, under the
-                   producer token that phase holds, and carry that phase's producer
-                   PROOF through to §30 step 7b — passing both through WITHOUT
-                   choosing, minting or altering either
-  NEVER            register a producer, invent or borrow a token, add a row to the §6.5
-                   registry (that is an AI-05 amendment and only AI-05 may make it),
-                   treat a stored record as an authorization, treat an authenticated
-                   producer claim as the SUBMITTER's identity or as an authorization
-                   (§4.2 rule 4), or admit raw content
+  composition MAY  call admission with a record the OWNING phase AUTHORED, and
+                   SUBMIT it — READING A (AI-05 Amendment 4), so a submitter other
+                   than the producing component may do this. It carries that phase's
+                   producer claim and that phase's producer PROOF through to §30
+                   step 7b UNCHANGED.
+                   ^ "AUTHORED" AND "SUBMITTED" ARE THE OWNING CONTRACTS' WORDS, and
+                   they are used here INSTEAD OF "HOLDS": a producer token is a
+                   REGISTERED NAME — a namespace claim in AI-05 §6.5's registry — and
+                   NOT a credential. NO COMPONENT HOLDS ONE. So the composition does
+                   not name a producer on the phase's behalf, does not acquire, hold
+                   or carry a token of its own, and does not choose, mint, borrow,
+                   substitute or alter the claim or the proof. It forwards what the
+                   owner authored, and the claim it forwards is THE OWNER'S.
+  NEVER            register a producer; invent, SELECT, borrow or alter a producer
+                   token or a producer claim; fabricate, replace or modify a producer
+                   PROOF; add a row to the §6.5 registry (that is an AI-05 amendment
+                   and only AI-05 may make it); treat a stored record as an
+                   authorization; treat an authenticated producer claim as the
+                   SUBMITTER's identity or as an authorization (§4.2 rule 4); or admit
+                   raw content
   after            §14/§5/Appendix A updated together; a test that shows no record is
                    admitted without an admitted producer
   blocked by       (i)   THE ABSENCE OF A CALL SITE. This item is not started. The
@@ -1782,6 +1793,13 @@ established — was satisfied by AI-05 Amendments 5, 6 and 7 together with the r
 implementation PR #87 and its acceptance run #301. AI-14 records those as the basis
 and claims no part of them.
 
+NOT EVERY CLAUSE STEP 1 ENUMERATES IS DISCHARGED BY THIS AMENDMENT. ONE OF THEM —
+"§13's `producer_token` identifier refusal, where it reaches the SUBMITTING caller
+rather than the composition" — NAMES A RULE THAT DOES NOT EXIST, and is recorded
+below as an OPEN DISCREPANCY for the AI-15 owner to adjudicate rather than performed,
+weakened into existence, or silently dropped. THIS AMENDMENT THEREFORE MAKES NO CLAIM
+THAT EVERY ENUMERATED STEP 1 REQUIREMENT HAS BEEN UNAMBIGUOUSLY DISCHARGED.
+
 CHANGED CLAUSES
     §5.1        the composition -> Evidence row: the "by rule" reason is REMOVED and
                 the classification is KEPT. The row remains IMPLEMENTED BUT NOT
@@ -1918,23 +1936,62 @@ RECORDED FINDING — REPORTED AND NOT FIXED, AND NAMED SO IT IS NOT DISCOVERED
     still true, because no §6.5 row exists for those phases.
     A READER MUST NOT TAKE AN UNTOUCHED LINE AS THE CURRENT STATUS.
 
-RECORDED — ONE ITEM IN AI-15 §15.2's STEP 1 LIST WAS NOT PERFORMED, AND IS REPORTED
-    AI-15 §15.2 lists, among the things STEP 1 changes, "§13's `producer_token`
-    identifier refusal, where it reaches the SUBMITTING caller rather than the
-    composition". NO SUCH REFUSAL EXISTS IN §13: AI-14 §13 is the human-approval
-    architecture, it contains no producer-token rule, and the word "identifier" does
-    not appear in this document at all. The refusal that does exist is
-    `AI14_FORBIDDEN_IDENTIFIERS`' `producer_token` entry and the composition's
-    authority-vocabulary test, and BOTH APPLY TO `composition/` AND TO NOTHING ELSE —
-    there is no separate refusal reaching a submitting caller for this amendment to
-    narrow.
-    ACCORDINGLY THIS AMENDMENT DOES NOT CHANGE THAT REFUSAL, on the instruction that
-    a requirement appearing inconsistent with the actual source is REPORTED rather
-    than replaced by an invented substitute. The refusal is also exactly what the
-    remaining invariant requires: the composition MUST NOT mint, choose or borrow a
-    producer token, and §22.1 B5's `NEVER` clause states that independently of the
-    identifier list. If AI-15's owner intends a DIFFERENT rule than the one that
-    exists, that is a new finding for AI-15 to state precisely.
+RECORDED — ONE ITEM IN AI-15 §15.2's STEP 1 LIST WAS NOT PERFORMED. IT IS AN OPEN
+CONTRACT DISCREPANCY FOR THE AI-15 OWNER, NOT A RESOLVED ONE, AND NO CLAIM IS MADE
+HERE THAT EVERY ENUMERATED STEP 1 REQUIREMENT HAS BEEN DISCHARGED.
+
+    WHAT AI-15 §15.2 SAYS, VERBATIM. Under STEP 1's list of changed clauses:
+
+        "§13's `producer_token` identifier refusal, where it reaches the
+         SUBMITTING caller rather than the composition"
+
+    WHAT AI-14 ACTUALLY CONTAINS, AT THE REFERENCES THAT EXIST:
+
+        AI-14 §13 (this document, "Human approval architecture") — contains NO
+            producer-token rule of any kind. Its three FROZEN clauses are about
+            trust anchors, the Ed25519 verification site and approvals. A
+            case-folded search for "token" across §13 returns NOTHING. The word
+            "identifier" occurs in §13 nowhere either, and OUTSIDE THIS AMENDMENT
+            RECORD it occurs in this document exactly ONCE — §15's "a ReviewCase
+            holds IDENTIFIERS only", which is about a review case's own fields and
+            not about producer tokens.
+        scripts/ci/layer0_policy.py, `AI14_FORBIDDEN_IDENTIFIERS` — contains the entry
+            `"producer_token"`, and the tuple's own comment cites "§4.2, §13, §14".
+            That citation is the only thing connecting the two, and the RULE applies
+            to `composition/*.py` and to nothing else.
+        tests/composition/test_composition_boundaries.py,
+            `test_the_composition_adds_no_authority_vocabulary` — the same identifier
+            list, again scanned over `composition/*.py` only.
+
+    SO THERE IS NO REFUSAL THAT "REACHES THE SUBMITTING CALLER" FOR THIS AMENDMENT TO
+    NARROW. Both rules that mention `producer_token` are rules on one directory, and
+    neither has a caller-facing arm. PERFORMING THE ITEM AS WRITTEN WOULD REQUIRE
+    WEAKENING one of them to imitate a rule that does not exist — which this
+    amendment MUST NOT do, and does not.
+
+    A PROPOSED CORRECTION, FOR THE AI-15 OWNER TO DECIDE. AI-14 does not amend AI-15
+    and does not treat this as settled. One of these is the owner's call:
+
+        (a) THE REFERENCE IS WRONG AND THE ITEM IS A NO-OP. If §13 was meant to name
+            `AI14_FORBIDDEN_IDENTIFIERS`, then the sentence's qualifier — "where it
+            reaches the SUBMITTING caller rather than the composition" — still does
+            not describe it, and the item should be WITHDRAWN from STEP 1's list as
+            describing a rule that was never written.
+        (b) THE REFERENCE IS RIGHT AND THE RULE IS MISSING. If some rule was intended
+            to stop a SUBMITTER from being refused for forwarding an owner-authored
+            claim under READING A, THEN THAT RULE DOES NOT EXIST in AI-14, and no
+            amendment to AI-14 can remove it. It would have to be a NEW rule, stated
+            by whichever contract owns it, and AI-14 would adopt it rather than
+            reverse it.
+        (c) A THIRD READING, if the owner has one. AI-14 states no preference.
+
+    WHY THE EXISTING RULE IS LEFT IN PLACE EITHER WAY. The composition MUST NOT mint,
+    choose or borrow a producer token; §22.1 B5's `NEVER` clause states that
+    independently of the identifier list, and the list is one of the two things that
+    enforce it. Removing it to satisfy a clause that names something else would
+    weaken a REAL rule in the name of an ABSENT one.
+
+    THE DISCREPANCY IS THEREFORE OPEN AND RECORDED, not silently represented as done.
 ```
 
 ---
