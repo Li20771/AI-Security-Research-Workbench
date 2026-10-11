@@ -2081,24 +2081,50 @@ FROZEN: `admit_to_store()` PERFORMS NO SECOND VERIFICATION AND THEREFORE CONSULT
 ```text
 WHEN THE READ HAPPENS, AND WHY THAT ORDER IS THE POINT
 
-FROZEN: INITIALIZATION IS THE MODULE'S IMPORT, AND THE EVIDENCE PACKAGE IMPORTS THAT
-        MODULE. `plugins/evidence/__init__.py` imports `producer_auth`, so ANY
-        PROCESS ABLE TO CALL `admit()` OR `admit_to_store()` HAS NECESSARILY ALREADY
-        INITIALIZED THE READER. There is no lazy path, no first-call initialization
-        and no admission-time read: the ordering guarantee is structural rather than
-        a sequence someone has to remember to observe.
-        THIS CREATES NO CALLER AND NO ENTRY POINT. It is an import edge WITHIN the
-        Evidence package, between a module and the package that owns it. No
-        production component outside the package gains a path to admission, no
-        composition module gains one, and AI-15 §17.2b's prohibition on a production
-        call site is untouched.
+FROZEN: THE IMPLEMENTATION MUST INITIALIZE THE READER THROUGH THE EVIDENCE PACKAGE'S
+        OWN INITIALIZATION PATH, BEFORE EITHER ADMISSION ENTRY POINT IS AVAILABLE.
+        `plugins/evidence/__init__.py` MUST import `producer_auth`, so that importing
+        the package initializes the reader; and there MUST be no lazy path, no
+        first-call initialization and no admission-time read.
+        THIS IS A REQUIREMENT ON THE CHANGE THAT IMPLEMENTS PRODUCER AUTHENTICATION.
+        It is not a description of the repository as it stands.
+FROZEN: THE GUARANTEE THAT REQUIREMENT BUYS, STATED AS WHAT IT WILL BE ONCE THAT
+        CHANGE LANDS — AND NOT BEFORE: a process able to call `admit()` or
+        `admit_to_store()` will necessarily have initialized the reader, because the
+        only route to either entry point runs through the package that imports it.
+        The ordering guarantee is then STRUCTURAL rather than a sequence someone has
+        to remember to observe, which is what makes "before admission is available"
+        true by construction rather than by convention.
+FROZEN: THE CURRENT STATUS, RECORDED BECAUSE THE CLAUSES ABOVE ARE REQUIREMENTS AND
+        NOT FACTS. `plugins/evidence/producer_auth.py` DOES NOT EXIST;
+        `plugins/evidence/__init__.py` DOES NOT IMPORT IT; and NO SUCH ORDERING EXISTS
+        AT RUNTIME TODAY. Amendment 6 SPECIFIES this ordering and does not establish
+        that the import edge, the initialization or the guarantee is present. NOTHING
+        IN THIS SECTION MAY BE READ AS A CLAIM ABOUT THE REPOSITORY AS IT STANDS, and
+        §7.3.11 MUST NOT BE CITED for the proposition that the reader is initialized
+        before admission is available — that proposition is an obligation on code
+        that has not been written.
+        THE DISTINCTION IS THE ONE THIS CONTRACT DRAWS EVERYWHERE ELSE: §7.3.7 states
+        its acceptance tests as obligations and records that none has been run, and
+        §34.3 records that the mechanism is DEFINED AND NOT BUILT. A CONTRACT CAN
+        REQUIRE A PROPERTY, AND REQUIRING IT IS NOT HAVING IT.
+FROZEN: THIS CREATES NO CALLER AND NO ENTRY POINT, AND AUTHORIZES NOTHING. The import
+        edge is WITHIN the Evidence package, between a module and the package that
+        owns it. No production component outside the package gains a path to
+        admission, no composition module gains one, and AI-15 §17.2b's prohibition on
+        a production call site is untouched. Stating an obligation on the implementing
+        change grants no permission to create a production writer, a caller, or an
+        authorization of any kind.
 FROZEN: THE RULE DISTINGUISHES CONFIGURATION SUPPLIED WHEN A PROCESS STARTS FROM A
         VARIABLE READ AFTER ARBITRARY APPLICATION CODE HAS RUN, and it is the FIRST
-        of those the contract relies on. A deployment supplies the variable to the
-        process before it starts; the process then imports the package and captures
-        what it was given. The contract's guarantee is that NO REPOSITORY CODE WRITES
-        THE VARIABLE and NO PATH RE-READS IT, so the captured value is the value the
-        launcher supplied.
+        of those the contract relies on. The intended flow, once the requirement above
+        is implemented, is that a deployment supplies the variable to the process
+        before it starts and the process then imports the package and captures what it
+        was given. WHAT BINDS IN THE MEANTIME IS THE RULE, NOT THE FLOW: NO REPOSITORY
+        CODE MAY WRITE THE VARIABLE AND NO PATH MAY RE-READ IT, so that the captured
+        value is the value the launcher supplied. That is an obligation §31.3 obliges
+        Layer 0 to enforce on the implementing change; it is not a description of what
+        the repository does today, which is nothing.
 FROZEN: WHAT THAT GUARANTEE DOES NOT COVER, RECORDED RATHER THAN LEFT TO BE ASSUMED.
         Code OUTSIDE this repository — a third-party library imported before the
         Evidence package — could write the process environment before the reader
@@ -2108,11 +2134,16 @@ FROZEN: WHAT THAT GUARANTEE DOES NOT COVER, RECORDED RATHER THAN LEFT TO BE ASSU
         environment it was started in. THE TRUST BOUNDARY IS THE PROCESS ENVIRONMENT
         AS THE LAUNCHER SET IT, and this section does not claim to survive an
         adversary who can rewrite it before startup completes.
-FROZEN: WHAT IS CLAIMED, AND IT IS NARROWER AND CHECKABLE. No API PATH lets a caller
-        choose the trust root (§7.3.2); no module in this repository writes the
-        variable or reloads the reader (§31.3); the read happens once and never
-        repeats; and the ordering rule above makes "before admission is available"
-        true by construction rather than by convention.
+FROZEN: WHAT IS CLAIMED, AND IT IS NARROWER AND CHECKABLE — AND IT IS CLAIMED OF THE
+        IMPLEMENTATION, NOT OF THE TREE. No API PATH may let a caller choose the
+        trust root (§7.3.2); no module in this repository may write the variable or
+        reload the reader (§31.3); the read happens once and never repeats; and the
+        ordering requirement above is what will make "before admission is available"
+        true by construction rather than by convention. EACH OF THOSE IS A RULE THIS
+        CONTRACT IMPOSES AND A PROPERTY §31.3 OBLIGES LAYER 0 TO CHECK — none is a
+        claim that the code exists. UNTIL THE IMPLEMENTING CHANGE LANDS, THE HONEST
+        STATEMENT IS THE ONE §35.3 ALREADY CARRIES: AI-05 has no producer
+        authentication at all, and §30 step 7b is performed by nothing.
 FROZEN: A DEPLOYMENT OBLIGATION IS STATED SO THE ORDERING IS ACTIONABLE, AND IT IS
         NOT A NEW COMPOSITION ENTRY POINT. The process MUST import the Evidence
         package as part of its own startup, before it begins application work. A
@@ -4682,8 +4713,19 @@ FROZEN: WHY THIS IS PERMITTED BY THE EXISTING ARCHITECTURE, STATED SO IT IS NOT
         cross-process test already records that a spawned process can fail on handle
         inheritance before any assertion runs, and reports it as a skip because that
         is a host limitation rather than a result. The producer cases inherit that
-        treatment: an unrunnable child is NOT_RUN, never a passing authentication
-        test.
+        treatment: an unrunnable child is NOT_RUN, never a passing authentication test.
+FROZEN: A GREEN CI RUN IS NOT EVIDENCE THAT THE STANDARD HOLDS, AND MUST NOT BE
+        REPORTED AS ANY. The suite exits 0 when its cases pass AND when a case was
+        skipped, so the exit status cannot distinguish "every process-isolated case
+        ran and asserted" from "the isolated cases could not execute here". A run in
+        which any required process-isolated case was skipped demonstrates NOTHING
+        about producer authentication, and CI SUCCESS ALONE MUST NOT BE USED TO CLAIM
+        THAT AI-15 §15.2 STEP 0b IS SATISFIED OR THAT THE §7.3 STANDARD HAS BEEN
+        SHOWN TO HOLD. Since §8.3 condition 11 is discharged by exactly those cases,
+        a skipped case leaves condition 11 UNSATISFIED however green the run is.
+        WHAT A REPORT MUST CARRY, WHEN THE TIME COMES: the number of process-isolated
+        cases that RAN, not the number that passed or the run's status. A count of
+        skips is a count of NOT_RUN, and NOT_RUN != PASS.
 FROZEN: THE LAYER 0 RULE MUST CHECK THE SHAPE, NOT THE NAME. Two obligations, both
         static:
             the variable's name appears outside `plugins/evidence/producer_auth.py`
@@ -6090,6 +6132,48 @@ recorded the same about §7.
     RESIDUAL RISK on the same footing as §7.3.9's, rather than claiming it closed.
     THIS CREATES NO CALLER AND NO ENTRY POINT. The import edge is within the Evidence
     package, between a module and the package that owns it.
+
+(m) §7.3.11's STARTUP-ORDER CLAUSE WAS WRITTEN IN THE PRESENT TENSE ABOUT CODE THAT
+    DOES NOT EXIST, AND IS CORRECTED. The block "WHEN THE READ HAPPENS, AND WHY THAT
+    ORDER IS THE POINT" said that `plugins/evidence/__init__.py` IMPORTS
+    `producer_auth`, and concluded that any process able to call `admit()` HAS
+    NECESSARILY ALREADY initialized the reader. NEITHER IS TRUE OF THE REPOSITORY:
+    `plugins/evidence/producer_auth.py` does not exist and `plugins/evidence/__init__.py`
+    does not import it. A frozen requirement was stated as a fact, which is the same
+    over-claim this contract refuses everywhere else — §34.3 records the mechanism as
+    DEFINED AND NOT BUILT, §7.3.7 records that no acceptance test has been run, and
+    §35.3 records that §30 step 7b is performed by nothing.
+    THE CLAUSE NOW SEPARATES THREE THINGS THAT WERE RUN TOGETHER:
+        THE REQUIREMENT       the implementing change MUST initialize the reader
+                              through the Evidence package's own initialization path,
+                              before either admission entry point is available, with
+                              no lazy path, no first-call initialization and no
+                              admission-time read
+        THE GUARANTEE         once that lands, a process able to call either entry
+                              point will necessarily have initialized the reader, and
+                              the ordering is structural rather than conventional
+        THE CURRENT STATUS    the module does not exist, the import edge does not
+                              exist, and the ordering does not exist at runtime today.
+                              Amendment 6 SPECIFIES the ordering; it does not
+                              establish that it is present, and §7.3.11 MUST NOT be
+                              cited for the proposition that it is
+    The adjacent "what is claimed" and "the contract's guarantee" clauses were
+    corrected on the same footing: each now states a RULE THE CONTRACT IMPOSES and a
+    property §31.3 obliges Layer 0 to check, rather than a description of what the
+    repository does today — which is nothing.
+    WHETHER THE IMPORT EDGE IS THE RIGHT SHAPE IS NOT REOPENED. It remains the
+    requirement, for the reason §7.3.11 gives: it is an edge WITHIN the Evidence
+    package, between a module and the package that owns it, so it creates no caller
+    and no entry point and leaves AI-15 §17.2b untouched.
+    THE TEST-HARNESS CLAUSE IS ALSO SHARPENED, AND THE CHANGE IS A NON-CLAIM RATHER
+    THAN A NEW RULE. §31.3 already recorded that an unrunnable child is NOT_RUN and
+    never a passing authentication test. It now also records that A GREEN CI RUN IS
+    NOT EVIDENCE THAT THE STANDARD HOLDS: the suite exits 0 whether its cases passed
+    or were skipped, so CI success alone MUST NOT be used to claim that AI-15 §15.2
+    STEP 0b is satisfied or that the §7.3 standard has been shown to hold. Because
+    §8.3 condition 11 is discharged by exactly those cases, a skipped case leaves
+    condition 11 UNSATISFIED however green the run is, and a report must carry the
+    number of process-isolated cases that RAN rather than the run's status.
 ```
 
 ```text
