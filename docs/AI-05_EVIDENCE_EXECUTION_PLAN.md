@@ -1869,12 +1869,12 @@ FROZEN: THE ONE READER IS ONE MODULE, NAMED HERE:
     plugins/evidence/producer_auth.py
 
         It is the sole reader of WORKBENCH_EVIDENCE_PRODUCER_TRUST_CONFIG. It parses
-        the value, validates it, holds the resulting mapping for the duration of one
-        admission attempt, performs §7.3.5's V1-V5, and answers §7.3.2's "which key
-        applies to this claimed token" for the verification site. A second module
-        that reads this variable, or that decides what is trusted, is a second place
-        the deployment's trust root is decided, and §7.3.2's ONE READER clause refuses
-        it.
+        the value, validates it, holds the resulting state FOR THE LIFETIME OF THE
+        PROCESS (§7.3.11's lifecycle rule), performs §7.3.5's V1-V5, and answers
+        §7.3.2's "which key applies to this claimed token" for the verification site.
+        A second module that reads this variable, or that decides what is trusted, is
+        a second place the deployment's trust root is decided, and §7.3.2's ONE
+        READER clause refuses it.
 FROZEN: NO PUBLIC FUNCTION OF THIS MODULE, AND NO PUBLIC AI-05 FUNCTION ANYWHERE,
         ACCEPTS A PUBLIC KEY, A MAPPING, AN ANCHOR, A VERIFIER, A CONFIGURATION
         OBJECT OR A CONFIGURATION PATH AS A PARAMETER. §7.3.2 states the rule; this
@@ -2028,22 +2028,92 @@ FROZEN: AN INVALID CONFIGURATION AFFECTS EVERY SUBMISSION EQUALLY. There is no
 ```
 
 ```text
-ONE ATTEMPT, ONE SNAPSHOT
+ONE INITIALIZATION, ONE PROCESS-LIFETIME SNAPSHOT
 
-FROZEN: THE CONFIGURATION IS READ AND VALIDATED ONCE PER ADMISSION ATTEMPT, AND THE
-        SAME SNAPSHOT IS USED FOR THAT ENTIRE ATTEMPT. Key selection, the group rule
-        and the policy the reader enforces are decided against ONE parsed value. The
-        reader MUST NOT re-read the environment variable part-way through a
-        verification, and MUST NOT consult it again after a key has been selected.
-FROZEN: THE REASON IS THAT A SECOND READ IS A SECOND TRUST ROOT. A verification that
-        selected a key under one deployment configuration and then applied another
-        configuration's collision rule would be authenticating against a mapping that
-        never existed — and the window would be one a deployment change, an operator
-        mistake or a concurrent test could open. One attempt, one snapshot, and the
-        attempt is the whole of one `admit()` call.
-FROZEN: `admit_to_store()` PERFORMS NO SECOND VERIFICATION AND THEREFORE TAKES NO
-        SECOND SNAPSHOT. It passes the proof through to `admit()` (§7.3.3) and one
-        verdict is reached from one snapshot.
+FROZEN: THE CONFIGURATION IS READ AND VALIDATED EXACTLY ONCE, DURING THE
+        INITIALIZATION OF THE ONE READER MODULE, AND THE STATE IT PRODUCES IS THE
+        SOLE AUTHORITY ON THE DEPLOYMENT'S TRUST ROOT FOR THE LIFETIME OF THAT
+        PROCESS. There is NO FUNCTION that reads the variable: the read IS the
+        module's own initialization, and it does not repeat. Key selection, the group
+        rule and the policy the reader enforces are decided against that ONE value,
+        for every admission that process ever performs.
+FROZEN: THE STATE HAS EXACTLY TWO SHAPES, AND BOTH ARE FINAL.
+
+            VALID     the mapping parsed and validated; it is used as it stands
+            INVALID   the value was absent, malformed, incomplete, unparseable or
+                      otherwise invalid, OR the reader refused the mapping under
+                      §7.3.2's group rule
+
+        AN INVALID STATE IS RETAINED AS INVALID. Every admission that reaches V3
+        under it is REJECTED with AUTHENTICATION_KEY_UNAVAILABLE — the same code, for
+        every submission, for the rest of that process.
+FROZEN: INITIALIZATION DOES NOT RAISE. An invalid configuration at startup is a STATE
+        the process holds, not an exception it throws and not a failure to import. A
+        reader whose import raised would leave the caller with no admission result at
+        all, and would make a deployment misconfiguration appear as a programming
+        error rather than as the REJECTED outcome §7.3.8 defines. The module
+        initializes, records INVALID, and answers every question about "which key
+        applies" with "none".
+FROZEN: THE ENVIRONMENT IS A DEPLOYMENT INPUT AND NOT A CONTROL SURFACE. No
+        repository code outside the trusted deployment mechanism assigns, mutates,
+        unsets or otherwise writes this variable, and the reader module is not
+        reloaded to re-trigger its initialization. The variable is set by whatever
+        starts the process; code under this repository's control READS it and does not
+        write it. §31.3 states the static obligation that enforces this.
+FROZEN: A CONFIGURATION UPDATE TAKES EFFECT ONLY THROUGH A CONTROLLED PROCESS
+        RESTART. That is what "deploying the updated mapping" MEANS in §7.3.9, and
+        this section does not change §7.3.9's revocation model — it fixes how the
+        updated mapping ARRIVES. Removing a token's entry and deploying the updated
+        mapping stops that token's further claims because the RESTARTED process
+        initializes from the new value; the process that has not restarted continues
+        to authenticate under the mapping it started with, which is the same
+        non-retroactivity §7.3.9's "IT DOES NOT REACH BACKWARDS" already provides for
+        the records it admitted.
+FROZEN: A LATER CHANGE TO THE VARIABLE DOES NOT RELOAD THE TRUST ROOT, AND THIS IS
+        NOT A CACHE WITH A REFRESH PATH. There is no re-read, no TTL, no
+        invalidation hook, no signal handler, no "reload configuration" function, and
+        no path by which a second value reaches the reader.
+FROZEN: `admit_to_store()` PERFORMS NO SECOND VERIFICATION AND THEREFORE CONSULTS NO
+        SECOND STATE. It passes the proof through to `admit()` (§7.3.3) and one
+        verdict is reached from the one process-lifetime value.
+```
+
+```text
+AN IMMUTABLE AUTHORITATIVE SNAPSHOT IS NOT A LAST-KNOWN-GOOD FALLBACK
+
+FROZEN: THE TWO ARE OPPOSITES, AND THE DIFFERENCE IS THE WHOLE REASON THIS SECTION
+        STATES A LIFECYCLE RATHER THAN A PROHIBITION.
+
+            the snapshot        captured ONCE, at initialization, and authoritative
+                                for the process lifetime. If it is INVALID it STAYS
+                                INVALID and the deployment authenticates NOTHING. It
+                                is what the process HAS, not what it would PREFER.
+
+            last-known-good     FORBIDDEN. It would mean: the configuration is
+              fallback          invalid now, so keep using the last one that
+                                validated. The process would then verify against a
+                                trust root the deployment has WITHDRAWN — and an
+                                operator who revoked a token by removing its entry
+                                would find the revocation had not taken effect, which
+                                is precisely the state §7.3.9 exists to describe
+                                truthfully.
+
+FROZEN: A ONCE-ONLY CAPTURE MAKES THAT FALLBACK UNREACHABLE RATHER THAN MERELY
+        FORBIDDEN. Under a PER-ATTEMPT read there IS a second read, and a second read
+        is what a fallback falls back FROM: attempt 1 reads a valid mapping and caches
+        it, attempt 2 reads an invalid one, and a reader that keeps serving the cached
+        mapping has performed a last-known-good fallback without anyone having asked
+        it to. An earlier revision of this section required "one snapshot per
+        admission attempt". THAT IS WITHDRAWN AND REPLACED: it bounded each attempt
+        but left the SEQUENCE of attempts unconstrained, and the sequence is where the
+        fallback lives. THERE IS NO SECOND READ HERE, so there is nothing for such a
+        fallback to reach. The prohibition is kept because it names the defect; the
+        lifecycle is what makes the defect unrepresentable.
+FROZEN: THE WITHDRAWN FORM WAS NOT WRONG ABOUT ISOLATION, AND WHAT IT CORRECTLY
+        REQUIRED IS KEPT. One verification still decides key selection, the group rule
+        and the enforced policy against ONE value, and no read occurs between
+        selecting a key and applying the collision rule. The process-lifetime rule
+        subsumes that: a value that never changes cannot change mid-verification.
 ```
 
 ```text
@@ -4131,14 +4201,17 @@ FROZEN. The single entry condition for storing a record.
                       and nothing is stored
  7b. producer      the producer claim is AUTHENTICATED against the deployment's
      authentication designated producer trust mapping (§7.3, Amendment 5)
-                   -> WHICH MAPPING THAT IS, WHERE IT IS READ FROM AND WHICH MODULE
-                      READS IT are §7.3.11's, and this step is the only step that
-                      reads it. ONE environment variable
+                   -> WHICH MAPPING THAT IS, WHERE IT COMES FROM AND WHICH MODULE
+                      HOLDS IT are §7.3.11's. ONE environment variable
                       (WORKBENCH_EVIDENCE_PRODUCER_TRUST_CONFIG), parsed as one
-                      strict JSON object, read by plugins/evidence/producer_auth.py
-                      and by nothing else. A missing, malformed, incomplete or
-                      invalid configuration — or a mapping the reader refuses under
-                      §7.3.2's group rule — is REJECTED with
+                      strict JSON object, read ONCE during the initialization of
+                      plugins/evidence/producer_auth.py and by nothing else. THIS STEP
+                      DOES NOT READ IT: it consults the process-lifetime state that
+                      initialization produced, which no later change to the variable
+                      replaces and no restart-free path reloads.
+                      A missing, malformed, incomplete or invalid configuration — or
+                      a mapping the reader refuses under §7.3.2's group rule — leaves
+                      that state INVALID, and is REJECTED with
                       AUTHENTICATION_KEY_UNAVAILABLE, which is §7.3.5 V3's existing
                       code and not a seventh one
                    -> RUNS AFTER STEP 7, AND BEFORE CONSTRUCTION. Construction is
@@ -4472,19 +4545,37 @@ FROZEN: THE EXCEPTION IS TWO IMPORTS IN ONE NAMED MODULE, AND IT IS NOT A RELAXA
         configuration source would each break the property the exception exists to
         preserve: that exactly one module reads the trust root, and that the rest of
         the package stays pure.
-FROZEN: LAYER 0 MUST ALSO ENFORCE, FOR THIS MODULE, THE TWO RULES §7.3.2 AND §7.3.11
-        STATE IN PROSE — and stating them is not enforcing them:
+FROZEN: LAYER 0 MUST ALSO ENFORCE, FOR THIS MODULE, THE THREE RULES §7.3.2 AND
+        §7.3.11 STATE IN PROSE — and stating them is not enforcing them:
             ONE READER   the designated environment variable is read in
                          `producer_auth.py` and in no other module. A second read is
                          a second place the deployment's trust root is decided,
                          whether or not it calls the accessor.
+            NO MUTATION  the variable is a DEPLOYMENT INPUT and not a control
+                         surface. No other module ASSIGNS it, mutates it, unsets it
+                         or writes it by any route — `os.environ[...] = ...`,
+                         `os.environ.setdefault`, `os.environ.pop`, `os.environ.update`,
+                         `os.putenv`, or any other. The variable name appearing
+                         outside the reader is itself the finding, because a second
+                         module that can NAME it can write it.
+                         The reader module is likewise not RELOADED to re-trigger its
+                         initialization: an `importlib.reload` of it, or any other
+                         route by which its module-level read runs a second time, is a
+                         second read and is refused as one.
             NO CALLER-SELECTED TRUST ROOT   no public function accepts a public key,
                          a mapping, an anchor, a verifier, a configuration object or
                          a configuration path as a parameter.
-        AI-13 §13.3 carries both rules for its own domain, and its Layer 0 check
-        enforces both. This amendment places the same obligation on the AI-05
-        boundary; §7.3.10 keeps the two domains apart while the enforcement shape is
-        the same shape.
+        READ AND WRITE ARE DIFFERENT FAILURES AND BOTH ARE CHECKED. A second READER
+        decides a second trust root; a WRITER changes the one there is. A deployment
+        configuration that repository code can rewrite in place is not a deployment
+        fact at all, and §7.3.11's process-lifetime rule would be unenforceable no
+        matter how carefully the read was written.
+        AI-13 §13.3 carries the first and third rules for its own domain, and its
+        Layer 0 check enforces both. This amendment places the same obligation on the
+        AI-05 boundary and adds the second, which AI-13's single-anchor model did not
+        need in the same form because an anchor that is never re-read is not a mapping
+        a fallback could be built from; §7.3.10 keeps the two domains apart while the
+        enforcement shape is the same shape.
 FROZEN: THIS AMENDMENT DOES NOT MAKE THAT LAYER 0 CHANGE. It is documentation, and
         `scripts/ci/layer0_policy.py` is NOT edited by it. §7.3.11's mechanism and
         the Layer 0 rules that enforce it are obligations on the change that
@@ -4492,6 +4583,63 @@ FROZEN: THIS AMENDMENT DOES NOT MAKE THAT LAYER 0 CHANGE. It is documentation, a
         implementation does not exist — so there is nothing for the widened rule to
         permit. UNTIL THEN THE EXISTING RULE STANDS AND WOULD REFUSE THE NEW MODULE,
         which is the correct and visible behaviour, not a defect to be worked around.
+```
+
+```text
+HOW §7.3.7's CASES SUPPLY A CONFIGURATION WITHOUT A BYPASS
+
+FROZEN: §7.3.7's KEY-MATERIAL RULE IS UNCHANGED AND IS NOT RELAXED BY §7.3.11's
+        LIFECYCLE: tests MUST use a distinct keypair per producer token, MUST go
+        through the real verification path, and MUST be supplied through the SAME
+        designated configuration mechanism a deployment uses. A test-only bypass
+        remains FORBIDDEN. What the lifecycle rule adds is WHEN that supply must
+        happen, and it is not a new obligation so much as the same one applied
+        honestly.
+
+FROZEN: A CASE THAT NEEDS A PARTICULAR TRUST CONFIGURATION SUPPLIES IT TO A PROCESS
+        THAT HAS NOT YET INITIALIZED THE READER. The variable is set in that process's
+        environment BEFORE the reader module is imported, and the case runs there.
+        PROCESS-ISOLATED EXECUTION IS THEREFORE THE MECHANISM for every case whose
+        expected result depends on the configuration — a valid mapping, a mapping the
+        reader refuses, an unreadable value, an absent one, both collision policies,
+        and each malformed shape §7.3.11 names. This is not a test-only path: it is
+        EXACTLY what a deployment does, because a deployment also supplies the
+        variable to a process that has not started yet. The test and the deployment
+        use one mechanism; only the process boundary differs.
+
+FROZEN: CHANGING THE VARIABLE AFTER INITIALIZATION IS NOT A SUPPORTED WAY TO RELOAD
+        THE TRUST ROOT, AND IT MUST NOT BE USED AS ONE IN A TEST. Setting it
+        mid-process changes nothing the reader will consult, so a case written that
+        way asserts against a trust root the process never held: it would either fail,
+        or pass for a reason unrelated to what it claims to prove. A test that mutates
+        the variable and then observes an outcome has proven nothing about this
+        contract, whichever way it came out.
+FROZEN: THE AI-13 IN-TEST PATTERN DOES NOT CARRY OVER, AND THE DIFFERENCE IS THE
+        LIFECYCLE AND NOT THE SUBJECT MATTER. AI-13's focused suite installs its
+        anchor by setting an environment variable mid-test and then exercising the
+        production path, because the anchor is read when the accessor is CALLED. The
+        producer trust configuration is read when the reader module INITIALIZES, so
+        the same shape would set a value nothing consults. §7.3.10 keeps the two trust
+        domains apart regardless; this records that the two domains ALSO differ in
+        when their deployment fact is captured, so a copy of the pattern is not merely
+        forbidden by §7.3.10 — it would not work.
+
+FROZEN: NO TEST MAY REACH PAST THE CONFIGURATION MECHANISM. A test MUST NOT inject a
+        mapping, a key, an anchor, a verifier or a configuration object into the
+        reader, MUST NOT call a private initializer with a value, and MUST NOT
+        monkeypatch the reader's parsed state. Each of those is the "test-only bypass"
+        §7.3.7 forbids, and the process boundary above is what makes them unnecessary
+        rather than merely disallowed.
+FROZEN: THE CASES THAT DO NOT DEPEND ON THE CONFIGURATION ARE UNAFFECTED. §7.3.5's
+        precedence, §7.3.8's six codes, the envelope rules of V1, V2's unreadable
+        token, the §30 step 7 tie-break and every reason-code assertion that turns on
+        the SUBMISSION rather than on the deployment run in one process with one
+        configuration, exactly as before. The lifecycle rule changes how many
+        processes a suite needs, not what any case expects.
+
+FROZEN: NO CASE NAMED IN §7.3.7 HAS BEEN RUN, AND NOTHING IN THIS SECTION IS EVIDENCE
+        THAT ONE HAS. This block states how a later suite MUST supply configuration;
+        it is an obligation on that suite and not a report about it.
 ```
 
 ---
@@ -5654,16 +5802,39 @@ recorded the same about §7.
     submission, token, kind, family or caller for which it yields ACCEPTED or a
     different code.
 
-(f) ONE ATTEMPT, ONE SNAPSHOT. The configuration is read and validated ONCE per
-    admission attempt, and the same snapshot decides key selection, the group rule
-    and the enforced policy for that entire attempt. The reader MUST NOT re-read the
-    variable part-way through a verification, and MUST NOT consult it again after a
-    key has been selected.
-    THE REASON IS THAT A SECOND READ IS A SECOND TRUST ROOT: a verification that
-    selected a key under one deployment configuration and then applied another
-    configuration's collision rule would be authenticating against a mapping that
-    never existed. `admit_to_store()` performs no second verification (§7.3.3) and
-    therefore takes no second snapshot.
+(f) ONE INITIALIZATION, ONE PROCESS-LIFETIME SNAPSHOT. The configuration is read and
+    validated EXACTLY ONCE, during the initialization of the one reader module, and
+    the state it produces is the sole authority on the deployment's trust root for
+    the lifetime of that process. The state is VALID or INVALID and BOTH ARE FINAL:
+    an INVALID state is retained as INVALID, and every admission reaching V3 under it
+    is REJECTED with AUTHENTICATION_KEY_UNAVAILABLE with no fallback of any kind.
+    Initialization does NOT raise — an invalid configuration is a state the process
+    holds, not an exception it throws and not a failure to import.
+    A CONFIGURATION UPDATE TAKES EFFECT ONLY THROUGH A CONTROLLED PROCESS RESTART.
+    That is what §7.3.9's "deploying the updated mapping" means; §7.3.9's revocation
+    model is unchanged and this item fixes how the updated mapping ARRIVES. A later
+    change to the variable does NOT reload the trust root: there is no re-read, no
+    TTL, no invalidation hook, no signal handler and no reload path.
+    AN IMMUTABLE AUTHORITATIVE SNAPSHOT IS NOT A LAST-KNOWN-GOOD FALLBACK, and the
+    two are opposites. A fallback would keep verifying against a trust root the
+    deployment had WITHDRAWN, so an operator who revoked a token by removing its
+    entry would find the revocation had not taken effect.
+    AN EARLIER REVISION OF THIS AMENDMENT REQUIRED "ONE SNAPSHOT PER ATTEMPT". THAT IS
+    WITHDRAWN AND REPLACED. It bounded each attempt but left the SEQUENCE of attempts
+    unconstrained, and the sequence is where a last-known-good fallback lives: a
+    per-attempt read means a second read, a second read is what a fallback falls back
+    FROM, and a reader that kept serving a mapping cached by an earlier successful
+    attempt would have performed that fallback without anyone asking it to. A
+    once-only capture makes the fallback UNREACHABLE rather than merely forbidden.
+    What the withdrawn form correctly required is KEPT: one verification still
+    decides key selection, the group rule and the enforced policy against ONE value,
+    and no read occurs between selecting a key and applying the collision rule — a
+    value that never changes cannot change mid-verification.
+    THE ENVIRONMENT IS A DEPLOYMENT INPUT AND NOT A CONTROL SURFACE. No repository
+    code outside the trusted deployment mechanism assigns, mutates, unsets or writes
+    the variable, and the reader module is not reloaded to re-trigger its
+    initialization. §31.3 states the static obligation that enforces this, alongside
+    the one-reader and no-caller-selected-trust-root rules.
 
 (g) TWO SERIALIZATIONS THAT MUST NOT BE CONFUSED, AND A THIRD THAT IS NEITHER.
     §7.3.6 already froze that AI-05-CJ-1 governs the SIGNED INPUT and nothing else,
@@ -5811,7 +5982,12 @@ SECURITY IMPACT
           a configuration path
         it fixes the failure direction: every configuration defect fails CLOSED, as
           one existing code, for every submission equally
-        it removes a TOCTOU window by requiring one snapshot per attempt
+        it fixes the trust root for the lifetime of a process, so a revocation
+          actually takes effect when the deployment restarts and a withdrawn key is
+          not silently kept in service by a fallback — and so no read can occur
+          between selecting a key and applying the collision rule
+        it puts the variable beyond the reach of the code that reads it: nothing in
+          the repository writes it, and the reader is not reloaded to re-read it
         it keeps the configuration's JSON tolerance out of the signed-input path,
           where it would silently change what a proof means
 
