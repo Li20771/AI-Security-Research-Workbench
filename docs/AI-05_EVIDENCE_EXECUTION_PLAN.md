@@ -1838,6 +1838,420 @@ FROZEN: the composition is NOT a party to this mechanism. It does not read the
         being authenticated.
 ```
 
+#### 7.3.11 The designated producer trust configuration — FROZEN (Amendment 6)
+
+§7.3.2 fixes **what** the designated producer trust mapping is and what it may not be.
+It requires the mapping to be read "from exactly ONE place, by exactly one module" and
+records that a deployment with no mapping authenticates nothing. It does not name that
+place or that module. **A mechanism described only by its properties is not
+implementable**: an implementer must still choose a source, a format, an encoding and a
+reader, and every one of those choices becomes a deployment interface that a proof is
+verified against.
+
+This section names them. It is the answer to the question §7.3.2 left open, and it
+changes **no** clause of §7.3.1–§7.3.10.
+
+```text
+THE SOLE SOURCE — one environment variable, and nothing else
+
+    WORKBENCH_EVIDENCE_PRODUCER_TRUST_CONFIG
+```
+
+```text
+FROZEN: THIS VARIABLE IS THE ONLY PLACE THE DESIGNATED MAPPING IS READ FROM, and
+        naming it is what satisfies §7.3.2's "read from exactly ONE place". There is
+        no configuration file, no default path, no keyring, no network source, no
+        build-time embed, no compiled-in mapping and no second environment variable.
+        A deployment that supplies the mapping any other way has designated nothing,
+        and §7.3.2's FAIL CLOSED clause applies.
+FROZEN: THE ONE READER IS ONE MODULE, NAMED HERE:
+
+    plugins/evidence/producer_auth.py
+
+        It is the sole reader of WORKBENCH_EVIDENCE_PRODUCER_TRUST_CONFIG. It parses
+        the value, validates it, holds the resulting state FOR THE LIFETIME OF THE
+        PROCESS (§7.3.11's lifecycle rule), performs §7.3.5's V1-V5, and answers
+        §7.3.2's "which key applies to this claimed token" for the verification site.
+        A second module that reads this variable, or that decides what is trusted, is
+        a second place the deployment's trust root is decided, and §7.3.2's ONE
+        READER clause refuses it.
+FROZEN: NO PUBLIC FUNCTION OF THIS MODULE, AND NO PUBLIC AI-05 FUNCTION ANYWHERE,
+        ACCEPTS A PUBLIC KEY, A MAPPING, AN ANCHOR, A VERIFIER, A CONFIGURATION
+        OBJECT OR A CONFIGURATION PATH AS A PARAMETER. §7.3.2 states the rule; this
+        section records that the configuration does not create an exception to it.
+        The environment is read, never handed in.
+FROZEN: THE CONFIGURATION CARRIES PUBLIC KEY MATERIAL ONLY. It never carries, and
+        the reader never accepts, a private signing key. The deployment holds
+        verification keys and cannot mint the proofs it checks — the same boundary
+        AI-13 §13.3 draws for its own anchor, drawn here independently for this one.
+        A value that would place signing material in this configuration is not a
+        valid configuration and MUST be refused as one (§7.3.11's validation rules).
+```
+
+```text
+THE VALUE — a strict JSON object, and exactly two members
+
+    {
+      "collision_policy": "A" | "B",
+      "producer_keys": { "<producer token>": "<64 lowercase hex characters>", ... }
+    }
+
+    collision_policy   REQUIRED. Exactly one of the two JSON strings "A" and "B".
+                       It SELECTS between §7.3.2's POLICY A and POLICY B. It does
+                       not define them, extend them, or restate them, and neither
+                       policy's collision semantics are changed by this section
+                       (§7.3.2, unmodified).
+
+    producer_keys      REQUIRED. A JSON object mapping a producer-token string to
+                       the Ed25519 PUBLIC key that this deployment associates with
+                       that token. Each value is exactly 64 LOWERCASE hexadecimal
+                       characters, decoding to 32 bytes. Uppercase hex is REFUSED,
+                       never normalized — the same case policy §14.5.1 applies to a
+                       Class 1 field, applied here for the same reason: a value AI-05
+                       accepts is a value AI-05 must not rewrite.
+```
+
+```text
+STRICT PARSING — the value is JSON, and JSON is not "close enough"
+
+FROZEN: THE ROOT IS A JSON OBJECT AND NOTHING ELSE. An array, a string, a number,
+        `true`, `false`, `null` or an empty value is NOT a configuration. A variable
+        that is set but empty is not a configuration either.
+FROZEN: DUPLICATE OBJECT KEYS ARE REFUSED, AT EVERY LEVEL, INCLUDING INSIDE
+        `producer_keys`. `{"collision_policy":"A","collision_policy":"B"}` is a value
+        that names two different policies while looking like one member, and a
+        parser that keeps the last one has made a silent choice about which trust
+        root the deployment holds. §7.3.6 rule 8 refuses a duplicate key on a
+        transport that delivers a record as JSON text; this section applies the same
+        rule to the one JSON document AI-05 reads for itself. A READING THAT KEEPS
+        THE LAST KEY IS FORBIDDEN.
+FROZEN: `NaN`, `Infinity` and `-Infinity` ARE NOT JSON AND ARE REFUSED. A parser
+        that accepts them accepts input RFC 8259 does not define, and a value the
+        grammar does not define has no meaning AI-05 may act on.
+FROZEN: NO TRAILING CONTENT. The value parses as one JSON document and nothing
+        follows it. Whitespace around and between tokens is insignificant and is
+        permitted, because RFC 8259 permits it.
+FROZEN: THE MEMBERS ARE CLOSED-KEYED AND BOTH ARE REQUIRED. An unknown member, an
+        absent `collision_policy`, an absent `producer_keys`, a misspelled member
+        name, or a member of the wrong JSON type is an INVALID CONFIGURATION. It is
+        refused as a whole. §30 step 1 refuses an unknown field on a record because
+        "a field that is silently dropped cannot be audited"; the same reasoning
+        applies with more force to a trust configuration, where a dropped member is a
+        trust decision nobody made.
+FROZEN: A VALUE THAT IS NOT ENCODABLE AS UTF-8 IS REFUSED. §7.3.6 rule 9 refuses an
+        unpaired surrogate in a signed input for the reason that rule 5 cannot be
+        applied to it; this section refuses one here for the same reason.
+```
+
+```text
+VALIDATION IS COMPLETE, AND PARTIAL ACCEPTANCE IS FORBIDDEN
+
+FROZEN: THE MAPPING IS VALIDATED AS A WHOLE BEFORE ANY SUBMISSION IS AUTHENTICATED
+        UNDER IT, and §7.3.2's group rule is applied to the WHOLE mapping. The reader
+        MUST NOT authenticate against the entries it managed to parse, MUST NOT skip
+        a malformed entry and continue, MUST NOT fall back to a default, a
+        development mapping, a previously-cached mapping or a subset, and MUST NOT
+        recover silently from an invalid configuration. §7.3.2's "no default
+        mapping, no development mapping, no `verify=False` switch" is unchanged and
+        this section adds no path around it.
+FROZEN: A KEY ENTRY FOR A TOKEN §6.5 DOES NOT REGISTER IS PERMITTED, AND IS INERT.
+        It creates no registry row, admits no event and confers no recognition
+        (§7.3.2, §6.5). Its PRESENCE is nevertheless load-bearing, because it
+        participates in the group rule below.
+FROZEN: `producer_keys` MAY BE EMPTY. An empty object is a well-formed mapping that
+        designates no key for any token; every submission is then REJECTED with
+        AUTHENTICATION_KEY_UNAVAILABLE, which is the same outcome §7.3.2 assigns a
+        deployment with no mapping at all. This is NOT the partial acceptance the
+        clause above forbids: there is no entry for a partial reading to keep or drop.
+FROZEN: WHICH TOKENS COUNT AS RECOGNIZED IS §6.5'S ANSWER AND NOT THIS SECTION'S.
+        The reader consults the §6.5 admitted-producer registry to decide, for the
+        group rule, whether a colliding group contains a recognized token. It does
+        not restate the registry, does not cache a copy of it that could drift, and
+        does not treat a `producer_keys` entry as evidence of recognition.
+```
+
+```text
+THE COLLISION RULE IS §7.3.2'S, AND `collision_policy` ONLY SELECTS IT
+
+FROZEN: THIS SECTION ADDS NO COLLISION SEMANTICS. §7.3.2's group rule, both reader
+        policies, and the requirement that a reader be CONSISTENT are unchanged and
+        are incorporated here by reference rather than restated:
+            a duplicate public-key group containing AT LEAST ONE RECOGNIZED token
+              makes the WHOLE MAPPING non-compliant and fails it closed under BOTH
+              policies
+            a duplicate group consisting ENTIRELY of unregistered tokens is the ONE
+              case the two policies treat differently
+FROZEN: WHAT `collision_policy` SELECTS, STATED SO A READER NEEDS NO SECOND DOCUMENT
+            "A"   POLICY A — a group consisting only of unregistered tokens is
+                  TOLERATED and the mapping stays usable; every group containing a
+                  recognized token still fails the whole mapping closed
+            "B"   POLICY B — the mapping is refused over ALL its entries on ANY
+                  duplicate public key, including one that involves only
+                  unregistered tokens
+FROZEN: THE SELECTOR IS A DEPLOYMENT FACT AND NOT A CALLER'S CHOICE. §7.3.2 records
+        that "which policy a deployment runs is a DEPLOYMENT FACT, not a choice any
+        caller makes". This is where that fact is expressed, and it is expressed in
+        the same place and by the same mechanism as the key material — which is the
+        point: a caller cannot reach it either way.
+FROZEN: WHEN THE READER REFUSES THE MAPPING, IT REFUSES IT WHOLE. No valid subset is
+        returned, no first-or-last entry is kept, nothing is warned about and
+        continued past (§7.3.2). The deployment then has NO usable designated
+        mapping, which is what the failure rule below reports.
+```
+
+```text
+FAILURE — ONE EXISTING REASON CODE, AND NO SEVENTH
+
+FROZEN: A MISSING, MALFORMED, INCOMPLETE, UNPARSEABLE OR OTHERWISE INVALID
+        CONFIGURATION IS REPORTED AS AUTHENTICATION_KEY_UNAVAILABLE, AND SO IS A
+        MAPPING THE READER REFUSES. This is not a new code and MUST NOT become one:
+        §7.3.8 fixes SIX codes and states that no outcome member is added, and
+        §7.3.5's V3 already assigns this exact code to "no designated mapping at all,
+        or no entry for the claimed token". A refused mapping is a deployment
+        with no usable mapping, and this section reports it where §7.3.2 and §7.3.5
+        already report that state.
+FROZEN: A DEPLOYMENT MISCONFIGURATION IS NOT A DISTINCT OUTCOME, A DISTINCT
+        SECURITY EVENT, OR A GUARD RESULT. It is REJECTED, it is not recorded as a
+        Guard DENY, it is not translated into one, and it confers nothing on the
+        producer, the submitter, the record or the deployment (§7.3.8).
+FROZEN: THE EXISTING SIX CODES AND THEIR ORDER ARE UNCHANGED, AND CONFIGURATION
+        FAILURE DOES NOT JUMP THE QUEUE. §7.3.5 runs V1 before V2 before V3, and this
+        section does not reorder it: a submission whose proof ENVELOPE is malformed
+        is reported AUTHENTICATION_PROOF_MALFORMED even when the configuration is
+        also invalid, and a submission whose producer token is UNREADABLE is reported
+        with an existing shape reason even when the configuration is also invalid —
+        because V2 runs before V3 and performs no key lookup. Reading and validating
+        the configuration does not move ahead of a check §7.3.5 places before it.
+FROZEN: AN INVALID CONFIGURATION AFFECTS EVERY SUBMISSION EQUALLY. There is no
+        submission, no token, no kind, no family and no caller for which an invalid
+        configuration yields an ACCEPTED result or a different code.
+```
+
+```text
+ONE INITIALIZATION, ONE PROCESS-LIFETIME SNAPSHOT
+
+FROZEN: THE CONFIGURATION IS READ AND VALIDATED EXACTLY ONCE, DURING THE
+        INITIALIZATION OF THE ONE READER MODULE, AND THE STATE IT PRODUCES IS THE
+        SOLE AUTHORITY ON THE DEPLOYMENT'S TRUST ROOT FOR THE LIFETIME OF THAT
+        PROCESS. There is NO FUNCTION that reads the variable: the read IS the
+        module's own initialization, and it does not repeat. Key selection, the group
+        rule and the policy the reader enforces are decided against that ONE value,
+        for every admission that process ever performs.
+FROZEN: THE STATE HAS EXACTLY TWO SHAPES, AND BOTH ARE FINAL.
+
+            VALID     the mapping parsed and validated; it is used as it stands
+            INVALID   the value was absent, malformed, incomplete, unparseable or
+                      otherwise invalid, OR the reader refused the mapping under
+                      §7.3.2's group rule
+
+        AN INVALID STATE IS RETAINED AS INVALID. Every admission that reaches V3
+        under it is REJECTED with AUTHENTICATION_KEY_UNAVAILABLE — the same code, for
+        every submission, for the rest of that process.
+FROZEN: INITIALIZATION DOES NOT RAISE. An invalid configuration at startup is a STATE
+        the process holds, not an exception it throws and not a failure to import. A
+        reader whose import raised would leave the caller with no admission result at
+        all, and would make a deployment misconfiguration appear as a programming
+        error rather than as the REJECTED outcome §7.3.8 defines. The module
+        initializes, records INVALID, and answers every question about "which key
+        applies" with "none".
+FROZEN: THE ENVIRONMENT IS A DEPLOYMENT INPUT AND NOT A CONTROL SURFACE. No
+        repository code outside the trusted deployment mechanism assigns, mutates,
+        unsets or otherwise writes this variable, and the reader module is not
+        reloaded to re-trigger its initialization. The variable is set by whatever
+        starts the process; code under this repository's control READS it and does not
+        write it. §31.3 states the static obligation that enforces this.
+FROZEN: A CONFIGURATION UPDATE TAKES EFFECT ONLY THROUGH A CONTROLLED PROCESS
+        RESTART. That is what "deploying the updated mapping" MEANS in §7.3.9, and
+        this section does not change §7.3.9's revocation model — it fixes how the
+        updated mapping ARRIVES. Removing a token's entry and deploying the updated
+        mapping stops that token's further claims because the RESTARTED process
+        initializes from the new value; the process that has not restarted continues
+        to authenticate under the mapping it started with, which is the same
+        non-retroactivity §7.3.9's "IT DOES NOT REACH BACKWARDS" already provides for
+        the records it admitted.
+FROZEN: A LATER CHANGE TO THE VARIABLE DOES NOT RELOAD THE TRUST ROOT, AND THIS IS
+        NOT A CACHE WITH A REFRESH PATH. There is no re-read, no TTL, no
+        invalidation hook, no signal handler, no "reload configuration" function, and
+        no path by which a second value reaches the reader.
+FROZEN: `admit_to_store()` PERFORMS NO SECOND VERIFICATION AND THEREFORE CONSULTS NO
+        SECOND STATE. It passes the proof through to `admit()` (§7.3.3) and one
+        verdict is reached from the one process-lifetime value.
+```
+
+```text
+WHEN THE READ HAPPENS, AND WHY THAT ORDER IS THE POINT
+
+FROZEN: THE IMPLEMENTATION MUST INITIALIZE THE READER THROUGH THE EVIDENCE PACKAGE'S
+        OWN INITIALIZATION PATH, BEFORE EITHER ADMISSION ENTRY POINT IS AVAILABLE.
+        `plugins/evidence/__init__.py` MUST import `producer_auth`, so that importing
+        the package initializes the reader; and there MUST be no lazy path, no
+        first-call initialization and no admission-time read.
+        THIS IS A REQUIREMENT ON THE CHANGE THAT IMPLEMENTS PRODUCER AUTHENTICATION.
+        It is not a description of the repository as it stands.
+FROZEN: THE GUARANTEE THAT REQUIREMENT BUYS, STATED AS WHAT IT WILL BE ONCE THAT
+        CHANGE LANDS — AND NOT BEFORE: a process able to call `admit()` or
+        `admit_to_store()` will necessarily have initialized the reader, because the
+        only route to either entry point runs through the package that imports it.
+        The ordering guarantee is then STRUCTURAL rather than a sequence someone has
+        to remember to observe, which is what makes "before admission is available"
+        true by construction rather than by convention.
+FROZEN: THE CURRENT STATUS, RECORDED BECAUSE THE CLAUSES ABOVE ARE REQUIREMENTS AND
+        NOT FACTS. `plugins/evidence/producer_auth.py` DOES NOT EXIST;
+        `plugins/evidence/__init__.py` DOES NOT IMPORT IT; and NO SUCH ORDERING EXISTS
+        AT RUNTIME TODAY. Amendment 6 SPECIFIES this ordering and does not establish
+        that the import edge, the initialization or the guarantee is present. NOTHING
+        IN THIS SECTION MAY BE READ AS A CLAIM ABOUT THE REPOSITORY AS IT STANDS, and
+        §7.3.11 MUST NOT BE CITED for the proposition that the reader is initialized
+        before admission is available — that proposition is an obligation on code
+        that has not been written.
+        THE DISTINCTION IS THE ONE THIS CONTRACT DRAWS EVERYWHERE ELSE: §7.3.7 states
+        its acceptance tests as obligations and records that none has been run, and
+        §34.3 records that the mechanism is DEFINED AND NOT BUILT. A CONTRACT CAN
+        REQUIRE A PROPERTY, AND REQUIRING IT IS NOT HAVING IT.
+FROZEN: THIS CREATES NO CALLER AND NO ENTRY POINT, AND AUTHORIZES NOTHING. The import
+        edge is WITHIN the Evidence package, between a module and the package that
+        owns it. No production component outside the package gains a path to
+        admission, no composition module gains one, and AI-15 §17.2b's prohibition on
+        a production call site is untouched. Stating an obligation on the implementing
+        change grants no permission to create a production writer, a caller, or an
+        authorization of any kind.
+FROZEN: THE RULE DISTINGUISHES CONFIGURATION SUPPLIED WHEN A PROCESS STARTS FROM A
+        VARIABLE READ AFTER ARBITRARY APPLICATION CODE HAS RUN, and it is the FIRST
+        of those the contract relies on. The intended flow, once the requirement above
+        is implemented, is that a deployment supplies the variable to the process
+        before it starts and the process then imports the package and captures what it
+        was given. WHAT BINDS IN THE MEANTIME IS THE RULE, NOT THE FLOW: NO REPOSITORY
+        CODE MAY WRITE THE VARIABLE AND NO PATH MAY RE-READ IT, so that the captured
+        value is the value the launcher supplied. That is an obligation §31.3 obliges
+        Layer 0 to enforce on the implementing change; it is not a description of what
+        the repository does today, which is nothing.
+FROZEN: WHAT THAT GUARANTEE DOES NOT COVER, RECORDED RATHER THAN LEFT TO BE ASSUMED.
+        Code OUTSIDE this repository — a third-party library imported before the
+        Evidence package — could write the process environment before the reader
+        initializes, and no static rule over this repository can see it. This is a
+        RESIDUAL RISK of the same kind §7.3.9 records for process control and key
+        custody: an in-process library cannot defend its own address space or the
+        environment it was started in. THE TRUST BOUNDARY IS THE PROCESS ENVIRONMENT
+        AS THE LAUNCHER SET IT, and this section does not claim to survive an
+        adversary who can rewrite it before startup completes.
+FROZEN: WHAT IS CLAIMED, AND IT IS NARROWER AND CHECKABLE — AND IT IS CLAIMED OF THE
+        IMPLEMENTATION, NOT OF THE TREE. No API PATH may let a caller choose the
+        trust root (§7.3.2); no module in this repository may write the variable or
+        reload the reader (§31.3); the read happens once and never repeats; and the
+        ordering requirement above is what will make "before admission is available"
+        true by construction rather than by convention. EACH OF THOSE IS A RULE THIS
+        CONTRACT IMPOSES AND A PROPERTY §31.3 OBLIGES LAYER 0 TO CHECK — none is a
+        claim that the code exists. UNTIL THE IMPLEMENTING CHANGE LANDS, THE HONEST
+        STATEMENT IS THE ONE §35.3 ALREADY CARRIES: AI-05 has no producer
+        authentication at all, and §30 step 7b is performed by nothing.
+FROZEN: THE IMMUTABILITY THIS SECTION REQUIRES OF THE CAPTURED STATE IS A RULE ON
+        REPOSITORY CODE AND NOT A CLAIM OF TAMPER-PROOFNESS. The state is required to
+        be held privately, never returned as a whole, never handed out as a mutable
+        structure, free of any public initializer, reset or setter, and not rebound by
+        any code in this repository — and §31.3 obliges Layer 0 to check exactly those
+        SOURCE-TREE rules. NONE OF THAT IS A RUNTIME SANDBOX. Code able to execute
+        inside the same process — arbitrary reflection, monkeypatching, a debugger, a
+        hook from a library that came from outside this repository, or hostile code
+        with equivalent privileges — can reach in-memory state that no source-tree
+        rule protects, which §7.3.9 already records as PROCESS CONTROL and which this
+        section does not contradict. WHAT IS CLAIMED IS NARROWER AND IS THE CLAIM THAT
+        MATTERS HERE: REPOSITORY CODE DOES NOT DO IT, AND THE REPOSITORY WILL NOT
+        MERGE CODE THAT DOES. §31.3 states the qualification in full, and the two
+        clauses are one rule.
+FROZEN: A DEPLOYMENT OBLIGATION IS STATED SO THE ORDERING IS ACTIONABLE, AND IT IS
+        NOT A NEW COMPOSITION ENTRY POINT. The process MUST import the Evidence
+        package as part of its own startup, before it begins application work. A
+        deployment that deferred that import until it first needed admission would
+        still be reading the SAME value — because nothing in this repository writes
+        the variable — but it would have widened the residual window above, and it
+        would be relying on that fact rather than on the structure. The obligation is
+        recorded; it is not enforced by a caller this document invents.
+```
+
+```text
+AN IMMUTABLE AUTHORITATIVE SNAPSHOT IS NOT A LAST-KNOWN-GOOD FALLBACK
+
+FROZEN: THE TWO ARE OPPOSITES, AND THE DIFFERENCE IS THE WHOLE REASON THIS SECTION
+        STATES A LIFECYCLE RATHER THAN A PROHIBITION.
+
+            the snapshot        captured ONCE, at initialization, and authoritative
+                                for the process lifetime. If it is INVALID it STAYS
+                                INVALID and the deployment authenticates NOTHING. It
+                                is what the process HAS, not what it would PREFER.
+
+            last-known-good     FORBIDDEN. It would mean: the configuration is
+              fallback          invalid now, so keep using the last one that
+                                validated. The process would then verify against a
+                                trust root the deployment has WITHDRAWN — and an
+                                operator who revoked a token by removing its entry
+                                would find the revocation had not taken effect, which
+                                is precisely the state §7.3.9 exists to describe
+                                truthfully.
+
+FROZEN: A ONCE-ONLY CAPTURE MAKES THAT FALLBACK UNREACHABLE RATHER THAN MERELY
+        FORBIDDEN. Under a PER-ATTEMPT read there IS a second read, and a second read
+        is what a fallback falls back FROM: attempt 1 reads a valid mapping and caches
+        it, attempt 2 reads an invalid one, and a reader that keeps serving the cached
+        mapping has performed a last-known-good fallback without anyone having asked
+        it to. An earlier revision of this section required "one snapshot per
+        admission attempt". THAT IS WITHDRAWN AND REPLACED: it bounded each attempt
+        but left the SEQUENCE of attempts unconstrained, and the sequence is where the
+        fallback lives. THERE IS NO SECOND READ HERE, so there is nothing for such a
+        fallback to reach. The prohibition is kept because it names the defect; the
+        lifecycle is what makes the defect unrepresentable.
+FROZEN: THE WITHDRAWN FORM WAS NOT WRONG ABOUT ISOLATION, AND WHAT IT CORRECTLY
+        REQUIRED IS KEPT. One verification still decides key selection, the group rule
+        and the enforced policy against ONE value, and no read occurs between
+        selecting a key and applying the collision rule. The process-lifetime rule
+        subsumes that: a value that never changes cannot change mid-verification.
+```
+
+```text
+TWO SERIALIZATIONS THAT MUST NOT BE CONFUSED, AND A THIRD THAT IS NEITHER
+
+FROZEN: THE CONFIGURATION'S JSON PARSING IS NOT AI-05-CJ-1 AND MUST NEVER BE USED AS
+        IT. §7.3.6 fixes the signed input's canonicalization and states that it
+        governs the SIGNED INPUT and nothing else. This section's JSON rules govern
+        the CONFIGURATION DOCUMENT and nothing else. THEY ARE DIFFERENT FUNCTIONS
+        OVER DIFFERENT VALUES FOR DIFFERENT PURPOSES, AND NEITHER MAY BE SUBSTITUTED
+        FOR THE OTHER.
+FROZEN: THE CONFIGURATION VALUE IS NEVER PART OF A SIGNED INPUT. `signed_input` is
+        built from the SUBMITTED EVIDENCE MAPPING (§7.3.4). The trust configuration
+        is not a field of any record, is not covered by any signature, and is not
+        stored (§7.3.3). It is therefore not a value the signed-input profile has any
+        opinion about.
+FROZEN: WHAT FOLLOWS, AND IT IS THE FAILURE THIS CLAUSE EXISTS TO PREVENT. The
+        configuration's tolerance MUST NOT LEAK INTO THE SIGNED-INPUT PATH. JSON
+        permits insignificant whitespace and any member order; AI-05-CJ-1 does not
+        permit whitespace inside the canonical text and fixes key order by UTF-16
+        code unit. A serializer that produced the configuration's member order, or a
+        pretty-printed variant of it, would produce bytes that are not the canonical
+        serialization of the mapping — and a proof over those bytes is a proof over
+        something the contract does not define. THE SIGNED INPUT IS PRODUCED BY THE
+        AI-05-CJ-1 SERIALIZER AND BY NOTHING ELSE, INCLUDING AND ESPECIALLY NOT BY
+        WHATEVER ROUTINE PARSED THE CONFIGURATION.
+FROZEN: THE EXISTING DIGEST PATH IS A THIRD THING AND IS ALSO UNCHANGED. §15.2's
+        digest input and the stored form continue to use what they used before
+        (§7.3.6). Three serializations, three purposes, no unification.
+```
+
+```text
+TRUST DOMAIN INDEPENDENCE
+
+FROZEN: THIS CONFIGURATION AND AI-13'S APPROVAL TRUST ANCHOR ARE DIFFERENT TRUST
+        DOMAINS WITH DIFFERENT SOURCES. §7.3.10 already records that AI-13's
+        designated approval ingress, its anchor and its Ed25519 verification site are
+        NOT repurposed, NOT read and NOT widened by §7.3. This section adds the
+        converse obligation: the reader MUST NOT read AI-13's anchor variable,
+        MUST NOT accept an AI-13 approval as a producer proof, and MUST NOT treat a
+        producer proof as an approval. Producer authenticity and human approval are
+        different questions answered by different keys, and a submission that
+        satisfied one has established nothing about the other.
+FROZEN: AN AUTHENTICATED PRODUCER CLAIM IS NOT AN APPROVAL, NOT A PERMISSION, NOT A
+        CAPABILITY AND NOT A GUARD RESULT (§7.3.8). The configuration being valid,
+        readable and internally consistent grants nothing to anyone.
+```
+
 ---
 
 ## 8. Identity Model
@@ -3877,6 +4291,19 @@ FROZEN. The single entry condition for storing a record.
                       and nothing is stored
  7b. producer      the producer claim is AUTHENTICATED against the deployment's
      authentication designated producer trust mapping (§7.3, Amendment 5)
+                   -> WHICH MAPPING THAT IS, WHERE IT COMES FROM AND WHICH MODULE
+                      HOLDS IT are §7.3.11's. ONE environment variable
+                      (WORKBENCH_EVIDENCE_PRODUCER_TRUST_CONFIG), parsed as one
+                      strict JSON object, read ONCE during the initialization of
+                      plugins/evidence/producer_auth.py and by nothing else. THIS STEP
+                      DOES NOT READ IT: it consults the process-lifetime state that
+                      initialization produced, which no later change to the variable
+                      replaces and no restart-free path reloads.
+                      A missing, malformed, incomplete or invalid configuration — or
+                      a mapping the reader refuses under §7.3.2's group rule — leaves
+                      that state INVALID, and is REJECTED with
+                      AUTHENTICATION_KEY_UNAVAILABLE, which is §7.3.5 V3's existing
+                      code and not a seventh one
                    -> RUNS AFTER STEP 7, AND BEFORE CONSTRUCTION. Construction is
                       steps 1-4, 4b, 6, 8-11 AND 13 — and NOT step 12, which is
                       computed later, in `assign_digests`. §30's numbers IDENTIFY
@@ -4151,6 +4578,292 @@ a token absent from the registry                    REJECTED
 
 T54 and T55 are a pair. T54 alone is satisfied by a registry that admits
 everything; T55 alone is satisfied by one that admits nothing.
+
+### 31.3 The producer-authentication rows, and where they live (Amendment 6)
+
+```text
+FROZEN. AI-05 adds no layer 4 (§31). Every row below runs in LAYER 1 with the rest
+of `tests/evidence/`, in the same offline gate, under the same "no credential, no
+network" condition.
+
+WHAT WAS AMBIGUOUS, AND IS NOT ANY MORE. Amendment 5 created §7.3.7's acceptance
+obligation — twenty-two named cases plus the key-material rule — and did NOT give
+them T-numbers in §31, while §31 declares itself "the test matrix" and FROZEN. A
+reader could therefore conclude that §7.3.7's list sits outside the matrix, that it
+is advisory, or that §31's row count is the whole of the obligation. None of those
+is correct.
+
+FROZEN: §7.3.7's ACCEPTANCE OBLIGATION IS PART OF THIS MATRIX, INCORPORATED BY
+        REFERENCE. Its cases are rows of §31 in every sense that matters — same
+        layer, same force, same "MUST exist before the standard may be reported as
+        holding" — and a suite that omits one of them is as incomplete as a suite
+        that omits T13.
+FROZEN: §31's T-NUMBERING IS NOT EXTENDED BY THIS AMENDMENT. §7.3.7's cases keep
+        the identifiers §7.3.7 gives them, for the same reason §7.3.6's vectors are
+        referenced rather than copied: a second copy of a normative list is a second
+        list that can drift, and the one in §7.3.7 sits beside the clauses it tests.
+        A later amendment that wishes to number them may; until one does, §7.3.7's
+        text governs and its identifiers are the ones to cite.
+FROZEN: NOTHING IN §31 IS REMOVED, MERGED, RENUMBERED OR WEAKENED. T1-T35, T42-T57,
+        T54 and T55 keep their rows and their meanings, and no existing row is
+        re-scoped to carry an authentication assertion.
+FROZEN: T35 APPLIES TO THE NEW MODULE UNCHANGED. `plugins/evidence/producer_auth.py`
+        is parsed by §31's architecture-boundary row like every other module in the
+        package: no network client, no `subprocess`, no `eval`/`exec`/`compile`, no
+        `routing`/`tools` import, no secret logging. A cryptographic verifier that
+        reached a transport, spawned a process or evaluated a string would be a
+        different component wearing this one's name.
+```
+
+```text
+FROZEN: LAYER 0 GAINS ONE NARROWLY SCOPED EXCEPTION, AND IT IS THE ONLY ONE.
+
+    module            plugins/evidence/producer_auth.py — and no other module
+    what it may       `os` and `json`, for the configuration and for nothing else
+      import
+    what it may NOT   read a file, call `open()`, walk a path, import `io`,
+                      `pathlib`, `shutil`, `tempfile` or any other filesystem root,
+                      or reach any configuration source other than the one variable
+                      §7.3.11 names
+    everything else   UNCHANGED. `store.py` remains the only module that touches a
+                      filesystem, and every other restriction on `plugins/evidence`
+                      stands exactly as it stood.
+
+FROZEN: THE EXCEPTION IS TWO IMPORTS IN ONE NAMED MODULE, AND IT IS NOT A RELAXATION.
+        Widening `EVIDENCE_IO_MODULES` to the package, permitting `os` in a second
+        module, permitting `open()` outside `store.py`, or permitting a second
+        configuration source would each break the property the exception exists to
+        preserve: that exactly one module reads the trust root, and that the rest of
+        the package stays pure.
+FROZEN: LAYER 0 MUST ALSO ENFORCE, FOR THIS MODULE, THE FOUR RULES §7.3.2 AND
+        §7.3.11 STATE IN PROSE — and stating them is not enforcing them:
+            ONE READER   the designated environment variable is read in
+                         `producer_auth.py` and in no other module. A second read is
+                         a second place the deployment's trust root is decided,
+                         whether or not it calls the accessor.
+            NO MUTATION  the variable is a DEPLOYMENT INPUT and not a control
+                         surface. No module writes the RUNNING process's
+                         environment — no `os.environ[...] = ...`, no
+                         `os.environ.setdefault`, `.pop`, `.update` or `.clear`, no
+                         `os.putenv` or `os.unsetenv`, and no helper that performs
+                         any of them. A value repository code can rewrite in place is
+                         not a deployment fact.
+                         The reader module is likewise not RELOADED to re-trigger its
+                         initialization: an `importlib.reload` of it, or any other
+                         route by which its module-level read runs a second time, is a
+                         second read and is refused as one.
+            IMMUTABLE    the captured state is not a mutable object this repository's
+              STATE      code may alter. The mapping and the policy are held
+                         privately, are never returned as a whole by any public
+                         function, and are never handed to another module as a
+                         structure it could mutate. The reader answers a PER-TOKEN
+                         question — which key applies to THIS claimed token — and
+                         exposes neither the mapping, the policy table nor the parsed
+                         document. The state is not rebindable BY REPOSITORY CODE: no
+                         assignment to, `setattr` on, or monkeypatch of it appears
+                         anywhere in this repository, and there is no public
+                         initializer, no reset, no setter and no "load for tests"
+                         entry point.
+            NO CALLER-SELECTED TRUST ROOT   no public function accepts a public key,
+                         a mapping, an anchor, a verifier, a configuration object or
+                         a configuration path as a parameter.
+        READ AND WRITE ARE DIFFERENT FAILURES AND BOTH ARE CHECKED. A second READER
+        decides a second trust root; a WRITER changes the one there is; a REPLACER
+        changes what the reader holds. A deployment configuration that repository
+        code can rewrite in place, or replace in memory, is not a deployment fact at
+        all, and §7.3.11's process-lifetime rule would be unenforceable no matter how
+        carefully the read was written.
+        AI-13 §13.3 carries the first and the no-caller-selected-trust-root rules for
+        its own domain, and its Layer 0 check enforces both. This amendment places the
+        same obligation on the AI-05 boundary and adds the second and third, which
+        AI-13's single-anchor model did not need in the same form because an anchor
+        that is never re-read is neither a mapping a fallback could be built from nor
+        a structure a caller could reach into; §7.3.10 keeps the two domains apart
+        while the enforcement shape is the same shape.
+FROZEN: WHAT THESE RULES ARE, AND WHAT THEY ARE NOT. A TRUST-BOUNDARY QUALIFICATION,
+        recorded so the four rules above are not read as more than they are — and
+        recorded HERE, beside them, because a qualification kept somewhere else is one
+        a reader meets too late.
+            WHAT THEY ARE    a set of declared SOURCE-TREE rules, enforced over the
+                             files this repository contains. They establish that no
+                             code IN THIS REPOSITORY reads the variable in a second
+                             place, writes the running process's environment, hands
+                             the mapping out, replaces the captured state, or accepts
+                             a trust root as a parameter — and they DETECT those
+                             patterns within their stated coverage.
+            WHAT THEY ARE    a runtime sandbox, and NOT a proof of immunity. A static
+              NOT            check reads SOURCE; it does not constrain what a process
+                             does once it is running. Code with the ability to
+                             execute inside the SAME Python process — through
+                             arbitrary reflection, monkeypatching, a debugger, a hook
+                             installed by a library that came from outside this
+                             repository, or simply hostile code running with
+                             equivalent privileges — can alter in-memory state that no
+                             source-tree rule protects. §7.3.9 already records exactly
+                             this as PROCESS CONTROL: "an adversary who controls this
+                             process's address space can control the mapping and
+                             defeat any in-process check. An in-process library cannot
+                             defend its own address space, and this section does not
+                             claim to survive such an adversary."
+FROZEN: PYTHON MODULE STATE IS NOT INTRINSICALLY TAMPER-PROOF, AND NO CLAUSE HERE MAY
+        CLAIM OTHERWISE. Attributes can be rebound, module globals can be reassigned,
+        and an actor inside the process can reach past any arrangement of them.
+        NOTHING IN THIS SECTION CLAIMS THAT PYTHON PREVENTS THAT, and the IMMUTABLE
+        STATE rule above MUST NOT be read as such a claim: it is a rule about what
+        REPOSITORY CODE MAY DO, not a property of the language. What the four rules
+        establish is narrower and checkable — REPOSITORY CODE DOES NOT DO IT, AND THE
+        REPOSITORY WILL NOT MERGE CODE THAT DOES.
+FROZEN: THIS QUALIFICATION IS NOT PERMISSION, AND IT RELAXES NOTHING. It bounds WHAT
+        STATIC ENFORCEMENT CAN DELIVER; it does not narrow a single requirement above.
+        For normal repository code the requirements are ABSOLUTE: a module that writes
+        the variable, replaces the captured state, hands out the mapping or accepts a
+        caller-selected trust root is a FINDING and MUST NOT be merged. NO READER MAY
+        CITE THIS CLAUSE to argue that such code is tolerable because an adversary
+        with in-process execution could do worse — THE DEFECT AND THE LIMIT ARE
+        DIFFERENT THINGS, AND THE LIMIT DOES NOT EXCUSE THE DEFECT.
+FROZEN: THE NO-MUTATION RULE IS SHAPE-BASED, AND IT HAS TO BE. A name-based ban —
+        "the variable's name appearing outside the reader is itself the finding" —
+        would forbid the very mechanism §7.3.7's cases require, because A CHILD
+        PROCESS CANNOT BE GIVEN A CONFIGURATION WITHOUT THE LAUNCHER NAMING THE
+        VARIABLE. What is forbidden is WRITING THE RUNNING PROCESS'S ENVIRONMENT.
+        What is permitted is HANDING A VALUE TO A PROCESS THAT HAS NOT STARTED. The
+        static rule distinguishes them by the SHAPE of the use, not by the presence
+        of the name, and this section states both shapes so the rule has something
+        exact to check.
+FROZEN: ONE TEST-HARNESS MODULE MAY NAME THE VARIABLE, AND ONLY IN THAT SHAPE.
+
+    tests/evidence/trust_harness.py
+
+        It is the ONLY module outside the reader in which the designated variable's
+        name may appear. WITHIN it, the name may appear ONLY as a key in the
+        environment mapping handed to a child-process launch — never as an
+        assignment to the running process's environment, never in `os.putenv`, and
+        never anywhere else in the repository.
+        It supplies that environment to a SEPARATE process, which imports the real
+        `plugins/evidence/producer_auth.py` and exercises the ORDINARY admission and
+        verification path. It MUST NOT mutate the running test process's active
+        environment to simulate a reload, and it MUST NOT inject a mapping, a key, a
+        verifier or a parsed state into the reader.
+        This is ONE module, ONE shape and ONE variable. It is not an exception for
+        tests in general, and it is not an exception for any production module: a
+        second module naming the variable, or this module naming it in another shape,
+        is the NO MUTATION finding.
+FROZEN: WHY THIS IS PERMITTED BY THE EXISTING ARCHITECTURE, STATED SO IT IS NOT
+        MISTAKEN FOR A NEW PERMISSION. It is not new, and it does not widen anything:
+            a separate interpreter is ALREADY spawned from this suite —
+              `tests/evidence/test_canonical.py:119-143`,
+              `test_a_separate_interpreter_reaches_the_same_value`, runs
+              `subprocess.run([sys.executable, "-c", program], ...)` as "the
+              cross-process half of T7"
+            no Layer 0 rule constrains `tests/` on this axis. The
+              `subprocess` restrictions in `scripts/ci/layer0_policy.py` are scoped
+              to `plugins/evidence` (§31's five checks), to `routing/`, to
+              `benchmarks/`, to `workflows/` and to `composition/`; `tests/` is
+              reached only by `check_layer_markers`, which globs `test_*.py` — so a
+              `trust_harness.py` support module is not a test module and needs no
+              layer marker, exactly as `tests/integrations/support.py` does not
+            the child's environment is supplied BEFORE the process starts, which is
+              what a deployment does with the same variable; the harness adds no
+              path a deployment lacks
+        A SPAWN THAT FAILS ON THIS HOST IS A SKIP AND NOT A PASS. The existing
+        cross-process test already records that a spawned process can fail on handle
+        inheritance before any assertion runs, and reports it as a skip because that
+        is a host limitation rather than a result. The producer cases inherit that
+        treatment: an unrunnable child is NOT_RUN, never a passing authentication test.
+FROZEN: A GREEN CI RUN IS NOT EVIDENCE THAT THE STANDARD HOLDS, AND MUST NOT BE
+        REPORTED AS ANY. The suite exits 0 when its cases pass AND when a case was
+        skipped, so the exit status cannot distinguish "every process-isolated case
+        ran and asserted" from "the isolated cases could not execute here". A run in
+        which any required process-isolated case was skipped demonstrates NOTHING
+        about producer authentication, and CI SUCCESS ALONE MUST NOT BE USED TO CLAIM
+        THAT AI-15 §15.2 STEP 0b IS SATISFIED OR THAT THE §7.3 STANDARD HAS BEEN
+        SHOWN TO HOLD. Since §8.3 condition 11 is discharged by exactly those cases,
+        a skipped case leaves condition 11 UNSATISFIED however green the run is.
+        WHAT A REPORT MUST CARRY, WHEN THE TIME COMES: the number of process-isolated
+        cases that RAN, not the number that passed or the run's status. A count of
+        skips is a count of NOT_RUN, and NOT_RUN != PASS.
+FROZEN: THE LAYER 0 RULE MUST CHECK THE SHAPE, NOT THE NAME. Two obligations, both
+        static:
+            the variable's name appears outside `plugins/evidence/producer_auth.py`
+              ONLY in `tests/evidence/trust_harness.py`, and there only as a key in a
+              child-process environment mapping
+            no module anywhere assigns to, or otherwise writes, the RUNNING
+              process's environment for that variable
+        A rule that fired on the name alone would fail the harness; a rule that
+        ignored the assignment would fail to catch a reload written as a `setenv`.
+FROZEN: THIS AMENDMENT DOES NOT MAKE THAT LAYER 0 CHANGE. It is documentation, and
+        `scripts/ci/layer0_policy.py` is NOT edited by it. §7.3.11's mechanism and
+        the Layer 0 rules that enforce it are obligations on the change that
+        IMPLEMENTS producer authentication, and until that change lands the
+        implementation does not exist — so there is nothing for the widened rule to
+        permit. UNTIL THEN THE EXISTING RULE STANDS AND WOULD REFUSE THE NEW MODULE,
+        which is the correct and visible behaviour, not a defect to be worked around.
+```
+
+```text
+HOW §7.3.7's CASES SUPPLY A CONFIGURATION WITHOUT A BYPASS
+
+FROZEN: §7.3.7's KEY-MATERIAL RULE IS UNCHANGED AND IS NOT RELAXED BY §7.3.11's
+        LIFECYCLE: tests MUST use a distinct keypair per producer token, MUST go
+        through the real verification path, and MUST be supplied through the SAME
+        designated configuration mechanism a deployment uses. A test-only bypass
+        remains FORBIDDEN. What the lifecycle rule adds is WHEN that supply must
+        happen, and it is not a new obligation so much as the same one applied
+        honestly.
+
+FROZEN: A CASE THAT NEEDS A PARTICULAR TRUST CONFIGURATION SUPPLIES IT TO A PROCESS
+        THAT HAS NOT YET INITIALIZED THE READER, THROUGH THE LAUNCHER THIS SECTION
+        NAMES. `tests/evidence/trust_harness.py` hands the variable to a child
+        process's environment before that process starts; the child then imports the
+        real reader and runs the ordinary admission and verification path.
+        PROCESS-ISOLATED EXECUTION IS THEREFORE THE MECHANISM for every case whose
+        expected result depends on the configuration — a valid mapping, a mapping the
+        reader refuses, an unreadable value, an absent one, both collision policies,
+        and each malformed shape §7.3.11 names. This is not a test-only path: it is
+        EXACTLY what a deployment does, because a deployment also supplies the
+        variable to a process that has not started yet. The test and the deployment
+        use one mechanism; only the process boundary differs.
+FROZEN: THE LAUNCHER EXCEPTION AND THE NO-MUTATION RULE ARE ONE RULE, READ TOGETHER.
+        The rule above forbids WRITING THE RUNNING PROCESS'S ENVIRONMENT; this clause
+        permits HANDING A VALUE TO A PROCESS THAT HAS NOT STARTED. Stated separately
+        they would read as a prohibition and an exception to it; stated together they
+        are one boundary, and neither is a weakening of the other. A reader who finds
+        only one of them has found half a rule.
+
+FROZEN: CHANGING THE VARIABLE AFTER INITIALIZATION IS NOT A SUPPORTED WAY TO RELOAD
+        THE TRUST ROOT, AND IT MUST NOT BE USED AS ONE IN A TEST. Setting it
+        mid-process changes nothing the reader will consult, so a case written that
+        way asserts against a trust root the process never held: it would either fail,
+        or pass for a reason unrelated to what it claims to prove. A test that mutates
+        the variable and then observes an outcome has proven nothing about this
+        contract, whichever way it came out.
+FROZEN: THE AI-13 IN-TEST PATTERN DOES NOT CARRY OVER, AND THE DIFFERENCE IS THE
+        LIFECYCLE AND NOT THE SUBJECT MATTER. AI-13's focused suite installs its
+        anchor by setting an environment variable mid-test and then exercising the
+        production path, because the anchor is read when the accessor is CALLED. The
+        producer trust configuration is read when the reader module INITIALIZES, so
+        the same shape would set a value nothing consults. §7.3.10 keeps the two trust
+        domains apart regardless; this records that the two domains ALSO differ in
+        when their deployment fact is captured, so a copy of the pattern is not merely
+        forbidden by §7.3.10 — it would not work.
+
+FROZEN: NO TEST MAY REACH PAST THE CONFIGURATION MECHANISM. A test MUST NOT inject a
+        mapping, a key, an anchor, a verifier or a configuration object into the
+        reader, MUST NOT call a private initializer with a value, and MUST NOT
+        monkeypatch the reader's parsed state. Each of those is the "test-only bypass"
+        §7.3.7 forbids, and the process boundary above is what makes them unnecessary
+        rather than merely disallowed.
+FROZEN: THE CASES THAT DO NOT DEPEND ON THE CONFIGURATION ARE UNAFFECTED. §7.3.5's
+        precedence, §7.3.8's six codes, the envelope rules of V1, V2's unreadable
+        token, the §30 step 7 tie-break and every reason-code assertion that turns on
+        the SUBMISSION rather than on the deployment run in one process with one
+        configuration, exactly as before. The lifecycle rule changes how many
+        processes a suite needs, not what any case expects.
+
+FROZEN: NO CASE NAMED IN §7.3.7 HAS BEEN RUN, AND NOTHING IN THIS SECTION IS EVIDENCE
+        THAT ONE HAS. This block states how a later suite MUST supply configuration;
+        it is an obligation on that suite and not a report about it.
+```
 
 ---
 
@@ -5204,6 +5917,501 @@ AI15-OPEN-3, not AI15-OPEN-4, and not §35.1's deferrals.
 
 ---
 
+#### Amendment 6 — the producer trust configuration is frozen (2026-10-11)
+
+Found while performing an implementation-readiness review of §30 step 7b against this
+contract. Amendment 5 defined **what** makes a producer claim authenticated and left
+**where the trust root comes from** unnamed: §7.3.2 requires the designated mapping to
+be read "from exactly ONE place, by exactly one module", forbids a caller-selected
+trust root, and states that a deployment with no mapping authenticates nothing — but
+it names neither the place nor the module, nor the mapping's format, nor the encoding
+of a key within it, nor how a deployment selects between §7.3.2's two reader policies.
+An implementer would have had to invent all five, and each invented answer becomes a
+deployment interface that proofs are verified against. This amendment supplies them.
+It is authored on a docs-only branch based on main
+`f9e3b4217bbf66285e930bcff48824a028f6786d`.
+
+**Why this is an amendment rather than a clarification made in place.** §34.1's list
+of changes requiring an amendment enumerates evidence kind, canonical collection,
+digest input, workspace rule, secret boundary, authority relation, identity field and
+admission outcome. This amendment changes **none** of them. §34's preamble is broader
+than its list, though — a frozen contract "changes only through an explicit amendment
+recorded in §34.3" — and this amendment adds a NEW SECTION to §7 that a deployment's
+keys are read under, adds a Layer 0 obligation to §31, and corrects the status
+records in §35.3 and `## Status`. That is a change however it is described, so the
+instrument is an amendment, recorded here. The fact that none of those three is in
+§34.1's enumeration is recorded rather than relied on, exactly as Amendments 4 and 5
+recorded the same about §7.
+
+```text
+(a) NEW §7.3.11 names the ONE place §7.3.2 left unnamed: the environment variable
+    WORKBENCH_EVIDENCE_PRODUCER_TRUST_CONFIG, and nothing else. No configuration
+    file, no default path, no keyring, no network source, no build-time embed and no
+    second variable. It also names the ONE READER:
+    plugins/evidence/producer_auth.py.
+    Naming the two is what makes §7.3.2's "read from exactly ONE place, by exactly
+    one module" checkable rather than aspirational. §7.3.2 is NOT reworded: the
+    properties it fixed are unchanged, and this section supplies the name they were
+    missing.
+
+(b) THE VALUE IS A STRICT JSON OBJECT WITH EXACTLY TWO MEMBERS, both required and
+    closed-keyed:
+        collision_policy   the JSON string "A" or "B"
+        producer_keys      an object mapping a producer-token string to its Ed25519
+                           PUBLIC key, each exactly 64 LOWERCASE hexadecimal
+                           characters decoding to 32 bytes
+    An unknown member, an absent member, a misspelled member, a member of the wrong
+    JSON type, a root that is not an object, an empty value, and a value that is not
+    encodable as UTF-8 are EACH an invalid configuration, refused as a whole.
+    Uppercase hex is REFUSED, never normalized, applying §14.5.1's case policy for
+    the same reason it exists there: a value AI-05 accepts is a value AI-05 must not
+    rewrite.
+    THE PARSING IS STRICT. A DUPLICATE OBJECT KEY IS REFUSED AT EVERY LEVEL,
+    INCLUDING INSIDE `producer_keys` — a reading that keeps the last one has made a
+    silent choice about which trust root the deployment holds, which is the same
+    defect §7.3.6 rule 8 refuses on a JSON transport. `NaN`, `Infinity` and
+    `-Infinity` are NOT JSON and are refused; a parser that accepts them accepts
+    input RFC 8259 does not define. Nothing may follow the document. Whitespace is
+    insignificant and permitted, because RFC 8259 permits it.
+
+(c) VALIDATION IS WHOLE-MAPPING AND PARTIAL ACCEPTANCE IS FORBIDDEN. The reader
+    MUST NOT authenticate against the entries it managed to parse, skip a malformed
+    entry and continue, fall back to a default, a development mapping, a cached
+    mapping or a subset, or recover silently. §7.3.2's "no default mapping, no
+    development mapping, no `verify=False` switch" is unchanged and this amendment
+    adds no path around it.
+    An entry for a token §6.5 does NOT register is PERMITTED and remains INERT
+    (§7.3.2); its presence is nevertheless load-bearing, because it participates in
+    the group rule. `producer_keys` MAY be empty, which designates a mapping with no
+    entries and rejects every submission — the same outcome §7.3.2 assigns a
+    deployment with no mapping at all. That is not partial acceptance: there is no
+    entry for a partial reading to keep or drop.
+    WHICH TOKENS COUNT AS RECOGNIZED IS §6.5's ANSWER. The reader consults the §6.5
+    registry to decide whether a colliding group contains a recognized token. It
+    does not restate the registry, cache a drifting copy of it, or treat a
+    `producer_keys` entry as evidence of recognition.
+
+(d) `collision_policy` SELECTS §7.3.2's policies AND DOES NOT DEFINE THEM. §7.3.2's
+    group rule, both policies and the requirement that a reader be CONSISTENT are
+    incorporated by reference and are NOT restated, reworded or extended:
+        "A"   POLICY A — a group consisting only of unregistered tokens is
+              tolerated; every group containing a recognized token still fails the
+              whole mapping closed
+        "B"   POLICY B — the mapping is refused over ALL its entries on ANY
+              duplicate public key, including one involving only unregistered tokens
+    Under BOTH policies a group containing at least one recognized token fails the
+    mapping closed, so no selector value can admit a mapping on which a recognized
+    token shares a key. §7.3.2 records that which policy a deployment runs "is a
+    DEPLOYMENT FACT, not a choice any caller makes"; this is where that fact is
+    expressed, in the same document and by the same mechanism as the key material,
+    which is precisely why no caller can reach it.
+
+(e) FAILURE IS ONE EXISTING REASON CODE AND NO SEVENTH IS ADDED. A missing,
+    malformed, incomplete, unparseable or otherwise invalid configuration — and a
+    mapping the reader refuses under the group rule — are EACH reported as
+    AUTHENTICATION_KEY_UNAVAILABLE. §7.3.8 fixes SIX codes and states that no
+    outcome member is added; §7.3.5's V3 already assigns this exact code to "no
+    designated mapping at all, or no entry for the claimed token". A refused
+    mapping IS a deployment with no usable mapping, and this amendment reports it
+    where §7.3.2 and §7.3.5 already report that state.
+    THE SIX CODES AND THEIR ORDER ARE UNCHANGED, AND CONFIGURATION FAILURE DOES NOT
+    JUMP THE QUEUE. §7.3.5 runs V1 before V2 before V3 and this amendment does not
+    reorder it: a malformed proof ENVELOPE is reported AUTHENTICATION_PROOF_MALFORMED
+    even when the configuration is also invalid, and an UNREADABLE producer token is
+    reported with an existing shape reason even when the configuration is also
+    invalid — because V2 runs before V3 and performs no key lookup. Reading and
+    validating the configuration does not move ahead of a check §7.3.5 places before
+    it. An invalid configuration affects EVERY submission equally: there is no
+    submission, token, kind, family or caller for which it yields ACCEPTED or a
+    different code.
+
+(f) ONE INITIALIZATION, ONE PROCESS-LIFETIME SNAPSHOT. The configuration is read and
+    validated EXACTLY ONCE, during the initialization of the one reader module, and
+    the state it produces is the sole authority on the deployment's trust root for
+    the lifetime of that process. The state is VALID or INVALID and BOTH ARE FINAL:
+    an INVALID state is retained as INVALID, and every admission reaching V3 under it
+    is REJECTED with AUTHENTICATION_KEY_UNAVAILABLE with no fallback of any kind.
+    Initialization does NOT raise — an invalid configuration is a state the process
+    holds, not an exception it throws and not a failure to import.
+    A CONFIGURATION UPDATE TAKES EFFECT ONLY THROUGH A CONTROLLED PROCESS RESTART.
+    That is what §7.3.9's "deploying the updated mapping" means; §7.3.9's revocation
+    model is unchanged and this item fixes how the updated mapping ARRIVES. A later
+    change to the variable does NOT reload the trust root: there is no re-read, no
+    TTL, no invalidation hook, no signal handler and no reload path.
+    AN IMMUTABLE AUTHORITATIVE SNAPSHOT IS NOT A LAST-KNOWN-GOOD FALLBACK, and the
+    two are opposites. A fallback would keep verifying against a trust root the
+    deployment had WITHDRAWN, so an operator who revoked a token by removing its
+    entry would find the revocation had not taken effect.
+    AN EARLIER REVISION OF THIS AMENDMENT REQUIRED "ONE SNAPSHOT PER ATTEMPT". THAT IS
+    WITHDRAWN AND REPLACED. It bounded each attempt but left the SEQUENCE of attempts
+    unconstrained, and the sequence is where a last-known-good fallback lives: a
+    per-attempt read means a second read, a second read is what a fallback falls back
+    FROM, and a reader that kept serving a mapping cached by an earlier successful
+    attempt would have performed that fallback without anyone asking it to. A
+    once-only capture makes the fallback UNREACHABLE rather than merely forbidden.
+    What the withdrawn form correctly required is KEPT: one verification still
+    decides key selection, the group rule and the enforced policy against ONE value,
+    and no read occurs between selecting a key and applying the collision rule — a
+    value that never changes cannot change mid-verification.
+    THE ENVIRONMENT IS A DEPLOYMENT INPUT AND NOT A CONTROL SURFACE. No repository
+    code outside the trusted deployment mechanism assigns, mutates, unsets or writes
+    the variable, and the reader module is not reloaded to re-trigger its
+    initialization. §31.3 states the static obligation that enforces this, alongside
+    the one-reader and no-caller-selected-trust-root rules.
+
+(g) TWO SERIALIZATIONS THAT MUST NOT BE CONFUSED, AND A THIRD THAT IS NEITHER.
+    §7.3.6 already froze that AI-05-CJ-1 governs the SIGNED INPUT and nothing else,
+    and that unifying it with §15.2's digest input is a separate amendment. This
+    amendment's JSON rules govern the CONFIGURATION DOCUMENT and nothing else. Three
+    serializations, three purposes, no unification — and in particular the
+    configuration's tolerance MUST NOT LEAK INTO THE SIGNED-INPUT PATH: JSON permits
+    insignificant whitespace and any member order, AI-05-CJ-1 permits neither, and a
+    serializer that produced the configuration's member order or a pretty-printed
+    variant of it would produce bytes over which a proof means nothing this contract
+    defines. THE SIGNED INPUT IS PRODUCED BY THE AI-05-CJ-1 SERIALIZER AND BY NOTHING
+    ELSE, INCLUDING AND ESPECIALLY NOT BY WHATEVER ROUTINE PARSED THE CONFIGURATION.
+    The configuration value is never part of a signed input: `signed_input` is built
+    from the submitted mapping (§7.3.4), and the configuration is not a record field,
+    is not covered by any signature and is not stored (§7.3.3).
+
+(h) TRUST-DOMAIN INDEPENDENCE IS MUTUAL. §7.3.10 already records that AI-13's
+    designated approval ingress, its anchor and its Ed25519 verification site are NOT
+    repurposed, NOT read and NOT widened by §7.3. §7.3.11 adds the converse: the
+    reader MUST NOT read AI-13's anchor variable, MUST NOT accept an AI-13 approval
+    as a producer proof, and MUST NOT treat a producer proof as an approval. The
+    configuration carries PUBLIC key material only; it never carries, and the reader
+    never accepts, a private signing key, so the deployment holds verification keys
+    and cannot mint the proofs it checks.
+    AN AUTHENTICATED PRODUCER CLAIM IS NOT AN APPROVAL, A PERMISSION, A CAPABILITY
+    OR A GUARD RESULT (§7.3.8). A valid, readable, internally consistent
+    configuration grants nothing to anyone.
+
+(i) §30 step 7b CARRIES THE CROSS-REFERENCE. The step now states which mapping it
+    reads, where from, by which module, and that an invalid configuration or a
+    refused mapping is REJECTED with AUTHENTICATION_KEY_UNAVAILABLE — §7.3.5 V3's
+    existing code. No step is added, removed, renamed or reordered, and §7.3.7's
+    seven-stage table is unchanged.
+
+(j) NEW §31.3 RESOLVES A SCOPE AMBIGUITY IN THE TEST MATRIX. Amendment 5 created
+    §7.3.7's acceptance obligation and gave it no T-numbers, while §31 declares
+    itself "the test matrix" and FROZEN — so a reader could conclude that §7.3.7's
+    list sits outside the matrix or is advisory. §31.3 records that §7.3.7's
+    obligation IS part of the matrix, incorporated BY REFERENCE, with the same layer,
+    the same force and the same "MUST exist before the standard may be reported as
+    holding"; that §31's T-numbering is NOT extended by this amendment and §7.3.7's
+    identifiers govern until one does; that nothing in §31 is removed, merged,
+    renumbered or weakened; and that T35's architecture-boundary row applies to the
+    new module unchanged.
+    §31.3 ALSO DECLARES THE LAYER 0 EXCEPTION THIS MECHANISM REQUIRES, and that
+    exception is TWO IMPORTS IN ONE NAMED MODULE: `os` and `json`, in
+    `plugins/evidence/producer_auth.py`, for the configuration and nothing else. That
+    module may not read a file, call `open()`, walk a path, import `io`, `pathlib`,
+    `shutil`, `tempfile` or any other filesystem root, or reach any configuration
+    source other than the one variable §7.3.11 names. `store.py` remains the only
+    module that touches a filesystem and every other restriction stands. Layer 0 must
+    additionally enforce the FOUR rules §31.3 lists for this module — ONE READER,
+    NO MUTATION, IMMUTABLE STATE and NO CALLER-SELECTED TRUST ROOT — in the shape
+    AI-13 §13.3's boundary already uses for its own domain.
+    THIS AMENDMENT DOES NOT MAKE THAT LAYER 0 CHANGE. `scripts/ci/layer0_policy.py` is
+    NOT edited here. The exception and the four enforcement rules are obligations on
+    the change that IMPLEMENTS producer authentication; until that change lands there
+    is nothing for a widened rule to permit, and the existing rule would refuse the
+    new module. That refusal is the correct and visible behaviour, not a defect to be
+    worked around.
+
+(k) §35.3 AND `## Status` ARE CORRECTED, and the correction is recorded in place.
+    Both carried "AI-05-B = NOT STARTED" and "plugins/evidence/ README.md placeholder
+    only" in the PRESENT TENSE, which had stopped being true when B1 and B2 merged.
+    They now state what is true, and keep the freeze-time values labelled as what
+    they were. The correction distinguishes FOUR states that must not be collapsed:
+    the record model and admission pipeline are BUILT; the producer-authentication
+    mechanism is DEFINED AND NOT BUILT; a production writer / non-test caller is
+    ABSENT; and no Evidence record has been stored.
+    THE CORRECTION DOES NOT WEAKEN AMENDMENT 5's RECORDED DIVERGENCE, which cited
+    §35.3's stale line among its grounds. That record's other two grounds are
+    independent and both still hold — NO CALLER (no production non-test caller of
+    admission exists anywhere) and NO WRITER (AI-15 §17.2b forbids creating one while
+    AI15-OPEN-1 is open). Step 7b is unimplemented AND unreachable, and it is the
+    second fact that carries the argument. Correcting a citation does not move the
+    conclusion it was cited for; this is recorded rather than left to be re-derived.
+
+(l) THE NO-MUTATION RULE WAS NAME-BASED, AND NAME-BASED IT CONTRADICTED THIS
+    AMENDMENT'S OWN TEST MECHANISM. As first written it read: "The variable name
+    appearing outside the reader is itself the finding, because a second module that
+    can NAME it can write it." §31.3's testing clause requires the opposite: a child
+    process can only be given a configuration by a launcher that NAMES THE VARIABLE.
+    The contract therefore PROHIBITED AND REQUIRED THE SAME THING, which is the one
+    state a frozen document must never be in.
+    THE RULE IS NOW SHAPE-BASED, BECAUSE IT HAS TO BE. What is forbidden is WRITING
+    THE RUNNING PROCESS'S ENVIRONMENT; what is permitted is HANDING A VALUE TO A
+    PROCESS THAT HAS NOT STARTED. The static rule distinguishes them by the SHAPE of
+    the use and not by the presence of the name.
+    ONE NARROW HARNESS EXCEPTION IS SPECIFIED, AND IT IS NARROW IN THREE WAYS:
+        one module     tests/evidence/trust_harness.py, the only place outside the
+                       reader where the name may appear
+        one shape      only as a key in the environment mapping handed to a
+                       child-process launch — never an assignment to the running
+                       process's environment and never `os.putenv`
+        one variable   the designated one, and no other configuration source
+    It is NOT an exception for tests in general and NOT one for any production
+    module. A second module naming the variable, or this module naming it in another
+    shape, is the NO MUTATION finding.
+    THE EXCEPTION WAS VERIFIED AGAINST THE EXISTING ARCHITECTURE BEFORE IT WAS
+    WRITTEN, because "subprocess is available in Python" is not a permission:
+        a separate interpreter is ALREADY spawned from this suite —
+          `tests/evidence/test_canonical.py:119-143` runs
+          `subprocess.run([sys.executable, "-c", program], ...)` as the cross-process
+          half of T7
+        no Layer 0 rule constrains `tests/` on this axis: the `subprocess`
+          restrictions in `scripts/ci/layer0_policy.py` are scoped to
+          `plugins/evidence`, `routing/`, `benchmarks/`, `workflows/` and
+          `composition/`, and `tests/` is reached only by `check_layer_markers`,
+          which globs `test_*.py`
+        so a `trust_harness.py` support module is not a test module, needs no layer
+          marker, and adds no path a deployment lacks
+    A FOURTH ENFORCEMENT RULE IS ADDED: IMMUTABLE STATE. §31.3 now requires that the
+    captured mapping and policy are held privately, are never returned as a whole by
+    any public function, are never handed to another module as a structure it could
+    mutate, and are not rebound, replaced, `setattr`-ed or monkeypatched BY ANY CODE IN
+    THIS REPOSITORY — with no public initializer, reset, setter or "load for tests"
+    entry point. The reader answers a PER-TOKEN question and exposes neither the
+    mapping, the policy nor the parsed document. This is what stops a test from passing
+    by REPLACING the state it was supposed to exercise, and what stops repository code
+    from replacing a trust root it is not allowed to write.
+    THE RULE IS A SOURCE-TREE RULE AND NOT A CLAIM OF TAMPER-PROOFNESS. It was
+    corrected to say so, and the correction is recorded in (n).
+    STARTUP ORDER IS NOW STATED. §7.3.11 gained a REQUIREMENT that the implementing
+    change initialize the reader through the Evidence package's own initialization
+    path, and it separates CONFIGURATION SUPPLIED WHEN A PROCESS STARTS from A VARIABLE
+    READ AFTER ARBITRARY APPLICATION CODE HAS RUN. It records what the guarantee does
+    NOT cover — code outside this repository writing the process environment before the
+    first import — as a RESIDUAL RISK on the same footing as §7.3.9's, rather than
+    claiming it closed. THIS CREATES NO CALLER AND NO ENTRY POINT: the import edge is
+    within the Evidence package, between a module and the package that owns it.
+    THIS PARAGRAPH DESCRIBED THAT CLAUSE IN THE PRESENT TENSE, AS THOUGH THE IMPORT
+    EDGE AND THE ORDERING IT BUYS ALREADY EXISTED. THEY DO NOT, AND (m) CORRECTED THE
+    CLAUSE. This paragraph is kept as the record of what this item did, with the
+    correction named rather than restated; THE CLAUSE ITSELF, NOT THIS SUMMARY, IS THE
+    AUTHORITY for what §7.3.11 now says.
+
+(m) §7.3.11's STARTUP-ORDER CLAUSE WAS WRITTEN IN THE PRESENT TENSE ABOUT CODE THAT
+    DOES NOT EXIST, AND IS CORRECTED. The block "WHEN THE READ HAPPENS, AND WHY THAT
+    ORDER IS THE POINT" said that `plugins/evidence/__init__.py` IMPORTS
+    `producer_auth`, and concluded that any process able to call `admit()` HAS
+    NECESSARILY ALREADY initialized the reader. NEITHER IS TRUE OF THE REPOSITORY:
+    `plugins/evidence/producer_auth.py` does not exist and `plugins/evidence/__init__.py`
+    does not import it. A frozen requirement was stated as a fact, which is the same
+    over-claim this contract refuses everywhere else — §34.3 records the mechanism as
+    DEFINED AND NOT BUILT, §7.3.7 records that no acceptance test has been run, and
+    §35.3 records that §30 step 7b is performed by nothing.
+    THE CLAUSE NOW SEPARATES THREE THINGS THAT WERE RUN TOGETHER:
+        THE REQUIREMENT       the implementing change MUST initialize the reader
+                              through the Evidence package's own initialization path,
+                              before either admission entry point is available, with
+                              no lazy path, no first-call initialization and no
+                              admission-time read
+        THE GUARANTEE         once that lands, a process able to call either entry
+                              point will necessarily have initialized the reader, and
+                              the ordering is structural rather than conventional
+        THE CURRENT STATUS    the module does not exist, the import edge does not
+                              exist, and the ordering does not exist at runtime today.
+                              Amendment 6 SPECIFIES the ordering; it does not
+                              establish that it is present, and §7.3.11 MUST NOT be
+                              cited for the proposition that it is
+    The adjacent "what is claimed" and "the contract's guarantee" clauses were
+    corrected on the same footing: each now states a RULE THE CONTRACT IMPOSES and a
+    property §31.3 obliges Layer 0 to check, rather than a description of what the
+    repository does today — which is nothing.
+    WHETHER THE IMPORT EDGE IS THE RIGHT SHAPE IS NOT REOPENED. It remains the
+    requirement, for the reason §7.3.11 gives: it is an edge WITHIN the Evidence
+    package, between a module and the package that owns it, so it creates no caller
+    and no entry point and leaves AI-15 §17.2b untouched.
+    THE TEST-HARNESS CLAUSE IS ALSO SHARPENED, AND THE CHANGE IS A NON-CLAIM RATHER
+    THAN A NEW RULE. §31.3 already recorded that an unrunnable child is NOT_RUN and
+    never a passing authentication test. It now also records that A GREEN CI RUN IS
+    NOT EVIDENCE THAT THE STANDARD HOLDS: the suite exits 0 whether its cases passed
+    or were skipped, so CI success alone MUST NOT be used to claim that AI-15 §15.2
+    STEP 0b is satisfied or that the §7.3 standard has been shown to hold. Because
+    §8.3 condition 11 is discharged by exactly those cases, a skipped case leaves
+    condition 11 UNSATISFIED however green the run is, and a report must carry the
+    number of process-isolated cases that RAN rather than the run's status.
+
+(n) THE IMMUTABLE-STATE RULE WAS STATED AS A PROPERTY OF PYTHON. IT IS A RULE ABOUT
+    THIS REPOSITORY, AND THE SCOPE IS NOW PRECISE. §31.3's IMMUTABLE STATE rule said
+    the captured state is one that "no assignment to, `setattr` on, or monkeypatch of
+    it SUCCEEDS", and (l) summarised it as state that "cannot be rebound, replaced,
+    `setattr`-ed or monkeypatched from outside". BOTH READ AS CLAIMS ABOUT THE
+    LANGUAGE, AND NEITHER IS TRUE: attributes can be rebound, module globals can be
+    reassigned, and an actor inside the process can reach past any arrangement of
+    them. A contract that claims otherwise would be claiming a sandbox it does not
+    have.
+    THE REQUIREMENT IS UNCHANGED AND IS NOW STATED AS WHAT IT IS: the state must be
+    held privately, never returned as a whole, never handed out as a mutable
+    structure, free of any public initializer, reset or setter, and not rebound by any
+    code IN THIS REPOSITORY — and §31.3 obliges Layer 0 to CHECK THOSE SOURCE-TREE
+    RULES. The enforcement is static, over the files this repository contains.
+    THE QUALIFICATION IS RECORDED IN TWO PLACES, BESIDE THE RULES IT BOUNDS:
+        §31.3     the four rules now carry WHAT THESE RULES ARE, AND WHAT THEY ARE
+                  NOT: declared source-tree rules that DETECT the prohibited patterns
+                  within their coverage, and NOT a runtime sandbox and NOT a proof of
+                  immunity.
+        §7.3.11   the same limitation, in the section that requires the immutability:
+                  code able to execute inside the same process can reach in-memory
+                  state no source-tree rule protects, and the section does not
+                  contradict it.
+    THIS ADDS NO ARCHITECTURE AND DESIGNS NOTHING NEW. §7.3.9 ALREADY RECORDS EXACTLY
+    THIS LIMIT as PROCESS CONTROL — "an adversary who controls this process's address
+    space can control the mapping and defeat any in-process check. An in-process
+    library cannot defend its own address space, and this section does not claim to
+    survive such an adversary." The correction ALIGNS the immutability clause with a
+    residual risk the contract has carried since Amendment 5; it does not introduce
+    one.
+    THE QUALIFICATION IS NOT PERMISSION, AND IT RELAXES NOTHING. It bounds WHAT STATIC
+    ENFORCEMENT CAN DELIVER. For normal repository code the requirements are ABSOLUTE:
+    a module that writes the variable, replaces the captured state, hands out the
+    mapping or accepts a caller-selected trust root is a FINDING and MUST NOT be
+    merged. No reader may cite the qualification to argue that such code is tolerable
+    because an adversary with in-process execution could do worse — the defect and the
+    limit are different things, and the limit does not excuse the defect. §31.3 states
+    this in the same clause.
+    ONE RESIDUAL WAS CORRECTED WHILE INSPECTING THIS RECORD. (l)'s own summary still
+    described §7.3.11's startup-order clause in the PRESENT TENSE — that
+    `plugins/evidence/__init__.py` "imports the reader" and that the ordering
+    "is therefore STRUCTURAL" — although (m) had already corrected the clause itself.
+    The summary now states the clause as a REQUIREMENT and names (m); A SUMMARY IN
+    THIS LOG DOES NOT OVERRIDE THE CLAUSE IT SUMMARISES.
+```
+
+```text
+WHAT THIS AMENDMENT DOES NOT DO, stated because each is a thing it could be read as
+doing:
+
+    it does NOT implement the mechanism. It names a source, a format, an encoding, a
+      reader module and a policy selector. NONE OF THEM IS CODE, and no test is added
+      or run.
+    it does NOT write plugins/evidence/producer_auth.py. §7.3.11 names a module that
+      does not exist yet.
+    it does NOT change scripts/ci/layer0_policy.py. §31.3 declares a Layer 0
+      obligation for the implementing change; it does not make the change.
+    it does NOT add a seventh reason code, an outcome member, a §6.5 row, a producer
+      token, an Evidence kind, a family, a producer_type, an identity field, a
+      canonical collection, a digest input or a stored field.
+    it does NOT reword §7.3.1-§7.3.10, §30's other steps, §22.1's outcomes or §31's
+      existing rows. §7.3.2's policies are SELECTED by the new selector and are not
+      redefined.
+    it does NOT authorize a production Evidence writer to be created, merged or run,
+      and does NOT lift AI-15 §17.2b's prohibition.
+    it does NOT make AI-14's STEP 1. It is AI-14's act, on AI-14's contract, under
+      AI-14's amendment rule.
+    it does NOT repurpose AI-13's approval ingress, anchor or verification site, and
+      creates no approval path.
+    it does NOT close AI15-OPEN-1. §15.2 STEP 0b requires a mechanism AND its
+      implementation AND tests showing it holds. Amendment 5 supplied the standard
+      and this amendment supplies the configuration — both are DEFINITION. The
+      implementation and the tests remain outstanding.
+    it does NOT make any §7.3.7 acceptance test pass, and NO TEST NAMED THERE HAS BEEN
+      RUN.
+```
+
+```text
+STATUS DISCIPLINE — WHAT THIS AMENDMENT DOES AND DOES NOT MOVE. Stated as explicit
+non-movements, because a reader reaching for a status line is exactly the reader most
+likely to over-read it:
+
+    AI15-OPEN-1             REMAINS OPEN. The mechanism is now fully specified and
+                            entirely unimplemented.
+    AI-15 STEP 0b           REMAINS UNSATISFIED, for the same reason. A configuration
+                            is not an implementation and not a test.
+    production writer       NOT AUTHORIZED. Unchanged from Amendment 5.
+    AI-14 STEP 1            NOT AMENDED, NOT MADE, NOT PRE-EMPTED.
+    B5                      REMAINS BLOCKED and is NOT classified CONNECTED.
+    AI15-OPEN-2             REMAINS CLOSED under Amendment 4 (READING A), not
+                            reopened and not restated in weaker words.
+    AI15-OPEN-3,            REMAIN INDEPENDENT AND UNSOLVED. This amendment does not
+      AI15-OPEN-4,          touch DecisionRecord.evidence_ref (AI-04's), a
+      AI-11 §21.1 OPEN-1    workflow-driven step's routing input (AI-13/AI-14's), or
+                            WHICH PRODUCERS EXIST (AI-05's own).
+```
+
+```text
+SECURITY IMPACT
+
+    NO NEW RUNTIME CONTROL, AND NO ATTACK IS DEFEATED BY THIS AMENDMENT — stated
+    precisely, because "the trust configuration is frozen" could be read as "AI-05
+    now reads a trust configuration", which would be false. Nothing reads anything:
+    the module §7.3.11 names does not exist.
+
+    WHAT THIS AMENDMENT DOES
+        it closes the last gap that made §30 step 7b unimplementable without an
+          invented trust source, by fixing the source, the format, the key encoding,
+          the reader module and the policy selector
+        it makes the trust root UNREACHABLE FROM A CALLER by putting it in the
+          environment, read by one named module, with no parameter anywhere that
+          accepts a key, a mapping, an anchor, a verifier, a configuration object or
+          a configuration path
+        it fixes the failure direction: every configuration defect fails CLOSED, as
+          one existing code, for every submission equally
+        it fixes the trust root for the lifetime of a process, so a revocation
+          actually takes effect when the deployment restarts and a withdrawn key is
+          not silently kept in service by a fallback — and so no read can occur
+          between selecting a key and applying the collision rule
+        it puts the variable beyond the reach of the code that reads it: nothing in
+          the repository writes the running process's environment, and the reader is
+          not reloaded to re-read it
+        it makes the captured state itself unreachable TO REPOSITORY CODE: held
+          privately, never returned as a whole, never handed out as a structure
+          another module could mutate, and not rebound by any module here — so a test
+          cannot pass by REPLACING the state it was meant to exercise, and repository
+          code cannot replace a trust root it may not write. THIS IS A SOURCE-TREE
+          RULE AND NOT A RUNTIME SANDBOX: §31.3 and §7.3.11 both record that code able
+          to execute inside the same process can reach in-memory state no static rule
+          protects, which §7.3.9 already carries as PROCESS CONTROL
+        it keeps the configuration's JSON tolerance out of the signed-input path,
+          where it would silently change what a proof means
+
+    WHAT IT DOES NOT ADD
+        no authentication mechanism, no signature, no key, no credential path and no
+          new admission check
+        no claim that any record, producer claim or submitter is trusted
+        no private key material anywhere: the configuration carries PUBLIC keys, and
+          the deployment cannot mint what it verifies
+        no change to what AI-05 admits or rejects, and no runtime behaviour at all —
+          this amendment is documentation
+        no new authority and no new trust domain that overlaps AI-13's
+```
+
+```text
+AUTHORITY IMPACT
+
+    None. Nothing here grants a permission, changes AI-14 §4.1's authority matrix,
+    introduces an authorizing subject, or moves any responsibility into AI-05. Guard
+    remains the only component with an AUTHORIZES entry. An authenticated producer
+    claim is not an approval, a permission, a capability or a Guard result (§7.3.8),
+    and a valid configuration grants nothing to anyone. No producer token, registry
+    row or §6.5 constraint is added, removed or relaxed.
+```
+
+```text
+CONTRACT IMPACT
+    ADDED        §7.3.11 (new), §31.3 (new), this amendment record
+    AMENDED      §30 step 7b — a cross-reference to §7.3.11 and the failure code,
+                 added to the existing step; no step added, removed or reordered
+                 §35.3 and `## Status` — corrected present-tense status claims, with
+                 the freeze-time values kept and labelled
+    UNCHANGED    §6.5, §6.6, §7.1, §7.2, §7.3.1-§7.3.10, §8-§29, §30's other steps,
+                 §31's existing rows and notes, §32, §33, §34.1, §34.2, §35.1, §35.2
+    NO CHANGE TO the record schema, the canonical collections, the digest inputs, the
+                 stored form, the outcome vocabulary, the registry, the reason-code
+                 set, or any authority relation
+```
+
+**AI-05 remains INCOMPLETE.** This amendment specifies a mechanism and does not
+implement it. It closes nothing: not AI-11 §21.1's OPEN-1, not AI15-OPEN-1, not
+AI15-OPEN-3, not AI15-OPEN-4, and not §35.1's deferrals. No test named in §7.3.7 has
+been run, and no production Evidence writer is authorized.
+
+---
+
 ## 35. Open Future Work
 
 DEFERRED. Declared so that absence is auditable rather than inferred.
@@ -5234,12 +6442,70 @@ F-12  durability
       not durable
 ```
 
-### 35.3 Not started
+### 35.3 Not started, and not implemented — corrected by Amendment 6
 
 ```text
-AI-05-B   implementation               NOT STARTED
-plugins/evidence/                      README.md placeholder only
-any Evidence record                    none exists
+CORRECTED. This subsection previously read, in the PRESENT TENSE:
+
+    AI-05-B   implementation               NOT STARTED
+    plugins/evidence/                      README.md placeholder only
+    any Evidence record                    none exists
+
+TWO OF THE THREE LINES HAD STOPPED BEING TRUE. They are corrected here rather than
+argued with (AI-14 §2: a recorded fact that stops being true "is corrected by
+updating the record, never by arguing with it"). The third line is STILL TRUE, and
+nothing in this correction claims otherwise.
+```
+
+```text
+THE FREEZE-TIME RECORD, KEPT AS WHAT IT WAS
+    main at freeze = b76dd681ee3f5422d87d0cae5e2a0a181353512d
+    At that commit `plugins/evidence/` held a README placeholder and nothing else,
+    and no Evidence record existed anywhere. That was the state this document froze,
+    and the two lines above were true of it.
+```
+
+```text
+WHAT IS TRUE NOW, STATED SO NO READER HAS TO RECONCILE TWO DOCUMENTS
+    AI-05-B1              COMPLETE / MERGED   offline logical core
+    AI-05-B2-P1           COMPLETE / MERGED   §18.1 workspace agreement
+    AI-05-B2-P2           COMPLETE / MERGED   §17 stored-form round-trip
+    AI-05-B2-P3           COMPLETE / MERGED   admission pipeline, filesystem Store,
+                                               §31 Layer 0 evidence check
+    plugins/evidence/     ELEVEN MODULES      not a placeholder
+    §30 steps 1-14        IMPLEMENTED         step 7 included, published by
+                                               Amendment 3 (§14.10)
+    §30 step 7b           NOT IMPLEMENTED     §7.3 DEFINES the standard (Amendment 5)
+                                               and §7.3.11 fixes its configuration
+                                               (Amendment 6); NO CODE PERFORMS IT
+    §7.3 acceptance tests NOT RUN             no case named in §7.3.7 has been run
+    a production writer   NONE                no non-test caller of `admit()` or
+                                               `admit_to_store()` exists anywhere
+    any Evidence record   none exists         `evidence/runs/` and `evidence/promoted/`
+                                               hold no record, only `.gitkeep`
+```
+
+```text
+FROZEN: THESE ARE FOUR DIFFERENT STATES AND MUST NOT BE COLLAPSED INTO ONE.
+            the record model and the admission pipeline   BUILT
+            the producer-authentication mechanism         DEFINED, NOT BUILT
+            a production writer / non-test caller         ABSENT
+            a stored Evidence record                      NONE
+        A reader who collapses them reports either more or less than is true. A
+        contract that DEFINES a mechanism has not IMPLEMENTED it; and a package that
+        implements every admission step except 7b is not "not started". Both errors
+        are live ones — the first over-reports a control, the second hides work that
+        has been done and reviewed.
+FROZEN: THE CORRECTION DOES NOT WEAKEN AMENDMENT 5's RECORDED DIVERGENCE, and this
+        is recorded rather than left to be re-derived. That record argued the
+        divergence was consequence-free partly on the ground that "AI-05-B is NOT
+        STARTED (§35.3)". Its OTHER TWO grounds are independent of that line and both
+        still hold: NO CALLER — no production non-test caller of admission exists
+        anywhere in the repository — and NO WRITER — AI-15 §17.2b forbids creating a
+        production call site that can execute admission and persist a record while
+        AI15-OPEN-1 is open. Step 7b is unimplemented AND unreachable, and it is the
+        second fact that carries the argument. Correcting a citation does not move
+        the conclusion it was cited for.
 ```
 
 ---
@@ -5248,10 +6514,19 @@ any Evidence record                    none exists
 
 ```text
 AI-05-A  = FROZEN          this document
-AI-05-B  = NOT STARTED
-Implementation = NOT STARTED
+AI-05-B  = PARTIAL         B1 and B2 are COMPLETE / MERGED; §30 steps 1-14 are
+                           implemented; §30 step 7b is NOT implemented and no
+                           production caller or writer exists
 
 main at freeze = b76dd681ee3f5422d87d0cae5e2a0a181353512d
+```
+
+```text
+CORRECTED BY AMENDMENT 6. The line above replaced "AI-05-B = NOT STARTED" and the
+line "Implementation = NOT STARTED", which were true when this document froze and
+false from the moment B1 and B2 merged. The freeze-time value of `main` is kept
+because it is the value this document froze at, and it is labelled as such rather
+than presented as current.
 ```
 
 ```text
@@ -5260,5 +6535,9 @@ SecurityLab            = UNCHANGED
 Router (AI-07)         = DEFERRED / UNIMPLEMENTED
 ```
 
-> **AI-05 has not been implemented.** This document freezes a contract. No record
-> exists, no store exists, and no component has been authorized by any of this.
+> **AI-05 is not complete.** This document freezes a contract, and the contract is
+> now frozen in part for a mechanism no code performs: §7.3's producer
+> authentication is DEFINED (Amendment 5) and its configuration is FROZEN
+> (Amendment 6), but no component implements it, no production caller or writer
+> exists, and no Evidence record has been written. No record exists, and no
+> component has been authorized by any of this.
