@@ -87,6 +87,35 @@ def _render_string(value: str) -> str:
     return "".join(out)
 
 
+def _decimal_text(value: int) -> str:
+    """Rule 7's decimal text, without ever calling `str()` on the whole int.
+
+    `str(int)` and `int(str)` are limited by CPython's
+    `sys.get_int_max_str_digits()` (4300 by default), which raises `ValueError`
+    for a longer number. §7.3.6 rule 7 requires INTEGERS as plain decimal with
+    ARBITRARY precision, so a legally supplied integer must not become an
+    unserializable value merely because it is long — and the global limit must
+    not be changed to accommodate it (that is an interpreter-wide setting, not
+    this profile's to move).
+
+    The digits are therefore extracted in base 10**9 chunks: every `str()` and
+    `%d` below is applied to an int smaller than 10**9, which is far under any
+    limit, and the huge value itself is only ever the operand of `divmod`.
+    """
+    if value == 0:
+        return "0"
+    negative = value < 0
+    remaining = -value if negative else value
+    chunks: list[int] = []
+    while remaining:
+        remaining, chunk = divmod(remaining, 10**9)
+        chunks.append(chunk)
+    text = [str(chunks[-1])]  # the most significant chunk: never zero-padded
+    text.extend("%09d" % chunk for chunk in reversed(chunks[:-1]))
+    digits = "".join(text)
+    return "-" + digits if negative else digits
+
+
 def _ordering_key(key: str) -> bytes:
     """Rule 2 — RFC 8785's key ordering, as bytes we can compare lexicographically.
 
@@ -114,9 +143,10 @@ def _render(value: Any) -> str:
     if isinstance(value, str):
         return _render_string(value)
     if isinstance(value, int):
-        # Rule 7: plain decimal, arbitrary precision. Python's `str(int)` is
-        # exactly that — no exponent, no decimal point, no leading zeros.
-        return str(value)
+        # Rule 7: plain decimal, arbitrary precision — no exponent, no decimal
+        # point, no leading zeros, and no ceiling. `_decimal_text` produces it
+        # without `str()` on the whole value, which CPython caps at 4300 digits.
+        return _decimal_text(value)
     if isinstance(value, Mapping):
         return _render_object(value)
     if isinstance(value, (list, tuple)):

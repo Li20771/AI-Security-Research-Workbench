@@ -196,7 +196,16 @@ def _build_state(supplied: object) -> _Designated | _Invalid:
             object_pairs_hook=_pairs_to_object,
             parse_constant=_reject_constant,
         )
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, RecursionError):
+        # `RecursionError` is here because a deeply nested document makes the
+        # parser recurse past the interpreter's limit, and the failure must be
+        # the SAME state as any other malformed configuration. Letting it escape
+        # would abort this module's initialization, and since the package
+        # imports the reader (§7.3.11's STARTUP EDGE) it would take the whole
+        # package's import with it — a deployment misconfiguration becoming an
+        # ImportError instead of the REJECTED outcome §7.3.8 defines. Nothing is
+        # partially accepted here: the only thing this handler does is return
+        # the same `_INVALID` every other refusal returns.
         return _INVALID
     if not isinstance(document, dict) or set(document.keys()) != _MEMBERS:
         return _INVALID

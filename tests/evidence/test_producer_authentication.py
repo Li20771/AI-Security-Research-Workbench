@@ -1719,3 +1719,99 @@ class TestObligation22Cj1Vectors:
             "VECTOR 4 CASE B: V5's reconstruction differs at offset 0, so the "
             f"submission is refused there (L1440-1443); got {reason_of(result)}"
         )
+
+
+class TestCorrectivePatchRegressions:
+    """Two regressions found by architecture review of PR #87.
+
+    Neither is one of §7.3.7's 22 obligations. They are defects in THIS change's
+    own implementation of §7.3.6 rule 7 and §7.3.11's fail-closed startup, and
+    they are kept beside the obligations so the same executions cover them.
+    """
+
+    def test_huge_integers_serialize_to_exact_decimal_bytes(self):
+        """§7.3.6 rule 7: integers are plain decimal with ARBITRARY precision.
+
+        CPython caps `str(int)` at `sys.get_int_max_str_digits()` (4300 by
+        default) and raises `ValueError` past it, so a legally supplied integer
+        could have become an unserializable value. The expected bytes are built
+        from the number's STRUCTURE and never from `str(huge)`, which would hit
+        the same cap in the test.
+        """
+        import sys
+
+        from plugins.evidence.signed_input import (
+            canonical_serialization,
+            signed_input,
+        )
+
+        exponent = 5000
+        huge = 10**exponent + 123
+        expected_digits = "1" + "0" * (exponent - 3) + "123"
+        assert len(expected_digits) == exponent + 1
+        limit = sys.get_int_max_str_digits()
+        if limit:
+            assert len(expected_digits) > limit, (
+                "this regression is about integers past the interpreter's "
+                f"decimal-conversion limit; {len(expected_digits)} digits does "
+                f"not exceed {limit}"
+            )
+
+        # Small values first, including a base-10**9 chunk boundary.
+        assert canonical_serialization(0) == b"0"
+        assert canonical_serialization(7) == b"7"
+        assert canonical_serialization(-7) == b"-7"
+        assert canonical_serialization(10**9) == b"1000000000"
+        assert canonical_serialization(10**9 + 1) == b"1000000001"
+
+        assert canonical_serialization(huge) == expected_digits.encode("ascii")
+        assert canonical_serialization(-huge) == (
+            "-" + expected_digits
+        ).encode("ascii")
+
+        mapping = {"n": huge}
+        expected_object = b'{"n":' + expected_digits.encode("ascii") + b"}"
+        assert canonical_serialization(mapping) == expected_object
+
+        prefix = bytes.fromhex(VECTOR_PREFIX_HEX)
+        assert signed_input(mapping) == prefix + expected_object, (
+            "the signed input is the fixed domain-separated prefix followed by "
+            "exactly those canonical bytes (§7.3.4)"
+        )
+
+    def test_deeply_nested_configuration_fails_closed(self, monkeypatch):
+        """§7.3.11: a configuration the parser cannot read is INVALID, not fatal.
+
+        The reader must not fail to import: the package imports it, so an
+        escaping `RecursionError` would turn a deployment misconfiguration into
+        an ImportError instead of the REJECTED outcome §7.3.8 defines.
+
+        THE TRIGGER IS A CONTROLLED DOUBLE, not a deep document. Measured on
+        this interpreter, `json.loads` of `"[" * 1100 + "]" * 1100` does NOT
+        raise even though the Python recursion limit is 1000: the C scanner
+        recurses on a SEPARATE C-stack budget that `sys.setrecursionlimit()`
+        does not expose, so the depth that triggers it is not derivable from
+        anything the test can query. A document-based trigger would therefore be
+        environment-dependent — and a case that "passed" because the parse
+        merely returned a non-object would be testing nothing. The double below
+        makes the parser raise exactly the exception this regression is about,
+        deterministically, while leaving `producer_auth`'s own handler, the real
+        `json` module and the process's trust state untouched.
+        """
+        from plugins.evidence import producer_auth
+
+        class _RecursingParser:
+            """Stands in for `json` ONLY in producer_auth's namespace."""
+
+            @staticmethod
+            def loads(*args, **kwargs):
+                raise RecursionError("maximum recursion depth exceeded")
+
+        monkeypatch.setattr(producer_auth, "json", _RecursingParser)
+
+        state = producer_auth._build_state('{"collision_policy": "A"}')
+        assert state is producer_auth._INVALID, (
+            "a configuration whose parse overruns the recursion limit must leave "
+            "the reader in the same unusable state every other malformed "
+            f"configuration leaves it in; got {state!r}"
+        )

@@ -130,6 +130,8 @@ jobs:
             "$A::TestObligation19NoCallerSelectedTrustRoot::test_obligation_19_the_rule_can_identify_its_target_violation" \
             "$A::TestObligation22Cj1Vectors::test_obligation_22a_vector_1_bytes" \
             "$A::TestObligation22Cj1Vectors::test_obligation_22b_vector_2_non_ascii" \
+            "$A::TestCorrectivePatchRegressions::test_huge_integers_serialize_to_exact_decimal_bytes" \
+            "$A::TestCorrectivePatchRegressions::test_deeply_nested_configuration_fails_closed" \
             -q --tb=long --junitxml="$RUNNER_TEMP/ai05-acceptance/G1-regression.xml"
 
           python tests/evidence/trust_harness.py absent -- python -m pytest \
