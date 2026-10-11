@@ -788,17 +788,34 @@ FROZEN: FAIL CLOSED. A deployment with no designated mapping authenticates
 ```
 
 ```text
-FROZEN: ONE KEY PER PRODUCER TOKEN. Each producer token that can be authenticated
-        MUST have its own private signing key, and the corresponding public key is
+FROZEN: ONE KEY PER RECOGNIZED PRODUCER TOKEN, AND NO SHARING WITH ANYTHING ELSE.
+        Each producer token §6.5 RECOGNIZES MUST have its own private signing key.
+        It MUST NOT share that key with another recognized token, AND IT MUST NOT
+        SHARE IT WITH AN UNREGISTERED TOKEN EITHER. The corresponding public key is
         what the mapping holds for that token.
-FROZEN: A SHARED PRIVATE SIGNING KEY ACROSS TWO OR MORE PRODUCER TOKENS IS
-        NON-COMPLIANT, AND A DEPLOYMENT CONFIGURED THAT WAY DOES NOT SATISFY THIS
-        SECTION. The reason is mechanical rather than stylistic: verification
+        THE SCOPE IS "RECOGNIZED", AND IT IS STATED HERE RATHER THAN LEFT TO BE
+        INFERRED FROM A LATER CLAUSE. An earlier revision said "each producer token
+        that CAN BE AUTHENTICATED", which reaches every token holding a mapping
+        entry — and an unregistered token CAN hold one and CAN be authenticated
+        under POLICY A. THAT FORM IS WITHDRAWN: it forbade a configuration POLICY A
+        permits, and it left the exception to be reconstructed from below.
+FROZEN: A SHARED PRIVATE SIGNING KEY IS NON-COMPLIANT WHEN A RECOGNIZED TOKEN IS
+        ONE OF THE SHARERS, AND A DEPLOYMENT CONFIGURED THAT WAY DOES NOT SATISFY
+        THIS SECTION. The reason is mechanical rather than stylistic: verification
         selects the key BY THE CLAIMED TOKEN, so two tokens holding one key are
         indistinguishable to the verifier, and either holder could sign a claim
         naming the other that verifies. That is precisely the forgery §9.2 names,
         and a shared key would leave §6.5's string comparison as the only thing
         refusing it — which §7.2 already records is not an authentication check.
+        THE FORGERY NEEDS A RECOGNIZED NAME TO LAND ON, and that is why the case
+        below is different rather than an oversight. Two UNREGISTERED tokens sharing
+        a key cannot produce an ACCEPTED record at all, because §6.6 refuses both of
+        them whatever their proofs say; there is nothing for the sharing to reach.
+        POLICY A PERMITS EXACTLY THAT CONFIGURATION AND NO OTHER. An earlier
+        revision said "a shared private signing key across two or more producer
+        tokens IS NON-COMPLIANT" without qualification, which forbade it; THAT FORM
+        IS WITHDRAWN. A deployment is NON-COMPLIANT the moment a RECOGNIZED token's
+        key is shared with any other token at all.
 FROZEN: NO RECOGNIZED PRODUCER TOKEN MAY SHARE ITS PUBLIC KEY WITH ANY OTHER TOKEN
         IN THE MAPPING — REGISTERED OR NOT. Two recognized tokens MUST NOT hold the
         same Ed25519 PUBLIC-KEY BYTES, and A RECOGNIZED TOKEN MUST NOT HOLD THE SAME
@@ -4837,10 +4854,19 @@ recorded rather than relied on, exactly as Amendment 4 recorded the same about �
     execution order this contract does not have and contradicted §7.3.7 and §30
     step 7b. §7.3.2 records the withdrawal in place.
 
-(c) §7.3.2 makes ONE KEY PER PRODUCER TOKEN mandatory and records that a SHARED
-    private signing key across two or more tokens is NON-COMPLIANT. It then states
-    the ENFORCEABLE HALF of that rule: NO RECOGNIZED PRODUCER TOKEN MAY SHARE ITS
-    PUBLIC KEY WITH ANY OTHER TOKEN IN THE MAPPING, REGISTERED OR NOT. The contract
+(c) §7.3.2 makes ONE KEY PER RECOGNIZED PRODUCER TOKEN mandatory — no recognized
+    token may share its private signing key with another recognized token OR with an
+    unregistered one — and records that a SHARED PRIVATE SIGNING KEY IS NON-COMPLIANT
+    WHEN A RECOGNIZED TOKEN IS ONE OF THE SHARERS. Two UNREGISTERED tokens sharing a
+    key are NOT that case: neither can produce an ACCEPTED record, because §6.6
+    refuses both, so POLICY A permits that configuration AND ONLY IT. The earlier
+    unqualified forms — "each producer token that can be authenticated MUST have its
+    own private signing key" and "a shared private signing key across two or more
+    producer tokens is NON-COMPLIANT" — ARE WITHDRAWN, because each forbade a
+    configuration POLICY A permits and left the exception to be inferred.
+    It then states the ENFORCEABLE HALF of the rule: NO RECOGNIZED PRODUCER TOKEN
+    MAY SHARE ITS PUBLIC KEY WITH ANY OTHER TOKEN IN THE MAPPING, REGISTERED OR NOT.
+    The contract
     never sees a private key, but it does see the public keys the mapping holds, and
     one public key under two tokens IS the shared-key defect in terms a reader can
     check. A mapping that violates THAT RULE FAILS CLOSED: the designated READER
