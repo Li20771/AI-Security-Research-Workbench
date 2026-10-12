@@ -1,7 +1,8 @@
 # AI-14 — Long-term AI Workbench — Execution Plan
 
 > Status: **FROZEN** (AI-14-A, 2026-10-04 — frozen by the merge of PR #72); **AMENDED
-> ONCE** (§25, 2026-10-04)
+> THREE TIMES** (§25 — Amendment 1, 2026-10-04; Amendment 2, 2026-10-11; Amendment 3,
+> 2026-10-12)
 > Phase: AI-14 — Long-term AI Workbench
 > Sub-phase: **AI-14-A — Final Architecture / Long-term Workbench Freeze**
 > Prerequisite: AI-13 — COMPLETE / MERGED / CLOSED, merge commit
@@ -24,7 +25,8 @@ AI-14-A wrote NO runtime implementation and changed NO runtime behaviour. It cor
 project's status record, inventoried what the repository actually contains, and froze the
 architecture the later sub-phases implement against.
 
-This document has been amended ONCE since its freeze. The amendment is logged in §25.
+This document has been amended THREE TIMES since its freeze. The amendments are logged
+in §25.
 ```
 
 ---
@@ -1788,11 +1790,17 @@ AND IT DOES NOT CLOSE THE B3 OPEN ITEM
 ```text
 AMENDMENT 2 — 2026-10-11 — B5 IS AUTHORIZED. THE CLASSIFICATION DOES NOT MOVE.
 
-NOT YET IN FORCE ON `main`. This amendment is PROPOSED in an OPEN pull request, and
-becomes IN FORCE on THAT PULL REQUEST'S MERGE and not before. The merge IS the
-approval, and the text below is the final text. UNTIL THEN `main` still refuses the
-`plugins.evidence` import from `composition/`, and every status line about this
-amendment MUST say so.
+MERGED AND IN FORCE ON `main`. PR #90 merged as
+`a98e389b91ee10858abc67e7c66509cd12fae9dc`. UNDER THE SELF-EXECUTING RULE STATED WHEN
+THIS AMENDMENT WAS PROPOSED, THAT MERGE WAS THE APPROVAL, and Amendment 2 took effect AT
+THAT MERGE and not before. BEFORE THE MERGE, `main` still refused the `plugins.evidence`
+import from `composition/`, AND THE PRE-MERGE REQUIREMENT FOR STATUS LINES TO REPORT
+THAT CONDITION ENDED AT THE MERGE. The text below is the final text of Amendment 2.
+
+^ THIS PREAMBLE IS CORRECTED BY AMENDMENT 3 (§25), which states what is true now and
+keeps the proposal-time position as what it was. It says the amendment is IN FORCE; IT
+DOES NOT SAY THE EDGE IS CONNECTED. Authorizing an edge is not connecting one, and B5
+remains BLOCKED / NOT CONNECTED below.
 
 AUTHORIZATION ONLY. This amendment changes the RULES that stood in front of the
 composition -> Evidence edge. It connects nothing, classifies nothing and writes no
@@ -2005,6 +2013,98 @@ HERE THAT EVERY ENUMERATED STEP 1 REQUIREMENT HAS BEEN DISCHARGED.
     weaken a REAL rule in the name of an ABSENT one.
 
     THE DISCREPANCY IS THEREFORE OPEN AND RECORDED, not silently represented as done.
+```
+
+```text
+AMENDMENT 3 — 2026-10-12 — AMENDMENT 2's PROPOSAL-TIME PREAMBLE IS CORRECTED.
+
+IN FORCE on the merge of the change that carries it. The merge IS the approval, and the
+text below is the final text.
+
+THIS AMENDMENT CORRECTS STATUS RECORDS AND ONE LAPSED TIME CONDITION. IT CHANGES NO
+ARCHITECTURAL CHOICE, NO CLASSIFICATION AND NO AUTHORITY, and it is not a runtime or a
+permission change of any kind.
+
+CHANGED CLAUSES
+    the document header      the amendment count — "AMENDED ONCE" -> "AMENDED THREE
+                             TIMES", naming Amendment 1 (2026-10-04), Amendment 2
+                             (2026-10-11) and Amendment 3 (2026-10-12)
+    the freeze status block  "This document has been amended ONCE since its freeze. The
+                             amendment is logged in §25." -> the same sentence with the
+                             count corrected to three and "amendments" in the plural
+    §25 Amendment 2          the proposal-time preamble, corrected to the post-merge
+                             record; the correction is attributed in place to this
+                             amendment rather than silently rewritten
+    this record              APPENDED
+
+WHY
+    PR #90 MERGED as a98e389b91ee10858abc67e7c66509cd12fae9dc. Amendment 2's preamble
+    stated a SELF-EXECUTING rule — the merge of the pull request carrying the amendment
+    IS the approval, and the amendment takes effect at that merge — AND THAT RULE HAS
+    NOW OPERATED. What remained was a preamble still written in the proposal tense: it
+    opened "NOT YET IN FORCE ON `main`" and closed by requiring every status line about
+    the amendment to say so. THE FIRST STATEMENT IS NOW FALSE, and the second's
+    condition has passed.
+    PR #91 REPORTED THIS AND DELIBERATELY DID NOT FIX IT, on the ground that the preamble
+    is text inside a frozen document and §24 forbids deviating from this document
+    without amending it first. THIS AMENDMENT IS THAT AMENDMENT, made under §24 by
+    AI-14, the owner of this document.
+
+WHAT THIS CORRECTION DOES NOT DO, AND IT MATTERS MORE THAN WHAT IT DOES
+
+    IT DOES NOT CLAIM THE AMENDMENT WAS IN FORCE EARLIER THAN IT WAS. The pre-merge
+    position is RETAINED as what it was: `main` refused the `plugins.evidence` import
+    from `composition/` until the merge, and status lines were required to report that
+    condition. What is corrected is that this is NO LONGER THE CURRENT STATE.
+
+    IT DOES NOT TURN AUTHORIZATION INTO CONNECTION. Amendment 2 authorized an edge; it
+    did not connect one. B5 REMAINS BLOCKED AND NOT CONNECTED, NO PRODUCTION CALLER OF
+    `admit` OR `admit_to_store` EXISTS, and the §5.1 and Appendix A classifications
+    stand exactly as Amendment 2 left them. NOTHING HERE MAY BE READ AS MOVING A
+    CLASSIFICATION OR AS CLAIMING A WRITER.
+
+    IT DOES NOT DISCHARGE STEP 1. AI-14 STEP 1 REMAINS NOT FULLY DISCHARGED: one clause
+    AI-15 §15.2 enumerates names a rule this document does not contain, and that remains
+    an OPEN DISCREPANCY whose disposition belongs to the AI-15 OWNER and is UNDECIDED.
+    Amendment 2 records it; this amendment neither restates nor resolves it.
+
+    IT DOES NOT TOUCH THE C-1 RECORDS OR ANY OTHER KNOWN STALE FACT that Amendment 2
+    reported and left alone, and it does not reopen the §3.4 / §7.2 / §7.4 clauses that
+    cited a gate which has since been satisfied.
+
+SECURITY IMPACT
+    NONE. No runtime code, no runtime behaviour, no control and no check is added,
+    removed or changed. No new attack surface, no new trust boundary and no change to an
+    existing one. What changed is text in two status records and one preamble.
+
+AUTHORITY IMPACT
+    NONE. Nothing here grants a permission, moves a responsibility, or changes §4's
+    authority matrix or its ten rules. Guard remains the only AUTHORIZES entry, no layer
+    gains or loses a power, and the composition's authority is unchanged.
+
+CONTRACT IMPACT
+    STATUS RECORDS AND ONE LAPSED TIME CONDITION ONLY. §24's procedure is UNCHANGED and
+    is not restated in weaker words — this amendment was made BY it. No normative
+    architectural choice in §0-§24 is altered and no clause of §0-§24 is reworded.
+
+THIS AMENDMENT DOES NOT CHANGE
+    §5.1's classifications, including composition -> Evidence   IMPLEMENTED BUT NOT
+                                                               CONNECTED, unchanged
+    §22.1 B5                                                    BLOCKED / NOT STARTED,
+                                                               unchanged
+    Appendix A                                                  every row unchanged
+    §4's authority matrix and the ten rules                     unchanged
+    the component list (§3) and the data and trust flow (§6)    unchanged
+    §17's plugin / core boundary                                unchanged
+    the dependency decisions (§20) and the non-goals (§23)      unchanged
+    which sub-phase owns which semantics                        unchanged
+    §24's amendment procedure                                   unchanged
+
+AND IT DOES NOT AMEND AI-15, AI-05, AI-11 OR ANY OTHER PHASE
+    The AI-15 contract is NOT touched: AI-14 does not own it. AI-15's owner records the
+    disposition of the STEP 1 rule-reference discrepancy, and the closure of any AI-15
+    item, under AI-15's OWN amendment rule. This amendment makes no part of that
+    decision and speaks for no other phase.
 ```
 
 ---
