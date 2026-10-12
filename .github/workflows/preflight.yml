@@ -154,6 +154,7 @@ jobs:
             "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18q_an_unaliased_dotted_import_resolves_to_the_entry_point[unaliased-dotted-package]" \
             "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18q_an_unaliased_dotted_import_resolves_to_the_entry_point[unaliased-dotted-submodule]" \
             "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18r_a_resolved_entry_alias_is_a_partial_target" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18s_one_observed_plus_one_unresolved_is_two_candidates" \
             "$A::TestObligation19NoCallerSelectedTrustRoot::test_obligation_19_no_violation_is_reported" \
             "$A::TestObligation19NoCallerSelectedTrustRoot::test_obligation_19_the_rule_can_identify_its_target_violation" \
             "$A::TestObligation22Cj1Vectors::test_obligation_22a_vector_1_bytes" \

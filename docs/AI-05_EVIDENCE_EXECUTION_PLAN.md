@@ -7487,6 +7487,14 @@ and 8 recorded about §7 and §30.
         18m  the CONTROL that keeps 18l from meaning "block every getattr": a
              resolvable attribute of the package that is NOT an entry point must
              NOT be reported
+        18n  the single canonical intra-package edge is still excused
+        18o  a SECOND call in the same `admit_to_store` scope is NOT excused
+        18p  a DIFFERENT form sharing the exception's key is NOT excused
+        18q  (TWO node ids) an unaliased dotted import resolves to the canonical
+             entry point, and the dotted EXPANSION does not double
+        18r  a RESOLVED ENTRY ALIAS as a `partial` target fails closed
+        18s  ONE observed PLUS ONE unresolved candidate is TWO candidates: the
+             exception makes ONE decision ACROSS BOTH LISTS, so neither is excused
 
     ^ 18i, 18j, 18k, 18l AND 18m ANSWER REVIEW FINDINGS, AND EACH CLOSES A
     DIFFERENT HOLE.
@@ -7523,18 +7531,18 @@ and 8 recorded about §7 and §30.
         MATRIX INVOCATIONS      the number of node-id references in
           `preflight.yml`, which is the number of times pytest is asked to run a
           case across the isolated configurations
-                                    46 -> 74   (+28)
+                                    46 -> 75   (+29)
 
         UNIQUE NODE IDS         the same references AFTER DE-DUPLICATION. One node
           id, `test_obligation_06c_reader_is_consistent`, is invoked under BOTH
           `collision_unregistered` and `collision_unregistered_b` — §7.3.2's two
           policies for the one case they differ on — so it is two invocations and
           ONE node id
-                                    45 -> 73   (+28)
+                                    45 -> 74   (+29)
 
         TEST FUNCTION DEFINITIONS  `def test_...` in the acceptance module. A
           parametrized test is ONE definition and MANY node ids
-                                    45 -> 61   (+16)
+                                    45 -> 62   (+17)
 
     THE THREE DELTAS DIFFER ON PURPOSE. `18g`, `18i`, `18l` and `18q` contribute
     node ids from four definitions, and one node id is counted twice above. An

@@ -951,18 +951,28 @@ def findings(
             for index, call in enumerate(unresolved)
             if (call.path, call.scope, call.entrypoint) == INTRA_PACKAGE_EDGE
         ]
-        if len(observed_hits) == 1:
-            excused_observed = {observed_hits[0]}
-        if len(unresolved_hits) == 1:
-            excused_unresolved = {unresolved_hits[0]}
-        for side, hits in (("observed", observed_hits), ("unresolved", unresolved_hits)):
-            if len(hits) > 1:
-                problems.append(
-                    f"INTRA-PACKAGE EXCEPTION IS AMBIGUOUS: {len(hits)} {side} entries "
-                    f"match the ONE excluded internal call site {INTRA_PACKAGE_EDGE}. "
-                    f"The exception excuses AT MOST ONE, so NOTHING is excused here and "
-                    f"every match below is reported"
-                )
+        # ONE DECISION ACROSS BOTH LISTS, NOT ONE PER LIST. The exception is for
+        # ONE call site, and a call site is not "one observed plus one unresolved":
+        # judging the lists separately let a single observed entry and a single
+        # unresolved entry each satisfy its own `== 1` and BOTH be excused, which
+        # is two excused entries from an exception that names one. The candidates
+        # are therefore pooled, and the pooled total decides.
+        total_hits = len(observed_hits) + len(unresolved_hits)
+        if total_hits == 1:
+            if observed_hits:
+                excused_observed = {observed_hits[0]}
+            else:
+                excused_unresolved = {unresolved_hits[0]}
+        elif total_hits > 1:
+            problems.append(
+                f"INTRA-PACKAGE EXCEPTION IS AMBIGUOUS: {total_hits} entries match the "
+                f"ONE excluded internal call site {INTRA_PACKAGE_EDGE} "
+                f"({len(observed_hits)} observed, {len(unresolved_hits)} unresolved). "
+                f"The exception excuses AT MOST ONE ACROSS BOTH LISTS, so NOTHING is "
+                f"excused here and every match below is reported"
+            )
+        # total_hits == 0 creates no exception and skips nothing: the checks below
+        # run exactly as they would with the exception disabled.
 
     for key, identity in sorted(observed_map.items()):
         if key in excused_observed:

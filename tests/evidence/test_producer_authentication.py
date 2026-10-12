@@ -1856,6 +1856,79 @@ class TestObligation18ApprovedCallSiteSet:
         )
         assert problems, "sharing the exception's key must not produce a clean result"
 
+    def test_obligation_18s_one_observed_plus_one_unresolved_is_two_candidates(self, tmp_path):
+        """THE EXCEPTION MAKES **ONE** DECISION ACROSS BOTH LISTS.
+
+        A call site is not "one observed plus one unresolved". Judging the lists
+        separately let a single observed entry and a single unresolved entry each
+        satisfy its own `len(...) == 1` and BOTH be excused — two excused entries
+        from an exception that names one call site.
+
+        The fixture puts ONE entry of each kind in the SAME `admit_to_store` scope,
+        sharing all three fields of the exception's key.
+        """
+        planted = (
+            "from functools import partial\n"
+            "from plugins.evidence import admit\n"
+            "\n"
+            "\n"
+            "def admit_to_store(raw, *, store=None, producer_proof=None, clock=None):\n"
+            "    first = admit(raw, producer_proof=producer_proof)\n"
+            "    other = partial(admit, raw)(producer_proof=producer_proof)\n"
+            "    return first or other\n"
+        )
+        observed, unresolved, failures = self._plant_admission(tmp_path, planted)
+
+        observed_candidates = [
+            identity
+            for identity in observed
+            if (identity.path, identity.scope, identity.entrypoint)
+            == callsite_identity.INTRA_PACKAGE_EDGE
+        ]
+        unresolved_candidates = [
+            call
+            for call in unresolved
+            if (call.path, call.scope, call.entrypoint) == callsite_identity.INTRA_PACKAGE_EDGE
+        ]
+
+        # THE FIXTURE MUST COVER THE CROSS-CATEGORY COMBINATION. If either side is
+        # empty this test is not exercising what it claims to, and it says so
+        # rather than passing vacuously.
+        assert len(observed_candidates) == 1, (
+            "the fixture must place exactly ONE observed candidate in the scope; "
+            f"observed={observed} unresolved={unresolved}"
+        )
+        assert len(unresolved_candidates) == 1, (
+            "the fixture must place exactly ONE unresolved candidate in the scope; "
+            f"observed={observed} unresolved={unresolved}"
+        )
+        assert (
+            observed_candidates[0].path,
+            observed_candidates[0].scope,
+            observed_candidates[0].entrypoint,
+        ) == (
+            unresolved_candidates[0].path,
+            unresolved_candidates[0].scope,
+            unresolved_candidates[0].entrypoint,
+        ), "both candidates must share the exception's triple, or this proves nothing"
+
+        problems = _problems(observed, {}, unresolved, failures)
+        assert any("INTRA-PACKAGE EXCEPTION IS AMBIGUOUS" in problem for problem in problems), (
+            f"two pooled candidates must be reported as ambiguous: {problems}"
+        )
+        assert any("2 entries match" in problem for problem in problems), (
+            "the ambiguity must state the POOLED total, not a per-list count: "
+            f"{problems}"
+        )
+        assert any(
+            "UNRESOLVED production call form" in problem and "immediately-invoked" in problem
+            for problem in problems
+        ), f"the unresolved candidate must be reported on its own terms: {problems}"
+        assert any("UNAPPROVED call site" in problem for problem in problems), (
+            "NEITHER candidate may be excused once the pooled total is two — the "
+            f"observed one must be reported too: {problems}"
+        )
+
     # -- dotted imports and resolved entry aliases -----------------------------
 
     @pytest.mark.parametrize(
