@@ -149,6 +149,7 @@ def test_wiring_did_not_verify_a_capability(tmp_path) -> None:
     )
 
 
+_PLUGINS_ROOT = "plugins"
 _EVIDENCE_ROOT = "plugins.evidence"
 _ADMISSION_ENTRY_POINTS = frozenset({"admit", "admit_to_store"})
 
@@ -166,8 +167,38 @@ def _dotted(node: ast.expr) -> str | None:
     return ".".join(reversed(parts))
 
 
+def _reaches_evidence(
+    dotted: str, module_roots: set[str], plugin_roots: set[str]
+) -> bool:
+    """Whether a dotted module chain names the Evidence package or a submodule of it.
+
+    THREE ROOTED FORMS, each statically resolvable, and each a different binding:
+
+        <root>.<...>            `root` bound to `plugins.evidence` or a submodule —
+                                `import plugins.evidence.admission as adm`
+        <root>.evidence.<...>   `root` bound to the PARENT `plugins` package —
+                                `import plugins as p`, `from plugins import evidence`
+        plugins.evidence.<...>  fully qualified, with no alias at all
+
+    `plugin_roots` exists because the parent package is a binding like any other:
+    `import plugins as p` puts `plugins` under the name `p`, and the chain that
+    reaches Evidence from there is `p.evidence...`, not `p...`.
+    """
+    if dotted == _EVIDENCE_ROOT or dotted.startswith(_EVIDENCE_ROOT + "."):
+        return True
+    root, _, rest = dotted.partition(".")
+    if root in module_roots:
+        return True
+    if root in plugin_roots:
+        return rest == "evidence" or rest.startswith("evidence.")
+    return False
+
+
 def _denotes_entry_point(
-    node: ast.expr, call_names: set[str], module_roots: set[str]
+    node: ast.expr,
+    call_names: set[str],
+    module_roots: set[str],
+    plugin_roots: set[str],
 ) -> bool:
     """Whether `node` names an admission entry point, directly or through a module."""
     if isinstance(node, ast.Name):
@@ -176,7 +207,7 @@ def _denotes_entry_point(
         dotted = _dotted(node.value)
         if dotted is None:
             return False
-        return dotted.split(".")[0] in module_roots or dotted.startswith(_EVIDENCE_ROOT)
+        return _reaches_evidence(dotted, module_roots, plugin_roots)
     return False
 
 
@@ -192,11 +223,19 @@ def _admission_calls_in_tree(tree: ast.Module) -> list[tuple[int, str]]:
         import plugins.evidence.admission as adm            ->  adm.admit(record)
         plugins.evidence.admission.admit(record)            (fully qualified)
 
+    AND THROUGH THE PARENT `plugins` PACKAGE, which is an ordinary binding like any
+    other and reaches the same call in one more hop:
+
+        from plugins import evidence as ev  ->  ev.admission.admit_to_store(record, ..)
+        import plugins as p                 ->  p.evidence.admission.admit_to_store(..)
+        from plugins import evidence        ->  evidence.admission.admit(record)
+
     plus a name REBOUND from any of those, in either direction:
 
         submit = admit                 then  submit(record)          (from a NAME)
         persist = adm.admit_to_store   then  persist(record, ...)    (from an ATTRIBUTE)
         m = adm                        then  m.admit(record)         (a module, renamed)
+        e = p.evidence                 then  e.admission.admit(...)  (a module, renamed)
 
     followed to a fixed point, so a chain of renamings resolves however long it is.
 
@@ -219,11 +258,26 @@ def _admission_calls_in_tree(tree: ast.Module) -> list[tuple[int, str]]:
     """
     call_names: set[str] = set()
     module_roots: set[str] = set()
+    plugin_roots: set[str] = set()
     findings: list[tuple[int, str]] = []
 
-    # Pass 1 — every import that could bind an entry point or the package itself.
+    # Pass 1 — every import that could bind an entry point, the Evidence package, or
+    # the PARENT `plugins` package, from which Evidence is one hop further away.
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module:
+            if node.module == _PLUGINS_ROOT:
+                for alias in node.names:
+                    if alias.name == "*":
+                        findings.append(
+                            (
+                                node.lineno,
+                                f"wildcard import from {_PLUGINS_ROOT}: the call set "
+                                "cannot be resolved statically",
+                            )
+                        )
+                    elif alias.name == "evidence":
+                        module_roots.add(alias.asname or alias.name)
+                continue
             reaches = node.module == _EVIDENCE_ROOT or node.module.startswith(
                 _EVIDENCE_ROOT + "."
             )
@@ -244,10 +298,16 @@ def _admission_calls_in_tree(tree: ast.Module) -> list[tuple[int, str]]:
                     module_roots.add(alias.asname or alias.name)
         elif isinstance(node, ast.Import):
             for alias in node.names:
-                if alias.name == _EVIDENCE_ROOT or alias.name.startswith(
-                    _EVIDENCE_ROOT + "."
-                ):
-                    module_roots.add(alias.asname or alias.name.split(".")[0])
+                if alias.name == _PLUGINS_ROOT:
+                    plugin_roots.add(alias.asname or _PLUGINS_ROOT)
+                elif alias.name.startswith(_PLUGINS_ROOT + "."):
+                    if alias.asname:
+                        module_roots.add(alias.asname)
+                    else:
+                        # `import plugins.evidence.admission` binds the TOP-LEVEL
+                        # name `plugins`, so Evidence is reached THROUGH it rather
+                        # than bound directly.
+                        plugin_roots.add(_PLUGINS_ROOT)
 
     # Pass 2 — names rebound from an already-resolved name OR ATTRIBUTE, and module
     # aliases rebound from a module alias, followed to a fixed point. The
@@ -256,19 +316,33 @@ def _admission_calls_in_tree(tree: ast.Module) -> list[tuple[int, str]]:
     # call through `persist` is the same call.
     rounds = 1 + sum(1 for node in ast.walk(tree) if isinstance(node, ast.Name))
     for _ in range(rounds):
-        before = (set(call_names), set(module_roots))
+        before = (set(call_names), set(module_roots), set(plugin_roots))
         for node in ast.walk(tree):
             if not isinstance(node, ast.Assign):
                 continue
-            if _denotes_entry_point(node.value, call_names, module_roots):
+            if _denotes_entry_point(
+                node.value, call_names, module_roots, plugin_roots
+            ):
                 for target in node.targets:
                     if isinstance(target, ast.Name):
                         call_names.add(target.id)
-            elif isinstance(node.value, ast.Name) and node.value.id in module_roots:
-                for target in node.targets:
-                    if isinstance(target, ast.Name):
-                        module_roots.add(target.id)
-        if (call_names, module_roots) == before:
+                continue
+            if isinstance(node.value, ast.Name):
+                source = node.value.id
+            else:
+                source = _dotted(node.value)
+            if source is None:
+                continue
+            for target in node.targets:
+                if not isinstance(target, ast.Name):
+                    continue
+                if source == _PLUGINS_ROOT or (
+                    isinstance(node.value, ast.Name) and source in plugin_roots
+                ):
+                    plugin_roots.add(target.id)
+                elif _reaches_evidence(source, module_roots, plugin_roots):
+                    module_roots.add(target.id)
+        if (call_names, module_roots, plugin_roots) == before:
             break
 
     # Pass 3 — the calls themselves.
@@ -282,7 +356,7 @@ def _admission_calls_in_tree(tree: ast.Module) -> list[tuple[int, str]]:
             dotted = _dotted(func.value)
             if dotted is None:
                 continue
-            if dotted.split(".")[0] in module_roots or dotted.startswith(_EVIDENCE_ROOT):
+            if _reaches_evidence(dotted, module_roots, plugin_roots):
                 findings.append((node.lineno, f"calls {dotted}.{func.attr}()"))
 
     return findings
@@ -333,10 +407,13 @@ def test_the_absence_check_allows_an_authorized_import_with_no_call(
     package = tmp_path / "composition"
     package.mkdir()
     (package / "zz_imported.py").write_text(
+        "from plugins import evidence as ev\n"
+        "from plugins import evidence\n"
+        "import plugins as p\n"
         "from plugins.evidence import ExecutionPayload, ToolCall\n"
         "from plugins.evidence.admission import admit_to_store as persist\n"
         "\n"
-        "__all__ = ['ExecutionPayload', 'ToolCall', 'persist']\n",
+        "__all__ = ['ExecutionPayload', 'ToolCall', 'persist', 'ev', 'evidence', 'p']\n",
         encoding="utf-8",
     )
     assert _admission_call_sites(package) == []
@@ -406,6 +483,44 @@ def test_the_absence_check_allows_an_authorized_import_with_no_call(
             "def submit(record):\n"
             "    return m.admit(record)\n",
             id="module-alias-rebound-to-another-name",
+        ),
+        pytest.param(
+            "from plugins import evidence as ev\n"
+            "\n"
+            "\n"
+            "def submit(record, store, producer_proof):\n"
+            "    return ev.admission.admit_to_store(\n"
+            "        record, store=store, producer_proof=producer_proof\n"
+            "    )\n",
+            id="parent-package-import-of-evidence-aliased",
+        ),
+        pytest.param(
+            "import plugins as p\n"
+            "\n"
+            "\n"
+            "def submit(record, store, producer_proof):\n"
+            "    return p.evidence.admission.admit_to_store(\n"
+            "        record, store=store, producer_proof=producer_proof\n"
+            "    )\n",
+            id="parent-package-module-aliased",
+        ),
+        pytest.param(
+            "from plugins import evidence\n"
+            "\n"
+            "\n"
+            "def submit(record):\n"
+            "    return evidence.admission.admit(record)\n",
+            id="parent-package-import-of-evidence-unaliased",
+        ),
+        pytest.param(
+            "import plugins as p\n"
+            "\n"
+            "e = p.evidence\n"
+            "\n"
+            "\n"
+            "def submit(record):\n"
+            "    return e.admission.admit(record)\n",
+            id="parent-package-evidence-rebound-to-another-name",
         ),
     ],
 )
