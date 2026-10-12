@@ -124,8 +124,39 @@ jobs:
             "$A::TestObligation22Cj1Vectors::test_obligation_22d_vector_3_case_b_reconstruction_refuses" \
             "$A::TestObligation22Cj1Vectors::test_obligation_22e_vector_4_case_a_signature_refuses_first" \
             "$A::TestObligation22Cj1Vectors::test_obligation_22f_vector_4_case_b_reconstruction_refuses" \
-            "$A::TestObligation18NoProductionWriter::test_obligation_18a_no_production_call_site_exists" \
-            "$A::TestObligation18NoProductionWriter::test_obligation_18b_the_scan_can_find_a_call_site" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18a_the_approved_call_site_set_is_exact" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18b_the_scan_can_find_a_call_site" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18c_a_substitution_with_an_unchanged_count_fails" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18d_two_calls_in_one_scope_are_two_identities" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18e_aliases_resolve_to_the_canonical_entrypoint" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18f_an_unapproved_addition_fails" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18g_unresolvable_forms_fail_closed[getattr-acquisition]" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18g_unresolvable_forms_fail_closed[partial-application]" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18g_unresolvable_forms_fail_closed[container-dispatch]" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18h_producer_proof_must_be_an_explicit_keyword" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18i_acquired_then_called_forms_fail_closed[a-getattr-acquired-then-called]" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18i_acquired_then_called_forms_fail_closed[b-partial-created-then-called]" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18i_acquired_then_called_forms_fail_closed[c-dynamic-import-result-called]" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18i_acquired_then_called_forms_fail_closed[d-container-callable-called]" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18i_acquired_then_called_forms_fail_closed[e-ambiguous-local-name]" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18j_a_changed_callee_form_is_not_the_approved_site" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18k_an_unreadable_module_fails_the_scan" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18l_dynamic_names_and_aliased_acquirers_fail_closed[dynamic-attribute-name-parameter]" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18l_dynamic_names_and_aliased_acquirers_fail_closed[attribute-name-through-a-variable]" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18l_dynamic_names_and_aliased_acquirers_fail_closed[evidence-package-under-an-import-alias]" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18l_dynamic_names_and_aliased_acquirers_fail_closed[aliased-partial-acquisition]" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18l_dynamic_names_and_aliased_acquirers_fail_closed[module-qualified-partial-acquisition]" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18l_dynamic_names_and_aliased_acquirers_fail_closed[aliased-immediately-invoked-acquisition]" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18m_a_resolvable_non_entry_point_attribute_is_not_reported" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18n_the_intra_package_edge_is_a_verified_observed_identity" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18o_a_second_call_in_the_same_scope_is_not_excused" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18p_a_same_key_unresolved_form_is_not_excused" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18q_an_unaliased_dotted_import_resolves_to_the_entry_point[unaliased-dotted-package]" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18q_an_unaliased_dotted_import_resolves_to_the_entry_point[unaliased-dotted-submodule]" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18r_a_resolved_entry_alias_is_a_partial_target" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18s_one_observed_plus_one_unresolved_is_two_candidates" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18t_a_lone_unresolved_candidate_is_not_excused" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18u_a_lone_aliased_candidate_is_not_excused" \
             "$A::TestObligation19NoCallerSelectedTrustRoot::test_obligation_19_no_violation_is_reported" \
             "$A::TestObligation19NoCallerSelectedTrustRoot::test_obligation_19_the_rule_can_identify_its_target_violation" \
             "$A::TestObligation22Cj1Vectors::test_obligation_22a_vector_1_bytes" \

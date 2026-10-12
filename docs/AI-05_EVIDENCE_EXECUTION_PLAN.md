@@ -1656,7 +1656,13 @@ FROZEN: THE TEST OBLIGATION THIS SECTION CREATES, for the implementation that
             an unknown or malformed field
             rejection without persistence and without store contact, at both
               entry points
-            the absence of a production non-test writer
+            the EXACT APPROVED CALL-SITE SET (§7.3.13) — every production call site
+              of `admit`/`admit_to_store` named INDIVIDUALLY, the BASELINE set
+              being EMPTY and the CANDIDATE set EQUAL to what the connecting
+              change declares. A COUNT-ONLY approval does NOT satisfy this. The
+              obligation is not the mere absence of a writer: it is the presence
+              of EXACTLY the authorised ones, which subsumes the absence case when
+              the approved set is empty.
             the absence of any caller-selectable trust root
             no coupling from an authentication failure to a Guard outcome
             the reason-code precedence of §7.3.8 when step 7's published rule and
@@ -2344,6 +2350,224 @@ FROZEN: THE SUBMITTING SIDE OF THIS INVARIANT IS STATED BY THE PHASE THAT OWNS T
         and what its caller obligations are, are AI-15 §9.4 and §10.2. This section
         fixes what MAY cross the boundary and under what limits; those clauses fix
         what the crossing party MUST do.
+```
+
+#### 7.3.13 The exact approved call-site set — FROZEN (Amendment 9)
+
+```text
+WHAT THIS REPLACES. §7.3.7's obligation list carried "the absence of a production
+non-test writer". That obligation was true of a repository with no writer, and it
+was an obligation ON THE CHANGE THAT CONNECTS the edge — a change this contract
+always contemplated (§7.3.12 anticipates a forwarder). It is REPLACED, NOT
+DELETED: §34.2 forbids "a test deleted, weakened, or re-scoped to make a test
+pass", and a connecting change that simply removed the obligation would be exactly
+that.
+```
+
+```text
+THE STANDARD — EXACT CALL-SITE AUTHORISATION.
+
+  A production call site of `admit` or `admit_to_store` is AUTHORISED only when it
+  is named INDIVIDUALLY in the approved set.
+
+  AN APPROVAL OVER THE NUMBER OF CALLS A SCOPE MAKES IS A DIFFERENT AND WEAKER
+  STANDARD, and MUST NOT be recorded, reported or relied on as exact call-site
+  authorisation. The two are not interchangeable, and the difference is exactly the
+  substitution case below.
+
+  AN APPROVED ENTRY CARRIES ALL OF:
+
+      path                repository-relative POSIX path
+      scope               the FULLY QUALIFIED enclosing function, including class
+                          scopes and nested functions; module level is recorded as
+                          "<module>" rather than left empty
+      entrypoint          the CANONICAL entry-point name the call resolves to —
+                          "admit" or "admit_to_store" — never an alias and never a
+                          local binding name
+      callee              the ORIGINAL SOURCE FORM OF THE CALLEE EXPRESSION, with
+                          location attributes excluded. THIS IS NOT `entrypoint`:
+                          `admit`, `submit_alias` and `adm.admit` are three
+                          different forms that may all resolve to `admit`, and
+                          recording the canonical name alone would collapse them
+                          into ONE identity
+      ast_path            the child-field/index path from the module root to the
+                          Call node (for example body[3].body[1].value)
+      fingerprint         a canonical digest over the call's ARGUMENTS AND CONTROL
+                          CONTEXT: the argument and keyword NAMES in source order,
+                          and the chain of enclosing statement kinds. THE CALLEE IS
+                          NOT NORMALISED INTO IT — it is carried as `callee`
+                          instead, because the two answer different questions.
+                          LINENO AND COL_OFFSET ARE EXCLUDED.
+
+  THE KEY IS THOSE SIX FIELDS. THE APPROVED MAPPING IS COMPARED AGAINST THE KEY AND
+  NOTHING ELSE, and three further things are RECORDED WITHOUT BEING PART OF IT.
+  Conflating them with the key is how an earlier revision came to describe "seven
+  fields" while listing eight:
+
+      control_context     AN INPUT TO `fingerprint`, NOT A SEPARATE KEY FIELD. It is
+                          hashed INTO the digest, so two calls separated only by
+                          their enclosing statement chain already have different
+                          fingerprints. It is not compared as a field of its own.
+      proof_kwarg         AN INDEPENDENT ACCEPTANCE CONDITION, checked SEPARATELY
+                          from the mapping comparison. A call site can match the
+                          approved key exactly and still FAIL on this: the call
+                          passes `producer_proof` EXPLICITLY as a keyword, and a
+                          `**mapping` expansion does NOT satisfy it, because the
+                          argument is then not verifiable from the source.
+      lineno              NEVER PART OF THE IDENTITY. Recorded for a reader and for
+                          messages only; it moves when anything above it moves,
+                          which is exactly why it cannot carry an approval.
+
+  THE IDENTITY IS THEREFORE STRICT ABOUT THE CALLEE. Two calls at the SAME scope,
+  the SAME `ast_path` and with the SAME arguments, reaching the SAME canonical
+  entry point and differing ONLY in how the callee is SPELLED, are TWO DIFFERENT
+  call sites. An approval of one is NOT an approval of the other: when the callee's
+  syntax form changes, the old approval MUST NOT match, and the new form MUST be
+  approved again. `entrypoint` is kept as a SEPARATE field because it answers the
+  different question of which entry point the call reaches, and it is what makes an
+  alias recognisable at all.
+
+  THE FINGERPRINT'S DIGEST, STATED SO IT IS NOT ASSUMED:
+
+      algorithm   SHA-256, over the UTF-8 bytes of the canonical serialization of
+                  the call's arguments and keywords, a separator, and the enclosing
+                  statement-kind chain
+      output      the FULL 64-character lowercase hexadecimal digest. IT IS NOT
+                  TRUNCATED, and a reader comparing a stored identity against an
+                  implementation's output MUST compare all 64 characters
+      collision   the identity inherits SHA-256's collision resistance and NOTHING
+                  STRONGER. This is an ASSUMPTION, not a proof: a collision would
+                  make two different calls share one identity, the check does not
+                  attempt to detect one, and an approval is only as specific as the
+                  identity that carries it. A shorter digest is a DIFFERENT
+                  identity with a weaker assumption, and changing the length is a
+                  change to this section.
+```
+
+```text
+THE ASSERTION IS SET EQUALITY OVER IDENTITIES, NOT COUNT EQUALITY.
+Mapping equality in both directions: OBSERVED == APPROVED.
+EQUALITY OF AN EXPECTED COUNT IS NOT EVIDENCE THAT INDIVIDUAL CALL SITES WERE
+APPROVED, and MUST NOT be presented as such.
+
+WHAT IT DETECTS
+    an added call, a removed call, a mis-pathed call, an unapproved call
+                                            -> a key on one side only        -> FAIL
+    a second call in a scope where one was approved
+                                            -> a second identity             -> FAIL
+    DELETE ONE CALL AND ADD ANOTHER IN THE SAME SCOPE, COUNT UNCHANGED
+                                            -> a different `ast_path` and/or
+                                               `fingerprint`                 -> FAIL
+```
+
+```text
+BASELINE AND CANDIDATE ARE TWO DIFFERENT CHECKS AGAINST TWO DIFFERENT TREES.
+
+    BASELINE    on `origin/main` before the connecting change: the approved set is
+                EMPTY and the observed set is EMPTY. This is the replaced
+                obligation's assertion, unchanged.
+    CANDIDATE   on the tree that creates the call site: the observed set EQUALS the
+                approved set that change declares.
+
+NO SINGLE TREE IS REQUIRED TO SATISFY BOTH. A candidate check with an EMPTY
+approved set asserts "no production call site", which is the baseline assertion —
+so one implementation serves both, provided the approved set is EMPTY on the
+baseline and non-empty only in the change that creates the call site.
+
+THE BASELINE HALF IS A ONE-TIME GATE ON THE CONNECTING CHANGE, AND IT MUST BE RUN
+AS ITS OWN STEP. The connecting change records, in its own report:
+
+    the ACTUAL base SHA it was built on — the `origin/main` commit, not a branch
+      name and not a remembered value
+    the production call-site set observed ON THAT COMMIT, which MUST BE EMPTY
+    the ACTUAL head SHA of the candidate tree
+    the production call-site set observed on the CANDIDATE, compared against the
+      approved set the change declares
+
+A REPORT THAT SHOWS ONE TREE HAS NOT SHOWN TWO. Running the candidate check on a
+tree whose approved set happens to be empty verifies the CANDIDATE, not the
+baseline, and MUST NOT be described as having verified both.
+
+THIS GATE DOES NOT BECOME A PERMANENT EMPTINESS REQUIREMENT. It is a one-time
+condition on the change that first creates a call site, not a rule that every later
+CI run must find the approved set empty — which would forbid the very connection
+the obligation exists to permit. How it is implemented is the change's business: a
+separate step, a one-shot job, or a recorded manual run are all acceptable, and
+none of them changes the number any historical run recorded.
+```
+
+```text
+THE SCANNER BOUNDARY.
+
+  SUPPORTED — the call resolves to a canonical entry point:
+      a direct call, a fully qualified call, a parent-package hop, and a LOCAL OR
+      IMPORT ALIAS including an ANNOTATED binding.
+      A resolved alias is counted under its CANONICAL entry-point name, NEVER under
+      the local binding name.
+
+  NOT SUPPORTED, AND NOT SILENTLY IGNORED:
+      reflective acquisition         getattr(module, "admit")(...), __import__(...),
+                                     importlib.import_module(...)
+      partial application/wrapping   functools.partial(...), or a decorator that
+                                     returns an entry point
+      dispatch through a container   a list, mapping or registry lookup, then a call
+      a parameter-rooted attribute chain, or any name assembled at run time
+
+  AN UNSUPPORTED ACQUISITION IS CARRIED FORWARD ONTO THE NAME IT BINDS, AND THE
+  LATER CALL IS THE FINDING. Checking only the IMMEDIATELY-INVOKED shape is NOT
+  sufficient, and an implementation that stops there does not satisfy this clause.
+  Each of the following obtains a callable by an unsupported form and then calls it
+  through an ordinary-looking name; EVERY ONE of them MUST be reported:
+
+      writer = getattr(evidence, "admit")      then  writer(record, ...)
+      writer = partial(admit, record, ...)     then  writer()
+      mod    = importlib.import_module(...)    then  mod.admit(record, ...)
+      writer = REGISTRY["admit"]               then  writer(record, ...)
+
+  A LOCAL NAME BOUND TO MORE THAN ONE ENTRY POINT IS UNRESOLVED, NOT A CHOICE. If
+  one scope binds a name to both `admit` and `admit_to_store`, which one it denotes
+  cannot be determined, and the call MUST be reported rather than resolved to
+  either. Guessing would record an approval against a call site nobody identified.
+
+  FAIL-CLOSED. A production form the scanner cannot RELIABLY resolve to a canonical
+  entry point MUST NOT be treated as "no call site". It MUST be reported as
+  UNRESOLVED, and MUST drive the check to FAIL or to a declared BLOCKED state.
+  An implementation whose output is identical whether such a form is present or
+  absent does not satisfy this clause.
+  "THE SCANNER DOES NOT SEE IT" AND "IT CANNOT WRITE" ARE DIFFERENT STATEMENTS, and
+  only the second would justify silence.
+
+  A MODULE THE SCAN CANNOT READ OR PARSE HAS UNKNOWN CALL SITES, AND UNKNOWN IS NOT
+  NONE. Every such file MUST be reported as a SCAN FAILURE — path and reason — and
+  MUST drive the check to FAIL. An implementation that skips it and reports the
+  call sites it happened to see does not satisfy this clause, because the result
+  would be clean for a tree that was never fully read.
+
+  NO COMPLETENESS CLAIM. Static scanning cannot prove the absence of arbitrary
+  Python dynamic behaviour: `eval`, `exec`, dynamically constructed modules and
+  code generated at run time are OUTSIDE what it can establish. This clause makes
+  no claim of exhaustive coverage, and none may be made on its behalf.
+
+  THE BLIND-SPOT LIST IS TRANSPARENCY, NOT ACCEPTANCE. The check carries a
+  documented list of the forms it does not resolve, so a reader can see where its
+  authority stops. NEITHER THE LIST'S EXISTENCE NOR ITS BEING NON-EMPTY IS AN
+  ACCEPTANCE CRITERION, and neither may be cited as evidence that unresolvable
+  forms are safe.
+
+  THE POSITIVE CONTROL STAYS. A check that cannot find a call site proves nothing
+  about there being none, so the control that plants one and requires it to be
+  found is part of this obligation and MUST remain.
+```
+
+```text
+THE FAILURE-INDEPENDENCE REQUIREMENT. EACH acceptance condition this section adds
+        MUST BE ABLE TO FAIL ON ITS OWN. A check whose output cannot distinguish
+        WHICH condition broke is one condition with several names, and does not
+        satisfy this section.
+FROZEN: §7.3.7's obligation list, as amended, is the list this section defines.
+        Nothing here authorises a production caller, a connecting change or a
+        CONNECTED classification: §7.3.12 states what may cross the boundary, and
+        the calling phase's own contract states what its caller MUST do.
 ```
 
 ---
@@ -7154,6 +7378,250 @@ WHAT THIS AMENDMENT DOES NOT DO
     it does not edit AI-15's contract or any other phase's. AI-15's §9.4 and §10.2
       are AI-15's act and are cited here, not authored
     it does not run any test, and it claims no test result of its own
+```
+
+---
+
+#### Amendment 9 — the producer-acceptance obligation becomes an exact approved call-site set (2026-10-12)
+
+Found while preparing the prerequisite contract and acceptance work for the
+composition → Evidence edge. §7.3.7's obligation list carried **"the absence of a
+production non-test writer"**, and that obligation cannot survive the change it was
+written to gate: a connecting change that produced a writer would fail it, and a
+connecting change that DELETED it to pass would be §34.2's forbidden case.
+
+**Why this is an amendment rather than a clarification made in place.** §34.1's
+list does not enumerate §7.3.7's obligation list or §7.3, and §34's preamble is
+broader than its list: a frozen contract "changes only through an explicit
+amendment recorded in §34.3". This amendment REPLACES an obligation and adds a NEW
+SUBSECTION (§7.3.13) that defines a standard. That is a change however it is
+described, so the instrument is an amendment — the same reasoning Amendments 4, 5
+and 8 recorded about §7 and §30.
+
+```text
+(a) NEW §7.3.13 defines EXACT CALL-SITE AUTHORISATION: what an approval is over, the
+    fields an approved entry carries, the failure-independence requirement, the
+    scanner boundary, and the fail-closed rule for forms the scanner cannot resolve.
+
+    IT IS AN APPROVAL OVER CALL SITES, NOT OVER COUNTS. An approval over the NUMBER
+    of calls a scope makes is a DIFFERENT AND WEAKER standard, and MUST NOT be
+    recorded, reported or relied on as exact call-site authorisation. The difference
+    is exactly one case, and §7.3.13 names it: delete one approved call, add another
+    in the same scope, leave the count unchanged.
+
+    §7.3.7's obligation line is REPLACED by the exact approved call-site set. The
+    baseline assertion (approved = empty, observed = empty) is the replaced
+    obligation's meaning, preserved; the candidate assertion (observed == what the
+    connecting change declares) is what the replacement adds.
+```
+
+```text
+(b) THE ACCEPTANCE MODULE AND THE MATRIX. The call-site scanner this obligation
+    used to carry matched a callee by NAME ONLY. It could neither name a call site
+    individually nor see an aliased call, so neither half of §7.3.13 could be built
+    on it. It is REPLACED by `tests/evidence/callsite_identity.py`, which:
+
+        resolves aliases WITHIN THEIR OWN SCOPE — a local assignment in one
+          function says nothing about a same-named local in another
+        records a per-call IDENTITY KEY OF SIX FIELDS — `path`, `scope`,
+          `entrypoint`, **`callee`** (the ORIGINAL source form of the callee
+          expression, carried SEPARATELY from the canonical entry point),
+          `ast_path`, `fingerprint` — and the approved mapping is compared against
+          THAT KEY and nothing else. `control_context` is an INPUT TO the
+          fingerprint rather than a key field of its own; `proof_kwarg` is an
+          INDEPENDENT acceptance condition checked separately from the mapping
+          comparison; `lineno` is never part of the identity
+        computes `fingerprint` as a FULL 64-character SHA-256 hex digest over the
+          call's ARGUMENTS AND CONTROL CONTEXT. The callee is NOT normalised into
+          it: it is the separate `callee` field. Location attributes are excluded,
+          and no line number is part of the identity
+        carries an unsupported ACQUISITION forward onto the name it binds, so a
+          later call through that name is the finding
+        resolves the acquisition callable itself through the scope's bindings, so
+          `partial` reached through an alias or through `functools` is the same
+          form and not a new hole
+        treats a callable taken from an EVIDENCE MODULE by an attribute name it
+          cannot resolve as UNRESOLVED — the name cannot be assumed NOT to be an
+          entry point
+        reports the forms it cannot resolve as UNRESOLVED, AND a module it cannot
+          read or parse as a SCAN FAILURE; both drive FAIL, and neither is dropped
+        states its blind spots, which is TRANSPARENCY and NOT an acceptance
+          criterion
+
+    THE POSITIVE CONTROL STAYS. `test_obligation_18b` is unchanged in purpose: a
+    check that cannot find a call site proves nothing about there being none.
+
+    THE FAILURE-INDEPENDENCE REQUIREMENT IS MET BY SEPARATE NODE IDS, not by
+    assertions folded into one. A single node reporting "18a failed" cannot say
+    WHICH condition broke, and a check that cannot distinguish them is one
+    condition with several names. THE NODE IDS ARE LISTED ONE PER LINE, and a
+    PARAMETRIZED TEST CONTRIBUTES ONE NODE ID PER CASE — so the node count and the
+    TEST-FUNCTION count differ, and neither may be quoted for the other:
+
+        18a  the approved set is exact, over the real production tree
+        18b  the positive control (unchanged in purpose)
+        18c  a substitution with an UNCHANGED COUNT fails   <- the count-only case
+        18d  two calls in one scope are two identities
+        18e  aliases resolve to the CANONICAL entry point
+        18f  an unapproved addition fails
+        18g  unresolvable forms fail closed — three node ids:
+                 [getattr-acquisition] [partial-application] [container-dispatch]
+        18h  `producer_proof` must be an EXPLICIT keyword; `**mapping` does not count
+        18i  an unsupported ACQUISITION carried onto a name and then CALLED —
+             five node ids: [a-getattr-acquired-then-called]
+                            [b-partial-created-then-called]
+                            [c-dynamic-import-result-called]
+                            [d-container-callable-called]
+                            [e-ambiguous-local-name]
+        18j  a CHANGED CALLEE FORM is not the approved call site, at the same scope,
+             the same AST path, the same arguments and the same canonical entry
+             point; also asserts the digest is the FULL 64-character hex string
+        18k  a module the scan cannot read or parse FAILS the scan
+        18l  a DYNAMIC ATTRIBUTE NAME and an ALIASED ACQUIRER fail closed —
+             six node ids: [dynamic-attribute-name-parameter]
+                           [attribute-name-through-a-variable]
+                           [evidence-package-under-an-import-alias]
+                           [aliased-partial-acquisition]
+                           [module-qualified-partial-acquisition]
+                           [aliased-immediately-invoked-acquisition]
+        18m  the CONTROL that keeps 18l from meaning "block every getattr": a
+             resolvable attribute of the package that is NOT an entry point must
+             NOT be reported
+        18n  the single canonical intra-package edge is still excused
+        18o  a SECOND call in the same `admit_to_store` scope is NOT excused
+        18p  a DIFFERENT form sharing the exception's key is NOT excused
+        18q  (TWO node ids) an unaliased dotted import resolves to the canonical
+             entry point, and the dotted EXPANSION does not double
+        18r  a RESOLVED ENTRY ALIAS as a `partial` target fails closed
+        18s  ONE observed PLUS ONE unresolved candidate is TWO candidates: the
+             exception makes ONE decision ACROSS BOTH LISTS, so neither is excused
+        18t  a LONE UNRESOLVED candidate is NOT excused — an identity that cannot
+             be confirmed is not an identity that has been approved
+        18u  a LONE ALIASED candidate is NOT excused — the triple matches and the
+             identity does not
+
+    THE INTRA-PACKAGE EXCEPTION, STATED PRECISELY, BECAUSE IT WAS NOT BEFORE.
+    The exception authorises ONE **VERIFIED OBSERVED IDENTITY** — the six fields of
+    §7.3.13's key — and NOT a `(path, scope, entrypoint)` triple:
+
+        the triple SELECTS CANDIDATES; the full identity GRANTS the exception
+        an UNRESOLVED candidate is NEVER excused, however many candidates there
+          are and whatever form it takes
+        an observed candidate whose callee, AST path or fingerprint differs is a
+          DIFFERENT call site and is reported
+        more than one candidate across BOTH lists means NOTHING is excused
+
+    TO MAKE THE REAL INTERNAL CALL AN OBSERVABLE IDENTITY AT ALL, the scanner now
+    binds a FUNCTION DEFINITION named like an entry point in the scope that holds
+    it. Without that the definition site was invisible: `plugins/evidence/
+    admission.py` defines `admit` and calls it, nothing imports the name, and the
+    call was reported as UNRESOLVED — so the exception could only ever excuse an
+    unresolved candidate and never a verified observed one. THAT IS THE DEFECT
+    §19 AMENDMENT 9's earlier text described inaccurately, and 18n now asserts
+    against the REAL file rather than a fixture that shared only a triple.
+
+    ^ 18i, 18j, 18k, 18l AND 18m ANSWER REVIEW FINDINGS, AND EACH CLOSES A
+    DIFFERENT HOLE.
+    18i: checking only the immediately-invoked shape — `getattr(...)(...)`,
+    `partial(...)()`, `container[...](...)` — sees an ordinary call to an unknown
+    local and reports NOTHING. The acquisition is therefore carried FORWARD onto
+    the name it binds, so the later call is the finding.
+    18j: the fingerprint NORMALISED the callee into itself, which made a direct
+    call and an alias call at the same AST path, with the same arguments, share one
+    identity — while §7.3.13's own text claimed the fingerprint distinguished
+    different call expressions. The callee is now its own identity field.
+    18k: `scan_tree` skipped a file it could not parse and reported the rest as
+    clean, which is a clean result for a tree that was never fully read.
+    18l: `getattr(ev, field)` defeated the taint rule. The old check asked whether
+    the CALL MENTIONED an entry point by name; `ev` is an import alias and `field`
+    is a variable, so nothing matched and no taint was recorded. THE RECEIVER NOW
+    DECIDES: when the object a callable is taken from is an EVIDENCE MODULE and the
+    attribute name cannot be resolved, the result is UNRESOLVED. The same fix
+    follows the acquisition callable through an alias, so `p(...)` after
+    `from functools import partial as p` is not a different spelling of the hole.
+    18m: the control. A rule that swallowed every `getattr` would pass 18l while
+    having stopped resolving anything, so 18m requires a resolvable non-entry-point
+    attribute to stay unreported. NO BLANKET BLOCK IS ACCEPTED AS A FIX.
+```
+
+```text
+(c) THE COUNTS, AND THE HISTORICAL RECORDS THAT KEEP THEIRS.
+
+    WHAT MOVED — AND THESE ARE STATIC COUNTS, TAKEN FROM THE SOURCE TREE, NOT
+    FROM A RUN. THEY ARE THREE DIFFERENT THINGS AND NONE MAY BE QUOTED FOR ANOTHER.
+    A report that wants to say more than "what the matrix will invoke" must show a
+    run whose head it names.
+
+        MATRIX INVOCATIONS      the number of node-id references in
+          `preflight.yml`, which is the number of times pytest is asked to run a
+          case across the isolated configurations
+                                    46 -> 77   (+31)
+
+        UNIQUE NODE IDS         the same references AFTER DE-DUPLICATION. One node
+          id, `test_obligation_06c_reader_is_consistent`, is invoked under BOTH
+          `collision_unregistered` and `collision_unregistered_b` — §7.3.2's two
+          policies for the one case they differ on — so it is two invocations and
+          ONE node id
+                                    45 -> 76   (+31)
+
+        TEST FUNCTION DEFINITIONS  `def test_...` in the acceptance module. A
+          parametrized test is ONE definition and MANY node ids
+                                    45 -> 64   (+19)
+
+    THE THREE DELTAS DIFFER ON PURPOSE. `18g`, `18i`, `18l` and `18q` contribute
+    node ids from four definitions, and one node id is counted twice above. An
+    earlier revision of this record said "the same 68 node ids" and gave a single
+    number for two of these measures; both readings were wrong and are replaced.
+
+    WHAT DID NOT MOVE, AND MUST NOT
+        Amendment 7 (d), §35.3 and `## Status` record "46 RAN / 0 skipped" as the
+        result of CI run #301. THAT IS A HISTORICAL RECORD OF AN EXECUTION, and
+        §34.3 keeps such records as what they were. Rewriting those numbers would
+        falsify history rather than correct it, so THEY ARE KEPT, and a pointer is
+        added beside each one naming the current count.
+
+    THE SEMANTICS OF THE RECORDED NUMBER ARE NOT WIDENED. "46 process-isolated
+    cases that RAN" meant cases executed inside the isolated processes; it does not
+    become a count of security requirements, and the current count is not a claim
+    that anything was re-run.
+```
+
+```text
+SECURITY IMPACT
+    NARROW, AND THE DIRECTION IS TOWARD MORE DETECTION. The obligation is REPLACED
+    BY A STRONGER ONE: "no writer exists" becomes "exactly the authorised writers
+    exist", and the identity comparison catches a substitution that a count
+    comparison passes. Each new node fails on its own case, so a future weakening
+    of one condition cannot hide behind another's green result.
+    THE BOUND IS STATED RATHER THAN OVERCLAIMED: static scanning cannot establish
+    the absence of arbitrary Python dynamic behaviour, and the forms it cannot
+    resolve FAIL rather than pass. Silence is never an answer.
+AUTHORITY IMPACT
+    None. Nothing here grants a permission, changes AI-14 §4.1's authority matrix,
+    introduces an authorizing subject, or moves a responsibility between phases.
+    Guard remains the only component with an AUTHORIZES entry.
+```
+
+```text
+WHAT THIS AMENDMENT DOES NOT DO
+
+    it does not authorise a production caller, a writer or a call site. A set that
+      is empty on this tree stays empty until a connecting change declares entries
+      in it, and declaring them is that change's act
+    it does not mark any seam CONNECTED, and it does not claim AI-15 §15.2 STEP 2
+      or STEP 3 has begun
+    it does not add, remove or change a producer token, a §6.5 registry row, an
+      admission outcome, a reason code, a digest input or a stored field
+    it does not close AI-11 §21.1's OPEN-1, which asks WHICH PRODUCERS EXIST and
+      remains OPEN
+    it does not resolve the storage backend. §35.1's storage-backend question and
+      the record_digest round-trip obligation stay DEFERRED, and no production
+      storage backend is chosen here
+    it does not delete, weaken or re-scope any test. The only test it removes is
+      the one whose assertion it replaces, and the replacement is strictly stronger
+    it does not claim any test result of its own beyond what (b) records, and it
+      does not re-run CI run #301 or restate its numbers as current
+    it does not edit AI-14's, AI-15's or any other phase's contract
 ```
 
 ---

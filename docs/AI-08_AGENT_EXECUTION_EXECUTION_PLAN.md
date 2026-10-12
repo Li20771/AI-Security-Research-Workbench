@@ -1268,6 +1268,38 @@ FROZEN: AI-08 MUST NOT write an EvidenceRecord under the "ai-06" token.
 FROZEN: AI-08 v1 therefore writes NO AI-05 EvidenceRecord of any kind.
         Its AgentResult is run data, and run data is disposable by design
         (docs/architecture/EVIDENCE_LIFECYCLE.md).
+
+```text
+FROZEN (Amendment 5): WHAT AI-08 MAY CARRY OUTWARD, AND WHAT IT MAY NOT.
+
+    This section forbids AI-08 to WRITE a record. It does not forbid it to CARRY
+    one, and the composition → Evidence edge needs exactly that distinction: the
+    tool layer produces the ToolResults the record is projected from, and the
+    composition — the submitter — sits outside this layer. So a SUBMISSION ENVELOPE
+    may pass THROUGH this layer to the caller.
+
+        AI-08 MAY      return or forward a submission envelope AI-06 PRODUCED,
+                       opaquely: it carries it, it does not read it, it does not
+                       build one, and it does not alter one
+        AI-08 MUST NOT write an AI-05 EvidenceRecord, under any token
+        AI-08 MUST NOT hold, request or use a private key, and MUST NOT generate,
+                       replace, mutate or repair a producer proof
+        AI-08 MUST NOT call admission or a store, directly or indirectly
+        AI-08 MUST NOT place raw `stdout`, raw `stderr`, or a whole `ToolResult`
+                       into anything that leaves this layer. An envelope is not a
+                       result dump: what crosses is the projected content and the
+                       proof beside it, and AI-05 §26 forbids storing raw tool
+                       output in a record for the same reason
+
+    THE ENVELOPE IS OPAQUE TO THIS LAYER. AI-08 treats it as bytes it did not
+    produce and must not interpret; a layer that could inspect it could also
+    rewrite it, and the immutability AI-15 §9.4 places on the forwarder would have
+    nothing left to protect.
+
+    `ToolCallRef` AND THE EXECUTION-RESULT SEMANTICS ARE UNCHANGED. This clause adds
+    a thing that may pass through; it changes no field, no outcome and no
+    attribution rule of §10 and §11, and the AgentResult remains run data.
+```
 ```
 
 ### 13.2 What is frozen for the day it is admissible
@@ -1982,6 +2014,73 @@ EXPLICITLY NOT CHANGED by Amendment 4:
 ```
 
 An amendment is required before any frozen rule above changes.
+
+---
+
+### Amendment 5 — a submission envelope may pass through, and nothing else may (2026-10-12)
+
+Found while preparing the prerequisite contract work for the composition → Evidence
+edge. §13.1 forbids AI-08 to WRITE an AI-05 EvidenceRecord, and it said nothing
+about CARRYING material the record is built from. Those are different acts, and the
+edge needs the distinction: the tool layer produces the ToolResults the projection
+consumes, and the composition — the submitter — sits outside this layer.
+
+```text
+WHAT THIS AMENDMENT CHANGES
+
+(a) §13.1 gains a FROZEN block separating what AI-08 may CARRY from what it may DO:
+
+        MAY      return or forward a submission envelope AI-06 produced, OPAQUELY:
+                 carried, not read, not built here, not altered
+        MUST NOT write an AI-05 EvidenceRecord, under any token (§13.1, unchanged)
+        MUST NOT hold, request or use a private key; MUST NOT generate, replace,
+                 mutate or repair a producer proof
+        MUST NOT call admission or a store, directly or indirectly
+        MUST NOT put raw `stdout`, raw `stderr` or a whole `ToolResult` into
+                 anything that leaves this layer — the same reason AI-05 §26 gives
+                 for keeping raw tool output out of a record
+
+(b) THE ENVELOPE IS OPAQUE TO THIS LAYER. A layer that could inspect it could also
+    rewrite it, and the immutability AI-15 §9.4 places on a forwarder would have
+    nothing left to protect. This is the whole reason the permission is safe to
+    grant.
+
+(c) WHAT DOES NOT CHANGE. §10's `ToolCallRef` and §11's execution-result semantics
+    are UNTOUCHED: no field, no outcome and no attribution rule moves. The
+    AgentResult remains run data. §13.2's deferred shape for the day an AI-08
+    execution is recordable, and §13.3's refusal of an adjudication layer, both
+    stand unchanged.
+
+(d) WHY AN AMENDMENT. §18 requires one for "the Evidence boundary (§13)". This
+    changes that boundary — by ADDING a permission, not by relaxing a prohibition.
+```
+
+```text
+SECURITY IMPACT
+    A CARRIAGE PERMISSION, NOT A CONTROL. AI-08 gains no ability to write, to sign
+    or to decide: the envelope is opaque to it, and every prohibition in §13.1
+    stands. The one prohibition this amendment ADDS is the result-dump rule, which
+    closes a way raw tool output could otherwise have left the layer inside a
+    carrier nobody thought to constrain.
+AUTHORITY IMPACT
+    None. Nothing here grants a permission, produces a Guard ALLOW, or makes a
+    record an authorization. Guard remains the only component with an AUTHORIZES
+    entry (AI-14 §4.1).
+```
+
+```text
+WHAT THIS AMENDMENT DOES NOT DO
+
+    it does not authorise AI-08 to write a record, to call admission, or to hold a
+      key — every one of those remains forbidden
+    it does not change `ToolCallRef`, `AgentResult`, any independence condition or
+      any AgentId / AgentRole member
+    it does not authorise a production call site, and it does not move AI-15
+      §15.2's STEP 1, row 1′, STEP 2 or STEP 3
+    it does not mark any seam CONNECTED
+    it does not edit AI-05's, AI-06's, AI-14's or AI-15's contract
+    it does not run any test, and it claims no test result of its own
+```
 
 ---
 
