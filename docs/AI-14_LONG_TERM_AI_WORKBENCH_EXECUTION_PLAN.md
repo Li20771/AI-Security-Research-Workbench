@@ -1,8 +1,8 @@
 # AI-14 — Long-term AI Workbench — Execution Plan
 
 > Status: **FROZEN** (AI-14-A, 2026-10-04 — frozen by the merge of PR #72); **AMENDED
-> THREE TIMES** (§25 — Amendment 1, 2026-10-04; Amendment 2, 2026-10-11; Amendment 3,
-> 2026-10-12)
+> FOUR TIMES** (§25 — Amendment 1, 2026-10-04; Amendment 2, 2026-10-11; Amendment 3,
+> 2026-10-12; Amendment 4, 2026-10-12)
 > Phase: AI-14 — Long-term AI Workbench
 > Sub-phase: **AI-14-A — Final Architecture / Long-term Workbench Freeze**
 > Prerequisite: AI-13 — COMPLETE / MERGED / CLOSED, merge commit
@@ -25,7 +25,7 @@ AI-14-A wrote NO runtime implementation and changed NO runtime behaviour. It cor
 project's status record, inventoried what the repository actually contains, and froze the
 architecture the later sub-phases implement against.
 
-This document has been amended THREE TIMES since its freeze. The amendments are logged
+This document has been amended FOUR TIMES since its freeze. The amendments are logged
 in §25.
 ```
 
@@ -1588,18 +1588,24 @@ B3  Workflow StepExecutor -> execution     DONE      composition/executor.py
                                                      declare routing input is OPEN and
                                                      this phase invents none
 B4  controlled verification caller         DONE      composition/verification.py
-B5  composition -> Evidence                BLOCKED   NOT STARTED. AI-14 STEP 1 is NOT
-                                                     FULLY DISCHARGED. Its
-                                                     AUTHORIZATION CHANGE is proposed
-                                                     in Amendment 2 — an OPEN pull
-                                                     request, IN FORCE ON ITS MERGE and
-                                                     not before — which authorizes the
+B5  composition -> Evidence                BLOCKED   NOT STARTED. AI-14 STEP 1'S
+                                                     ENUMERATED CHECKLIST IS
+                                                     DISCHARGED. Its AUTHORIZATION
+                                                     CHANGE IS MERGED AND IN FORCE:
+                                                     Amendment 2, PR #90, merge commit
+                                                     a98e389b91ee10858abc67e7c66509cd12fae9dc
+                                                     (2026-10-11), which authorizes the
                                                      import and stops layer 0 refusing
-                                                     it. ONE ENUMERATED CLAUSE REMAINS
-                                                     OPEN for the AI-15 owner: the
-                                                     `§13 producer_token identifier
-                                                     refusal` it names is not a rule
-                                                     this contract contains. STILL
+                                                     it. THE ONE CLAUSE THAT REMAINED
+                                                     WAS DISPOSED OF BY ITS OWNER: AI-15
+                                                     §19 Amendment 4 withdrew the `§13
+                                                     producer_token identifier refusal`
+                                                     entry as a NO-OP, because it named
+                                                     a rule this contract does not
+                                                     contain. AI-14 records the
+                                                     checklist as discharged ON AI-14'S
+                                                     SIDE; the disposition is AI-15'S
+                                                     ACT, cited here and not adopted. STILL
                                                      BLOCKED BY: no call site; row 1′
                                                      (the §6.5 row and the own-contract
                                                      clause for each phase whose facts
@@ -2013,6 +2019,7 @@ HERE THAT EVERY ENUMERATED STEP 1 REQUIREMENT HAS BEEN DISCHARGED.
     weaken a REAL rule in the name of an ABSENT one.
 
     THE DISCREPANCY IS THEREFORE OPEN AND RECORDED, not silently represented as done.
+    ^ DISPOSED BY ITS OWNER — see §25 Amendment 4.
 ```
 
 ```text
@@ -2067,6 +2074,8 @@ WHAT THIS CORRECTION DOES NOT DO, AND IT MATTERS MORE THAN WHAT IT DOES
     AI-15 §15.2 enumerates names a rule this document does not contain, and that remains
     an OPEN DISCREPANCY whose disposition belongs to the AI-15 OWNER and is UNDECIDED.
     Amendment 2 records it; this amendment neither restates nor resolves it.
+    ^ THE STEP 1 DISCREPANCY HAS SINCE BEEN DISPOSED OF BY THE AI-15 OWNER; recorded in
+    §25 Amendment 4.
 
     IT DOES NOT TOUCH THE C-1 RECORDS OR ANY OTHER KNOWN STALE FACT that Amendment 2
     reported and left alone, and it does not reopen the §3.4 / §7.2 / §7.4 clauses that
@@ -2105,6 +2114,86 @@ AND IT DOES NOT AMEND AI-15, AI-05, AI-11 OR ANY OTHER PHASE
     disposition of the STEP 1 rule-reference discrepancy, and the closure of any AI-15
     item, under AI-15's OWN amendment rule. This amendment makes no part of that
     decision and speaks for no other phase.
+```
+
+```text
+AMENDMENT 4 — 2026-10-12 — STEP 1'S ENUMERATED CHECKLIST IS RECORDED AS DISCHARGED, AND
+ONE STALE STATUS RECORD IS CORRECTED.
+
+IN FORCE on the merge of the change that carries it. The merge IS the approval, and the
+text below is the final text.
+
+AMENDMENT TYPE — STATUS RECORD ONLY
+    It changes no rule of §0-§24, no classification, no authority relation and no Layer 0
+    constant. It corrects a record that stopped being true, and states what AI-14 now
+    records about STEP 1 — the step AI-15 §15.2 fixes as the first of this edge's order.
+
+WHAT WAS FOUND
+    §22.1 B5's per-item STATUS row still described this edge's AUTHORIZATION CHANGE as
+    "proposed in Amendment 2 — an OPEN pull request, IN FORCE ON ITS MERGE and not
+    before". THAT PULL REQUEST MERGED on 2026-10-11 as PR #90, merge commit
+    a98e389b91ee10858abc67e7c66509cd12fae9dc, which Amendment 3 (§25) already recorded —
+    and this row was left behind by that correction. The same row still described the one
+    enumerated clause as OPEN "for the AI-15 owner", and Amendment 3's own record called
+    its disposition UNDECIDED.
+
+WHAT HAS SINCE HAPPENED, AND WHOSE ACT IT IS
+    THE DISPOSITION IS AI-15'S OWNER'S ACT, in AI-15's contract, under AI-15's amendment
+    rule: AI-15 §19 AMENDMENT 4, merged by PR #93 as
+    bef8e923355cca6aba3addd50199e7f78685e2b2. It WITHDREW that clause from STEP 1's
+    effective work list and recorded it as a NO-OP. IT IS THE OPTION THIS DOCUMENT
+    PROPOSED AS (a): the reference is wrong, it named a rule this contract does not
+    contain, and the item describes a rule that was never written.
+    AI-14 RECORDS THAT ACT AND PRODUCED NONE OF IT. This amendment does not amend AI-15,
+    does not adopt the disposition as AI-14's own decision, and speaks for no other phase.
+
+WHAT IT CHANGES
+    the document header          the amendment count, THREE -> FOUR, and the Amendment 4
+                                 entry
+    the freeze status block      "amended THREE TIMES" -> "amended FOUR TIMES"
+    §22.1 B5's per-item STATUS   the STEP 1 sentences ONLY: the authorization change is
+      row                        recorded as MERGED AND IN FORCE, and the one enumerated
+                                 clause as DISPOSED OF BY ITS OWNER
+    Amendment 2's RECORDED       a pointer line: "^ DISPOSED BY ITS OWNER — see §25
+      block                      Amendment 4." NO ORIGINAL WORD IS CHANGED
+    Amendment 3's record         a pointer line: the STEP 1 discrepancy has since been
+                                 disposed of by the AI-15 owner. NO ORIGINAL WORD IS
+                                 CHANGED
+    this record
+
+WHAT IT DOES NOT DO — NO CLASSIFICATION CHANGE
+    B5 remains BLOCKED / NOT STARTED. The row KEEPS its "STILL BLOCKED BY: no call site;
+    row 1′ (the §6.5 row and the own-contract clause for each phase whose facts would be
+    admitted); and the unresolved joint-delivery mechanism", its "STEP 2 AND STEP 3 HAVE
+    NOT BEGUN", and its "NO PRODUCER TOKEN WAS ADDED". §5.1's row, Appendix A's row,
+    §22.1 B5's `blocked by` clauses (i), (ii) and (iii), and the `NEVER` clause are NOT
+    TOUCHED. AUTHORIZING AN EDGE CONNECTS NOTHING, and nothing here may be read as
+    reporting this edge as one.
+
+WHAT IT DOES NOT DO — NO AUTHORITY CHANGE
+    §4's authority matrix and the ten rules are unchanged. Guard remains the only
+    component with an AUTHORIZES entry. A producer token is still a registered NAME and
+    not a credential, Evidence still authorizes nothing, and no row of the matrix moves.
+
+WHAT IT DOES NOT DO — NO LAYER 0 CHANGE
+    `AI14_FORBIDDEN_IMPORTS` stays exactly as Amendment 2 left it. The forbidden stdlib
+    roots, the foreign-root rule, `AI14_FORBIDDEN_IDENTIFIERS` (the `producer_token`
+    entry INCLUDED), `AI14_FORBIDDEN_CALLABLES` and the one-way rule all stand as they
+    are. NO TEST IS CHANGED, and no rule is relaxed, narrowed or removed.
+
+AND IT DOES NOT DO THESE EITHER
+    IT DOES NOT DISCHARGE STEP 2 OR STEP 3. No call site is created, no contract part of
+    the joint change is authored, and this item does not move out of BLOCKED.
+    IT DOES NOT RECONCILE THE C-1 RECORDS that Amendment 2 named and left alone, and it
+    does not reopen the §3.4 / §7.2 / §7.4 clauses cited there: they answer a different
+    question and still await their own amendment.
+
+ORDERING, STATED BECAUSE IT IS LOAD-BEARING
+    AI-15 §19 requires an amendment to an earlier phase to be made BEFORE AI-15 depends
+    on it. THIS IS THAT EARLIER AMENDMENT, AND IT LANDS FIRST. AI-15's own contract still
+    records STEP 1 as not made; only AI-15's owner may sync that side, under AI-15's
+    amendment rule. This amendment does not write AI-15's status and MUST NOT be read as
+    doing so.
 ```
 
 ---
