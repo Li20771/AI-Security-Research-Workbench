@@ -363,12 +363,27 @@ def _admission_calls_in_tree(tree: ast.Module) -> list[tuple[int, str]]:
 
 
 def _admission_call_sites(package: pathlib.Path) -> list[str]:
-    """Every call under `package/*.py` that can reach an admission entry point."""
+    """Every call under `package/**/*.py` that can reach an admission entry point.
+
+    RECURSIVE, because a call does not stop being a call when it moves into a
+    subpackage. `composition/` is FLAT TODAY, and a check that walked only
+    `glob("*.py")` would have stopped covering the package the first time anyone
+    added a subdirectory to it — silently, and while still reporting success.
+
+    PATHS ARE REPORTED RELATIVE TO `package/`, so a finding still says WHICH module
+    it is in (`root.py` at the top level, `nested/thing.py` below it) rather than
+    collapsing every hit to a bare filename a reader cannot locate.
+
+    `__pycache__` IS SKIPPED: it holds compiled copies of files this walk already
+    reads, and a `.pyc` is not source.
+    """
     findings: list[str] = []
-    for path in sorted(package.glob("*.py")):
+    for path in sorted(package.rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         findings.extend(
-            f"{path.name}:{line} {what}"
+            f"{path.relative_to(package).as_posix()}:{line} {what}"
             for line, what in _admission_calls_in_tree(tree)
         )
     return findings
@@ -538,6 +553,71 @@ def test_the_absence_check_catches_an_aliased_admission_call(
     (package / "zz_planted.py").write_text(planted, encoding="utf-8")
     findings = _admission_call_sites(package)
     assert findings, f"an admission call was planted and NOT detected:\n{planted}"
+
+
+@pytest.mark.parametrize(
+    "planted",
+    [
+        pytest.param(
+            "from plugins.evidence import admit\n"
+            "\n"
+            "\n"
+            "def submit(record):\n"
+            "    return admit(record)\n",
+            id="direct-call-in-a-subpackage",
+        ),
+        pytest.param(
+            "import plugins as p\n"
+            "\n"
+            "\n"
+            "def submit(record, store, producer_proof):\n"
+            "    return p.evidence.admission.admit_to_store(\n"
+            "        record, store=store, producer_proof=producer_proof\n"
+            "    )\n",
+            id="parent-package-call-in-a-nested-subpackage",
+        ),
+    ],
+)
+def test_the_absence_check_walks_subpackages(
+    planted: str, tmp_path: pathlib.Path
+) -> None:
+    """A CALL DOES NOT STOP BEING A CALL WHEN IT MOVES INTO A SUBDIRECTORY.
+
+    `composition/` IS FLAT TODAY, which is exactly why this matters: a check that
+    walked only the top level would keep reporting success after the package grew a
+    subdirectory, and would have stopped covering the package without saying so.
+
+    The finding must ALSO name the subdirectory. A hit reported as a bare filename
+    that exists in two places is a hit a reader cannot locate.
+    """
+    package = tmp_path / "composition"
+    nested = package / "nested" / "deeper"
+    nested.mkdir(parents=True)
+    (nested / "zz_planted.py").write_text(planted, encoding="utf-8")
+    findings = _admission_call_sites(package)
+    assert findings, f"a nested admission call was planted and NOT detected:\n{planted}"
+    assert findings[0].startswith("nested/deeper/zz_planted.py:"), findings
+
+
+def test_the_absence_check_ignores_compiled_copies(tmp_path: pathlib.Path) -> None:
+    """`__pycache__` holds compiled copies of files the walk already reads.
+
+    A `.py` planted there is not source and must NOT produce a finding — otherwise
+    the check could be tripped by a build artefact, and a real finding could be
+    buried in noise.
+    """
+    package = tmp_path / "composition"
+    cached = package / "__pycache__"
+    cached.mkdir(parents=True)
+    (cached / "zz_stale.py").write_text(
+        "from plugins.evidence import admit\n"
+        "\n"
+        "\n"
+        "def submit(record):\n"
+        "    return admit(record)\n",
+        encoding="utf-8",
+    )
+    assert _admission_call_sites(package) == []
 
 
 def test_the_composition_adds_no_authority_vocabulary() -> None:
