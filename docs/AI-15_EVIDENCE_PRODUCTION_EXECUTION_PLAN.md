@@ -2350,10 +2350,16 @@ THE ORDER — each step names its owner, its precondition and its output
   STEP 1   AI-14 amendment #1 — AUTHORIZATION. It changes the RULES, not the
            classification.
                §22.1 B5's "blocked by" clause
-               §13's `producer_token` identifier refusal, where it reaches the
-                 SUBMITTING caller rather than the composition
                §5.1's "by rule" annotation on the composition -> Evidence row
                §25's amendment log
+               ^ AN EARLIER REVISION OF THIS LIST ALSO NAMED "§13's `producer_token`
+                 identifier refusal, where it reaches the SUBMITTING caller rather
+                 than the composition". THAT ITEM IS WITHDRAWN — it is an INVALID
+                 CROSS-CONTRACT REFERENCE that names a rule AI-14 §13 does not
+                 contain — and §19 AMENDMENT 4 records it as a NO-OP. IT IS NOT PART
+                 OF STEP 1'S WORK LIST, and withdrawing it changes NO rule: the
+                 composition-only identifier prohibition and §22.1 B5's `NEVER`
+                 clause both continue to stand exactly as they are.
            and, in the same change:
                scripts/ci/layer0_policy.py:3241   AI14_FORBIDDEN_IMPORTS
                tests/composition/test_composition_boundaries.py:151-176
@@ -3259,12 +3265,13 @@ AI-15-A IS NOT DONE IF
 
 ```text
 FROZEN. This document was frozen by the merge of PR #78, and it has been amended
-THREE TIMES since — Amendment 1, Amendment 2 and Amendment 3, below. The line this
-block replaced read "PROPOSED (this document's class until the merge that freezes
-it)", which was true while the freeze was a proposal and false once it merged. It
-is corrected here rather than left to contradict the amendment log beside it.
-The count was "TWICE" until Amendment 3, and each increment of it has been made in
-the same change that appended the amendment it counts.
+FOUR TIMES since — Amendment 1, Amendment 2, Amendment 3 and Amendment 4, below. The
+line this block replaced read "PROPOSED (this document's class until the merge that
+freezes it)", which was true while the freeze was a proposal and false once it
+merged. It is corrected here rather than left to contradict the amendment log beside
+it. The count was "TWICE" until Amendment 3 and "THREE TIMES" until Amendment 4, and
+each increment of it has been made in the same change that appended the amendment it
+counts.
 ```
 
 ```text
@@ -3915,6 +3922,160 @@ WHAT THIS AMENDMENT DOES NOT DO
 
 ---
 
+#### Amendment 4 — an invalid AI-14 cross-contract reference is withdrawn from STEP 1
+(2026-10-12)
+
+```text
+IN FORCE on the merge of the change that carries it. There is no awaiting-review
+marker on this amendment: the merge IS the approval, and the text below is the
+final text.
+```
+
+```text
+WHAT WAS FOUND
+
+    §15.2's STEP 1 listed, among the clauses that step changes, this one:
+
+        "§13's `producer_token` identifier refusal, where it reaches the
+         SUBMITTING caller rather than the composition"
+
+    IT IS AN INVALID CROSS-CONTRACT REFERENCE. It names a rule in AI-14 §13 that
+    AI-14 §13 DOES NOT CONTAIN, and it attributes to the existing `producer_token`
+    restriction a SUBMITTING-CALLER behaviour that restriction DOES NOT HAVE.
+
+    THE EVIDENCE, each item re-checkable:
+
+        AI-14 §13 is "Human approval architecture". It contains NO producer-token
+          rule of any kind. A case-folded search for "token" across §13 returns
+          NOTHING, and "identifier" occurs in §13 nowhere either.
+        `scripts/ci/layer0_policy.py`'s `AI14_FORBIDDEN_IDENTIFIERS` does contain
+          `"producer_token"` — and it is a rule about `composition/*.py`, scoped to
+          that directory. It has no caller-facing arm.
+        `tests/composition/test_composition_boundaries.py`'s authority-vocabulary
+          test scans the same directory for the same identifiers. Same scope.
+        AI-14 §22.1 B5 carries its own, INDEPENDENT `NEVER` clause forbidding the
+          composition to mint, select, borrow or alter a producer token or claim.
+        AI-05 Amendment 4 chose READING A, which keeps producer and submitter
+          APART. Authenticating a producer claim is not authenticating a submitter
+          and is not an authorization.
+
+    SO THERE IS NO REFUSAL "REACHING THE SUBMITTING CALLER" FOR STEP 1 TO NARROW.
+```
+
+```text
+THE OWNER'S DECISION — OPTION A, AND IT IS MADE
+
+    THE AI-15 OWNER HAS CHOSEN OPTION A: THE CLAUSE IS WITHDRAWN FROM STEP 1'S
+    EFFECTIVE WORK LIST AND RECORDED AS A NO-OP.
+
+    THIS IS A DECISION, NOT A NEW OPEN QUESTION. It is NOT recorded as an
+    unresolved item, it is NOT reassigned, and it does NOT become a new blocker.
+    §15.2's STEP 1 work list has been corrected in place, with the withdrawn clause
+    shown as withdrawn rather than silently deleted.
+
+    WHY IT IS A NO-OP RATHER THAN WORK:
+        the item named a rule that does not exist, so there is nothing to change
+        the rules that DO exist are scoped to `composition/` and were never in
+          STEP 1's path
+        NO RULE MODIFICATION IS REQUIRED, AND NONE IS MADE
+        NO SUBMITTER-SIDE REFUSAL RULE IS ADDED, and none is proposed
+```
+
+```text
+WHAT CONTINUES TO STAND, UNCHANGED
+
+    `AI14_FORBIDDEN_IDENTIFIERS`' `producer_token` entry  UNCHANGED, still enforced
+      over `composition/`
+    the composition authority-vocabulary test              UNCHANGED, same scope
+    AI-14 §22.1 B5's `NEVER` clause                        UNCHANGED — the
+      composition still MUST NOT mint, select, choose, borrow or alter a producer
+      token, a producer claim or a producer proof
+    AI-05's READING A, and producer ≠ submitter            UNCHANGED
+    §15.2 STEP 1's OTHER clauses and its enforcement list  UNCHANGED
+    §16.1's other OPEN items, their owners and their status UNCHANGED
+
+    NOTHING IN THIS AMENDMENT RELAXES A RULE. It removes a REQUIREMENT that named
+    a rule which does not exist; it does not remove, weaken or reword any rule that
+    does.
+```
+
+```text
+TWO FACTS THAT MUST NOT BE MERGED, AND THEY ARE STATED SEPARATELY
+
+    1  AI-15'S DECISION HAS BEEN MADE. The clause is withdrawn as a valid STEP 1
+       delivery requirement. That is recorded HERE, in AI-15's own contract, by
+       AI-15's owner, under AI-15's amendment rule (§19).
+
+    2  AI-14'S OWN CONTRACT HAS NOT BEEN UPDATED BY AI-14. AI-14's document still
+       carries its older OPEN / UNDECIDED status record for this reference, because
+       correcting it is AI-14'S ACT, on AI-14's contract, under AI-14 §24.
+       AI-15 DOES NOT MODIFY IT, DOES NOT SPEAK FOR AI-14, AND DOES NOT DECLARE
+       AI-14 STEP 1 COMPLETE ON AI-14'S BEHALF.
+       UNTIL AI-14'S OWNER ACTS, THE AUTHORITATIVE CONTRACT STATUS REMAINS
+       CONSERVATIVE: **AI-14 STEP 1 = NOT FULLY DISCHARGED.**
+
+    THE TWO ARE NOT THE SAME STATEMENT, AND A READER MUST NOT TAKE THE FIRST FOR
+    THE SECOND. AI-15 has disposed of the item IT raised; whether that disposes of
+    AI-14's status record is AI-14's to say.
+```
+
+```text
+SECURITY IMPACT
+
+    NONE. This amendment changes no runtime code, no runtime behaviour, no control
+    and no check. It adds no attack surface, introduces no trust root, and alters
+    no trust boundary. It REMOVES A REQUIREMENT — and the requirement it removes is
+    one that named a rule which does not exist, so nothing that was enforced stops
+    being enforced.
+    NO NEW SUBMITTER-SIDE REFUSAL RULE IS ADDED. NO PRODUCER TOKEN IS ADDED. NO
+    §6.5 REGISTRY ROW IS ADDED. NO PRODUCTION EVIDENCE CALL SITE IS CREATED.
+```
+
+```text
+AUTHORITY IMPACT
+
+    None. Nothing here grants a permission, moves a responsibility, introduces an
+    authorizing subject, or changes AI-14 §4.1's authority matrix. Guard remains
+    the only component with an AUTHORIZES entry. An authenticated producer claim is
+    still not an approval, not a permission, not a capability and not a Guard
+    result. Producer authentication is still not submitter identity.
+```
+
+```text
+CONTRACT IMPACT
+
+    ADDED        this amendment record
+    AMENDED      §15.2 STEP 1's work list — the invalid clause is withdrawn and
+                 shown as withdrawn
+                 §19's preamble — the amendment count
+                 `## Status` — the amendment count and the Amendment 4 line
+    UNCHANGED    §8.3's twelve CONNECTED conditions, condition 11 included
+                 §16.1's OPEN items, §16.2's BLOCKED rows, §17.1-§17.5, §18, §20,
+                 and every other clause of §0-§20
+                 the class of every clause in this document
+    NO CHANGE TO any other contract. AI-14, AI-05 and AI-11 are READ-ONLY here.
+```
+
+```text
+WHAT THIS AMENDMENT DOES NOT DO
+
+    it does not mark AI-14 STEP 1 complete, and it does not discharge it
+    it does not update AI-14's contract, which is AI-14's to update
+    it does not mark B5 CONNECTED, or claim that all twelve §8.3 conditions hold
+    it does not start AI-15-B, STEP 2 or STEP 3, or unblock any of them
+    it does not close AI-11 §21.1's OPEN-1, row 1′, AI15-OPEN-3 or AI15-OPEN-4
+    it does not resolve the joint-delivery mechanism
+    it does not add, remove or weaken a producer token, a §6.5 row, a rule or a
+      check, and it does not create a production Evidence writer
+    it does not turn any NOT_RUN, BLOCKED or UNKNOWN into PASS
+    it does not run any test. This is a documentation change, and it claims no test
+      result of its own
+    it does not alter any file outside this document, PROJECT_STATUS.md and
+      MASTER_ROADMAP.md
+```
+
+---
+
 ```text
 THE NORMATIVE CLASSES, USED AS AI-14 §2 DEFINES THEM
     FROZEN      settled here; AI-15-B implements it; changing it needs an amendment
@@ -4084,7 +4245,7 @@ BLOCKED: B5 (composition -> Evidence) is unchanged by this document. §16.2 list
          precondition, which requires STEP 0a AND STEP 0b AND STEP 1 together
          (§17.2b, §16.2).
 
-AMENDED: this document has been amended THREE TIMES since it was frozen.
+AMENDED: this document has been amended FOUR TIMES since it was frozen.
          §19 Amendment 1 records AI-05's answer to AI15-OPEN-2.
          §19 Amendment 2 records AI-05 Amendments 5 and 6 — the producer
          authentication standard DEFINED and its trust configuration FROZEN — and
@@ -4092,6 +4253,9 @@ AMENDED: this document has been amended THREE TIMES since it was frozen.
          §19 Amendment 3 records AI-05 Amendment 7 — the standard IMPLEMENTED and
          TESTED, and AI15-OPEN-1 CLOSED BY ITS OWNER — and syncs this document's
          status records to it. THE OWNER MADE THE DECISION; AI-15 RECORDED IT.
+         §19 Amendment 4 WITHDRAWS an invalid cross-contract reference from §15.2
+         STEP 1's work list and records it as a NO-OP. AI-15's OWNER MADE THAT
+         DECISION, in AI-15's own contract; NO RULE CHANGED and no item moved.
 
 OPEN:    AI15-OPEN-3 (AI-04) · AI15-OPEN-4 (AI-13/AI-14)
          — local ids, prefixed so they cannot be confused with AI-11 §21.1's
