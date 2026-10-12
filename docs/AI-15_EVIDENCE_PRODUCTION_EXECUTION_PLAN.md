@@ -1081,6 +1081,14 @@ FROZEN: READING A BEING SETTLED IS NOT T2 BEING CONNECTED, AND NOT T2 BEING
         AUTHORIZED. T2 remains a topology this document considers legal; it has
         no call site (STEP 2), no AI-14 authorization (STEP 1) and no
         classification (STEP 3). Nothing here may be read as a connection.
+        ^ RECORDED (§19 AMENDMENT 6): THE SENTENCE ABOVE PRESERVES THE POSITION
+        BEFORE AI-14 ACTED. "No AI-14 authorization (STEP 1)" was true when this
+        clause was written; AI-14's OWNER has since made STEP 1 — AI-14 Amendment 2
+        (PR #90), recorded as discharged by AI-14 Amendment 4 (PR #96). THE CLAUSE IS
+        KEPT AS WHAT IT WAS AND IS NOT REWRITTEN. NOTHING HERE IS CONNECTED BY THAT,
+        AND NO PRODUCTION CALL IS PERMITTED: T2 still has no call site (STEP 2) and
+        no classification (STEP 3), row 1′ is unsatisfied for any event but AI-06's,
+        and the joint-delivery mechanism is unnamed.
 FROZEN: T1 is not forbidden by AI-15 — it is the topology each phase's own
         contract would have to choose if it wanted its own writer — but AI-15 owns
         none of the amendments it needs and MUST NOT assume it.
@@ -4696,12 +4704,13 @@ WHAT THIS AMENDMENT CHANGES
     §16.1            the AI15-OPEN-1 GATES line
     §17.2            a RECORDED block — THIS SECTION'S TEXT IS UNCHANGED
     §17.2b, §17.3    RECORDED notes
-    §4.4, §6.1,      RECORDED notes: §17.2 no longer refuses the import or the call
+    §4.4, §7.2,      RECORDED notes: §17.2 no longer refuses the import or the call
       §7.3, §7.4,
       §8.4, §9.2
     §14.1, §14.8     the AI-14 row and the dependency block, including the note that
                      a connecting change no longer fails Layer 0's import rule
-    §19              this record, and the preamble's amendment count
+    §19              this record, the preamble's amendment count, and a pointer
+                     inside Amendment 4's record
     `## Status`      the BLOCKED block, the amendment count and the Amendment 6 line
 ```
 
