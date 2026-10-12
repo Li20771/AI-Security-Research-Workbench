@@ -124,8 +124,16 @@ jobs:
             "$A::TestObligation22Cj1Vectors::test_obligation_22d_vector_3_case_b_reconstruction_refuses" \
             "$A::TestObligation22Cj1Vectors::test_obligation_22e_vector_4_case_a_signature_refuses_first" \
             "$A::TestObligation22Cj1Vectors::test_obligation_22f_vector_4_case_b_reconstruction_refuses" \
-            "$A::TestObligation18NoProductionWriter::test_obligation_18a_no_production_call_site_exists" \
-            "$A::TestObligation18NoProductionWriter::test_obligation_18b_the_scan_can_find_a_call_site" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18a_the_approved_call_site_set_is_exact" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18b_the_scan_can_find_a_call_site" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18c_a_substitution_with_an_unchanged_count_fails" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18d_two_calls_in_one_scope_are_two_identities" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18e_aliases_resolve_to_the_canonical_entrypoint" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18f_an_unapproved_addition_fails" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18g_unresolvable_forms_fail_closed[getattr-acquisition]" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18g_unresolvable_forms_fail_closed[partial-application]" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18g_unresolvable_forms_fail_closed[container-dispatch]" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18h_producer_proof_must_be_an_explicit_keyword" \
             "$A::TestObligation19NoCallerSelectedTrustRoot::test_obligation_19_no_violation_is_reported" \
             "$A::TestObligation19NoCallerSelectedTrustRoot::test_obligation_19_the_rule_can_identify_its_target_violation" \
             "$A::TestObligation22Cj1Vectors::test_obligation_22a_vector_1_bytes" \

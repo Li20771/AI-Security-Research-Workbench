@@ -1,8 +1,8 @@
 # AI-14 — Long-term AI Workbench — Execution Plan
 
 > Status: **FROZEN** (AI-14-A, 2026-10-04 — frozen by the merge of PR #72); **AMENDED
-> FOUR TIMES** (§25 — Amendment 1, 2026-10-04; Amendment 2, 2026-10-11; Amendment 3,
-> 2026-10-12; Amendment 4, 2026-10-12)
+> FIVE TIMES** (§25 — Amendment 1, 2026-10-04; Amendment 2, 2026-10-11; Amendment 3,
+> 2026-10-12; Amendment 4, 2026-10-12; Amendment 5, 2026-10-12)
 > Phase: AI-14 — Long-term AI Workbench
 > Sub-phase: **AI-14-A — Final Architecture / Long-term Workbench Freeze**
 > Prerequisite: AI-13 — COMPLETE / MERGED / CLOSED, merge commit
@@ -25,7 +25,7 @@ AI-14-A wrote NO runtime implementation and changed NO runtime behaviour. It cor
 project's status record, inventoried what the repository actually contains, and froze the
 architecture the later sub-phases implement against.
 
-This document has been amended FOUR TIMES since its freeze. The amendments are logged
+This document has been amended FIVE TIMES since its freeze. The amendments are logged
 in §25.
 ```
 
@@ -1312,6 +1312,24 @@ choose a permission, produce a Guard ALLOW, persist an Evidence record, mint a w
 approval, or read a RouterDecision as authorization.
 
 ```text
+WHAT "PERSIST AN EVIDENCE RECORD" MEANS HERE (Amendment 5). It means a composition
+module WRITING TO A STORE ITSELF — `store.write`, or any operation that puts bytes
+in a store. It does NOT extend to calling AI-05's admission entry point, which is
+what §22.1 B5 requires and which grants no authority (B5's NEVER clause; AI-05
+§7.3.8, §7.3.12(v)).
+
+    A composition MUST NOT call `store.write`.
+    A composition MUST use `admit_to_store` — the entry point that runs §30 step 14
+    and the store, and the one AI-15 §8.3 condition 9 names. Calling it is
+    SUBMITTING to the admission boundary, not persisting on the boundary's behalf.
+
+THIS IS A READING, NOT A RELAXATION. Every prohibition in this preamble stands
+unchanged, and the authority rule it exists for is untouched: the glue still
+chooses no permission, produces no ALLOW, mints no approval and reads no decision
+as authorization.
+```
+
+```text
 EVERY ITEM BELOW INHERITS THESE RULES WITHOUT RESTATING THEM
 
 Router NEVER authorizes                      a decision is a SELECTION
@@ -1333,6 +1351,16 @@ ORDER  B1, B2 and B4 are independent and may be done in any order. B3 composes B
        re-run whenever an edge changes.
        Nothing in this list may be skipped by "connecting it later"; an item left undone
        leaves its seam marked NOT CONNECTED in §5 and Appendix A.
+
+       SCOPE OF THE B5 SENTENCE (Amendment 5). "B5 MUST NOT START until AI-05 has
+       amended its producer registry" states the gate for a phase whose facts have
+       NO §6.5 row. It does NOT apply to the AI-06 path, whose two rows already
+       exist in AI-05 §6.5 and whose §15.1 already names a submitter — so no
+       registry amendment is outstanding for it.
+       THIS NOTE MOVES NOTHING ON AI-11 §21.1's OPEN-1, which asks WHICH PRODUCERS
+       EXIST, remains OPEN, and is a different item; and it authorises NO path for
+       any phase that has no §6.5 row. B5's current blockers are the ones B5's own
+       `blocked by` list records.
 ```
 
 ```text
@@ -1490,13 +1518,42 @@ B5 — COMPOSITION -> EVIDENCE   (gated: the producing phase's own contract, and
                          AI-13, and adding one is an AI-05 amendment that AI-14 MUST
                          NOT make. A phase whose contract forbids it to write must
                          also be amended by THAT phase.
-                   (iii) THE JOINT-DELIVERY MECHANISM. This change has two authors —
-                         the implementer's runtime part and AI-14's own contract,
-                         Layer 0 and test parts — and no mechanism has been agreed for
-                         delivering both as ONE change while AI-14 retains ownership
-                         of its parts. Until one is, this item stays blocked; §22.1 B6
-                         and §24 both forbid splitting the merge or authoring another
-                         owner's clauses.
+                   (iii) THE JOINT-DELIVERY MECHANISM — NOW NAMED (Amendment 5).
+
+                         THE CHANGE HAS THREE PARTS AND THREE AUTHORS:
+                             runtime / composition   the implementing party — the
+                                                     call site, the wiring, and its
+                                                     own tests
+                             the AI-14 part          AI-14'S OWNER — §5.1, §22.1 B5,
+                                                     Appendix A, §25, the Layer 0
+                                                     constant, and the composition
+                                                     assertions in tests/composition/
+                             the AI-05 part          AI-05'S OWNER — the acceptance
+                                                     obligations its contract imposes
+                                                     on the change, and the CI matrix
+                                                     node list that runs them
+
+                         DELIVERY SHAPE
+                             ONE change, ONE review, ONE merge — NOT a commit count.
+                             How each author arranges their OWN commits is each
+                             author's business.
+                             AI-14'S OWNER PERSONALLY MAKES, OR FORMALLY SUBMITS AND
+                             APPROVES, the AI-14 part, under §24. Nothing here
+                             delegates, waives or transfers that ownership.
+                             AI-05'S PART IS AI-05'S TO MAKE. AI-14 MUST NOT author
+                             it, and MUST NOT treat it as a precondition AI-14 may
+                             satisfy on AI-05's behalf.
+                             A SEPARATELY MERGED AI-14 PART OR AI-05 PART DOES NOT
+                             SATISFY THIS ROW, however it is promised, deferred or
+                             stacked. §22.1 B6 and §24 both forbid splitting the merge
+                             or authoring another owner's clauses.
+
+                         WHAT IS NOT TRANSFERRED
+                             the CONNECTED classification of this edge remains
+                             AI-14's. Only §5.1, Appendix A, §22.1 B5 and §25 may
+                             state it, and only in the SAME change as the call site.
+                             Naming AI-05 as a co-deliverer gives AI-05 no part of
+                             that act, and gives AI-14 no part of AI-05's contract.
                    Until those are resolved the composition reports those facts as
                    RUN DATA, and no document may call them durable evidence. Durable
                    review evidence stays DEFERRED for the same reason
@@ -1682,6 +1739,22 @@ An amendment is REQUIRED for any change to:
 
 An amendment records: what changed, why, its security and authority impact, and the
 date. It is committed BEFORE the code that depends on it, and it is logged in §25.
+
+```text
+"COMMITTED BEFORE THE CODE THAT DEPENDS ON IT" — WHAT IT APPLIES TO (Amendment 5).
+It applies to a PREREQUISITE amendment: the one that changes a RULE the code needs
+in order to be LEGAL. It does NOT apply to a classification amendment, which states
+an OUTCOME rather than a rule.
+
+    a PREREQUISITE amendment   changes a rule; the code depends on it; it is
+                               committed FIRST
+    a CLASSIFICATION amendment states what a change did; §22.1 requires it in the
+                               SAME change as the code it describes
+
+A PREREQUISITE AMENDMENT MUST NOT ASSERT THE OUTCOME OF THE WORK IT PRECEDES. That
+is why the two are separable at all: the rule can be settled before the work, and
+the outcome cannot truthfully be.
+```
 ```
 
 ```text
@@ -2194,6 +2267,79 @@ ORDERING, STATED BECAUSE IT IS LOAD-BEARING
     records STEP 1 as not made; only AI-15's owner may sync that side, under AI-15's
     amendment rule. This amendment does not write AI-15's status and MUST NOT be read as
     doing so.
+```
+
+---
+
+#### Amendment 5 — the B5 rules the joint change needs, settled before the joint change (2026-10-12)
+
+Found while preparing the prerequisite contract work for the composition → Evidence
+edge. Four things §22.1 B5 left open were each blocking a DIFFERENT part of the
+joint change, and none of them could be settled by the change itself without the
+change asserting its own outcome.
+
+```text
+AMENDMENT TYPE — PREREQUISITE RULES, NOT A CLASSIFICATION. It changes no
+classification, no authority relation and no CONNECTED/SEAM row. §5.1, Appendix A
+and B5's per-item STATUS are UNTOUCHED: this edge remains IMPLEMENTED BUT NOT
+CONNECTED and B5 remains BLOCKED.
+```
+
+```text
+(a) §22.1 PREAMBLE — what "persist an Evidence record" means.
+    The preamble forbids the glue from persisting an Evidence record, and B5
+    requires the glue to submit to `admit_to_store`, which is the entry point that
+    runs the store. A limiting sentence is added: the prohibition is about a
+    composition module WRITING TO A STORE ITSELF, and does not extend to calling
+    the admission entry point B5 requires.
+    THIS IS A READING, NOT A RELAXATION. Every prohibition in the preamble stands,
+    and the authority rule it exists for is untouched.
+
+(b) §22.1 ORDER — the scope of the B5 registry sentence.
+    "B5 MUST NOT START until AI-05 has amended its producer registry" states the
+    gate for a phase whose facts have NO §6.5 row. A scope note records that it does
+    NOT apply to the AI-06 path, whose rows exist and whose §15.1 names a submitter.
+    The note moves nothing on AI-11 §21.1's OPEN-1 and authorises no path for any
+    phase without a §6.5 row.
+
+(c) §22.1 B5 `blocked by (iii)` — the joint-delivery mechanism, NAMED.
+    It read "two authors" and left the mechanism unagreed. It now names THREE parts
+    and three authors — the implementing party's runtime part, AI-14's own contract/
+    Layer 0/test parts, and AI-05's acceptance-and-CI part — and fixes the shape:
+    ONE change, ONE review, ONE merge, not a commit count; no separately merged
+    part; and the CONNECTED classification remains AI-14's alone, in the same change
+    as the call site.
+
+(d) §24 — "committed BEFORE the code that depends on it", and what it applies to.
+    A clarifying block separates a PREREQUISITE amendment (changes a rule; committed
+    first) from a CLASSIFICATION amendment (states an outcome; same change as the
+    code). Without it, §24 and §22.1's same-change rule read as contradictory.
+```
+
+```text
+WHO ACTED. AI-14's owner, in AI-14's contract, under AI-14 §24. This amendment
+    amends NO other phase's contract: AI-05's acceptance obligations are AI-05's
+    (AI-05 §34), and the sync of an AI-15 citation is AI-15's.
+ORDERING. AI-15 §19 requires an amendment to an earlier phase to be made BEFORE
+    AI-15 depends on it. This is that earlier amendment and it lands first in the
+    same change; AI-15's own contract is synced by AI-15's owner, not here.
+```
+
+```text
+WHAT THIS AMENDMENT DOES NOT DO
+
+    it does not connect the edge, create a call site, or move B5 out of BLOCKED
+    it does not mark any seam CONNECTED, and it introduces no intermediate
+      classification for one
+    it does not authorise STEP 2: an authorized rule is not a call site, and §22.1
+      B5's `blocked by` list still governs
+    it does not amend AI-05's, AI-15's or any other phase's contract
+    it does not relax a Layer 0 prohibition, and it does not touch
+      `AI14_FORBIDDEN_IMPORTS`, `AI14_FORBIDDEN_IDENTIFIERS` or
+      `AI14_FORBIDDEN_CALLABLES`
+    it does not add, remove or change a producer token, a registry row, an admission
+      outcome or an authority relation
+    it does not run any test, and it claims no test result of its own
 ```
 
 ---

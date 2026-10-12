@@ -1656,7 +1656,13 @@ FROZEN: THE TEST OBLIGATION THIS SECTION CREATES, for the implementation that
             an unknown or malformed field
             rejection without persistence and without store contact, at both
               entry points
-            the absence of a production non-test writer
+            the EXACT APPROVED CALL-SITE SET (§7.3.13) — every production call site
+              of `admit`/`admit_to_store` named INDIVIDUALLY, the BASELINE set
+              being EMPTY and the CANDIDATE set EQUAL to what the connecting
+              change declares. A COUNT-ONLY approval does NOT satisfy this. The
+              obligation is not the mere absence of a writer: it is the presence
+              of EXACTLY the authorised ones, which subsumes the absence case when
+              the approved set is empty.
             the absence of any caller-selectable trust root
             no coupling from an authentication failure to a Guard outcome
             the reason-code precedence of §7.3.8 when step 7's published rule and
@@ -2344,6 +2350,135 @@ FROZEN: THE SUBMITTING SIDE OF THIS INVARIANT IS STATED BY THE PHASE THAT OWNS T
         and what its caller obligations are, are AI-15 §9.4 and §10.2. This section
         fixes what MAY cross the boundary and under what limits; those clauses fix
         what the crossing party MUST do.
+```
+
+#### 7.3.13 The exact approved call-site set — FROZEN (Amendment 9)
+
+```text
+WHAT THIS REPLACES. §7.3.7's obligation list carried "the absence of a production
+non-test writer". That obligation was true of a repository with no writer, and it
+was an obligation ON THE CHANGE THAT CONNECTS the edge — a change this contract
+always contemplated (§7.3.12 anticipates a forwarder). It is REPLACED, NOT
+DELETED: §34.2 forbids "a test deleted, weakened, or re-scoped to make a test
+pass", and a connecting change that simply removed the obligation would be exactly
+that.
+```
+
+```text
+THE STANDARD — EXACT CALL-SITE AUTHORISATION.
+
+  A production call site of `admit` or `admit_to_store` is AUTHORISED only when it
+  is named INDIVIDUALLY in the approved set.
+
+  AN APPROVAL OVER THE NUMBER OF CALLS A SCOPE MAKES IS A DIFFERENT AND WEAKER
+  STANDARD, and MUST NOT be recorded, reported or relied on as exact call-site
+  authorisation. The two are not interchangeable, and the difference is exactly the
+  substitution case below.
+
+  AN APPROVED ENTRY CARRIES ALL OF:
+
+      path                repository-relative POSIX path
+      scope               the FULLY QUALIFIED enclosing function, including class
+                          scopes and nested functions; module level is recorded as
+                          "<module>" rather than left empty
+      entrypoint          the CANONICAL entry-point name the call resolves to —
+                          "admit" or "admit_to_store" — never an alias and never a
+                          local binding name
+      ast_path            the child-field/index path from the module root to the
+                          Call node (for example body[3].body[1].value)
+      fingerprint         a canonical digest over the call's OWN subtree: the callee
+                          expression NORMALISED to `entrypoint`, the argument and
+                          keyword NAMES in source order, and the chain of enclosing
+                          statement kinds. LINENO AND COL_OFFSET ARE EXCLUDED.
+      control_context     the enclosing statement kinds, where they are needed to
+                          distinguish two otherwise identical calls in one scope
+      proof_kwarg         the call passes `producer_proof` EXPLICITLY as a keyword
+                          argument. A `**mapping` expansion does NOT satisfy this
+                          and MUST FAIL — the argument is then not verifiable from
+                          the source.
+```
+
+```text
+THE ASSERTION IS SET EQUALITY OVER IDENTITIES, NOT COUNT EQUALITY.
+Mapping equality in both directions: OBSERVED == APPROVED.
+EQUALITY OF AN EXPECTED COUNT IS NOT EVIDENCE THAT INDIVIDUAL CALL SITES WERE
+APPROVED, and MUST NOT be presented as such.
+
+WHAT IT DETECTS
+    an added call, a removed call, a mis-pathed call, an unapproved call
+                                            -> a key on one side only        -> FAIL
+    a second call in a scope where one was approved
+                                            -> a second identity             -> FAIL
+    DELETE ONE CALL AND ADD ANOTHER IN THE SAME SCOPE, COUNT UNCHANGED
+                                            -> a different `ast_path` and/or
+                                               `fingerprint`                 -> FAIL
+```
+
+```text
+BASELINE AND CANDIDATE ARE TWO DIFFERENT CHECKS AGAINST TWO DIFFERENT TREES.
+
+    BASELINE    on `origin/main` before the connecting change: the approved set is
+                EMPTY and the observed set is EMPTY. This is the replaced
+                obligation's assertion, unchanged.
+    CANDIDATE   on the tree that creates the call site: the observed set EQUALS the
+                approved set that change declares.
+
+NO SINGLE TREE IS REQUIRED TO SATISFY BOTH. A candidate check with an EMPTY
+approved set asserts "no production call site", which is the baseline assertion —
+so one implementation serves both, provided the approved set is EMPTY on the
+baseline and non-empty only in the change that creates the call site.
+```
+
+```text
+THE SCANNER BOUNDARY.
+
+  SUPPORTED — the call resolves to a canonical entry point:
+      a direct call, a fully qualified call, a parent-package hop, and a LOCAL OR
+      IMPORT ALIAS including an ANNOTATED binding.
+      A resolved alias is counted under its CANONICAL entry-point name, NEVER under
+      the local binding name.
+
+  NOT SUPPORTED, AND NOT SILENTLY IGNORED:
+      reflective acquisition         getattr(module, "admit")(...), __import__(...),
+                                     importlib.import_module(...)
+      partial application/wrapping   functools.partial(...), or a decorator that
+                                     returns an entry point
+      dispatch through a container   a list, mapping or registry lookup, then a call
+      a parameter-rooted attribute chain, or any name assembled at run time
+
+  FAIL-CLOSED. A production form the scanner cannot RELIABLY resolve to a canonical
+  entry point MUST NOT be treated as "no call site". It MUST be reported as
+  UNRESOLVED, and MUST drive the check to FAIL or to a declared BLOCKED state.
+  An implementation whose output is identical whether such a form is present or
+  absent does not satisfy this clause.
+  "THE SCANNER DOES NOT SEE IT" AND "IT CANNOT WRITE" ARE DIFFERENT STATEMENTS, and
+  only the second would justify silence.
+
+  NO COMPLETENESS CLAIM. Static scanning cannot prove the absence of arbitrary
+  Python dynamic behaviour: `eval`, `exec`, dynamically constructed modules and
+  code generated at run time are OUTSIDE what it can establish. This clause makes
+  no claim of exhaustive coverage, and none may be made on its behalf.
+
+  THE BLIND-SPOT LIST IS TRANSPARENCY, NOT ACCEPTANCE. The check carries a
+  documented list of the forms it does not resolve, so a reader can see where its
+  authority stops. NEITHER THE LIST'S EXISTENCE NOR ITS BEING NON-EMPTY IS AN
+  ACCEPTANCE CRITERION, and neither may be cited as evidence that unresolvable
+  forms are safe.
+
+  THE POSITIVE CONTROL STAYS. A check that cannot find a call site proves nothing
+  about there being none, so the control that plants one and requires it to be
+  found is part of this obligation and MUST remain.
+```
+
+```text
+THE FAILURE-INDEPENDENCE REQUIREMENT. EACH acceptance condition this section adds
+        MUST BE ABLE TO FAIL ON ITS OWN. A check whose output cannot distinguish
+        WHICH condition broke is one condition with several names, and does not
+        satisfy this section.
+FROZEN: §7.3.7's obligation list, as amended, is the list this section defines.
+        Nothing here authorises a production caller, a connecting change or a
+        CONNECTED classification: §7.3.12 states what may cross the boundary, and
+        the calling phase's own contract states what its caller MUST do.
 ```
 
 ---
@@ -7154,6 +7289,135 @@ WHAT THIS AMENDMENT DOES NOT DO
     it does not edit AI-15's contract or any other phase's. AI-15's §9.4 and §10.2
       are AI-15's act and are cited here, not authored
     it does not run any test, and it claims no test result of its own
+```
+
+---
+
+#### Amendment 9 — the producer-acceptance obligation becomes an exact approved call-site set (2026-10-12)
+
+Found while preparing the prerequisite contract and acceptance work for the
+composition → Evidence edge. §7.3.7's obligation list carried **"the absence of a
+production non-test writer"**, and that obligation cannot survive the change it was
+written to gate: a connecting change that produced a writer would fail it, and a
+connecting change that DELETED it to pass would be §34.2's forbidden case.
+
+**Why this is an amendment rather than a clarification made in place.** §34.1's
+list does not enumerate §7.3.7's obligation list or §7.3, and §34's preamble is
+broader than its list: a frozen contract "changes only through an explicit
+amendment recorded in §34.3". This amendment REPLACES an obligation and adds a NEW
+SUBSECTION (§7.3.13) that defines a standard. That is a change however it is
+described, so the instrument is an amendment — the same reasoning Amendments 4, 5
+and 8 recorded about §7 and §30.
+
+```text
+(a) NEW §7.3.13 defines EXACT CALL-SITE AUTHORISATION: what an approval is over, the
+    fields an approved entry carries, the failure-independence requirement, the
+    scanner boundary, and the fail-closed rule for forms the scanner cannot resolve.
+
+    IT IS AN APPROVAL OVER CALL SITES, NOT OVER COUNTS. An approval over the NUMBER
+    of calls a scope makes is a DIFFERENT AND WEAKER standard, and MUST NOT be
+    recorded, reported or relied on as exact call-site authorisation. The difference
+    is exactly one case, and §7.3.13 names it: delete one approved call, add another
+    in the same scope, leave the count unchanged.
+
+    §7.3.7's obligation line is REPLACED by the exact approved call-site set. The
+    baseline assertion (approved = empty, observed = empty) is the replaced
+    obligation's meaning, preserved; the candidate assertion (observed == what the
+    connecting change declares) is what the replacement adds.
+```
+
+```text
+(b) THE ACCEPTANCE MODULE AND THE MATRIX. The call-site scanner this obligation
+    used to carry matched a callee by NAME ONLY. It could neither name a call site
+    individually nor see an aliased call, so neither half of §7.3.13 could be built
+    on it. It is REPLACED by `tests/evidence/callsite_identity.py`, which:
+
+        resolves aliases WITHIN THEIR OWN SCOPE — a local assignment in one
+          function says nothing about a same-named local in another
+        records a per-call identity: path, fully-qualified scope, canonical
+          entry point, AST child-field/index path, canonical fingerprint (the
+          subtree with location attributes excluded), enclosing statement kinds,
+          and whether `producer_proof` is an EXPLICIT keyword
+        reports the forms it cannot resolve as UNRESOLVED, which drive FAIL, and
+          NEVER drops them
+        states its blind spots, which is TRANSPARENCY and NOT an acceptance
+          criterion
+
+    THE POSITIVE CONTROL STAYS. `test_obligation_18b` is unchanged in purpose: a
+    check that cannot find a call site proves nothing about there being none.
+
+    THE FAILURE-INDEPENDENCE REQUIREMENT IS MET BY SEPARATE NODES, not by
+    assertions folded into one. Six of the seven new nodes exist because a single
+    node reporting "18a failed" cannot say WHICH condition broke, and a check that
+    cannot distinguish them is one condition with several names. The nodes are:
+
+        18a  the approved set is exact, over the real production tree
+        18b  the positive control (unchanged in purpose)
+        18c  a substitution with an UNCHANGED COUNT fails   <- the count-only case
+        18d  two calls in one scope are two identities
+        18e  aliases resolve to the CANONICAL entry point
+        18f  an unapproved addition fails
+        18g  unresolvable forms fail closed (getattr / partial / container)
+        18h  `producer_proof` must be an EXPLICIT keyword; `**mapping` does not count
+```
+
+```text
+(c) THE COUNTS, AND THE HISTORICAL RECORDS THAT KEEP THEIRS.
+
+    WHAT MOVED
+        G1 matrix node ids                 34 -> 42   (+8)
+        process-isolated matrix cases      46 -> 54   (+8)
+        test functions in the module       45 -> 53   (+8)
+
+    WHAT DID NOT MOVE, AND MUST NOT
+        Amendment 7 (d), §35.3 and `## Status` record "46 RAN / 0 skipped" as the
+        result of CI run #301. THAT IS A HISTORICAL RECORD OF AN EXECUTION, and
+        §34.3 keeps such records as what they were. Rewriting those numbers would
+        falsify history rather than correct it, so THEY ARE KEPT, and a pointer is
+        added beside each one naming the current count.
+
+    THE SEMANTICS OF THE RECORDED NUMBER ARE NOT WIDENED. "46 process-isolated
+    cases that RAN" meant cases executed inside the isolated processes; it does not
+    become a count of security requirements, and the current count is not a claim
+    that anything was re-run.
+```
+
+```text
+SECURITY IMPACT
+    NARROW, AND THE DIRECTION IS TOWARD MORE DETECTION. The obligation is REPLACED
+    BY A STRONGER ONE: "no writer exists" becomes "exactly the authorised writers
+    exist", and the identity comparison catches a substitution that a count
+    comparison passes. Each new node fails on its own case, so a future weakening
+    of one condition cannot hide behind another's green result.
+    THE BOUND IS STATED RATHER THAN OVERCLAIMED: static scanning cannot establish
+    the absence of arbitrary Python dynamic behaviour, and the forms it cannot
+    resolve FAIL rather than pass. Silence is never an answer.
+AUTHORITY IMPACT
+    None. Nothing here grants a permission, changes AI-14 §4.1's authority matrix,
+    introduces an authorizing subject, or moves a responsibility between phases.
+    Guard remains the only component with an AUTHORIZES entry.
+```
+
+```text
+WHAT THIS AMENDMENT DOES NOT DO
+
+    it does not authorise a production caller, a writer or a call site. A set that
+      is empty on this tree stays empty until a connecting change declares entries
+      in it, and declaring them is that change's act
+    it does not mark any seam CONNECTED, and it does not claim AI-15 §15.2 STEP 2
+      or STEP 3 has begun
+    it does not add, remove or change a producer token, a §6.5 registry row, an
+      admission outcome, a reason code, a digest input or a stored field
+    it does not close AI-11 §21.1's OPEN-1, which asks WHICH PRODUCERS EXIST and
+      remains OPEN
+    it does not resolve the storage backend. §35.1's storage-backend question and
+      the record_digest round-trip obligation stay DEFERRED, and no production
+      storage backend is chosen here
+    it does not delete, weaken or re-scope any test. The only test it removes is
+      the one whose assertion it replaces, and the replacement is strictly stronger
+    it does not claim any test result of its own beyond what (b) records, and it
+      does not re-run CI run #301 or restate its numbers as current
+    it does not edit AI-14's, AI-15's or any other phase's contract
 ```
 
 ---

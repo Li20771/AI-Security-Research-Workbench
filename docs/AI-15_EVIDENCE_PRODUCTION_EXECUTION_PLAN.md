@@ -1028,11 +1028,18 @@ T1 — OWNER-PHASE WRITER
            narrowing, per phase. AI-15 owns none of them.
 
 T2 — COMPOSITION AS SUBMITTER OF AN OWNER-AUTHORED RECORD
-     the composition calls admission with a record the OWNING phase produced,
-     under the token that phase holds.
-     This is what AI-14 §22.1 B5 describes:
-         "composition MAY call admission with a record the OWNING phase produced,
-          under the producer token that phase holds"
+     the composition calls admission with a record the OWNING phase AUTHORED, and
+     SUBMITS it.
+     This is what AI-14 §22.1 B5 describes.
+     ^ THE QUOTATION THAT STOOD HERE READ "under the producer token that phase
+     HOLDS". THAT WORDING WAS AI-14 AMENDMENT 2'S PREDECESSOR, AND AI-14
+     AMENDMENT 2 REPLACED IT: B5 now uses "AUTHORED" and "SUBMITTED" INSTEAD OF
+     "HOLDS", and states that a producer token is a REGISTERED NAME and that NO
+     COMPONENT HOLDS ONE. The quotation is CORRECTED HERE, by this document's
+     owner, under §19 — it was a citation of a superseded sentence, and this
+     document MUST NOT be read as having stated the current B5 wording before
+     this correction. NO RULE CHANGES: the topology, its blockers and its
+     prerequisites are exactly as they were.
      BLOCKED by:
          layer0 :3241  AI14_FORBIDDEN_IMPORTS — the composition may not import
                        plugins.evidence AT ALL
@@ -3402,6 +3409,21 @@ THE CHANGE HAS TWO PARTS AND TWO AUTHORS
                                                          two in tests/composition/)
                                                          and the resulting
                                                          classification
+    the AI-05 part            AI-05'S OWNER              the acceptance
+                                                         obligations its contract
+                                                         imposes on the connecting
+                                                         change (AI-05 §7.3.7, as
+                                                         amended by Amendment 9),
+                                                         and the CI matrix node
+                                                         list that runs them
+
+    ^ THE THIRD ROW IS AI-14 AMENDMENT 5's, RECORDED HERE AND PRODUCED BY AI-15 IN
+    NO PART. It is named because the connecting change makes a production call site
+    exist, and AI-05's acceptance obligations are the ones that observe it: a
+    two-author plan would have discovered the third party at merge time, when the
+    CI job that runs those obligations goes red. NAMING IT TRANSFERS NOTHING:
+    AI-05 does not classify this edge, does not author AI-14's clauses, and does not
+    approve them.
 
 ORDER OF EVENTS
     STEP 1   AI-14's owner delivers the AUTHORIZATION change first — rules
@@ -3655,13 +3677,14 @@ AI-15-A IS NOT DONE IF
 
 ```text
 FROZEN. This document was frozen by the merge of PR #78, and it has been amended
-SIX TIMES since — Amendment 1, Amendment 2, Amendment 3, Amendment 4, Amendment 5 and
-Amendment 6, below. The line this block replaced read "PROPOSED (this document's class
-until the merge that freezes it)", which was true while the freeze was a proposal and
-false once it merged. It is corrected here rather than left to contradict the amendment
-log beside it. The count was "TWICE" until Amendment 3, "THREE TIMES" until Amendment 4,
-"FOUR TIMES" until Amendment 5 and "FIVE TIMES" until Amendment 6, and each increment of
-it has been made in the same change that appended the amendment it counts.
+SEVEN TIMES since — Amendment 1, Amendment 2, Amendment 3, Amendment 4, Amendment 5,
+Amendment 6 and Amendment 7, below. The line this block replaced read "PROPOSED (this
+document's class until the merge that freezes it)", which was true while the freeze was a
+proposal and false once it merged. It is corrected here rather than left to contradict the
+amendment log beside it. The count was "TWICE" until Amendment 3, "THREE TIMES" until
+Amendment 4, "FOUR TIMES" until Amendment 5, "FIVE TIMES" until Amendment 6 and "SIX
+TIMES" until Amendment 7, and each increment of it has been made in the same change that
+appended the amendment it counts.
 ```
 
 ```text
@@ -4789,6 +4812,74 @@ THE NORMATIVE CLASSES, USED AS AI-14 §2 DEFINES THEM
 
 FROZEN: these seven MUST NOT be used interchangeably, and a clause MUST NOT carry
         two of them.
+```
+
+---
+
+#### Amendment 7 — the superseded B5 quotation is corrected, and the joint change is recorded as three-party (2026-10-12)
+
+```text
+IN FORCE on the merge of the change that carries it. There is no awaiting-review
+marker on this amendment: the merge IS the approval, and the text below is the
+final text.
+
+AMENDMENT NUMBER  7
+DATE              2026-10-12
+```
+
+```text
+WHAT WAS FOUND
+
+    TWO THINGS, AND NEITHER IS A DISPUTE WITH ANOTHER PHASE.
+
+    1. §7.2 QUOTED A SENTENCE AI-14 HAD ALREADY REPLACED. It cited AI-14 §22.1 B5
+       as "under the producer token that phase HOLDS". AI-14 Amendment 2 replaced
+       that wording: B5 now uses AUTHORED and SUBMITTED INSTEAD OF "HOLDS", and
+       states that a producer token is a REGISTERED NAME and that NO COMPONENT
+       HOLDS ONE. The citation was of a superseded sentence.
+
+    2. §17.2d NAMED TWO AUTHORS FOR A CHANGE THAT HAS THREE. Its table gave the
+       runtime part to the implementing party and the contract/Layer 0/test/
+       classification part to AI-14's owner. AI-05 was not named, although the
+       connecting change makes a production call site exist and AI-05's acceptance
+       obligations (§7.3.7, as amended) are the ones that observe it. AI-14
+       Amendment 5 names the third party in ITS contract; this document's
+       description of the same change has to agree with it.
+```
+
+```text
+WHAT THIS AMENDMENT CHANGES
+
+    §7.2        the superseded quotation is corrected IN PLACE, with the correction
+                recorded beside it rather than substituted silently
+    §17.2d      a THIRD ROW is added for the AI-05 part, with the limits stated:
+                naming it transfers no classification and no contract authority
+    §19         this record and the amendment count
+    `## Status` the amendment count and the Amendment 7 line
+```
+
+```text
+WHO ACTED. AI-15's owner, in AI-15's own contract, under §19. THE AI-05 ROW IS
+    AI-14 AMENDMENT 5'S ACT, recorded here and produced by AI-15 in no part — the
+    same shape Amendments 1, 2, 3, 5 and 6 used for other phases' acts.
+ORDERING. §19 requires an amendment to an earlier phase to be made BEFORE AI-15
+    depends on it. AI-14's Amendment 5 and AI-05's Amendment 9 are made in the same
+    change as this one and are cited, not authored, here.
+```
+
+```text
+WHAT THIS AMENDMENT DOES NOT DO
+
+    it does not connect the edge, create a call site, or move B5 out of BLOCKED
+    it does not mark any seam CONNECTED, and it introduces no intermediate
+      classification
+    it does not start AI-15-B, and it does not move STEP 2 or STEP 3
+    it does not close, weaken, rename or claim progress on AI15-OPEN-3, on
+      AI15-OPEN-4, or on AI-11 §21.1's OPEN-1 — all three remain exactly as they
+      were, and the last of them is still a different item with the same owner
+    it does not edit AI-05's, AI-14's or any other phase's contract
+    it does not add a producer token, a §6.5 row, a trust root, a signer or a key
+    it does not run any test, and it claims no test result of its own
 ```
 
 ---

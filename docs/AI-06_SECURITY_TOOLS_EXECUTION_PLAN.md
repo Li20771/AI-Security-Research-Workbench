@@ -1106,6 +1106,73 @@ AI-06 test result       EXECUTION   producer ai-06   actor.type service
 A tool invocation projects into the first; a test-runner invocation into the second. The
 distinction is `actor.type`, which is AI-05's frozen registry and not AI-06's to change.
 
+### 15.8 The producer proof — AI-06's production-side signing boundary — FROZEN (Amendment 2)
+
+```text
+WHY THIS EXISTS. AI-05 §7.3.3 requires a submission to carry a producer proof, and
+§7.3.1 makes it the admissibility basis for the producer claim. §15.1 says the
+CALLER submits the projection. A caller that is not the producer can transport a
+proof (AI-05 §7.3.12) but cannot mint one. So the capability to MINT one has to
+live with the component the claim is about — here — and this section fixes the
+boundary of that capability.
+```
+
+```text
+FROZEN: THE SIGNING CAPABILITY IS INJECTED BY THE DEPLOYMENT, NOT BUILT HERE.
+        AI-06 declares an INTERFACE and consumes an implementation. It does not
+        generate a key, does not read one from a file, a variable or a
+        configuration member, and does not ship one.
+
+            a `ProducerSigner` supplies two things and nothing else:
+                producer_token  the token this signer speaks for
+                sign(message)   the signature over EXACTLY those bytes
+
+FROZEN: THE PRIVATE KEY IS NEVER IN THIS REPOSITORY. Key generation, storage,
+        backup, rotation and destruction are the deployment's and are OUTSIDE this
+        contract (AI-05 §7.3.9 records the same about its side). No test in this
+        phase's matrix may hold a real key, and none does: the matrix uses fakes.
+FROZEN: AN ABSENT CAPABILITY IS REFUSED, NOT FAKED. When no signer is available —
+        not injected, not usable, or speaking for a different token — the operation
+        FAILS. It MUST NOT return a placeholder, an empty proof, a proof signed by
+        anything else, or a submission asserted to be ready. A submission that was
+        not signed is a submission with no proof, and AI-05 §7.3.8 already makes
+        that REJECTED with AUTHENTICATION_PROOF_MISSING.
+```
+
+```text
+FROZEN: ONE PROJECTION PATH, AND THE PROOF IS OVER WHAT IT PRODUCED.
+        §15.2's projection is the ONLY way a ToolResult becomes record content,
+        and `execution_payload_for` is the only implementation of it. A signing
+        helper MUST NOT build a second one: it takes the submitted mapping and the
+        ToolResults it claims to describe, and it REFUSES when the mapping's
+        execution payload is not exactly `execution_payload_for(results)`.
+        A proof over content that is not the canonical projection of the results
+        would authenticate a claim about facts that were never projected, which is
+        worse than no proof at all.
+FROZEN: THE CALLER ASSIGNS `ordinal` AND NOTHING ELSE. AI-05 §11.1 makes the
+        ordinal the semantic order and assigns it to the caller, so a caller may
+        choose the ordinals. It MUST NOT control, supply, rewrite or override any
+        OTHER projected field: `what_ran` and `status` come from the ToolResult
+        through §15.2 and §15.3, and a caller that could set them could sign a
+        claim the tool did not make.
+FROZEN: THE PROOF IS OVER AI-05'S CANONICAL SUBMISSION CONTENT. The bytes signed
+        are AI-05 §7.3.4's signed input for the SUBMITTED MAPPING — AI-05's
+        serializer, not a serializer of AI-06's. AI-06 does not define a second
+        canonical form, and MUST NOT.
+FROZEN: NO SECOND EVENT PATH. One tool invocation produces one ToolResult and one
+        projection into one record. A signing step is not a second event, and
+        nothing here authorises minting a proof for content that no ToolResult
+        produced.
+```
+
+```text
+WHAT THIS DOES NOT DO. It does not make AI-06 a writer: §15.1 stands unchanged and
+AI-06 still does not call admission, does not write a record and does not define an
+Evidence schema. It does not authorise a caller, and it does not make a producer
+claim true — AI-05 §7.3.1 records that an authenticated claim establishes a KEY
+HOLDER and not a code component.
+```
+
 ---
 
 ## 16. Network boundary
@@ -1397,6 +1464,94 @@ No boundary, scope, deliverable, capability, workspace rule, vehicle rule,
 network rule or authority relation changed. `AdapterFamily` remains eight,
 `ToolOutcome` remains six, the outcome projection is unchanged, and neither
 addition is an authorization input.
+
+#### Amendment 2 — AI-06's production-side signing boundary is frozen (2026-10-12)
+
+Found while preparing the prerequisite contract work for the composition →
+Evidence edge. AI-05 §7.3.3 requires a producer proof on every submission and
+§7.3.12 permits a forwarder only to TRANSPORT one; nobody may mint a proof for a
+claim except the component the claim is about. This contract had nothing to say
+about where that capability lives, so §18's "the outcome projection (§15.3)" and
+§12's vehicle boundary are untouched but a NEW SUBSECTION is added, and a new
+section is a change however it is described.
+
+```text
+(a) NEW §15.8 fixes the boundary of the production-side signing capability:
+
+    INJECTED, NOT BUILT      AI-06 declares a `ProducerSigner` interface and
+                             CONSUMES an implementation. No key is generated,
+                             read from a file or a variable, or shipped.
+    NEVER IN THIS REPOSITORY the private key is the deployment's, and key
+                             generation, storage, backup, rotation and destruction
+                             are outside this contract (AI-05 §7.3.9's position,
+                             stated from this side)
+    ABSENT -> REFUSED        no signer, or a signer speaking for another token,
+                             yields a FAILURE — never a placeholder proof, a proof
+                             signed by something else, or a submission asserted
+                             ready. An unsigned submission has no proof, and
+                             AI-05 §7.3.8 makes that REJECTED
+    ONE PROJECTION PATH      the signing helper takes the submitted mapping and
+                             the ToolResults it claims to describe, and REFUSES
+                             when the mapping's payload is not exactly
+                             `execution_payload_for(results)`. A proof over
+                             content that is not the canonical projection would
+                             authenticate facts that were never projected
+    ORDINAL ONLY             the caller assigns `ordinal` (AI-05 §11.1 gives it
+                             that job) and MUST NOT control or rewrite any other
+                             projected field
+    AI-05'S SERIALIZER       the bytes signed are AI-05 §7.3.4's signed input for
+                             the SUBMITTED MAPPING. AI-06 defines no second
+                             canonical form
+    NO SECOND EVENT PATH     a signing step is not a second event; minting a proof
+                             for content no ToolResult produced is not authorised
+
+(b) WHAT DOES NOT CHANGE. §15.1 stands: AI-06 does not call admission, does not
+    write a record, does not define an Evidence schema. §15.2's projection and
+    §15.3's outcome projection are UNCHANGED — one invocation, one ToolResult, one
+    ToolCall. §11.5's exit-code semantics are untouched.
+
+(c) WHY AN AMENDMENT. §18 requires one for "the outcome projection (§15.3)" and for
+    a change to the vehicle boundary (§12). This changes NEITHER. §18's preamble is
+    broader than its list, though — a frozen rule changes only through an explicit
+    amendment recorded here — and this adds normative permissions and prohibitions.
+    The fact that §15.8 is absent from §18's enumeration is recorded rather than
+    relied on, exactly as AI-05's Amendments 4, 5 and 8 recorded about §7 and §30.
+```
+
+```text
+SECURITY IMPACT
+    A BOUNDARY, NOT A CONTROL. It adds no runtime code, no key and no check to the
+    tool path. What it fixes is that the ONLY permitted place to mint a proof is
+    the component the claim is about, that the capability arrives by injection
+    rather than by being built here, and that its absence is a REFUSAL rather than
+    a weaker submission. The residual is AI-05 §7.3.1's and is not widened: an
+    authenticated claim establishes a key holder, not a code component.
+AUTHORITY IMPACT
+    None. Nothing here grants a permission, produces a Guard ALLOW, or makes a
+    record an authorization. Guard remains the only component with an AUTHORIZES
+    entry (AI-14 §4.1).
+```
+
+```text
+WHAT THIS AMENDMENT DOES NOT DO
+
+    it does not add, remove or change an AdapterFamily member, a ToolRequest or
+      OperationSpec field, a ToolOutcome member, or the outcome projection
+    it does not authorise a caller, a writer or a call site, and it does not move
+      AI-15 §15.2's STEP 1, row 1′, STEP 2 or STEP 3
+    it does not mark any seam CONNECTED
+    it does not write, read or ship a private key, and it does not add one to the
+      repository or to any test
+    it does not edit AI-05's, AI-08's, AI-14's or AI-15's contract
+    it does not run any test, and it claims no test result of its own
+```
+
+---
+
+## 23. Amendment history note
+
+This log is append-only. Amendment 1 is at the head of §22, Amendment 2 follows it,
+and neither entry rewrites the other.
 
 ---
 

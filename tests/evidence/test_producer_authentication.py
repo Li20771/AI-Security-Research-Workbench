@@ -59,6 +59,8 @@ from trust_harness import (
     proof_for_record,
 )
 
+from callsite_identity import findings, group_by_key, scan_tree
+
 pytestmark = pytest.mark.layer1
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -1221,97 +1223,265 @@ class TestObligation17RejectionTouchesNoStore:
 # --------------------------------------------------------------------------
 
 
-def admission_call_sites(root, *, skip_paths=()):
-    """Every CALL of an admission entry point under `root`.
-
-    A call site, not a mention: the check is AST-based and resolves the callee
-    by name or attribute, so a docstring, an error string, a re-export or a
-    policy checker that merely NAMES `admit` is not a call site. Every `.py`
-    file under `root` is visited, so no production call point is left out by
-    looking only where one is expected.
-    """
-    found = []
-    for path in sorted(pathlib.Path(root).rglob("*.py")):
-        if ".git" in path.parts or "__pycache__" in path.parts:
-            continue
-        if any(part in path.parts for part in skip_paths):
-            continue
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        except (SyntaxError, UnicodeDecodeError, OSError):
-            continue
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call):
-                continue
-            name = None
-            if isinstance(node.func, ast.Name):
-                name = node.func.id
-            elif isinstance(node.func, ast.Attribute):
-                name = node.func.attr
-            if name in ("admit", "admit_to_store"):
-                found.append((path, node.lineno, name, _enclosing_function(tree, node)))
-    return found
+# The call-site scanner this obligation used to carry lived here. It matched a
+# callee by NAME ONLY, which can neither name a call site INDIVIDUALLY nor see an
+# aliased call — and §7.3.13 requires both. It now lives in
+# `tests/evidence/callsite_identity.py`, which resolves aliases within their own
+# scope, records a per-call identity, and reports the forms it cannot resolve
+# instead of dropping them.
 
 
-def _enclosing_function(tree, target):
-    """The innermost function definition containing `target`, or None.
-
-    The enclosing function is reported so an exclusion can name the exact call
-    it means — `admit_to_store` calling `admit` — instead of excusing every call
-    named `admit` that happens to live in the same file.
-    """
-    best = None
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            for inner in ast.walk(node):
-                if inner is target:
-                    if best is None or node.lineno > best.lineno:
-                        best = node
-                    break
-    return best.name if best is not None else None
+#: §7.3.13 — the APPROVED call-site set for the tree under test.
+#:
+#: EMPTY HERE, AND THAT IS THE ASSERTION RATHER THAN AN OMISSION. §7.3.13
+#: separates the BASELINE check (the approved set is empty and so is the observed
+#: set) from the CANDIDATE check (the observed set equals what the connecting
+#: change declares). This tree is the BASELINE. PR-2 — the joint change — fills
+#: this mapping with the identities it creates, in the same change that creates
+#: them, and that diff IS the approval artifact.
+APPROVED_CALL_SITES: dict[tuple[str, str, str, str, str], object] = {}
 
 
-class TestObligation18NoProductionWriter:
-    """§7.3.7 L1659, defined by the contract at L5802-5805 and L5837-5839:
-    "No production non-test caller that can execute admission and persist a
-    record is authorized to be created, merged or run".
+def _scan_planted(tmp_path, source: str):
+    """Write ONE planted module into `tmp_path` and scan THAT directory."""
+    (tmp_path / "zz_planted.py").write_text(source, encoding="utf-8")
+    return scan_tree(tmp_path, skip_paths=())
 
-    The assertion is over CALL SITES of the two admission entry points across
-    the whole production tree, not over a file's existence and not over a
-    keyword list: `admit_to_store` is the entry point that executes admission AND
-    persists, and a production call of it would be the writer the clause forbids.
-    Two exclusions, both named rather than assumed: `tests/` (the clause says
-    NON-TEST, and the acceptance suite is itself a caller) and admission.py's own
-    definition site, where `admit_to_store` calls `admit` — the entry point
-    calling the entry point, not a production caller of it.
+
+def _problems(observed, approved, unresolved):
+    return findings(observed, approved, unresolved)
+
+
+class TestObligation18ApprovedCallSiteSet:
+    """§7.3.7's obligation as amended, defined by §7.3.13 (Amendment 9).
+
+    The obligation was "the absence of a production non-test writer". It is now
+    the EXACT APPROVED CALL-SITE SET: each production call site of `admit` or
+    `admit_to_store` named INDIVIDUALLY, the baseline set being empty and the
+    candidate set equalling what the connecting change declares.
+
+    TWO THINGS THIS CLASS IS NOT. It is not a completeness claim — static scanning
+    cannot establish the absence of arbitrary Python dynamic behaviour, and the
+    blind-spot list the scanner carries is transparency rather than an acceptance
+    criterion. And it is not a count check: every assertion below compares
+    IDENTITIES, which is what lets 18c fail a substitution whose count is
+    unchanged.
     """
 
-    def test_obligation_18a_no_production_call_site_exists(self):
-        production = admission_call_sites(REPO_ROOT, skip_paths=("tests",))
-        offenders = [
-            (str(path.relative_to(REPO_ROOT)), line, name, enclosing)
-            for path, line, name, enclosing in production
-            if not (
-                path.name == "admission.py"
-                and name == "admit"
-                and enclosing == "admit_to_store"
-            )
-        ]
-        assert offenders == [], (
-            "no production, non-test call site of the admission entry points may "
-            "exist while AI15-OPEN-1 is open (contract L5802-5805, L5837-5839); "
-            f"found {offenders}"
+    def test_obligation_18a_the_approved_call_site_set_is_exact(self):
+        """The baseline/candidate assertion, over the real production tree.
+
+        An empty approved set on a tree with no production call site is the
+        baseline check; the same code serves the candidate check once PR-2 fills
+        the mapping. The comparison is §7.3.13's — mapping equality in both
+        directions, never a count.
+        """
+        observed, unresolved = scan_tree(REPO_ROOT, skip_paths=("tests",))
+        problems = _problems(observed, APPROVED_CALL_SITES, unresolved)
+        assert problems == [], (
+            "the production call-site set does not equal the approved set "
+            "(§7.3.13). Each finding below names ONE identity: "
+            f"{problems}"
         )
 
     def test_obligation_18b_the_scan_can_find_a_call_site(self):
         """The positive control. A scan that cannot find a call site proves
         nothing about there being none — the same reason §12.1's gate exists."""
-        in_tests = admission_call_sites(REPO_ROOT / "tests")
-        assert in_tests, (
-            "the call-site scan found no call of admit/admit_to_store anywhere "
-            "under tests/, which is where the acceptance suite calls them; a "
-            "scanner that finds nothing cannot be evidence that production has "
-            "nothing"
+        observed, _ = scan_tree(REPO_ROOT / "tests")
+        assert observed, (
+            "the scan found no call of admit/admit_to_store anywhere under "
+            "tests/, which is where the acceptance suite calls them; a scanner "
+            "that finds nothing cannot be evidence that production has nothing"
+        )
+
+    def test_obligation_18c_a_substitution_with_an_unchanged_count_fails(self, tmp_path):
+        """DELETE ONE APPROVED CALL, ADD ANOTHER IN THE SAME SCOPE, COUNT UNCHANGED.
+
+        This is the case a count-only approval passes and §7.3.13 must fail. The
+        two trees hold the SAME NUMBER of calls in the SAME scope; what differs is
+        which call it is.
+        """
+        before = (
+            "from plugins.evidence import admit\n"
+            "\n"
+            "\n"
+            "def submit(record, proof):\n"
+            "    return admit(record, producer_proof=proof)\n"
+        )
+        after = (
+            "from plugins.evidence import admit\n"
+            "\n"
+            "\n"
+            "def submit(record, proof):\n"
+            "    marker = None\n"
+            "    return admit(record, producer_proof=proof) if marker is None else marker\n"
+        )
+
+        observed_before, _ = _scan_planted(tmp_path, before)
+        approved = group_by_key(observed_before)
+        assert len(approved) == 1, "the fixture must plant exactly one call site"
+
+        (tmp_path / "zz_planted.py").write_text(after, encoding="utf-8")
+        observed_after, unresolved_after = scan_tree(tmp_path, skip_paths=())
+
+        assert len(observed_after) == len(observed_before), (
+            "the fixture must keep the COUNT unchanged — that is the whole point "
+            "of the case"
+        )
+        problems = _problems(observed_after, approved, unresolved_after)
+        assert any("APPROVED call site NOT FOUND" in problem for problem in problems), (
+            "the approved identity is gone and must be reported as missing: "
+            f"{problems}"
+        )
+        assert any("UNAPPROVED call site" in problem for problem in problems), (
+            "the substituted call site is not the approved one and must be "
+            f"reported: {problems}"
+        )
+
+    def test_obligation_18d_two_calls_in_one_scope_are_two_identities(self, tmp_path):
+        """A second call in one scope is a SECOND identity, not a bigger count."""
+        source = (
+            "from plugins.evidence import admit\n"
+            "\n"
+            "\n"
+            "def submit(record, proof):\n"
+            "    admit(record, producer_proof=proof)\n"
+            "    return admit(record, producer_proof=proof)\n"
+        )
+        observed, unresolved = _scan_planted(tmp_path, source)
+        assert len(observed) == 2, f"expected two identities, saw {observed}"
+
+        first = sorted(observed, key=lambda item: item.ast_path)[0]
+        approved = group_by_key([first])
+        problems = _problems(observed, approved, unresolved)
+        assert any("UNAPPROVED call site" in problem for problem in problems), (
+            "approving one of two calls in a scope must leave the other "
+            f"unapproved: {problems}"
+        )
+
+    def test_obligation_18e_aliases_resolve_to_the_canonical_entrypoint(self, tmp_path):
+        """A resolved alias is counted under its CANONICAL name (§7.3.13)."""
+        source = (
+            "import plugins.evidence.admission as adm\n"
+            "from plugins.evidence import admit_to_store as persist\n"
+            "\n"
+            "\n"
+            "def submit(record, store, proof):\n"
+            "    persist(record, store=store, producer_proof=proof)\n"
+            "    return adm.admit(record, producer_proof=proof)\n"
+        )
+        observed, unresolved = _scan_planted(tmp_path, source)
+        assert not unresolved, f"both forms are supported and must resolve: {unresolved}"
+        assert sorted(item.entrypoint for item in observed) == ["admit", "admit_to_store"], (
+            "an alias must be recorded under its canonical entry point, never "
+            f"under the local binding name: {observed}"
+        )
+
+    def test_obligation_18f_an_unapproved_addition_fails(self, tmp_path):
+        """A call site added outside the approved set is a finding."""
+        base = (
+            "from plugins.evidence import admit\n"
+            "\n"
+            "\n"
+            "def submit(record, proof):\n"
+            "    return admit(record, producer_proof=proof)\n"
+        )
+        observed, _ = _scan_planted(tmp_path, base)
+        approved = group_by_key(observed)
+
+        grown = base + (
+            "\n"
+            "\n"
+            "def also_submit(record, proof):\n"
+            "    return admit(record, producer_proof=proof)\n"
+        )
+        (tmp_path / "zz_planted.py").write_text(grown, encoding="utf-8")
+        observed_grown, unresolved_grown = scan_tree(tmp_path, skip_paths=())
+        problems = _problems(observed_grown, approved, unresolved_grown)
+        assert any("UNAPPROVED call site" in problem for problem in problems), (
+            f"an added call site must be reported: {problems}"
+        )
+
+    @pytest.mark.parametrize(
+        "planted",
+        [
+            pytest.param(
+                "import plugins.evidence as evidence\n"
+                "\n"
+                "\n"
+                "def submit(record, proof):\n"
+                '    return getattr(evidence, "admit")(record, producer_proof=proof)\n',
+                id="getattr-acquisition",
+            ),
+            pytest.param(
+                "from functools import partial\n"
+                "from plugins.evidence import admit\n"
+                "\n"
+                "\n"
+                "def submit(record, proof):\n"
+                "    return partial(admit, record, producer_proof=proof)()\n",
+                id="partial-application",
+            ),
+            pytest.param(
+                "CALLABLES = {}\n"
+                "\n"
+                "\n"
+                "def submit(record, proof):\n"
+                '    return CALLABLES["admit_to_store"](record, producer_proof=proof)\n',
+                id="container-dispatch",
+            ),
+        ],
+    )
+    def test_obligation_18g_unresolvable_forms_fail_closed(self, planted: str, tmp_path):
+        """§7.3.13 — a form the scanner cannot resolve MUST FAIL, never be
+        silently treated as 'no call site here'.
+
+        Each case below is a call that NAMES an entry point and cannot be resolved
+        to one. A check that reported nothing here would be reporting silence as
+        safety.
+        """
+        observed, unresolved = _scan_planted(tmp_path, planted)
+        problems = _problems(observed, {}, unresolved)
+        assert problems, (
+            "an unresolvable form produced no finding, which is exactly the "
+            f"silence §7.3.13 refuses:\n{planted}"
+        )
+        assert any("UNRESOLVED production call form" in problem for problem in problems), (
+            f"the form must be reported as UNRESOLVED rather than dropped: {problems}"
+        )
+
+    def test_obligation_18h_producer_proof_must_be_an_explicit_keyword(self, tmp_path):
+        """§7.3.13's `proof_kwarg` — an explicit keyword, never a `**mapping`.
+
+        A splat cannot be verified from the source, so the clause refuses it
+        rather than assuming the key is inside the expansion.
+        """
+        explicit = (
+            "from plugins.evidence import admit\n"
+            "\n"
+            "\n"
+            "def submit(record, proof):\n"
+            "    return admit(record, producer_proof=proof)\n"
+        )
+        observed, unresolved = _scan_planted(tmp_path, explicit)
+        assert observed[0].proof_kwarg is True
+        assert not [
+            problem for problem in _problems(observed, {}, unresolved) if "producer_proof" in problem
+        ], "an explicit producer_proof keyword must not be reported as missing"
+
+        splatted = (
+            "from plugins.evidence import admit\n"
+            "\n"
+            "\n"
+            "def submit(record, envelope):\n"
+            "    return admit(record, **envelope)\n"
+        )
+        (tmp_path / "zz_planted.py").write_text(splatted, encoding="utf-8")
+        observed_splat, unresolved_splat = scan_tree(tmp_path, skip_paths=())
+        assert observed_splat[0].proof_kwarg is False
+        problems = _problems(observed_splat, {}, unresolved_splat)
+        assert any("MISSING producer_proof KEYWORD" in problem for problem in problems), (
+            f"a `**mapping` expansion does not satisfy the clause: {problems}"
         )
 
 
