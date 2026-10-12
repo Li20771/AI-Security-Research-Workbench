@@ -743,6 +743,11 @@ FROZEN: while AI15-OPEN-1 is OPEN, NO production, non-test call site that can
         WHAT REFUSES A CALL SITE NOW IS §17.2 (STEP 1, and it is AI-14's), ROW 1′,
         AND STEP 2's OWN PRECONDITION — not this clause, and not §15.2 STEP 0b,
         which is satisfied.
+        ^ RECORDED (§19 AMENDMENT 6): STEP 1 IS SATISFIED — delivered by its OWNER,
+        not by AI-15 (AI-14 Amendment 2, PR #90; recorded as discharged by AI-14
+        Amendment 4, PR #96). §17.2 NO LONGER REFUSES THE IMPORT OR THE CALL. What
+        still refuses a production call site is the joint-delivery requirement
+        (§17.2d), row 1′ for any event but AI-06's, and the absent call site itself.
 ```
 
 ---
@@ -1049,6 +1054,11 @@ T2 — COMPOSITION AS SUBMITTER OF AN OWNER-AUTHORED RECORD
      (§17.2). ^ THE LAST CLAUSE CITED §15.2 STEP 0b UNTIL §19 AMENDMENT 3. STEP 0b
      IS NOW SATISFIED AND NO LONGER REFUSES ANYTHING; THE CONCLUSION IS UNCHANGED,
      and what refuses the call site now is §17.2 and §16.2's remaining rows.
+     ^ RECORDED (§19 AMENDMENT 6): STEP 1 IS SATISFIED — by its OWNER, not by AI-15
+     (AI-14 Amendment 2, PR #90; recorded as discharged by AI-14 Amendment 4, PR
+     #96). §17.2 NO LONGER REFUSES THE IMPORT OR THE CALL. What remains: the
+     joint-delivery requirement (§17.2d), row 1′ for any event but AI-06's, a real
+     non-test call site (STEP 2) and STEP 3.
 
 T3 — COMPOSITION AS A NEW PRODUCER
      REJECTED by §7.1. OUT OF SCOPE, permanently.
@@ -1079,6 +1089,13 @@ FROZEN: AI-15-B MUST NOT begin T2's implementation. STEP 1 is a PREREQUISITE, no
         a parallel workstream, and STEP 3 may not run before STEP 0b (§15.2).
         STEP 0a is satisfied and STEP 1's semantic precondition is therefore met;
         STEP 1 itself has NOT been made, and it is AI-14's to make.
+        ^ RECORDED (§19 AMENDMENT 6): STEP 1 HAS SINCE BEEN MADE, BY AI-14. AI-14
+        Amendment 2 (PR #90, merge a98e389b91ee10858abc67e7c66509cd12fae9dc)
+        delivered the AUTHORIZATION change, and AI-14 Amendment 4 (PR #96, merge
+        36d6ea92a8872dd9167412d8e39de063854b345d) records its enumerated list as
+        discharged on AI-14's side. THE SENTENCE ABOVE IS KEPT AS WHAT IT WAS. AI-15
+        DID NOT MAKE THIS STEP AND DOES NOT CLAIM IT. AI-15-B IS STILL NOT STARTED,
+        and T2 still has no call site.
 ```
 
 ### 7.4 Who owns what, answered
@@ -1105,6 +1122,11 @@ A  NOBODY, AND THE QUESTION THAT SAT BEHIND IT IS NOW ANSWERED. Whether a caller
    ^ THE SECOND REASON CITED §15.2 STEP 0b "while AI15-OPEN-1 is open" UNTIL §19
    AMENDMENT 3. STEP 0b IS NOW SATISFIED AND AI15-OPEN-1 IS CLOSED, so that reason
    is gone; THE ANSWER IS STILL "NOBODY", and §17.2 is what keeps it so.
+   ^ RECORDED (§19 AMENDMENT 6): STEP 1 IS SATISFIED — by its OWNER, not by AI-15
+   (AI-14 Amendment 2, PR #90; recorded as discharged by AI-14 Amendment 4, PR
+   #96). §17.2 NO LONGER REFUSES THE IMPORT OR THE CALL. THE ANSWER IS STILL
+   "NOBODY", and what keeps it so now is the absent call site, the joint-delivery
+   requirement (§17.2d) and row 1′ for any event but AI-06's.
 
 Q  who holds an admitted producer token?
 A  AI-02, AI-03, AI-04 and AI-06 have ROWS. No component holds anything, because
@@ -1235,6 +1257,13 @@ CONNECTED               §8.3's twelve conditions hold, INCLUDING condition 11.
                         and the call until AI-14's STEP 1, and §16.2's rows 1, 1′, 2
                         and 3 all stand. WHAT CHANGED IS WHICH CLAUSE FORBIDS IT,
                         NOT THAT IT IS FORBIDDEN.
+                        ^ RECORDED (§19 AMENDMENT 6): STEP 1 IS SATISFIED (AI-14
+                        Amendment 2, PR #90; recorded as discharged by AI-14
+                        Amendment 4, PR #96), so §17.2 no longer refuses the import
+                        or the call, and row 1 is satisfied with it. THE CASE STILL
+                        MUST NOT ARISE, and what forbids it is now the
+                        joint-delivery requirement (§17.2d), row 1′ for any event
+                        but AI-06's, and the absent call site.
 ```
 
 ```text
@@ -1351,6 +1380,12 @@ SEPARATE FACTS, AND THEY MUST NOT BE MERGED INTO ONE.
                  STEP 0b IS SATISFIED AND NO LONGER REFUSES ANYTHING; the
                  prohibition on creating the writer is UNCHANGED and now rests on
                  §17.2 and §16.2's remaining rows.
+                 ^ RECORDED (§19 AMENDMENT 6): STEP 1 IS SATISFIED (AI-14 Amendment
+                 2, PR #90; recorded as discharged by AI-14 Amendment 4, PR #96).
+                 §17.2 NO LONGER REFUSES THE IMPORT OR THE CALL. THE PROHIBITION ON
+                 CREATING THE WRITER IS UNCHANGED and now rests on the
+                 joint-delivery requirement (§17.2d), row 1′ for any event but
+                 AI-06's, §16.2's remaining rows, and §8.3 condition 11.
 
 AI15-OPEN-1  PRODUCER AUTHENTICITY — how is a producer claim ESTABLISHED, as
              against merely well-formed?
@@ -1420,6 +1455,13 @@ AI15-OPEN-1  PRODUCER AUTHENTICITY — how is a producer claim ESTABLISHED, as
                              THE REPOSITORY GATES ARE STILL IN FRONT OF THE WRITE.
                                §17.2 refuses the import and the call until AI-14's
                                STEP 1, and §16.2 rows 1, 1′, 2 and 3 stand.
+                               ^ RECORDED (§19 AMENDMENT 6): STEP 1 IS SATISFIED
+                               (AI-14 Amendment 2, PR #90; recorded as discharged by
+                               AI-14 Amendment 4, PR #96), so §17.2 no longer
+                               refuses the import or the call and row 1 is satisfied
+                               with it. THE GATES STILL IN FRONT OF THE WRITE ARE
+                               the joint-delivery requirement (§17.2d), ROW 1′ for
+                               any event but AI-06's, and §16.2's remaining rows.
                              WHAT IS ACTUALLY ABSENT IS A CALLER — and its absence
                                is what makes the API UNREACHABLE IN PRACTICE. It is
                                a FACT ABOUT THE TREE and NOT a runtime security
@@ -1478,6 +1520,12 @@ AI15-OPEN-1  PRODUCER AUTHENTICITY — how is a producer claim ESTABLISHED, as
                          LONGER THIS ITEM: STEP 0b is satisfied (§15.2, §16.2,
                          §17.2b), and the blockers that remain are STEP 1, row 1′,
                          STEP 2 and STEP 3, none of which is AI-05's to move.
+                         ^ RECORDED (§19 AMENDMENT 6): OF THOSE FOUR, STEP 1 IS NOW
+                         SATISFIED TOO (AI-14 Amendment 2, PR #90; recorded as
+                         discharged by AI-14 Amendment 4, PR #96), and it was moved
+                         by its OWNER and not by AI-05 or AI-15. THE BLOCKERS THAT
+                         REMAIN ARE row 1′, a real non-test call site (STEP 2), the
+                         joint-delivery mechanism and STEP 3.
                          §8.3 condition 11 carries the mechanism into the
                          CONNECTED gate, and §16.2 keeps that SEPARATE from the
                          item's closure: B5 is still BLOCKED, still NOT
@@ -2210,7 +2258,7 @@ non-test caller · **evidence** = re-checkable observation.
 | AI-10 | §13.2 writes NO record | n/a | n/a | no | no |
 | AI-11 | §21.1 writes NO record; OPEN-1 | n/a | n/a | no | **OPEN-1 is AI-05's, not AI-11's** |
 | AI-13 | §16 writes none, registers no producer | n/a | n/a | no | no |
-| AI-14 | §22.1 B5 BLOCKED; §5.1 not connected | `composition/` | **no** | **no** | **YES — §15.2** |
+| AI-14 | §22.1 B5 BLOCKED; §5.1 not connected | `composition/` | **no** | **no** | **YES — §15.2. STEP 1's part is MADE (AI-14 Amendment 2, PR #90; recorded as discharged by AI-14 Amendment 4, PR #96); STEP 3's CLASSIFICATION still merges WITH the call site** |
 
 ### 14.2 AI-05
 
@@ -2357,12 +2405,25 @@ code       composition/ — 5 modules, no evidence import.
 call site  NONE at main; a change adding one would fail layer0 :3241 and the
            AST test at tests/composition/test_composition_boundaries.py:151
            (build-time checks, not a runtime block — §3.4).
+           ^ RECORDED (§19 AMENDMENT 6): A CHANGE ADDING ONE NO LONGER FAILS
+           layer0. AI14_FORBIDDEN_IMPORTS is EMPTY as of AI-14 Amendment 2
+           (PR #90), which AUTHORIZED the import; what still fails is the AST
+           assertion in tests/composition/test_composition_boundaries.py, which
+           checks the CALL rather than the import. Amending that assertion is part
+           of AI-14's OWN part of the connecting change (§15.2 STEP 3, §17.2d).
 evidence   AI-14-B merged as adf6db2476b7e3de33a585954610e9ab568b498c (PR #73).
 AI-15 dependency
            YES. §15.2. Connecting B5 requires an AI-14 amendment; §24 lists
            "the execution topology's CONNECTED/SEAM classification of a path" as
            amendment-requiring, and §22.1 requires Appendix A to be updated in the
            same change.
+           ^ RECORDED (§19 AMENDMENT 6): STEP 1'S AI-14 AMENDMENT HAS BEEN MADE —
+           AI-14 Amendment 2 (PR #90, merge
+           a98e389b91ee10858abc67e7c66509cd12fae9dc), recorded as discharged by
+           AI-14 Amendment 4 (PR #96, merge
+           36d6ea92a8872dd9167412d8e39de063854b345d). WHAT REMAINS ON AI-14'S SIDE
+           IS STEP 3: its CLASSIFICATION part, merged WITH the call site in ONE
+           change (§17.2d).
 ```
 
 ### 14.9 A stale-record finding, reported and NOT fixed
@@ -2480,6 +2541,12 @@ THE ORDER — each step names its owner, its precondition and its output
                          STEP 1 would have had nothing to authorize. SATISFYING
                          THE GATE IS NOT STEP 1: no AI-14 authorization has been
                          made, and this document does not make one.
+                         ^ RECORDED (§19 AMENDMENT 6): THE AUTHORIZATION HAS SINCE
+                         BEEN MADE, BY AI-14'S OWNER — AI-14 Amendment 2 (PR #90,
+                         merge a98e389b91ee10858abc67e7c66509cd12fae9dc), recorded
+                         as discharged by AI-14 Amendment 4 (PR #96, merge
+                         36d6ea92a8872dd9167412d8e39de063854b345d). AI-15 DID NOT
+                         MAKE IT, does not restate it, and produces no part of it.
 
   STEP 0b  AI-05 answers AI15-OPEN-1 (§9.2, §9.5): how a producer claim is
            ESTABLISHED to AI-05 §7's standard for "the component that WROTE".
@@ -2526,6 +2593,12 @@ THE ORDER — each step names its owner, its precondition and its output
                          mechanism — none of which is AI-05's to move, all of which
                          remain unsatisfied, and none of which this step's
                          satisfaction touches (§16.2, §17.2).
+                         ^ RECORDED (§19 AMENDMENT 6): OF THOSE FOUR, STEP 1 IS NOW
+                         SATISFIED (AI-14 Amendment 2, PR #90; recorded as
+                         discharged by AI-14 Amendment 4, PR #96) — and it was
+                         moved by AI-14, not by AI-05 and not by AI-15. STEP 2 AND
+                         STEP 3 REMAIN GATED BY row 1′, by the call site itself and
+                         by the joint-delivery mechanism.
            FROZEN: STEP 0b GATES THE WRITE, NOT ONLY THE LABEL. No production,
                    non-test call site that can actually execute §30 admission and
                    persist an EvidenceRecord may be created, merged or run before
@@ -2574,6 +2647,17 @@ THE ORDER — each step names its owner, its precondition and its output
                          amendment has been made; a met precondition is what
                          UNBLOCKS beginning one, and AI-14's owner begins it,
                          not AI-15 (§19, Amendment 1).
+                         ^ RECORDED (§19 AMENDMENT 6): THE STEP HAS SINCE BEEN MADE,
+                         BY ITS OWNER. AI-14 Amendment 2 (PR #90, merge
+                         a98e389b91ee10858abc67e7c66509cd12fae9dc) delivered the
+                         AUTHORIZATION change this step names, and AI-14 Amendment
+                         4 (PR #96, merge
+                         36d6ea92a8872dd9167412d8e39de063854b345d) records its
+                         enumerated list as DISCHARGED ON AI-14'S SIDE. THE
+                         SENTENCE ABOVE IS KEPT AS WHAT IT WAS. AI-15 DID NOT MAKE
+                         THIS STEP, DOES NOT CLAIM IT, AND DOES NOT DECLARE IT ON
+                         AI-14'S BEHALF: AI-14's owner made it, in AI-14's contract,
+                         under AI-14's amendment rule.
            FROZEN: THIS AMENDMENT MUST NOT RECORD B5 AS CONNECTED. There is no
                    call site yet, §8.3 condition 1 is unsatisfied, and recording
                    CONNECTED here would reproduce the (A)+(B)+(C) contradiction
@@ -2594,9 +2678,12 @@ THE ORDER — each step names its owner, its precondition and its output
                          part. Per §7.3 that is the composition submitting an
                          OWNER-AUTHORED record, so the owner phase authors the
                          claim and the composition submits it.
-           PRECONDITION  STEP 0a AND STEP 0b AND STEP 1. All three. STEP 0a and
-                         STEP 0b are satisfied; STEP 1 is NOT, and STEP 1 is
-                         AI-14's to make.
+           PRECONDITION  STEP 0a AND STEP 0b AND STEP 1. All three.
+                         ^ RECORDED (§19 AMENDMENT 6): ALL THREE ARE NOW SATISFIED.
+                         STEP 1 was made by AI-14's owner — AI-14 Amendment 2,
+                         recorded as discharged by AI-14 Amendment 4 (PR #96) — and
+                         AI-15 produced no part of it. STEP 2 IS STILL NOT MADE:
+                         no production, non-test call site exists.
            FROZEN: AI-15-B is ONE possible implementer of this step and is NOT
                    the only one. §17.5 fixes what the implementer may and may not
                    do, whoever it turns out to be.
@@ -2648,8 +2735,13 @@ THE ORDER — each step names its owner, its precondition and its output
                          rule: the two parts merge as one change with two authors.
            PRECONDITION  STEP 0a AND STEP 0b AND STEP 1 AND STEP 2. All four,
                          with STEP 2's call site in the SAME merged change.
-                         STEP 0a and STEP 0b are satisfied; STEP 1 and STEP 2 are
-                         NOT.
+                         ^ RECORDED (§19 AMENDMENT 6): STEP 0a, STEP 0b AND STEP 1
+                         are satisfied — STEP 1 by AI-14's owner, AI-14 Amendment 2,
+                         recorded as discharged by AI-14 Amendment 4 (PR #96).
+                         STEP 2 IS STILL NOT MADE, and this step cannot run before
+                         it: there is no call site for the classification to name,
+                         and a separately merged AI-14 part does not satisfy §22.1
+                         (§17.2d).
            FROZEN: STEP 3 IS THE ONLY STEP THAT MAY USE THE WORD CONNECTED ABOUT
                    THIS EDGE, AND IT IS THE ONLY STEP THAT MAY WRITE IT DOWN.
                    §5.1, Appendix A, §22.1 B5 and §25 move together, in the same
@@ -2851,7 +2943,13 @@ AI15-OPEN-1  PRODUCER AUTHENTICITY — how is a producer claim ESTABLISHED, as
                 §8.3 condition 11; it no longer gates them, because STEP 0b is
                 satisfied. WHAT STILL GATES THE WRITE IS STEP 1, row 1′, STEP 2 and
                 STEP 3, and §17.2 rather than §17.2b is now where the import and the
-                call are refused. B5 STILL CANNOT SATISFY THE CONNECTED GATE,
+                call are refused.
+                ^ RECORDED (§19 AMENDMENT 6): STEP 1 IS SATISFIED TOO — by its
+                OWNER, not by AI-15 (AI-14 Amendment 2, PR #90; recorded as
+                discharged by AI-14 Amendment 4, PR #96) — so §17.2 NO LONGER
+                REFUSES THE IMPORT OR THE CALL. WHAT STILL GATES THE WRITE IS
+                row 1′, a real non-test call site (STEP 2), the joint-delivery
+                mechanism and STEP 3. B5 STILL CANNOT SATISFY THE CONNECTED GATE,
                 because there is still no call site and no record — but the reason
                 is no longer this item.
         NOTE    SOLVED, AND THE API IS STILL NOT SAFE ON ITS OWN (§9.2). The API
@@ -2931,11 +3029,16 @@ FROZEN: AI15-OPEN-1 gated §15.2's STEP 0b directly, so an implementation that
 
 ```text
 B5 — composition -> Evidence
-    BLOCKED. Five of the seven blockers below are live. TWO ARE SATISFIED: row 0a,
-    answered by AI-05 Amendment 4 (§5.3, §19 Amendment 1), and row 0b, answered,
+    BLOCKED. Four of the seven blockers below are live. THREE ARE SATISFIED: row
+    0a, answered by AI-05 Amendment 4 (§5.3, §19 Amendment 1); row 0b, answered,
     implemented and tested by AI-05 and CLOSED BY ITS OWNER in AI-05's contract by
-    Amendment 7 (§9.2, §19 Amendment 3). SATISFYING A BLOCKER IS NOT SATISFYING
-    THE ITEM — B5 stays BLOCKED, and no seam is CONNECTED.
+    Amendment 7 (§9.2, §19 Amendment 3); and row 1, DELIVERED BY ITS OWNER — AI-14
+    Amendment 2 (PR #90, merge
+    a98e389b91ee10858abc67e7c66509cd12fae9dc), recorded as discharged by AI-14
+    Amendment 4 (PR #96, merge
+    36d6ea92a8872dd9167412d8e39de063854b345d) (§19 Amendment 6). SATISFYING A
+    BLOCKER IS NOT SATISFYING THE ITEM — B5 stays BLOCKED, and no seam is
+    CONNECTED.
 
     order  blocker                                       owner                 gates
     -----  --------------------------------------------  --------------------  --------------
@@ -2959,8 +3062,19 @@ B5 — composition -> Evidence
                                                                                REMAIN BLOCKED BY
                                                                                1, 1′, 2 AND joint
     1      AI-14 amendment #1 (authorization) +          AI-14                 STEP 2
-           layer0 :3241 + the two composition
-           assertions (§15.2)
+           layer0 :3241 + the two composition                                 — SATISFIED.
+           assertions (§15.2)                                                  DELIVERED BY ITS
+                                                                               OWNER (AI-14
+                                                                               Amendment 2,
+                                                                               PR #90) AND
+                                                                               RECORDED AS
+                                                                               DISCHARGED
+                                                                               (AI-14 Amendment
+                                                                               4, PR #96, §19
+                                                                               Amendment 6).
+                                                                               STEP 2 REMAINS
+                                                                               BLOCKED BY 1′,
+                                                                               2 AND joint
     1'     the §6.5 row and the own-contract clause      AI-05 + the phase     STEP 2, for any event
            for each phase whose facts are admitted                             but AI-06's
     2      a real non-test call site, §8.3 cond. 1       —                     STEP 3
@@ -2990,6 +3104,10 @@ B5 — composition -> Evidence
             ^ UNCHANGED, AND NOW SATISFIABLE IN THAT ORDER: 0b is complete, so
             STEP 1 may precede STEP 3 without STEP 3 asserting anything it does
             not yet have. STEP 1 has not been made (§15.2).
+            ^ RECORDED (§19 AMENDMENT 6): STEP 1 HAS SINCE BEEN MADE, BY AI-14 —
+            AI-14 Amendment 2 (PR #90), recorded as discharged by AI-14 Amendment 4
+            (PR #96). THE ORDER THIS CLAUSE FIXES WAS KEPT: STEP 1 came before
+            STEP 3, and STEP 3 still has nothing to assert — no call site exists.
     FROZEN: the joint-delivery row is the blocker an implementer is most tempted
             to route around. Authoring AI-14's contract parts to avoid it is
             §15.2's owner-rule bypass and MUST NOT be merged.
@@ -3003,6 +3121,13 @@ B5 — composition -> Evidence
             SECOND question, and the sentence "this document records that an owner
             answered a question, and it authorizes nothing" is now true of two rows
             instead of one.
+            ^ RECORDED (§19 AMENDMENT 6): AND A THIRD OWNER HAS NOW ANSWERED A THIRD
+            ONE. STEP 1 IS MADE — by AI-14's owner, AI-14 Amendment 2 (PR #90),
+            recorded as discharged by AI-14 Amendment 4 (PR #96) — and, like the
+            two before it, THAT MOVES NOTHING TO AI-15 except the STATUS this
+            amendment records. AI-15 DID NOT MAKE STEP 1 and does not own its
+            completion. WHAT REMAINS ON THIS ROW'S SIDE: row 1′, a real non-test
+            call site (STEP 2), the joint-delivery mechanism and STEP 3.
     AI-15-B  MUST NOT START. §7.3, §17.
 
 AI-12-C — the campaign over policies
@@ -3107,6 +3232,44 @@ FROZEN: AI-15-B MUST NOT do any of these itself, and MUST NOT reach the same
         a helper that imports it on the composition's behalf, a test-only path, or
         a re-export that moves the import out of `composition/` while keeping the
         call. STEP 1 is the only route, and it is AI-14's act.
+```
+
+```text
+RECORDED (§19 AMENDMENT 6) — THE PREMISE THIS SECTION RESTS ON IS SATISFIED, AND
+THIS SECTION'S TEXT IS UNCHANGED.
+
+    ^ THIS BLOCK ALSO CLOSES THE CODE BLOCK ABOVE, WHICH HAD NO CLOSING FENCE: the
+    `### 17.2b` heading and its first block were being rendered INSIDE §17.2's
+    block. The fence is restoration, not a change to this section's text. Three
+    other sites in this document have the same defect and are NOT fixed here — they
+    are named in §19 Amendment 6 so they are not discovered later.
+
+    STEP 1 HAS BEEN MADE, BY ITS OWNER. AI-14 Amendment 2 (PR #90, merge
+    a98e389b91ee10858abc67e7c66509cd12fae9dc) delivered the AUTHORIZATION change,
+    and AI-14 Amendment 4 (PR #96, merge
+    36d6ea92a8872dd9167412d8e39de063854b345d) records its enumerated list as
+    discharged on AI-14's side. ALL FOUR ITEMS ABOVE ARE THEREFORE DELIVERED:
+    `composition/` MAY import `plugins.evidence`; `AI14_FORBIDDEN_IMPORTS` is EMPTY;
+    the composition assertion now CHECKS THE CALL instead of refusing the import
+    (its current site is tests/composition/test_composition_boundaries.py:411, not
+    the pre-Amendment-2 line numbers above); and AI-14 §5.1, §22.1 B5 and Appendix A
+    were restated by that same amendment.
+
+    WHAT THIS DOES NOT DO. It permits nothing by itself and it moves nothing. B5 IS
+    STILL BLOCKED, NO SEAM IS CONNECTED, AND AI-15-B IS STILL NOT STARTED.
+    `AI14_FORBIDDEN_IDENTIFIERS` — the `producer_token` entry INCLUDED —
+    `AI14_FORBIDDEN_CALLABLES`, the forbidden stdlib roots, the foreign-root rule and
+    the one-way rule ALL STAND, and the ownership rule this section exists to protect
+    is UNCHANGED: AI-15-B MUST NOT author AI-14's contract, Layer 0, test or
+    classification parts, and MUST NOT reach the same effect by another route
+    (§17.2d, §15.2 STEP 2's FROZEN rules).
+
+    WHAT REFUSES A PRODUCTION CALL SITE NOW, stated so this section is not read as a
+    refusal it no longer is: the JOINT-DELIVERY requirement (§17.2d — STEP 2 and
+    STEP 3 merge as ONE change, and no owner-approved mechanism is named); ROW 1′ for
+    any event but AI-06's; and AI-14's own composition assertion, which the
+    connecting change must amend as part of AI-14's part.
+```
 
 ### 17.2b The §15.2 STEP 0b gate — it covered the WRITE, and it is now discharged
 
@@ -3142,6 +3305,13 @@ records it only.
         AI-14's STEP 1; §16.2's rows 1, 1′, 2 and 3 all stand; and §15.2 STEP 2
         requires STEP 0a AND STEP 0b AND STEP 1 together, of which STEP 1 is still
         missing.
+        ^ RECORDED (§19 AMENDMENT 6): STEP 1 IS NO LONGER MISSING — it was made by
+        AI-14's owner (AI-14 Amendment 2, PR #90; recorded as discharged by AI-14
+        Amendment 4, PR #96), and §15.2 STEP 2's precondition is satisfied with it.
+        THIS CAVEAT IS NOT THEREBY REPEALED: it still does not permit a production
+        call site, and what refuses one now is the JOINT-DELIVERY requirement
+        (§17.2d), ROW 1′ for any event but AI-06's, and §16.2's remaining rows.
+        B5 IS STILL BLOCKED AND AI-15-B IS STILL NOT STARTED.
 
         IT DOES NOT MOVE THE B5 CLASSIFICATION. The three claims listed above
         remain blocked, and the reason is now the ABSENCE of a call site and of a
@@ -3308,6 +3478,13 @@ STILL BLOCKED even after all of the above, for EVERY phase including AI-06:
     site together do not establish who wrote the record" is now a statement about
     what the API does NOT do on a caller's behalf, rather than about a mechanism
     that does not exist: §30 step 7b exists and runs (§19 Amendment 3). THE WRITER
+    ^ RECORDED (§19 AMENDMENT 6): STEP 1 IS NOW MADE — by AI-14's owner, AI-14
+    Amendment 2 (PR #90), recorded as discharged by AI-14 Amendment 4 (PR #96) —
+    SO ONE OF THIS CLAUSE'S TWO REMAINING CONDITIONS IS SATISFIED. The clause is
+    otherwise unchanged, and what still refuses the write is STEP 2 — not
+    delivered — TOGETHER WITH STEP 3 in ONE change, and the unnamed joint-delivery
+    mechanism. B5 IS STILL BLOCKED, NO SEAM IS CONNECTED, AND AI-15-B IS STILL NOT
+    STARTED. THE WRITER
     STILL MUST NOT RUN.
 ```
 
@@ -3470,13 +3647,13 @@ AI-15-A IS NOT DONE IF
 
 ```text
 FROZEN. This document was frozen by the merge of PR #78, and it has been amended
-FIVE TIMES since — Amendment 1, Amendment 2, Amendment 3, Amendment 4 and Amendment
-5, below. The line this block replaced read "PROPOSED (this document's class until the
-merge that freezes it)", which was true while the freeze was a proposal and false once
-it merged. It is corrected here rather than left to contradict the amendment log beside
-it. The count was "TWICE" until Amendment 3, "THREE TIMES" until Amendment 4 and "FOUR
-TIMES" until Amendment 5, and each increment of it has been made in the same change
-that appended the amendment it counts.
+SIX TIMES since — Amendment 1, Amendment 2, Amendment 3, Amendment 4, Amendment 5 and
+Amendment 6, below. The line this block replaced read "PROPOSED (this document's class
+until the merge that freezes it)", which was true while the freeze was a proposal and
+false once it merged. It is corrected here rather than left to contradict the amendment
+log beside it. The count was "TWICE" until Amendment 3, "THREE TIMES" until Amendment 4,
+"FOUR TIMES" until Amendment 5 and "FIVE TIMES" until Amendment 6, and each increment of
+it has been made in the same change that appended the amendment it counts.
 ```
 
 ```text
@@ -4218,6 +4395,12 @@ TWO FACTS THAT MUST NOT BE MERGED, AND THEY ARE STATED SEPARATELY
        AI-14 STEP 1 COMPLETE ON AI-14'S BEHALF.
        UNTIL AI-14'S OWNER ACTS, THE AUTHORITATIVE CONTRACT STATUS REMAINS
        CONSERVATIVE: **AI-14 STEP 1 = NOT FULLY DISCHARGED.**
+       ^ RECORDED (§19 AMENDMENT 6): THE OWNER HAS NOW ACTED. AI-14 Amendment 4
+       (PR #96, merge 36d6ea92a8872dd9167412d8e39de063854b345d, 2026-10-12)
+       corrected the stale record this paragraph named and records STEP 1's
+       enumerated list as DISCHARGED ON AI-14'S SIDE. THE TWO SENTENCES ABOVE ARE
+       KEPT AS WHAT THEY WERE — they state the position on 2026-10-12 BEFORE that
+       merge, and they were true of it. The record to read now is §19 Amendment 6.
 
     THE TWO ARE NOT THE SAME STATEMENT, AND A READER MUST NOT TAKE THE FIRST FOR
     THE SECOND. AI-15 has disposed of the item IT raised; whether that disposes of
@@ -4453,6 +4636,137 @@ WHAT THIS AMENDMENT DOES NOT DO
 
 ---
 
+#### Amendment 6 — AI-14 STEP 1's discharge is recorded, and this document's STEP 1 status is synced to it
+(2026-10-12)
+
+```text
+IN FORCE on the merge of the change that carries it. There is no awaiting-review
+marker on this amendment: the merge IS the approval, and the text below is the final
+text.
+
+AMENDMENT NUMBER  6
+DATE              2026-10-12
+```
+
+```text
+WHAT WAS FOUND
+
+    THIS DOCUMENT STILL DESCRIBED AI-14'S STEP 1 AS NOT MADE, AND THAT STOPPED BEING
+    TRUE ON 2026-10-11. §15.2's STEP 1 PRECONDITION read "No AI-14 amendment has
+    been made"; §4.4, §7.2, §7.3, §7.4, §8.4 and §9.2, §15.2's STEP 0a and STEP 0b
+    GATES and its STEP 2 and STEP 3 PRECONDITIONS, §16.1, §16.2's row 1 and its
+    FROZEN notes, §17.2, §17.2b, §17.3 and `## Status` all rested on the same
+    premise — that §17.2 refused the composition's import and call "until AI-14's
+    STEP 1"; §14.1's summary-table row and §14.8's dependency block stated the same
+    thing from the dependency side.
+
+    AI-14'S OWN CONTRACT SETTLES WHAT HAPPENED. Its §25 Amendment 2 says, in its own
+    words: "This is STEP 1 of the order AI-15 §15.2 fixes for this edge." That
+    amendment MERGED — AI-14 Amendment 2, PR #90, merge
+    a98e389b91ee10858abc67e7c66509cd12fae9dc (2026-10-11). AI-14's §25 Amendment 4
+    (PR #96, merge 36d6ea92a8872dd9167412d8e39de063854b345d, 2026-10-12) then
+    corrected its own stale row and records STEP 1's enumerated list as DISCHARGED ON
+    AI-14'S SIDE.
+```
+
+```text
+WHO ACTED, AND WHAT AI-15 DID NOT DO
+
+    AI-14'S OWNER MADE STEP 1, in AI-14's contract, under AI-14's amendment rule —
+    AI-14 §25 Amendments 2 and 4. AI-15 PRODUCED NO PART OF IT, DID NOT APPROVE IT,
+    AND DOES NOT DECLARE IT ON AI-14'S BEHALF. This amendment RECORDS it and syncs
+    this document's status to it, in the same shape as Amendments 1, 2 and 3, which
+    recorded AI-05's acts and produced none of those.
+    §19's ORDERING RULE IS SATISFIED: the earlier contract's amendment was made
+    BEFORE AI-15 depended on it, and it landed first.
+```
+
+```text
+WHAT THIS AMENDMENT CHANGES
+
+    §15.2 STEP 1     a RECORDED note: the step has been made, by its OWNER
+    §15.2 STEP 2     the PRECONDITION: all three of STEP 0a, STEP 0b and STEP 1 are
+      AND STEP 3     satisfied; STEP 2 is still not made, and STEP 3 cannot run
+                     before it
+    §15.2 STEP 0a    RECORDED notes: the authorization has been made by AI-14, and
+      AND STEP 0b    STEP 1 is satisfied with it
+    §16.2            the header's count (THREE of the seven blockers satisfied),
+                     row 1 marked SATISFIED with its evidence, and the two FROZEN
+                     notes beneath it
+    §16.1            the AI15-OPEN-1 GATES line
+    §17.2            a RECORDED block — THIS SECTION'S TEXT IS UNCHANGED
+    §17.2b, §17.3    RECORDED notes
+    §4.4, §6.1,      RECORDED notes: §17.2 no longer refuses the import or the call
+      §7.3, §7.4,
+      §8.4, §9.2
+    §14.1, §14.8     the AI-14 row and the dependency block, including the note that
+                     a connecting change no longer fails Layer 0's import rule
+    §19              this record, and the preamble's amendment count
+    `## Status`      the BLOCKED block, the amendment count and the Amendment 6 line
+```
+
+```text
+WHAT IT DOES NOT DO — AND THIS IS THE WHOLE OF THE LIMIT
+
+    NO CLASSIFICATION CHANGE. B5 remains BLOCKED. §5.1's row, §22.1 B5's item status,
+    Appendix A's classification and the twelve §8.3 conditions are UNTOUCHED. ROW 1′
+    REMAINS UNSATISFIED for any event but AI-06's, and this amendment does not
+    satisfy it.
+    NO AUTHORITY CHANGE. §13's rules and AI-14 §4.1's authority matrix are unchanged;
+    Guard remains the only component with an AUTHORIZES entry.
+    NO CONNECTED CLAIM. No seam is connected, no edge is reported as one, and this
+    amendment introduces no intermediate classification for one. §8.3 condition 11
+    remains a condition ON A RECORD, and no record exists.
+    AI-15-B IS STILL NOT STARTED, AND THIS AMENDMENT DOES NOT START IT. STEP 2 has
+    not been delivered and STEP 3 has not begun. The joint-delivery mechanism is
+    still unnamed, and §17.2d's rule that STEP 2 and STEP 3 merge as ONE change is
+    unchanged.
+    IT DOES NOT LIFT THE PROHIBITION ON A PRODUCTION CALL SITE. What refuses one now
+    is §17.2d's joint-delivery requirement, row 1′ for any event but AI-06's, and the
+    absent call site itself — not §17.2, whose premise is satisfied.
+    IT TOUCHES NO OTHER FILE. AI-14's, AI-05's and AI-11's contracts, every status
+    document, every runtime module and every test are UNCHANGED by it.
+```
+
+```text
+ONE STRUCTURAL FIX, DISCLOSED RATHER THAN FOLDED IN
+
+    §17.2'S CODE BLOCK HAD NO CLOSING FENCE, so the `### 17.2b` heading and its
+    first block rendered INSIDE §17.2's block. This amendment closes it, because the
+    RECORDED block it appends cannot be placed correctly otherwise. THAT IS A
+    RESTORATION OF A FENCE AND NOT A CHANGE TO §17.2's TEXT, which is unchanged word
+    for word.
+    THE SAME DEFECT EXISTS AT THREE OTHER SITES AND IS NOT FIXED HERE, because
+    fixing them is outside what this amendment was scoped to do. THEY ARE NAMED SO
+    THEY ARE NOT DISCOVERED LATER, at `main` @ 36d6ea92: the block at §11.4's heading
+    (which swallows the `### 11.4` heading), the block at §17.3's heading (which
+    swallows the `### 17.3` heading), and one block in §2/§3 that swallows a fence
+    opener. All three PREDATE this amendment and are present on `main`; none of them
+    changes what any clause MEANS.
+```
+
+```text
+SECURITY IMPACT
+    NONE. No runtime code, no control, no check, no key and no trust boundary
+    changes. No producer token, registry row, reason code or admission outcome is
+    added, removed or changed.
+AUTHORITY IMPACT
+    None. Nothing here grants a permission, changes AI-14 §4.1's matrix, introduces
+    an authorizing subject, or moves a responsibility between phases.
+```
+
+```text
+WHAT THIS AMENDMENT DOES NOT CLAIM
+    it does not claim AI-15 made, approved or may declare STEP 1
+    it does not claim B5 moved, or that any seam is connected
+    it does not claim STEP 1's satisfaction changes the API: the API still takes no
+      submitter identity, and an authenticated producer claim is still not a
+      permission
+    it does not run any test, and it claims no test result of its own
+```
+
+---
+
 ```text
 THE NORMATIVE CLASSES, USED AS AI-14 §2 DEFINES THEM
     FROZEN      settled here; AI-15-B implements it; changing it needs an amendment
@@ -4607,22 +4921,28 @@ not amend §0-§20, and it does not freeze a new clause.
 
 ```text
 BLOCKED: B5 (composition -> Evidence) is unchanged by this document. §16.2 lists
-         every blocker with its owner and the §15.2 step it gates. TWO ARE NOW
-         SATISFIED — STEP 0a, answered as READING A by AI-05 Amendment 4, and
-         STEP 0b, answered, implemented and tested by AI-05 and closed in AI-05's
-         contract by AI-05 Amendment 7 (§19 Amendment 3). The rest stand: STEP 1
-         has not been made, row 1′ is unsatisfied, there is no call site, the
-         joint-delivery mechanism is unnamed, and STEP 3 cannot be recorded.
-         SATISFYING A BLOCKER IS NOT SATISFYING THE ITEM, AND DEFINING A MECHANISM
-         IS NOT IMPLEMENTING ONE EITHER — nor is implementing one connecting a
-         seam.
+         every blocker with its owner and the §15.2 step it gates. THREE ARE NOW
+         SATISFIED — STEP 0a, answered as READING A by AI-05 Amendment 4; STEP 0b,
+         answered, implemented and tested by AI-05 and closed in AI-05's contract by
+         AI-05 Amendment 7 (§19 Amendment 3); and STEP 1, DELIVERED BY AI-14'S OWNER
+         — AI-14 Amendment 2 (PR #90, merge
+         a98e389b91ee10858abc67e7c66509cd12fae9dc), recorded as discharged by AI-14
+         Amendment 4 (PR #96, merge
+         36d6ea92a8872dd9167412d8e39de063854b345d) (§19 Amendment 6). THE REST
+         STAND: row 1′ is unsatisfied for any event but AI-06's, there is no call
+         site, the joint-delivery mechanism is unnamed, and STEP 3 cannot be
+         recorded. SATISFYING A BLOCKER IS NOT SATISFYING THE ITEM, AND DEFINING A
+         MECHANISM IS NOT IMPLEMENTING ONE EITHER — nor is implementing one
+         connecting a seam.
          NO PRODUCTION WRITER EXISTS, and none is authorized. §15.2 STEP 0b no
-         longer gates the WRITE, because it is SATISFIED; what refuses the write
-         now is §17.2 (STEP 1, and it is AI-14's), row 1′, and STEP 2's own
-         precondition, which requires STEP 0a AND STEP 0b AND STEP 1 together
-         (§17.2b, §16.2).
+         longer gates the WRITE, because it is SATISFIED, AND NEITHER DOES §17.2,
+         whose STEP 1 premise is satisfied with it. What refuses the write now is
+         the JOINT-DELIVERY requirement (§17.2d — STEP 2 and STEP 3 merge as ONE
+         change, and no owner-approved mechanism is named), ROW 1′ for any event but
+         AI-06's, and STEP 2's own precondition — which now requires a call site
+         that does not exist (§17.2b, §16.2).
 
-AMENDED: this document has been amended FIVE TIMES since it was frozen.
+AMENDED: this document has been amended SIX TIMES since it was frozen.
          §19 Amendment 1 records AI-05's answer to AI15-OPEN-2.
          §19 Amendment 2 records AI-05 Amendments 5 and 6 — the producer
          authentication standard DEFINED and its trust configuration FROZEN — and
@@ -4641,6 +4961,13 @@ AMENDED: this document has been amended FIVE TIMES since it was frozen.
          RECORDS AI-05 Amendment 8 (§7.3.12, the forwarder's transport permission)
          and produced none of it. NO STATUS ITEM MOVED: B5 stays BLOCKED, AI-15-B
          stays NOT STARTED, and no seam is CONNECTED.
+         §19 Amendment 6 RECORDS AI-14 STEP 1'S DISCHARGE — delivered by AI-14's
+         owner (AI-14 Amendment 2, PR #90, merge a98e389b…) and recorded as
+         discharged by AI-14 Amendment 4 (PR #96, merge 36d6ea92…) — and syncs this
+         document's status records to it. AI-15 PRODUCED NO PART OF IT. NO
+         CLASSIFICATION MOVED: B5 stays BLOCKED, row 1′ stays unsatisfied, AI-15-B
+         stays NOT STARTED, STEP 2 and STEP 3 have not begun, and no seam is
+         CONNECTED.
 
 OPEN:    AI15-OPEN-3 (AI-04) · AI15-OPEN-4 (AI-13/AI-14)
          — local ids, prefixed so they cannot be confused with AI-11 §21.1's
