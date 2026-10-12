@@ -16,8 +16,14 @@ BLOCKED / NOT STARTED**.
 
 **§19 Amendment 1** (2026-10-09) records AI-05 Amendment 4's answer to **AI15-OPEN-2** —
 **READING A**, merged as PR #80 (`03d42681cb8b2110773654822655117daea44ad5`) — so
-**AI15-OPEN-2 is CLOSED** and **STEP 0a is satisfied**. That unblocked AI-14's STEP 1,
-which **IS NOW MADE** — see **AI-14 §25 Amendment 2** below.
+**AI15-OPEN-2 is CLOSED** and **STEP 0a is satisfied**. **THAT REMOVED A PRECONDITION;
+IT DID NOT COMPLETE THE STEP.** It unblocked *beginning* AI-14's STEP 1, and beginning
+the step is not discharging it: **AI-14 STEP 1 IS NOT FULLY DISCHARGED.** AI-14 §25
+**Amendment 2**'s authorization change is **proposed in PR #90, which is OPEN — NOT YET
+IN FORCE on `main`** — and **one clause AI-15 §15.2 enumerates names a rule AI-14 does
+not contain**, whose disposition belongs to the **AI-15 owner** and is **undecided**.
+**STEP 1 MUST NOT BE REPORTED AS COMPLETE** while that discrepancy is open. See the
+AI-14 status section below.
 
 **§19 Amendment 2** (2026-10-11) records **AI-05 Amendment 5** and **AI-05 Amendment 6**
 and corrected the reason **AI15-OPEN-1** was *then* still OPEN:
