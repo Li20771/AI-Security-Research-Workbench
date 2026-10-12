@@ -19,11 +19,12 @@ BLOCKED / NOT STARTED**.
 **AI15-OPEN-2 is CLOSED** and **STEP 0a is satisfied**. **THAT REMOVED A PRECONDITION;
 IT DID NOT COMPLETE THE STEP.** It unblocked *beginning* AI-14's STEP 1, and beginning
 the step is not discharging it: **AI-14 STEP 1 IS NOT FULLY DISCHARGED.** AI-14 §25
-**Amendment 2**'s authorization change is **proposed in PR #90, which is OPEN — NOT YET
-IN FORCE on `main`** — and **one clause AI-15 §15.2 enumerates names a rule AI-14 does
-not contain**, whose disposition belongs to the **AI-15 owner** and is **undecided**.
-**STEP 1 MUST NOT BE REPORTED AS COMPLETE** while that discrepancy is open. See the
-AI-14 status section below.
+**Amendment 2**'s authorization change **is MERGED and IN FORCE on `main`** (PR #90,
+merge `a98e389b91ee10858abc67e7c66509cd12fae9dc`), **but it is the AUTHORIZATION CHANGE
+ONLY** — **one clause AI-15 §15.2 enumerates names a rule AI-14 does not contain**, and
+its disposition belongs to the **AI-15 owner** and is **undecided**. **STEP 1 MUST NOT
+BE REPORTED AS COMPLETE** while that discrepancy is open. See the AI-14 status section
+below.
 
 **§19 Amendment 2** (2026-10-11) records **AI-05 Amendment 5** and **AI-05 Amendment 6**
 and corrected the reason **AI15-OPEN-1** was *then* still OPEN:
@@ -75,9 +76,11 @@ whether its cases pass or are skipped. **46 RAN, 0 SKIPPED.**
 §15.2 STEP 0b **no longer gates the write**, because it is satisfied.
 
 **AI-14 STEP 1 IS NOT FULLY DISCHARGED. WHAT IS DELIVERED IS ITS AUTHORIZATION CHANGE.**
-AI-14 §25 **Amendment 2** is **PROPOSED in PR #90 — an OPEN pull request — and is NOT YET
-IN FORCE ON `main`**. It implements the import-authorization change: the composition →
-Evidence import is permitted and Layer 0 no longer refuses it.
+AI-14 §25 **Amendment 2** is **MERGED and IN FORCE on `main`** — PR #90, merge
+`a98e389b91ee10858abc67e7c66509cd12fae9dc`. It implements the import-authorization
+change and nothing more: the **composition → Evidence import is AUTHORIZED** and Layer 0
+no longer refuses it. **AUTHORIZED IS NOT CONNECTED** — no call site exists, and the
+classification has not moved.
 
 **ONE CLAUSE AI-15 §15.2 ENUMERATES FOR STEP 1 IS UNSATISFIED AND REMAINS AN OPEN
 CONTRACT DISCREPANCY.** That clause — "§13's `producer_token` identifier refusal, where
@@ -197,20 +200,21 @@ AI-14    = AI-14-A COMPLETE / MERGED; AI-14-B COMPLETE / MERGED
 AI-14-A  = COMPLETE / MERGED   final architecture freeze   (PR #72 @ 4b1058a4c764a613127800426fdd95e34d164bf3)
 AI-14-B  = COMPLETE / MERGED   composition implementation  (PR #73 @ adf6db2476b7e3de33a585954610e9ab568b498c)
 contract = docs/AI-14_LONG_TERM_AI_WORKBENCH_EXECUTION_PLAN.md
-                           FROZEN @ PR #72; AMENDED ONCE ON `main`
+                           FROZEN @ PR #72; AMENDED TWICE ON `main`
                              Amendment 1 (2026-10-04, PR #73) — the four seams
                                AI-14-B connected are recorded CONNECTED
-                             Amendment 2 (2026-10-11) — **PROPOSED IN PR #90, WHICH
-                               IS OPEN: NOT YET IN FORCE on `main`; in force on
-                               ITS OWN merge**. It implements STEP 1's
-                               AUTHORIZATION CHANGE ONLY — the composition ->
-                               Evidence IMPORT is permitted and Layer 0 no longer
-                               refuses it. THE CLASSIFICATION DOES NOT MOVE: the
-                               row stays IMPLEMENTED BUT NOT CONNECTED, no
-                               production call site exists, and B5 stays BLOCKED.
-                               FULL STEP 1 IS NOT DISCHARGED — one clause AI-15
-                               §15.2 enumerates names a rule AI-14 does not
-                               contain, and its disposition is the AI-15 owner's
+                             Amendment 2 (2026-10-11) — **MERGED AND IN FORCE on
+                               `main`** (PR #90, merge
+                               a98e389b91ee10858abc67e7c66509cd12fae9dc). It
+                               implements STEP 1's AUTHORIZATION CHANGE ONLY —
+                               the composition -> Evidence IMPORT is AUTHORIZED
+                               and Layer 0 no longer refuses it. THE
+                               CLASSIFICATION DOES NOT MOVE: the row stays
+                               IMPLEMENTED BUT NOT CONNECTED, no production call
+                               site exists, and B5 stays BLOCKED. FULL STEP 1 IS
+                               NOT FULLY DISCHARGED — one clause AI-15 §15.2
+                               enumerates names a rule AI-14 does not contain,
+                               and its disposition is the AI-15 owner's
 home     = composition/  — the glue between frozen layers; not a component (§3)
 ```
 
@@ -240,8 +244,10 @@ What AI-14-B DELIVERED, and what it left open (AI-14 plan §5.1, Appendix A, §2
     B3  Workflow StepExecutor -> execution         CONNECTED   composition/executor.py
     B4  controlled verification caller             CONNECTED   composition/verification.py
     B5  composition -> Evidence                    BLOCKED / NOT STARTED — AI-14-B left
-                                                   it blocked, and AI-14 STEP 1 (Amendment
-                                                   2, 2026-10-11) has since AUTHORIZED the
+                                                   it blocked, and AI-14 STEP 1's
+                                                   AUTHORIZATION CHANGE (Amendment 2,
+                                                   2026-10-11, MERGED and IN FORCE on
+                                                   `main`) has since AUTHORIZED the
                                                    import WITHOUT connecting it
     B6  composition root + boundary verification   DONE        composition/root.py
 
@@ -668,15 +674,16 @@ AI-14   Long-term AI Workbench                COMPLETE  AI-14-A MERGED (PR #72)
   Evidence writer, which is **BLOCKED** (B5): the §6.5 admitted-producer registry has
   no row for any of these phases. That tension is AI-11 §21.1's OPEN-1, still OPEN —
   C-1's closure does not change it; a published detector does not admit a record.
-  **AI-14 STEP 1 IS NOT FULLY DISCHARGED.** Its **authorization change** is **PROPOSED
-  in PR #90 (OPEN), in force on merge — NOT YET IN FORCE ON `main`**: AI-14 §25
-  Amendment 2 makes the composition → Evidence **import AUTHORIZED** and Layer 0 no
-  longer refuses it. **ONE ENUMERATED CLAUSE REMAINS OPEN**: the `§13 producer_token
-  identifier refusal` it names **does not exist in AI-14**, and the disposition is the
-  **AI-15 owner's**, undecided. That change **connects nothing and closes nothing** —
-  there is still **no production call site**, **row 1′** is still unsatisfied, the
-  **joint-delivery mechanism** is still unresolved, **STEP 2 and STEP 3 have not
-  begun**, and **B5 remains BLOCKED / NOT CONNECTED**
+  **AI-14 STEP 1 IS NOT FULLY DISCHARGED.** Its **authorization change** is **MERGED
+  AND IN FORCE on `main`** (AI-14 §25 Amendment 2 — PR #90, merge
+  `a98e389b91ee10858abc67e7c66509cd12fae9dc`): the composition → Evidence **import is
+  AUTHORIZED** and Layer 0 no longer refuses it. **ONE ENUMERATED CLAUSE REMAINS
+  OPEN**: the `§13 producer_token identifier refusal` it names **does not exist in
+  AI-14**, and the disposition is the **AI-15 owner's**, undecided. That change
+  **connects nothing and closes nothing** — there is still **no production call site**,
+  **row 1′** is still unsatisfied, the **joint-delivery mechanism** is still
+  unresolved, **STEP 2 and STEP 3 have not begun**, and **B5 remains BLOCKED / NOT
+  CONNECTED**
 - AI-15 — **AI-15-A is COMPLETE / MERGED** (PR #78), the contract frozen; **AI-15-B is
   NOT STARTED and BLOCKED**. The AI-15-A audit sharpened the entry above: four phases
   (AI-02, AI-03, AI-04, AI-06) **do** hold a §6.5 row — what none of them has is a
@@ -693,7 +700,7 @@ AI-14   Long-term AI Workbench                COMPLETE  AI-14-A MERGED (PR #72)
   record may be created, merged or run** — the refusal now comes from **row 1′**,
   **STEP 2's own precondition** and the **unresolved joint-delivery mechanism**, NOT
   from §15.2 STEP 0b (SATISFIED), and no longer from the import rule either (AI-14 §25
-  Amendment 2, **proposed in PR #90 and in force on merge**, authorizes the import).
+  Amendment 2 — **MERGED, IN FORCE on `main`** — authorizes the import).
   **AI15-OPEN-2 is no longer one of them either**: AI-05 Amendment 4 answered it as
   READING A and AI-15 recorded the answer (§19 Amendment 1), so STEP 0a is satisfied.
   **AI-14 STEP 1 IS NOT FULLY DISCHARGED** while its enumerated `§13 producer_token`
@@ -1003,11 +1010,11 @@ tokens**. Closing one must not be reported as progress on the other, and it is n
 **A BUILT AND TESTED CONTROL IS STILL NOT A CONNECTED SEAM.** B5 remains **BLOCKED and NOT
 CONNECTED**; AI-15-B remains **NOT STARTED / BLOCKED**; and no production Evidence writer exists or
 is authorized. §15.2 STEP 0b **no longer gates the write**, because it is satisfied, and the
-**import rule no longer refuses it** either (AI-14 §25 Amendment 2 — **proposed in PR #90, in
-force on merge**). **AI-14 STEP 1 IS NOT FULLY DISCHARGED**: one clause AI-15 §15.2 enumerates
-names a rule AI-14 does not contain, and the **AI-15 owner** has not disposed of it. What
-refuses the write is **row 1′**, **STEP 2's own precondition**, and the **unresolved
-joint-delivery mechanism**.
+**import rule no longer refuses it** either (AI-14 §25 Amendment 2 — **MERGED, IN FORCE on
+`main`**, PR #90 merge `a98e389b91ee10858abc67e7c66509cd12fae9dc`). **AI-14 STEP 1 IS NOT
+FULLY DISCHARGED**: one clause AI-15 §15.2 enumerates names a rule AI-14 does not contain,
+and the **AI-15 owner** has not disposed of it. What refuses the write is **row 1′**,
+**STEP 2's own precondition**, and the **unresolved joint-delivery mechanism**.
 
 Also remaining: §35.1's deferrals (F-10, and the storage-backend record).
 Full evidence in [AI-05-B1_EVIDENCE_2026-10-01.md](AI-05-B1_EVIDENCE_2026-10-01.md),
@@ -1917,20 +1924,21 @@ AI-14-A  = COMPLETE / MERGED   final architecture freeze — DOCS ONLY
 AI-14-B  = COMPLETE / MERGED   composition implementation
                                (PR #73 @ adf6db2476b7e3de33a585954610e9ab568b498c)
 contract = docs/AI-14_LONG_TERM_AI_WORKBENCH_EXECUTION_PLAN.md
-                           FROZEN @ PR #72; AMENDED ONCE ON `main`
+                           FROZEN @ PR #72; AMENDED TWICE ON `main`
                              Amendment 1 (2026-10-04, PR #73) — the four seams
                                AI-14-B connected are recorded CONNECTED
-                             Amendment 2 (2026-10-11) — **PROPOSED IN PR #90, WHICH
-                               IS OPEN: NOT YET IN FORCE on `main`; in force on
-                               ITS OWN merge**. It implements STEP 1's
-                               AUTHORIZATION CHANGE ONLY — the composition ->
-                               Evidence IMPORT is permitted and Layer 0 no longer
-                               refuses it. THE CLASSIFICATION DOES NOT MOVE: the
-                               row stays IMPLEMENTED BUT NOT CONNECTED, no
-                               production call site exists, and B5 stays BLOCKED.
-                               FULL STEP 1 IS NOT DISCHARGED — one clause AI-15
-                               §15.2 enumerates names a rule AI-14 does not
-                               contain, and its disposition is the AI-15 owner's
+                             Amendment 2 (2026-10-11) — **MERGED AND IN FORCE on
+                               `main`** (PR #90, merge
+                               a98e389b91ee10858abc67e7c66509cd12fae9dc). It
+                               implements STEP 1's AUTHORIZATION CHANGE ONLY —
+                               the composition -> Evidence IMPORT is AUTHORIZED
+                               and Layer 0 no longer refuses it. THE
+                               CLASSIFICATION DOES NOT MOVE: the row stays
+                               IMPLEMENTED BUT NOT CONNECTED, no production call
+                               site exists, and B5 stays BLOCKED. FULL STEP 1 IS
+                               NOT FULLY DISCHARGED — one clause AI-15 §15.2
+                               enumerates names a rule AI-14 does not contain,
+                               and its disposition is the AI-15 owner's
 
 merge    = adf6db2476b7e3de33a585954610e9ab568b498c
                      true two-parent merge; not squashed, not rebased
@@ -1956,9 +1964,9 @@ agent_id=<selected>) AFTER the Router selection, and refuses a binding that name
 other model. The offline factory invokes no model and reports model_ref=None rather
 than echoing the selection back as if it had run it.
 B5 (composition -> Evidence) is BLOCKED / NOT STARTED, and AI-14 STEP 1 IS NOT FULLY
-DISCHARGED. Its AUTHORIZATION CHANGE is proposed in AI-14 §25 Amendment 2 — PR #90,
-OPEN, so NOT YET IN FORCE ON `main`; in force on that PR's merge — which makes the
-`plugins.evidence` import AUTHORIZED and stops Layer 0 refusing it. ONE ENUMERATED
+DISCHARGED. Its AUTHORIZATION CHANGE is MERGED AND IN FORCE on `main` (AI-14 §25
+Amendment 2 — PR #90, merge `a98e389b91ee10858abc67e7c66509cd12fae9dc`) — which makes
+the `plugins.evidence` import AUTHORIZED and stops Layer 0 refusing it. ONE ENUMERATED
 CLAUSE REMAINS OPEN for the AI-15 owner: the `§13 producer_token identifier refusal`
 it names is not a rule AI-14 contains. STILL BLOCKED BY: no call site; row 1′ (the §6.5
 row AND the own-contract clause for each phase whose facts would be admitted); and the
@@ -1992,10 +2000,11 @@ live provider call        NOT_RUN — no credential and no call. A composed
                           Codex path (its invocation requests no capability), which
                           is why nothing here hands the composition a live invoker
                           (AI-14 plan §5.1)
-Evidence writer           NONE — B5 is BLOCKED. The IMPORT is authorized as of AI-14
-                          Amendment 2 (STEP 1); what is absent is a CALL SITE, and
-                          that absence — not an import refusal — is what keeps the
-                          edge IMPLEMENTED BUT NOT CONNECTED
+Evidence writer           NONE — B5 is BLOCKED. The IMPORT is AUTHORIZED by AI-14
+                          Amendment 2, IN FORCE on `main` (STEP 1's authorization
+                          change); what is absent is a CALL SITE, and that absence —
+                          not an import refusal — is what keeps the edge IMPLEMENTED
+                          BUT NOT CONNECTED
 new authority             NONE — Guard is still the only authorizing component, the
                           Router only SELECTS, and the composition holds no decision
                           of its own
@@ -2297,10 +2306,10 @@ row 1′                                  UNSATISFIED and SEPARATE — it asks W
 > - `OPEN, not closed by AI-15  AI15-OPEN-1 …` → **AI15-OPEN-1 = CLOSED BY AI-05
 >   AMENDMENT 7**, and `STEP 0b` → **SATISFIED**.
 > - `STEP 0a … AI-14's STEP 1 is unblocked and NOT made` → **the import rule no longer
->   refuses it** (AI-14 §25 Amendment 2, **proposed in PR #90: in force on its merge,
->   not yet in force on `main`**). **AI-14 STEP 1 IS NOT FULLY DISCHARGED** — one
->   enumerated clause names a rule AI-14 does not contain, and the **AI-15 owner** has
->   not disposed of it.
+>   refuses it** (AI-14 §25 Amendment 2, **MERGED AND IN FORCE on `main`** — PR #90,
+>   merge `a98e389b91ee10858abc67e7c66509cd12fae9dc`). **AI-14 STEP 1 IS NOT FULLY
+>   DISCHARGED** — one enumerated clause names a rule AI-14 does not contain, and the
+>   **AI-15 owner** has not disposed of it.
 >
 > Everything else in the block stands unchanged, **including `AI-11 §21.1 OPEN-1 = OPEN`
 > and `row 1′ = UNSATISFIED and SEPARATE`** — neither is moved by either amendment.
