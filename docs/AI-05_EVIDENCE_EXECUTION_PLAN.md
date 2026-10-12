@@ -7495,6 +7495,30 @@ and 8 recorded about §7 and §30.
         18r  a RESOLVED ENTRY ALIAS as a `partial` target fails closed
         18s  ONE observed PLUS ONE unresolved candidate is TWO candidates: the
              exception makes ONE decision ACROSS BOTH LISTS, so neither is excused
+        18t  a LONE UNRESOLVED candidate is NOT excused — an identity that cannot
+             be confirmed is not an identity that has been approved
+        18u  a LONE ALIASED candidate is NOT excused — the triple matches and the
+             identity does not
+
+    THE INTRA-PACKAGE EXCEPTION, STATED PRECISELY, BECAUSE IT WAS NOT BEFORE.
+    The exception authorises ONE **VERIFIED OBSERVED IDENTITY** — the six fields of
+    §7.3.13's key — and NOT a `(path, scope, entrypoint)` triple:
+
+        the triple SELECTS CANDIDATES; the full identity GRANTS the exception
+        an UNRESOLVED candidate is NEVER excused, however many candidates there
+          are and whatever form it takes
+        an observed candidate whose callee, AST path or fingerprint differs is a
+          DIFFERENT call site and is reported
+        more than one candidate across BOTH lists means NOTHING is excused
+
+    TO MAKE THE REAL INTERNAL CALL AN OBSERVABLE IDENTITY AT ALL, the scanner now
+    binds a FUNCTION DEFINITION named like an entry point in the scope that holds
+    it. Without that the definition site was invisible: `plugins/evidence/
+    admission.py` defines `admit` and calls it, nothing imports the name, and the
+    call was reported as UNRESOLVED — so the exception could only ever excuse an
+    unresolved candidate and never a verified observed one. THAT IS THE DEFECT
+    §19 AMENDMENT 9's earlier text described inaccurately, and 18n now asserts
+    against the REAL file rather than a fixture that shared only a triple.
 
     ^ 18i, 18j, 18k, 18l AND 18m ANSWER REVIEW FINDINGS, AND EACH CLOSES A
     DIFFERENT HOLE.
@@ -7531,18 +7555,18 @@ and 8 recorded about §7 and §30.
         MATRIX INVOCATIONS      the number of node-id references in
           `preflight.yml`, which is the number of times pytest is asked to run a
           case across the isolated configurations
-                                    46 -> 75   (+29)
+                                    46 -> 77   (+31)
 
         UNIQUE NODE IDS         the same references AFTER DE-DUPLICATION. One node
           id, `test_obligation_06c_reader_is_consistent`, is invoked under BOTH
           `collision_unregistered` and `collision_unregistered_b` — §7.3.2's two
           policies for the one case they differ on — so it is two invocations and
           ONE node id
-                                    45 -> 74   (+29)
+                                    45 -> 76   (+31)
 
         TEST FUNCTION DEFINITIONS  `def test_...` in the acceptance module. A
           parametrized test is ONE definition and MANY node ids
-                                    45 -> 62   (+17)
+                                    45 -> 64   (+19)
 
     THE THREE DELTAS DIFFER ON PURPOSE. `18g`, `18i`, `18l` and `18q` contribute
     node ids from four definitions, and one node id is counted twice above. An

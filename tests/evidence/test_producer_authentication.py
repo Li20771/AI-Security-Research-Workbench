@@ -1784,24 +1784,108 @@ class TestObligation18ApprovedCallSiteSet:
         "\n"
     )
 
-    def test_obligation_18n_the_intra_package_edge_is_excused(self, tmp_path):
-        """THE ONE EXCEPTION §7.3.7 HAS ALWAYS CARRIED, AND IT STILL WORKS.
+    def test_obligation_18n_the_intra_package_edge_is_a_verified_observed_identity(self):
+        """THE EXCEPTION GRANTS A VERIFIED IDENTITY, NOT A MATCHING TRIPLE.
 
-        `admit_to_store` calling its own module's `admit` is not a production
-        caller of the entry point; it is the entry point calling the entry point.
-        With exactly ONE such call the check is clean.
+        This is asserted against the REAL `plugins/evidence/admission.py`, because
+        a synthetic fixture at the same path is a DIFFERENT call site: its AST path
+        and fingerprint differ, and it must not be excused by sharing a triple.
+
+        An earlier revision of this test planted a fixture and asserted only
+        `findings() == []`. MEASURED, that fixture's call was classified
+        UNRESOLVED — observed=0, unresolved=1 — so the clean result came from a lone
+        unresolved candidate being excused, not from the intended call site being
+        recognised. The assertion below therefore names the identity it expects.
+        """
+        observed, unresolved, failures = scan_tree(REPO_ROOT, skip_paths=("tests",))
+        approved_identity = callsite_identity.INTRA_PACKAGE_CALL_SITE
+
+        matches = [identity for identity in observed if identity.key == approved_identity]
+        assert len(matches) == 1, (
+            "the declared internal call site must be found EXACTLY ONCE as an "
+            "OBSERVED identity. If `plugins/evidence/admission.py` changed, this "
+            "fails and the identity must be re-approved rather than re-derived: "
+            f"observed={[(i.path, i.lineno, i.callee) for i in observed]}"
+        )
+        assert matches[0].scope == "admit_to_store", (
+            f"the exception must name the definition site's own caller: {matches[0]}"
+        )
+
+        problems = _problems(observed, {}, unresolved, failures)
+        assert problems == [], (
+            "with the verified internal call site excused, nothing else may be "
+            f"reported on the real production tree: {problems}"
+        )
+
+    def test_obligation_18t_a_lone_unresolved_candidate_is_not_excused(self, tmp_path):
+        """ONE CANDIDATE IS NOT ENOUGH WHEN THAT CANDIDATE IS UNRESOLVED.
+
+        The scope holds exactly ONE entry matching the exception's triple, and it
+        is an immediately-invoked acquisition. A rule that excused a lone
+        candidate would grant the exception on the strength of "we could not
+        resolve this call" — the opposite of what an approval is.
         """
         observed, unresolved, failures = self._plant_admission(
             tmp_path,
-            self._ADMIT_DEF
-            + "def admit_to_store(raw, *, store=None, producer_proof=None, clock=None):\n"
-            + "    result = admit(raw, producer_proof=producer_proof)\n"
-            + "    return result\n",
+            "from functools import partial\n"
+            "from plugins.evidence import admit\n"
+            "\n"
+            "\n"
+            "def admit_to_store(raw, *, store=None, producer_proof=None, clock=None):\n"
+            "    return partial(admit, raw)(producer_proof=producer_proof)\n",
+        )
+        candidates = [
+            call
+            for call in unresolved
+            if (call.path, call.scope, call.entrypoint) == callsite_identity.INTRA_PACKAGE_EDGE
+        ]
+        assert len(candidates) == 1, (
+            "the fixture must leave EXACTLY ONE candidate, so the test measures the "
+            f"lone-candidate case rather than ambiguity: unresolved={unresolved}"
         )
         problems = _problems(observed, {}, unresolved, failures)
-        assert problems == [], (
-            "the single canonical intra-package edge must be excused, and nothing "
-            f"else may be reported: {problems}"
+        assert any("INTRA-PACKAGE EXCEPTION NOT APPLIED" in problem for problem in problems), (
+            f"a lone UNRESOLVED candidate must not be excused: {problems}"
+        )
+        assert any("UNRESOLVED production call form" in problem for problem in problems), (
+            f"and it must be reported on its own terms: {problems}"
+        )
+
+    def test_obligation_18u_a_lone_aliased_candidate_is_not_excused(self, tmp_path):
+        """A LONE OBSERVED CANDIDATE IS NOT EXCUSED EITHER, IF ITS IDENTITY DIFFERS.
+
+        The alias resolves to the same canonical entry point and sits in the same
+        scope, so the TRIPLE matches. The callee, the AST path and the fingerprint
+        do not, so the call site is not the approved one.
+        """
+        observed, unresolved, failures = self._plant_admission(
+            tmp_path,
+            "from plugins.evidence import admit as persist\n"
+            "\n"
+            "\n"
+            "def admit_to_store(raw, *, store=None, producer_proof=None, clock=None):\n"
+            "    return persist(raw, producer_proof=producer_proof)\n",
+        )
+        candidates = [
+            identity
+            for identity in observed
+            if (identity.path, identity.scope, identity.entrypoint)
+            == callsite_identity.INTRA_PACKAGE_EDGE
+        ]
+        assert len(candidates) == 1, (
+            "the fixture must leave EXACTLY ONE observed candidate, so the test "
+            f"measures identity rather than ambiguity: observed={observed}"
+        )
+        assert candidates[0].entrypoint == "admit", "the alias must still resolve"
+        assert candidates[0].key != callsite_identity.INTRA_PACKAGE_CALL_SITE, (
+            "the aliased call must NOT share the approved identity"
+        )
+        problems = _problems(observed, {}, unresolved, failures)
+        assert any("INTRA-PACKAGE EXCEPTION NOT APPLIED" in problem for problem in problems), (
+            f"a differing identity must not be excused: {problems}"
+        )
+        assert any("UNAPPROVED call site" in problem for problem in problems), (
+            f"and the call site must be reported: {problems}"
         )
 
     def test_obligation_18o_a_second_call_in_the_same_scope_is_not_excused(self, tmp_path):
@@ -1823,7 +1907,11 @@ class TestObligation18ApprovedCallSiteSet:
         assert any("INTRA-PACKAGE EXCEPTION IS AMBIGUOUS" in problem for problem in problems), (
             f"two matches for a one-call-site exception must be reported: {problems}"
         )
-        reported = [problem for problem in problems if "UNRESOLVED production call form" in problem]
+        reported = [
+            problem
+            for problem in problems
+            if "UNRESOLVED production call form" in problem or "UNAPPROVED call site" in problem
+        ]
         assert len(reported) == 2, (
             "NEITHER call may be excused once the match is ambiguous — both must "
             f"appear, not just one: {problems}"

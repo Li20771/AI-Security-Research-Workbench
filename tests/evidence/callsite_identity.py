@@ -66,6 +66,31 @@ _EVIDENCE_PACKAGE = "plugins.evidence"
 #: matching entry per side, and more than one match means NOTHING is excused.
 INTRA_PACKAGE_EDGE = ("plugins/evidence/admission.py", "admit_to_store", "admit")
 
+#: THE FULL IDENTITY OF THAT ONE CALL SITE — the six fields of §7.3.13's key, and
+#: the ONLY thing that is excused.
+#:
+#: THE TRIPLE ABOVE SELECTS CANDIDATES; IT DOES NOT GRANT THE EXCEPTION. Two calls
+#: in one scope share the triple, and so does an aliased call and an unresolved
+#: acquisition. Only an OBSERVED identity equal to THIS one is excused:
+#:
+#:     an UNRESOLVED candidate is NEVER excused, whatever its form — an identity
+#:       that cannot be confirmed is not an identity that has been approved
+#:     an observed candidate whose callee, AST path or fingerprint differs is a
+#:       DIFFERENT call site and is reported
+#:
+#: The values are taken from `plugins/evidence/admission.py` as it stands. The
+#: acceptance suite pins them against that file, so an edit to the file fails the
+#: check loudly and the identity must be re-approved — the same rule the approved
+#: call-site set itself follows.
+INTRA_PACKAGE_CALL_SITE = (
+    "plugins/evidence/admission.py",
+    "admit_to_store",
+    "admit",
+    "Name(id='admit', ctx=Load())",
+    "body[13].body[2].value",
+    "f1d21751a643593805a903189b447e0cbc13257b4c9bb88f06bd0d7ea4fa5b03",
+)
+
 _UNRESOLVABLE_CALLEES = frozenset({"getattr", "__import__", "import_module"})
 
 _LOCATION_ATTRIBUTES = ("lineno", "col_offset", "end_lineno", "end_col_offset")
@@ -279,12 +304,37 @@ class _Scopes:
         # seeded from the chain above it.
         self._bindings[id(self._tree)] = _Bindings()
         self._apply(self._tree, self._bindings[id(self._tree)])
+        self._bind_definitions(self._tree, self._bindings[id(self._tree)])
         for node in ast.walk(self._tree):
             if isinstance(node, _SCOPE_NODES):
                 parent = self._scope_node_of(self._parents.get(id(node)) or self._tree)
                 seed = self._bindings.get(id(parent), self._bindings[id(self._tree)]).copy()
                 self._bindings[id(node)] = seed
                 self._apply(node, seed)
+                self._bind_definitions(node, seed)
+
+    def _bind_definitions(self, scope: ast.AST, bindings: _Bindings) -> None:
+        """Bind a FUNCTION DEFINITION named like an entry point, in its own scope.
+
+        WITHOUT THIS THE DEFINITION SITE IS INVISIBLE AND THE REAL INTERNAL CALL
+        CANNOT BE NAMED. `plugins/evidence/admission.py` DEFINES `admit` and then
+        calls it; nothing imports the name, so the call resolved to nothing and
+        was reported as UNRESOLVED — which meant the intra-package exception could
+        only ever excuse an UNRESOLVED candidate, never a verified observed one.
+
+        The binding is the name the definition introduces, in the scope that holds
+        the definition — not a blanket rule that any call spelled `admit` is the
+        entry point. A call to a name nothing binds stays exactly as it was.
+        """
+        for node in ast.walk(scope):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if node.name not in CANONICAL_ENTRYPOINTS:
+                continue
+            owner = self._scope_node_of(self._parents.get(id(node)) or scope)
+            if owner is not scope:
+                continue
+            bindings.add_entrypoint(node.name, node.name)
 
     def _apply(self, scope: ast.AST, bindings: _Bindings) -> None:
         """Apply the statements OWNED by `scope` to its bindings, to a fixed point.
@@ -958,11 +1008,9 @@ def findings(
         # is two excused entries from an exception that names one. The candidates
         # are therefore pooled, and the pooled total decides.
         total_hits = len(observed_hits) + len(unresolved_hits)
-        if total_hits == 1:
-            if observed_hits:
-                excused_observed = {observed_hits[0]}
-            else:
-                excused_unresolved = {unresolved_hits[0]}
+        if total_hits == 0:
+            # No candidate: no exception is created and no check is skipped.
+            pass
         elif total_hits > 1:
             problems.append(
                 f"INTRA-PACKAGE EXCEPTION IS AMBIGUOUS: {total_hits} entries match the "
@@ -971,8 +1019,29 @@ def findings(
                 f"The exception excuses AT MOST ONE ACROSS BOTH LISTS, so NOTHING is "
                 f"excused here and every match below is reported"
             )
-        # total_hits == 0 creates no exception and skips nothing: the checks below
-        # run exactly as they would with the exception disabled.
+        elif unresolved_hits:
+            # ONE CANDIDATE, AND IT IS UNRESOLVED. AN IDENTITY THAT CANNOT BE
+            # CONFIRMED IS NOT AN IDENTITY THAT HAS BEEN APPROVED, so a lone
+            # unresolved candidate is NOT excused — that would make "we could not
+            # resolve this call" sufficient grounds for granting it.
+            problems.append(
+                f"INTRA-PACKAGE EXCEPTION NOT APPLIED: the only entry matching "
+                f"{INTRA_PACKAGE_EDGE} is UNRESOLVED, so its call site could not be "
+                f"confirmed as the approved internal call. The exception authorises a "
+                f"VERIFIED identity, not a matching triple"
+            )
+        else:
+            candidate = observed_map[observed_hits[0]]
+            if candidate.key == INTRA_PACKAGE_CALL_SITE:
+                excused_observed = {observed_hits[0]}
+            else:
+                problems.append(
+                    f"INTRA-PACKAGE EXCEPTION NOT APPLIED: the only entry matching "
+                    f"{INTRA_PACKAGE_EDGE} has a DIFFERENT identity "
+                    f"(callee={candidate.callee} ast_path={candidate.ast_path} "
+                    f"fingerprint={candidate.fingerprint}). The triple selects "
+                    f"candidates; the FULL identity grants the exception"
+                )
 
     for key, identity in sorted(observed_map.items()):
         if key in excused_observed:
