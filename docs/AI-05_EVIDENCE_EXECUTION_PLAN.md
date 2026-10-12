@@ -1836,6 +1836,12 @@ FROZEN: the composition is NOT a party to this mechanism. It does not read the
         designated producer mapping, does not mint, hold or verify a proof, and
         acquires no authority, permission or capability from a producer claim
         being authenticated.
+        ^ CLARIFIED BY §7.3.12 (Amendment 8): "hold" HERE MEANS CUSTODY FOR DECIDING
+        WHAT IS TRUSTED — reading the mapping, selecting a key, reaching a verdict.
+        TRANSPORTING a proof as opaque material is NOT that, and §7.3.12 states what
+        a forwarder may and may not do with one. NO PROHIBITION IN THIS CLAUSE IS
+        WEAKENED, WIDENED OR REWORDED by §7.3.12, and this clause is otherwise
+        unchanged by it.
 ```
 
 #### 7.3.11 The designated producer trust configuration — FROZEN (Amendment 6)
@@ -2250,6 +2256,94 @@ FROZEN: THIS CONFIGURATION AND AI-13'S APPROVAL TRUST ANCHOR ARE DIFFERENT TRUST
 FROZEN: AN AUTHENTICATED PRODUCER CLAIM IS NOT AN APPROVAL, NOT A PERMISSION, NOT A
         CAPABILITY AND NOT A GUARD RESULT (§7.3.8). The configuration being valid,
         readable and internally consistent grants nothing to anyone.
+```
+
+#### 7.3.12 A forwarder and the producer proof — FROZEN (Amendment 8)
+
+§7.3.10 records that "the composition is NOT a party to this mechanism. It does not
+read the designated producer mapping, does not mint, hold or verify a proof". That
+sentence was written for the mechanism's **trust** side — who may decide what is
+trusted — and it does not answer the **transport** question a forwarding caller
+raises. §7.2 permits a submitter that is not the producer (Reading A), so a
+component that submits a record it did not author must present the proof the
+authoring component minted; and the word "hold" could be read to forbid exactly
+that. This section answers the transport question. It changes **no** clause of
+§7.3.1–§7.3.11.
+
+```text
+THE QUESTION, AND WHY IT IS NOT ACADEMIC. §7.2 fixes that a submitter MAY differ from
+the producer. AI-15 §7.3 selects T2 as the only topology consistent with the frozen
+contracts, and under T2 a caller submits a record the OWNING phase authored. The
+submission must carry the owning phase's proof (§7.3.3), so SOMEONE other than the
+producer carries proof material to an admission entry point. WHETHER THAT IS
+PERMITTED AT ALL is the question this section answers, and §7.3.10's word "hold" was
+not written to answer it.
+```
+
+```text
+FROZEN: A FORWARDER MAY TRANSPORT A PRODUCER PROOF AS OPAQUE MATERIAL. A caller that
+        is not the producer MAY present the producing component's proof to `admit()`
+        or `admit_to_store()`, and MAY carry it between the point it received it and
+        the entry point, WITHOUT reading, parsing, validating or interpreting it.
+        "OPAQUE" IS THE WHOLE OF THE PERMISSION: the forwarder handles bytes it did
+        not produce, cannot verify on its own and could not have minted.
+
+FROZEN: "HOLD" IN §7.3.10 MEANS CUSTODY FOR DECIDING WHAT IS TRUSTED, AND TRANSPORT
+        IS NOT THAT. §7.3.10's clause refuses a component that holds, reads or
+        decides the TRUST ROOT — the mapping, the key selection, the verdict. A
+        forwarder does none of those: it does not read the designated mapping, it
+        does not select a key, and it does not verify. The proof it carries is
+        verified BY THE MECHANISM, against a mapping the forwarder never sees, using
+        a key it never learns. §7.3.10 IS NOT WEAKENED BY THIS SECTION: every
+        prohibition in it stands unchanged, and this section grants no permission to
+        read, decide or verify anything.
+
+FROZEN: A FORWARDER MUST NOT GENERATE A PROOF. Minting one requires the producer's
+        private signing key, and §7.3.11 puts PUBLIC key material — and only public
+        key material — in this deployment's configuration: the deployment holds
+        verification keys and cannot mint the proofs it checks. A forwarder able to
+        generate a proof for a token would be able to speak for that token, which is
+        the forgery §9.2 names.
+
+FROZEN: A FORWARDER MUST NOT REPLACE A PROOF. Substituting another proof — for the
+        same token or for a different one — is refused BY THE MECHANISM rather than
+        by policy: the carried bytes must equal the verifier's reconstruction of THIS
+        submitted mapping (§7.3.5 V5), and the key is selected BY THE TOKEN THE
+        RECORD DECLARES (§7.3.5 V3), so a proof minted for another record or another
+        producer does not verify.
+
+FROZEN: A FORWARDER MUST NOT MUTATE A PROOF. The envelope is carried byte for byte
+        (§7.3.3): decoding is strict AND canonical, so a re-encoded, re-ordered,
+        padded or trimmed value is REFUSED as malformed rather than accepted as an
+        alias of a valid one.
+
+FROZEN: A FORWARDER MUST NOT CLAIM OWNERSHIP OF THE CLAIM, AND MUST NOT CLAIM TO HAVE
+        AUTHENTICATED IT. Transport confers nothing. It does not make the forwarder
+        the producer, it does not move `provenance.producer`, `provenance.producer_type`,
+        `provenance.actor` or the payload (§7.2), and it does not make the forwarder a
+        party to the trust decision. §7.3.1's limit applies to whatever a reader
+        concludes: a KEY HOLDER signed the claim, and that does not establish which
+        code ran, nor that the claim is true, nor who submitted it.
+```
+
+```text
+FROZEN: EVERY FAILURE TO PRESERVE IS A REFUSAL, AND THAT IS WHY THE PERMISSION IS
+        SAFE. A forwarder that drops the proof produces AUTHENTICATION_PROOF_MISSING;
+        one that alters it produces AUTHENTICATION_PROOF_MALFORMED,
+        AUTHENTICATION_SIGNATURE_INVALID or AUTHENTICATION_INPUT_MISMATCH; one that
+        substitutes another producer's produces AUTHENTICATION_SIGNATURE_INVALID.
+        There is NO PATH on which a transport failure yields an ACCEPTED record
+        (§7.3.8), so the permission this section grants cannot be converted into an
+        acceptance by mishandling the material it covers.
+FROZEN: TRANSPORT IS NOT A TRUST RELATIONSHIP AND GRANTS NOTHING. A forwarder
+        acquires no authority, permission, capability or Guard result by carrying a
+        proof (§7.3.8, §23, §24), and no clause of this section may be read as making
+        the forwarder a party to the mechanism.
+FROZEN: THE SUBMITTING SIDE OF THIS INVARIANT IS STATED BY THE PHASE THAT OWNS THE
+        CALLER, NOT HERE. What a forwarder MUST keep immutable across the boundary,
+        and what its caller obligations are, are AI-15 §9.4 and §10.2. This section
+        fixes what MAY cross the boundary and under what limits; those clauses fix
+        what the crossing party MUST do.
 ```
 
 ---
@@ -6917,6 +7011,150 @@ tokens, so no record from AI-08, AI-10, AI-11 or AI-13 can be admitted at all
 no Evidence record has been written, and §32's exit gates are not reached. **AI-05
 owns an implemented, enforced and tested producer-authentication mechanism, and it
 is not a complete phase.**
+
+---
+
+#### Amendment 8 — a forwarder may transport a producer proof, and may do nothing else with it (2026-10-12)
+
+Found while reconciling the AI-15-B producer-authentication freeze with §7.3. The
+AI-15 contract fixes that a caller may submit a record it did not author (§7.2,
+Reading A, Amendment 4; AI-15 §7.3's T2), and §7.3.3 requires that submission to
+carry a producer proof — so SOMEONE other than the producer carries proof material
+to an admission entry point. §7.3.10's composition clause, "does not mint, hold or
+verify a proof", was written for the **trust** side of this mechanism and does not
+answer whether that transport is permitted at all. This amendment answers it. It is
+the AI-05 owner's act, in AI-05's contract, under AI-05's amendment rule (§34), and
+it is recorded because AI-15's §9.4 and §10.2 depend on the answer.
+
+**Why this is an amendment rather than a clarification made in place.** §34.1's list
+of changes requiring an amendment enumerates evidence kind, canonical collection,
+digest input, workspace rule, secret boundary, authority relation, identity field and
+admission outcome. This amendment changes **none** of them. §34's preamble is broader
+than its list, though — a frozen contract "changes only through an explicit amendment
+recorded in §34.3" — and this amendment adds a NEW SUBSECTION to §7.3 that states
+normative permissions and prohibitions. That is a change however it is described, so
+the instrument is an amendment, recorded here. The fact that §7.3 is absent from
+§34.1's enumeration is recorded rather than relied on, exactly as Amendments 4 and 5
+recorded the same about §7 and §30.
+
+```text
+(a) NEW §7.3.12 states the transport boundary for a forwarder, and it is narrower than
+    its headline:
+
+    (i)   A FORWARDER MAY TRANSPORT A PRODUCER PROOF AS OPAQUE MATERIAL. A caller
+          that is not the producer may present the producing component's proof to
+          `admit()` or `admit_to_store()` and may carry it to the entry point
+          without reading, parsing, validating or interpreting it.
+    (ii)  "HOLD" IN §7.3.10 IS DISAMBIGUATED, AND §7.3.10 IS NOT WEAKENED. It means
+          CUSTODY FOR DECIDING WHAT IS TRUSTED — reading the mapping, selecting a
+          key, reaching a verdict. A forwarder does none of those, and every
+          prohibition in §7.3.10 stands unchanged. §7.3.12 grants no permission to
+          read, decide or verify anything.
+    (iii) FOUR PROHIBITIONS, AND THEY ARE THE WHOLE OF THE RESTRICTION: a forwarder
+          MUST NOT GENERATE a proof (minting needs the producer's private key, and
+          §7.3.11 puts public key material only in the configuration), MUST NOT
+          REPLACE one (V5 binds the bytes to the submitted mapping, V3 selects the
+          key by the declared token, so a substitute does not verify), MUST NOT
+          MUTATE one (§7.3.3's decoding is strict and canonical, so a re-encoding is
+          refused as malformed rather than accepted as an alias), and MUST NOT CLAIM
+          OWNERSHIP of the claim or claim to have authenticated it.
+    (iv)  EVERY FAILURE TO PRESERVE IS A REFUSAL. Dropping the proof produces
+          AUTHENTICATION_PROOF_MISSING; altering it produces PROOF_MALFORMED,
+          SIGNATURE_INVALID or INPUT_MISMATCH; substituting another producer's
+          produces SIGNATURE_INVALID. NO PATH converts a transport failure into an
+          ACCEPTED (§7.3.8), which is why the permission is safe to grant.
+    (v)   TRANSPORT GRANTS NOTHING. The forwarder acquires no authority, permission,
+          capability or Guard result, and is not made a party to the mechanism.
+```
+
+```text
+(b) WHAT IT DOES NOT CHANGE. §7.3.1-§7.3.11 are UNCHANGED except for a pointer note
+    inside §7.3.10 that records the clarification and weakens nothing. §7.3.3's proof
+    requirements, §7.3.5's five verification steps, §7.3.7's order, §7.3.8's failure
+    semantics and reason codes, and §7.3.11's configuration are all untouched. No
+    field, no token, no registry row, no outcome and no reason code is added.
+    THE CALLER-SIDE OBLIGATIONS ARE NOT THIS CONTRACT'S. What a forwarding caller
+    must DO with the proof — preserve its bytes, present it, never mint or repair one
+    — is AI-15 §9.4 and §10.2, made by AI-15 under AI-15's amendment rule. This
+    section fixes what MAY cross the boundary; those clauses fix what the crossing
+    party MUST do.
+```
+
+```text
+(c) WHY IT IS AI-05'S TO MAKE. The question turns on the meaning of a clause in
+    §7.3.10, which is AI-05's text, and the permission it resolves is a permission
+    against AI-05's own mechanism. AI-15 recorded the need and could not answer it:
+    AI-15 §17.4 forbids AI-15 from editing this contract, and §9.5 keeps the trust
+    question out of AI-15's hands. The boundary is drawn here, by the owner, before
+    the dependent clause is relied on — which is what §19 of AI-15's contract
+    requires of an amendment to an earlier phase.
+```
+
+```text
+SECURITY IMPACT
+
+    NARROW, AND IT IS A CLARIFICATION RATHER THAN A NEW CONTROL. It adds no runtime
+    code, no key, no check and no trust root. What it does is state that a permission
+    the mechanism ALREADY has by construction is a permission:
+
+        it was never refused by any implemented check — `admit()` and
+          `admit_to_store()` take a proof from whoever calls them and verify it
+          against the mapping, without any notion of who is calling
+        it was never exercised either: no production caller exists, so no forwarder
+          has transported anything (no non-test call site; AI-15 §3)
+        and it is bounded by refusals rather than by policy: each way of mishandling
+          the material lands on an existing reason code (§7.3.5, §7.3.8)
+
+    THE RESIDUAL IS THE ONE §7.3.1 ALREADY RECORDS, AND IT IS NOT WIDENED HERE. An
+    authenticated claim establishes a KEY HOLDER; it does not establish which code
+    ran, and it is not submitter identity. This amendment does not change that
+    limit — it applies it: a forwarder that carries a proof has established nothing
+    about itself, and no reader may conclude anything about it from the transport.
+```
+
+```text
+AUTHORITY IMPACT
+
+    None. Nothing here grants a permission, changes AI-14 §4.1's authority matrix,
+    introduces an authorizing subject, or moves a responsibility between phases.
+    Guard remains the only component with an AUTHORIZES entry. A forwarder that
+    transports a proof is not thereby authorized to do anything, and an
+    authenticated producer claim remains not an approval, not a permission, not a
+    capability and not a Guard result (§7.3.8).
+```
+
+```text
+CONTRACT IMPACT
+
+    ADDED        §7.3.12 — the forwarder's transport boundary
+                 this amendment record
+    AMENDED      §7.3.10 — a pointer note recording the clarification of "hold";
+                 no prohibition in it is weakened, widened or reworded
+    UNCHANGED    §6.5, §6.6, §7.1, §7.2, §7.3 and every other subsection of it,
+                 §8-§33, §34.1, §34.2, §35.1-§35.3, `## Status`, and the
+                 Amendment 1-7 records
+    NO CHANGE TO the record schema, the canonical collections, the digest inputs, the
+                 stored form, the outcome vocabulary, the reason-code set, the
+                 registry, the acceptance obligation list, or any authority relation
+```
+
+```text
+WHAT THIS AMENDMENT DOES NOT DO
+
+    it does not add, remove or change a producer token, a §6.5 registry row, an
+      admission outcome, a reason code, a digest input or a stored field
+    it does not authorize a production caller, a writer or a call site, and it does
+      not move AI-15 §15.2's STEP 1, row 1′ or STEP 2
+    it does not mark B5 CONNECTED, and it does not claim any part of AI-15 is done
+    it does not weaken §7.3.10, §7.3.2's ONE READER rule, or the rule that no public
+      AI-05 function accepts a caller-selected trust root
+    it does not permit a forwarder to verify, to select a key, to read the
+      designated mapping, or to reach a verdict
+    it does not turn transport into submitter identity: the API still takes none
+    it does not edit AI-15's contract or any other phase's. AI-15's §9.4 and §10.2
+      are AI-15's act and are cited here, not authored
+    it does not run any test, and it claims no test result of its own
+```
 
 ---
 
