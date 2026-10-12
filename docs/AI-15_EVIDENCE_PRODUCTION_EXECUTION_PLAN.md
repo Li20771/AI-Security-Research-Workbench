@@ -556,6 +556,40 @@ FROZEN: TODAY'S PIPELINE ACCEPTS THE CLAIM ON EXACTLY THE FIRST OF THOSE BASES.
         §4.3 records what is and is not checked. This list states the RULE; §4.3
         states the GAP between the rule and the implementation, and neither is a
         substitute for the other.
+        ^ THE CLAUSE IS KEPT IN ITS ORIGINAL WORDS AND ITS SECOND SENTENCE IS NO
+        LONGER TRUE. It was written before PR #87 merged. A caller-supplied string
+        is STILL what `provenance.producer` carries, and it is NO LONGER the SOLE
+        basis on which the claim is accepted: §30 step 7b now requires a producer
+        proof that verifies, so a well-formed token with no proof is REJECTED
+        (AI-05 §7.3.3, §7.3.8). Recorded by §19 Amendment 5.
+```
+
+```text
+FROZEN: THE PRODUCER FIELD IS A DECLARATION AND NOT AN AUTHENTICATION SOURCE.
+        `provenance.producer` NAMES the component that is claimed to have produced
+        the event. It does not establish that the claim is true, and no clause of
+        this document may read it as establishing one. A declaration is what a
+        proof is checked AGAINST; it is never what makes a claim trusted, and a
+        record's own text must not be able to make itself credible.
+FROZEN: A VALID PRODUCER PROOF VERIFICATION IS THE ADMISSIBILITY BASIS FOR THE
+        PRODUCER CLAIM. The claim is admissible when, and only when, the submission
+        carries a proof that verifies under the key the deployment's designated
+        trust configuration holds for the token the record DECLARES — AI-05
+        §7.3.1's standard, run as §30 step 7b, before any typed record exists. THIS
+        IS WHAT MAKES A PRODUCER CLAIM MORE THAN WELL FORMED, and it is a SEPARATE
+        question from §6.5's registry check (§4.3, §9.3). Neither substitutes for
+        the other, and the declaration is not upgraded by a proof being valid for
+        it: the proof is evidence about a KEY HOLDER, and §7.3.1 states the limit.
+FROZEN: NO RUNTIME IDENTITY OBJECT IS INTRODUCED, BY THIS DOCUMENT OR BY THE PHASE
+        THAT IMPLEMENTS THIS BOUNDARY. Authentication yields a VERDICT, not a
+        value: there is no authenticated-producer handle, context, session or
+        identity object to thread from a caller through a service to a writer, and
+        NONE MAY BE ADDED. The producer identity a record carries is the DECLARED
+        token, and what a reader may conclude from it is bounded by AI-05 §7.3.1
+        and by §4.1's six-way separation. A design that needed such an object to
+        carry trust forward would be a different architecture, and this boundary
+        is not it: what crosses the boundary is the SUBMITTED MAPPING and the
+        PROOF beside it (§9.4).
 ```
 
 ### 4.3 Is the producer claim enforced today?
@@ -565,7 +599,8 @@ FROZEN: TODAY'S PIPELINE ACCEPTS THE CLAIM ON EXACTLY THE FIRST OF THOSE BASES.
 ```text
 WHAT IS ENFORCED  plugins/evidence/models.py:173 check_cross_field, called from
                   `EvidenceRecord.from_mapping` at models.py:1586, i.e. INSIDE
-                  `admit()`'s second step (admission.py:200).
+                  `admit()`'s CONSTRUCTION step — admission.py:218, the THIRD step
+                  of the pipeline, AFTER step 7's rule set and step 7b.
 
   candidates = admitted_events_for(kind, family)                     models.py:154
       an empty result  -> CrossFieldViolation, "not representable in v1"
@@ -596,13 +631,19 @@ RECORDED: the token IS bound to (kind, family). `ai-04` is admissible only for a
 ```text
 RECORDED: NOTHING enforces WHO IS SUBMITTING.
 
-  admit(raw: object, *, clock=None)                              admission.py:176
-  admit_to_store(raw: object, *, store, clock=None)              admission.py:210
+  admit(raw: object, *, producer_proof=None, clock=None) admission.py:177
+  admit_to_store(raw: object, *, store, producer_proof=None,
+                 clock=None) admission.py:228
 
   Neither takes a caller identity, a caller handle, a module, a workspace-scoped
   capability, or a credential. `raw` is a mapping. The producer is a FIELD INSIDE
   IT. Nothing in the record carries who submitted it, and nothing in the pipeline
   compares one with the other.
+  ^ THE TWO SIGNATURES ARE RESTATED AT THE MERGED HEAD (§19 Amendment 5). Both
+  entry points gained a THIRD keyword argument, `producer_proof`, and THAT DOES NOT
+  CHANGE THIS BLOCK'S FINDING: a proof says something about the PRODUCER CLAIM and
+  nothing about who is calling. The API still takes no submitter identity, still
+  accepts any caller, and still compares no caller against the record (§9.2).
 ```
 
 ```text
@@ -646,6 +687,23 @@ Any module that can import `plugins.evidence` can today submit:
 
 and — if every field is otherwise well formed and the workspace agrees — receive
 `ACCEPTED`.
+
+```text
+RECORDED (§19 Amendment 5): THE SENTENCE ABOVE IS KEPT IN ITS ORIGINAL WORDS AND IS
+          NO LONGER TRUE AS WRITTEN. It was written before PR #87 merged. A module
+          that can import `plugins.evidence` may still CALL `admit` with a mapping
+          like the one above, and it now has to carry a producer proof that
+          verifies AS WELL: a submission with no proof is REJECTED with
+          AUTHENTICATION_PROOF_MISSING, and one whose proof does not verify is
+          REJECTED too (AI-05 §7.3.3, §7.3.8). The step that refuses it runs before
+          any typed record exists, so the well-formedness of the fields above is
+          never reached on its own.
+          WHAT DID NOT CHANGE IS THE PARAGRAPH'S POINT, AND IT IS NOW SHARPER: the
+          API still takes no submitter identity, and an admitted record still
+          proves only that a well-formed claim was made under a token whose
+          producer claim was AUTHENTICATED as AI-05 §7.3.1 defines it — a KEY
+          HOLDER, not a code component, and not the submitter (§4.3, §9.2).
+```
 
 ```text
 RECORDED: what that record then proves is that a record of that shape is
@@ -1530,6 +1588,54 @@ FROZEN: a forwarder MUST NOT add a field. §30 step 1 rejects an unknown top-lev
 ```
 
 ```text
+FROZEN: THE PRODUCER PROOF CROSSES THE SAME BOUNDARY, AND THE LIST ABOVE IS NOT THE
+        INSTRUMENT FOR IT. The proof is NOT a record field (AI-05 §7.3.3), so it is
+        not one of the five items above. It is carried BESIDE the submitted mapping,
+        as an argument to the admission entry point, and the forwarder that submits
+        is the party that presents it. AI-05 §7.3.12 states the permission and its
+        limits from the producing contract's side; this clause states the
+        INVARIANT that makes the permission safe.
+FROZEN: THE PROOF BYTES MUST BE PRESERVED. A forwarder that carries a producer
+        proof MUST carry it UNCHANGED — `message_b64u` and `signature` alike, byte
+        for byte — and MUST NOT re-encode, re-order, pad, trim, normalise, rewrap or
+        rewrite any part of it. A re-encoding that would decode to the same bytes is
+        STILL a change to the envelope and is refused as one: AI-05 §7.3.3 requires
+        decoding to be strict AND canonical, so a value that is not reproduced
+        exactly by re-encoding is malformed rather than an alias of a valid one.
+FROZEN: DROPPING THE PROOF IS `AUTHENTICATION_PROOF_MISSING`, AND THAT IS THE ONLY
+        THING IT CAN BE. An absent argument, or an explicit `None`, is REJECTED —
+        not a TypeError, and not a weaker admission (AI-05 §7.3.3, §7.3.8). A
+        forwarder therefore CANNOT lose a claim into an unauthenticated acceptance:
+        the only outcome a dropped proof can produce is a refusal.
+FROZEN: MODIFYING THE PROOF IS A VERIFICATION FAILURE, NAMED BY THE STEP THAT CATCHES
+        IT. A changed message fails V4 (AUTHENTICATION_SIGNATURE_INVALID) or, if the
+        signature was recomputed, V5 (AUTHENTICATION_INPUT_MISMATCH); a changed
+        envelope fails V1 (AUTHENTICATION_PROOF_MALFORMED) (AI-05 §7.3.5).
+FROZEN: SUBSTITUTING A PROOF CANNOT BE MADE TO VERIFY, AND THE REASON IS STRUCTURAL
+        RATHER THAN POLICY. The carried bytes must equal the verifier's own
+        reconstruction of THIS submitted mapping, so a proof minted for any other
+        record fails V5; and the key is selected BY THE TOKEN THE RECORD DECLARES,
+        so another producer's proof fails V4 under this token's key (AI-05 §7.3.5
+        V3-V5). A substitute does not become acceptable by being well formed.
+FROZEN: NO SILENT ACCEPTANCE EXISTS ON ANY OF THESE PATHS. There is no parameter, no
+        configuration and no forwarding shape under which a lost, altered or
+        substituted proof yields an ACCEPTED, and a forwarder MUST NOT report one as
+        evidence that the claim was authenticated.
+FROZEN: A FORWARDER MUST NOT MINT, RE-MINT OR REPAIR A PROOF. Minting requires the
+        producer's private signing key, and the deployment's designated
+        configuration carries PUBLIC key material only (AI-05 §7.3.2, §7.3.11); key
+        custody is §7.3.9's trust assumption and is outside this contract. A
+        forwarder that holds no key can transmit a proof and cannot manufacture
+        one — and a forwarder that DID hold one would be the forgery AI-05 §9.2
+        names, not a convenience.
+FROZEN: THE COMPOSITION'S OWN CONDUCT IS AI-05 §7.3.12's AND AI-14 §22.1 B5's. The
+        composition MAY transport an owning phase's proof as OPAQUE material, and
+        MUST NOT generate, replace, mutate or claim ownership of one. §17.4 forbids
+        AI-15 from adding a trust root, a signer or a key, and this clause adds
+        none: it constrains what a caller does with material it did not produce.
+```
+
+```text
 RECORDED: the precondition this clause used to carry is satisfied. It required
         AI15-OPEN-2 to be answered first, because §9.4 presumes the forwarder is not
         the producer; AI-05 Amendment 4 answered it with READING A, under which a
@@ -1592,20 +1698,45 @@ FROZEN: §13 states the same rule from the authority side, and the two sections 
 ### 10.1 The entry points, as they are
 
 ```text
-admit(raw: object, *, clock=None) -> AdmissionResult            admission.py:176
-     step 7   check_admission_rules(raw)                        admission.py:199
+admit(raw: object, *, producer_proof=None, clock=None) -> AdmissionResult
+                                                                admission.py:177
+     step 7   check_admission_rules(raw)                        admission.py:216
+     step 7b  authenticate(raw, producer_proof)                 admission.py:217
+                -> §7.3's check on the producer claim, and it runs BEFORE any
+                   typed record exists (plugins/evidence/producer_auth.py:394)
      steps 1-4, 4b, 6, 8-13
-              EvidenceRecord.from_mapping(raw, clock=clock)     admission.py:200
+              EvidenceRecord.from_mapping(raw, clock=clock)     admission.py:218
                 -> which calls check_cross_field at models.py:1586 (§6.5/§6.6)
-     step 5   check_workspace_agreement(record)                 admission.py:201
-     step 12  assign_digests(record)                            admission.py:202
+     step 5   check_workspace_agreement(record)                 admission.py:219
+     step 12  assign_digests(record)                            admission.py:220
      stores NOTHING.
 
-admit_to_store(raw: object, *, store, clock=None) -> AdmissionResult
-                                                               admission.py:210
-     admit(raw, clock=clock)                                    admission.py:265
-     step 14  store.contains(record.evidence_id)                admission.py:271
-              store.write(record)                               admission.py:276
+admit_to_store(raw: object, *, store, producer_proof=None, clock=None)
+                                                                admission.py:228
+     admit(raw, producer_proof=producer_proof, clock=clock)     admission.py:288
+     step 14  store.contains(record.evidence_id)                admission.py:294
+              store.write(record)                               admission.py:299
+```
+
+```text
+RECORDED (§19 Amendment 5): THIS BLOCK WAS MEASURED BEFORE PR #87 MERGED AND IS
+        RESTATED HERE AT THE MERGED HEAD. Three things changed and all three are
+        visible above: both entry points take a third keyword argument,
+        `producer_proof`; the pipeline has a step between step 7 and construction;
+        and the line numbers moved, because the implementation around them grew.
+        NOTHING ELSE MOVED — `admit()` still stores nothing, `admit_to_store()`
+        still runs step 14 and then the store, and the relative order of every step
+        that existed before is unchanged.
+FROZEN: `producer_proof` IS REQUIRED IN AI-05 §7.3.3's SENSE. Its default is `None`
+        and an argument that is absent or explicitly `None` is REJECTED with
+        AUTHENTICATION_PROOF_MISSING rather than raising TypeError: a caller that
+        omits the proof receives an ADMISSION RESULT and not an exception
+        (admission.py:197-201, AI-05 §7.3.3).
+FROZEN: `admit_to_store()` PASSES THE PROOF THROUGH TO `admit()` RATHER THAN
+        VERIFYING A SECOND TIME. One verification runs and one verdict is reached;
+        a non-ACCEPTED result returns before the store is touched, so an
+        authentication failure never contacts storage (admission.py:239-242,
+        AI-05 §7.3.3, §7.3.8).
 ```
 
 ```text
@@ -1625,6 +1756,18 @@ FROZEN: a production caller MUST call `admit_to_store` and MUST NOT call
         `admit()` and then write the record itself. §30 step 14 is part of the
         admission contract, and skipping it is what AI-05 §20.3's promotion
         boundary and §8.2's uniqueness rule exist to prevent.
+FROZEN: a production caller MUST PRESENT the producer proof for the record it
+        submits, at the entry point, as the argument AI-05 §7.3.3 defines. The proof
+        is NOT a record field, and it is the ADMISSIBILITY BASIS of the producer
+        claim (§4.2): a caller with no proof for the claim it is submitting has
+        nothing admissible to submit, and the outcome is REJECTED with
+        AUTHENTICATION_PROOF_MISSING rather than a weaker admission.
+FROZEN: a production caller MUST NOT fabricate, substitute or repair a proof, and
+        MUST NOT hold, request, accept or be handed a producer's private signing
+        key. A caller that is not the producing component TRANSPORTS the producing
+        component's proof AS OPAQUE MATERIAL and changes nothing in it: it does not
+        read it, it does not re-encode it, it does not mint a second one, and it does
+        not decide what is trusted (§9.4, AI-05 §7.3.12, AI-14 §22.1 B5).
 FROZEN: the store MUST be a StagedEvidenceStore. `admit_to_store` raises
         TypeError for anything without `write` (admission.py:256), and the
         docstring at :250 states the reason: without that refusal the function
@@ -1657,6 +1800,68 @@ FROZEN: MUST NOT fall back to a different producer token when one is refused.
         an EXECUTION".
 FROZEN: MUST NOT fall back to `admit()` when `admit_to_store` returns
         UNAVAILABLE, and MUST NOT report the run as evidenced when it did.
+```
+
+### 10.4 The AI-15-B freeze matrix — the write pipeline (Amendment 5)
+
+```text
+THE PIPELINE, AND IT HAS NO AUTHORIZATION STAGE IN IT:
+
+    submit request
+      |
+    producer proof authentication        §30 step 7b, run by `admit()`
+      |                                  (admission.py:217)
+    evidence admissibility validation     §30 step 7's published rule set over
+      |                                  the SUPPLIED values, and then the shape,
+      |                                  required-field, class, vocabulary and
+      |                                  §6.5/§6.6 checks (§30 steps 1-4, 4b, 6)
+    EvidenceRecord construction          §30 steps 1-4, 4b, 6, 8-11 and 13
+      |                                  (admission.py:218)
+    persist                              §30 step 14, then the store
+                                         (`admit_to_store`; admission.py:294-299)
+```
+
+```text
+FROZEN: NO AUTHORIZE STAGE EXISTS IN THIS PIPELINE, AND NONE MAY BE ADDED. An earlier
+        model of this boundary — recorded in a review checklist rather than in this
+        contract — placed an "authorize evidence production" step between
+        authentication and construction. THAT MODEL IS WITHDRAWN AND MUST NOT BE
+        REINTRODUCED. Evidence authorizes nothing: §13.1's matrix has exactly one
+        authorizing column entry and it is Guard, admission is not authorization
+        (§13.2), and an authenticated producer claim is not a permission (AI-05
+        §7.3.8). A step that granted, checked or consumed a permission here would be
+        an authority transfer arriving as wiring, which §13.3 forbids AI-15-B from
+        making — and it would require the authority-matrix change §9.5 and §13.3
+        keep out of this phase's reach.
+FROZEN: AUTHENTICATION PRECEDES CONSTRUCTION, AND CONSTRUCTION PRECEDES PERSISTENCE.
+        The first ordering is what this pipeline exists to fix: no typed record, and
+        therefore no Evidence digest, may be derived from a claim that is not
+        authenticated (AI-05 §7.3.7). "Construct first, authenticate later" is
+        FORBIDDEN, and it is not reachable through either entry point — step 7b runs
+        before `EvidenceRecord.from_mapping` is called at all, not after it.
+FROZEN: WHERE THE ADMISSIBILITY CHECKS ACTUALLY RUN, STATED SO THE DRAWING ABOVE IS
+        NOT MISTAKEN FOR A SECOND CONTRACT THAT REORDERS §30. The middle stage is
+        drawn as one row because it is ONE QUESTION — is this evidence admissible —
+        and that question is answered in TWO PLACES, neither of which this matrix
+        moves:
+            §30 step 7's published rule set runs BEFORE authentication, and
+              `check_admission_rules` is written for exactly that position
+              (admission.py:216; AI-05 §7.3.7 records why R2 forces it first)
+            the shape, required-field, closed-key, vocabulary and §6.5/§6.6
+              registry checks run INSIDE construction, at §30 steps 1-4, 4b and 6
+              (admission.py:218; models.py:1586)
+        AI-15 DOES NOT REORDER EITHER, and no clause of this document may be read as
+        placing the registry check before authentication. AI-05 §7.3.2 records why
+        the order between those two checks carries no weight: they answer different
+        questions, and neither substitutes for the other. A submission naming an
+        unregistered token can PASS authentication and is then REFUSED by §6.6 —
+        that is the frozen behaviour, not a hole.
+FROZEN: THIS MATRIX ADDS NO STEP, NO CALL AND NO ORDERING BEYOND WHAT §10.1 RECORDS.
+        §10.1 remains the file:line record of what runs; this section names the
+        SHAPE AI-15-B must preserve when it wires a caller to it. It changes no
+        clause of §10.1-§10.3, and it does not make any of them callable: §17.2,
+        row 1′ and STEP 2's precondition still refuse the writer, and §17.4 still
+        forbids AI-15 to add a producer check of its own.
 ```
 
 ---
@@ -3265,13 +3470,13 @@ AI-15-A IS NOT DONE IF
 
 ```text
 FROZEN. This document was frozen by the merge of PR #78, and it has been amended
-FOUR TIMES since — Amendment 1, Amendment 2, Amendment 3 and Amendment 4, below. The
-line this block replaced read "PROPOSED (this document's class until the merge that
-freezes it)", which was true while the freeze was a proposal and false once it
-merged. It is corrected here rather than left to contradict the amendment log beside
-it. The count was "TWICE" until Amendment 3 and "THREE TIMES" until Amendment 4, and
-each increment of it has been made in the same change that appended the amendment it
-counts.
+FIVE TIMES since — Amendment 1, Amendment 2, Amendment 3, Amendment 4 and Amendment
+5, below. The line this block replaced read "PROPOSED (this document's class until the
+merge that freezes it)", which was true while the freeze was a proposal and false once
+it merged. It is corrected here rather than left to contradict the amendment log beside
+it. The count was "TWICE" until Amendment 3, "THREE TIMES" until Amendment 4 and "FOUR
+TIMES" until Amendment 5, and each increment of it has been made in the same change
+that appended the amendment it counts.
 ```
 
 ```text
@@ -4076,6 +4281,178 @@ WHAT THIS AMENDMENT DOES NOT DO
 
 ---
 
+#### Amendment 5 — the producer-authentication semantics AI-15-B freezes are synchronized with the implemented mechanism
+(2026-10-12)
+
+```text
+IN FORCE on the merge of the change that carries it. There is no awaiting-review
+marker on this amendment: the merge IS the approval, and the text below is the
+final text.
+```
+
+```text
+WHAT WAS FOUND
+
+    FIVE THINGS, AND NONE OF THEM WAS A CONTRACT DISPUTE. Four were this document
+    describing the boundary as it was BEFORE PR #87 merged; the fifth was a model of
+    the pipeline that never matched it.
+
+        §4.2 read "TODAY'S PIPELINE ACCEPTS THE CLAIM ON EXACTLY THE FIRST OF THOSE
+        BASES. A caller-supplied string is the sole basis of `provenance.producer`".
+        TRUE WHEN WRITTEN; NO LONGER TRUE. The caller-supplied string is still what
+        the field carries, and it is no longer the SOLE basis: §30 step 7b now
+        requires a proof that verifies.
+
+        §4.4 read "Any module that can import `plugins.evidence` can today submit
+        [...] and — if every field is otherwise well formed and the workspace agrees
+        — receive `ACCEPTED`". SAME: true when written, and a submission with no
+        proof is REJECTED today.
+
+        §10.1 recorded the two entry points and the pipeline "as they are". IT
+        RECORDED THEM AS THEY WERE BEFORE PR #87: neither signature carried
+        `producer_proof`, no step 7b appeared in the pipeline, and the store's line
+        numbers were the pre-merge ones. A reader implementing AI-15-B from §10
+        would have written a caller that cannot admit anything.
+
+        §4.3 recorded the same two signatures, and placed the registry check inside
+        "`admit()`'s second step". IT IS NOW THE THIRD: step 7's rule set, then step
+        7b, then construction (admission.py:218). The clause's FINDING is unchanged —
+        nothing in the API establishes who submits — and the position of the check it
+        describes had moved.
+
+        THE PIPELINE ITSELF was described, outside this document, with an
+        "authorize evidence production" stage between authentication and
+        construction. NO SUCH STAGE EXISTS IN EVIDENCE'S PATH, and none may be
+        added (§13).
+```
+
+```text
+WHAT THIS AMENDMENT CHANGES, AND WHERE
+
+    §4.2   a RECORDED correction of the withdrawn sentence, and the SEMANTICS stated
+           as FROZEN clauses: the producer field is a DECLARATION and not an
+           authentication source; a valid producer proof verification is the
+           ADMISSIBILITY BASIS for the producer claim; and NO RUNTIME IDENTITY
+           OBJECT is introduced, by this document or by any phase implementing the
+           boundary.
+    §4.4   a RECORDED correction of the withdrawn sentence. Its POINT is kept and
+           sharpened: the API still takes no submitter identity, and an admitted
+           record still establishes a KEY HOLDER that signed the claim — not a code
+           component, and not the submitter.
+    §4.3   two stale records corrected: the registry check's position in the pipeline
+           (INSIDE construction, admission.py:218 — not "`admit()`'s second step"),
+           and the two entry-point signatures, with a note that the added
+           `producer_proof` argument does not change the clause's finding.
+    §9.4   the PROOF PROPAGATION INVARIANT, as FROZEN clauses: the bytes are
+           preserved; dropping is AUTHENTICATION_PROOF_MISSING; modification is a
+           verification failure named by the step that catches it; substitution
+           cannot be made to verify; there is no silent acceptance on any path; a
+           forwarder may not mint, re-mint or repair a proof; and the composition's
+           own conduct is left to AI-05 §7.3.12 and AI-14 §22.1 B5.
+    §10.1  the entry points RESTATED at the merged head: step 7b in the pipeline,
+           `producer_proof` in both signatures, the proof's through-pass to `admit()`,
+           and the store's current line numbers.
+    §10.2  two caller obligations added: PRESENT the proof, and do not fabricate,
+           substitute, repair or hold signing material for one.
+    §10.4  NEW. The AI-15-B freeze matrix — the write pipeline — with the authorize
+           stage WITHDRAWN BY NAME, the ordering frozen, and the two places the
+           admissibility checks actually run stated beside the drawing so it is not
+           mistaken for a reordering of §30.
+    §19    this record, and the amendment count.
+    `## Status`  the amendment count and the Amendment 5 line.
+```
+
+```text
+WHO DECIDED WHAT — THE OWNERSHIP IS THE POINT, AND IT IS STATED FIRST
+
+    AI-15'S PART IS THIS DOCUMENT'S OWN SEMANTICS. §4.2, §4.4, §9.4, §10.1, §10.2
+    and §10.4 are AI-15's clauses, and the corrections above are AI-15's act, in
+    AI-15's contract, under §19. NO OTHER PHASE'S CLAUSE IS EDITED BY THIS
+    AMENDMENT.
+
+    THE CROSS-CONTRACT HALF IS AI-05'S. §9.4 and §10.2 state what a FORWARDER must
+    do with a proof. What a forwarder MAY do with one is the producing contract's
+    question, because it turns on the meaning of §7.3.10's word "hold". AI-05
+    answered it in AI-05 §7.3.12 — AI-05 AMENDMENT 8, made by AI-05's owner in
+    AI-05's contract under AI-05's amendment rule. AI-15 RECORDS it and produced
+    none of it, exactly as Amendments 1, 2 and 3 recorded AI-05's acts and produced
+    none of those.
+
+    §19's ORDERING RULE IS SATISFIED. THIS ORDERING IS A CONTRACT DEPENDENCY
+    REQUIREMENT, NOT A FORMALITY.
+
+    §19 requires an amendment to AI-00 .. AI-14 to be made BEFORE AI-15 depends
+    on it.
+
+    The two parts were delivered separately and in dependency order: AI-05
+    §7.3.12 merged first, as AI-05 Amendment 8, PR #94, merge commit
+    6a3d6cb0abec9d776678c1b462923120db93b21d (2026-10-12).
+
+    AI-15 Amendment 5 is authored on top of the merged AI-05 Amendment 8 state.
+    Therefore this amendment does not depend on an unmerged clause. The
+    referenced AI-05 ownership semantics were already present on `main` before
+    this amendment was prepared.
+```
+
+```text
+SECURITY IMPACT
+
+    NONE, AND THE POINT IS THAT THIS AMENDMENT ADDS NO CONTROL. It records the shape
+    of a mechanism that already merged (PR #87), and it makes three claims a reader
+    can check against the code rather than against prose:
+
+        authentication runs BEFORE construction        admission.py:217-218
+        a missing proof is a REJECTED RESULT and not
+          a TypeError                                  admission.py:197-201
+        no production caller exists                    §3.1-§3.3, §20.1
+
+    WHAT IS GENUINELY NEW IS ONE PROHIBITION AND ONE INVARIANT, AND BOTH ARE
+    BOUNDARIES RATHER THAN CONTROLS:
+        no runtime identity object may be introduced (§4.2) — a rule about a design
+          this document refuses, not a runtime barrier
+        a forwarder may not drop, modify, substitute or mint a proof (§9.4) — and
+          this one is not merely a rule, because the verification steps that already
+          exist refuse each case: PROOF_MISSING, SIGNATURE_INVALID, INPUT_MISMATCH
+          or PROOF_MALFORMED (AI-05 §7.3.5, §7.3.8)
+
+    WHAT IT DOES NOT CLAIM. It does not claim a proof makes a claim TRUE (§4.2,
+    §9.2), that authentication identifies the SUBMITTER (§9.2), that an ACCEPTED is
+    an authorization (§13.2), or that any part of the mechanism is new. It runs no
+    test and cites no run of its own. §10.4's withdrawal of the authorize stage
+    removes a CLAIM; no rule existed for it to remove.
+```
+
+```text
+AUTHORITY IMPACT
+
+    None. Nothing here grants a permission, changes AI-14 §4.1's authority matrix,
+    introduces an authorizing subject, or moves a responsibility between phases.
+    Guard remains the only component with an AUTHORIZES entry. An authenticated
+    producer claim is still not an approval, a permission, a capability or a Guard
+    result (§9.5, §13.2).
+```
+
+```text
+WHAT THIS AMENDMENT DOES NOT DO
+
+    it does not start AI-15-B, or move it out of NOT STARTED
+    it does not make AI-14's STEP 1, satisfy row 1′, create a call site or a writer
+    it does not mark B5 CONNECTED, or claim that any §8.3 condition now holds
+    it does not add, remove or change a producer token, a §6.5 row, a reason code, an
+      admission outcome or a digest input
+    it does not change the failure semantics (§11), the workspace rules (§12) or the
+      authority rules (§13)
+    it does not authorize AI-15 to add a producer check, a provenance-verification
+      seam or a trust root (§17.4, unchanged)
+    it does not edit any other contract. AI-05 §7.3.12 is AI-05's own amendment,
+      recorded here and produced by AI-15 in no part
+    it does not turn any NOT_RUN, BLOCKED or UNKNOWN into PASS
+    it does not alter any file outside this document
+    it does not run any test, and it claims no test result of its own
+```
+
+---
+
 ```text
 THE NORMATIVE CLASSES, USED AS AI-14 §2 DEFINES THEM
     FROZEN      settled here; AI-15-B implements it; changing it needs an amendment
@@ -4245,7 +4622,7 @@ BLOCKED: B5 (composition -> Evidence) is unchanged by this document. §16.2 list
          precondition, which requires STEP 0a AND STEP 0b AND STEP 1 together
          (§17.2b, §16.2).
 
-AMENDED: this document has been amended FOUR TIMES since it was frozen.
+AMENDED: this document has been amended FIVE TIMES since it was frozen.
          §19 Amendment 1 records AI-05's answer to AI15-OPEN-2.
          §19 Amendment 2 records AI-05 Amendments 5 and 6 — the producer
          authentication standard DEFINED and its trust configuration FROZEN — and
@@ -4256,6 +4633,14 @@ AMENDED: this document has been amended FOUR TIMES since it was frozen.
          §19 Amendment 4 WITHDRAWS an invalid cross-contract reference from §15.2
          STEP 1's work list and records it as a NO-OP. AI-15's OWNER MADE THAT
          DECISION, in AI-15's own contract; NO RULE CHANGED and no item moved.
+         §19 Amendment 5 SYNCS this document's producer-authentication semantics to
+         the mechanism PR #87 implemented: §4.2, §4.3 and §4.4 corrected, §9.4's
+         proof propagation invariant frozen, §10.1 restated at the merged head, §10.2's
+         caller obligations extended, and §10.4 added — the AI-15-B freeze matrix,
+         with the "authorize evidence production" stage WITHDRAWN BY NAME. It
+         RECORDS AI-05 Amendment 8 (§7.3.12, the forwarder's transport permission)
+         and produced none of it. NO STATUS ITEM MOVED: B5 stays BLOCKED, AI-15-B
+         stays NOT STARTED, and no seam is CONNECTED.
 
 OPEN:    AI15-OPEN-3 (AI-04) · AI15-OPEN-4 (AI-13/AI-14)
          — local ids, prefixed so they cannot be confused with AI-11 §21.1's
