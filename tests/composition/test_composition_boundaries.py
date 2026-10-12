@@ -237,6 +237,15 @@ def _admission_calls_in_tree(tree: ast.Module) -> list[tuple[int, str]]:
         m = adm                        then  m.admit(record)         (a module, renamed)
         e = p.evidence                 then  e.admission.admit(...)  (a module, renamed)
 
+    AN ANNOTATED BINDING IS A BINDING. An annotation says what a name is FOR, not
+    what it holds, so these resolve exactly as their unannotated forms do:
+
+        writer: object = admit         then  writer(record)
+        mod: object = adm              then  mod.admit(record)
+
+    A bare annotation with NO value (`writer: object`) binds nothing at runtime and
+    is skipped rather than guessed at.
+
     followed to a fixed point, so a chain of renamings resolves however long it is.
 
     A WILDCARD IMPORT FROM THE PACKAGE IS REFUSED RATHER THAN RESOLVED: it makes the
@@ -314,30 +323,40 @@ def _admission_calls_in_tree(tree: ast.Module) -> list[tuple[int, str]]:
     # attribute case is why this is not a single `ast.Name` comparison:
     # `persist = adm.admit_to_store` binds an entry point to a new local name, and a
     # call through `persist` is the same call.
+    #
+    # `ast.AnnAssign` IS HANDLED TOO, because an ANNOTATION DOES NOT CHANGE WHAT A
+    # NAME IS: `writer: object = admit` binds exactly what `writer = admit` binds,
+    # and `mod: object = adm` binds exactly what `mod = adm` binds. A bare
+    # annotation with no value (`writer: object`) binds NOTHING at runtime and is
+    # skipped rather than guessed at.
     rounds = 1 + sum(1 for node in ast.walk(tree) if isinstance(node, ast.Name))
     for _ in range(rounds):
         before = (set(call_names), set(module_roots), set(plugin_roots))
         for node in ast.walk(tree):
-            if not isinstance(node, ast.Assign):
+            if isinstance(node, ast.Assign):
+                value, targets = node.value, node.targets
+            elif isinstance(node, ast.AnnAssign):
+                if node.value is None:
+                    continue
+                value, targets = node.value, [node.target]
+            else:
                 continue
-            if _denotes_entry_point(
-                node.value, call_names, module_roots, plugin_roots
-            ):
-                for target in node.targets:
+            if _denotes_entry_point(value, call_names, module_roots, plugin_roots):
+                for target in targets:
                     if isinstance(target, ast.Name):
                         call_names.add(target.id)
                 continue
-            if isinstance(node.value, ast.Name):
-                source = node.value.id
+            if isinstance(value, ast.Name):
+                source = value.id
             else:
-                source = _dotted(node.value)
+                source = _dotted(value)
             if source is None:
                 continue
-            for target in node.targets:
+            for target in targets:
                 if not isinstance(target, ast.Name):
                     continue
                 if source == _PLUGINS_ROOT or (
-                    isinstance(node.value, ast.Name) and source in plugin_roots
+                    isinstance(value, ast.Name) and source in plugin_roots
                 ):
                     plugin_roots.add(target.id)
                 elif _reaches_evidence(source, module_roots, plugin_roots):
@@ -428,7 +447,14 @@ def test_the_absence_check_allows_an_authorized_import_with_no_call(
         "from plugins.evidence import ExecutionPayload, ToolCall\n"
         "from plugins.evidence.admission import admit_to_store as persist\n"
         "\n"
-        "__all__ = ['ExecutionPayload', 'ToolCall', 'persist', 'ev', 'evidence', 'p']\n",
+        "writer: object = persist\n"
+        "mod: object = ev.admission\n"
+        "declared_only: object\n"
+        "\n"
+        "__all__ = [\n"
+        "    'ExecutionPayload', 'ToolCall', 'persist',\n"
+        "    'ev', 'evidence', 'p', 'writer', 'mod', 'declared_only',\n"
+        "]\n",
         encoding="utf-8",
     )
     assert _admission_call_sites(package) == []
@@ -536,6 +562,26 @@ def test_the_absence_check_allows_an_authorized_import_with_no_call(
             "def submit(record):\n"
             "    return e.admission.admit(record)\n",
             id="parent-package-evidence-rebound-to-another-name",
+        ),
+        pytest.param(
+            "from plugins.evidence import admit\n"
+            "\n"
+            "writer: object = admit\n"
+            "\n"
+            "\n"
+            "def submit(record):\n"
+            "    return writer(record)\n",
+            id="annotated-entry-point-alias",
+        ),
+        pytest.param(
+            "import plugins.evidence.admission as adm\n"
+            "\n"
+            "mod: object = adm\n"
+            "\n"
+            "\n"
+            "def submit(record):\n"
+            "    return mod.admit(record)\n",
+            id="annotated-evidence-module-alias",
         ),
     ],
 )
