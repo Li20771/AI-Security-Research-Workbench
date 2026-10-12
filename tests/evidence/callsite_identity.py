@@ -55,9 +55,15 @@ CANONICAL_ENTRYPOINTS = ("admit", "admit_to_store")
 #: The package whose entry points this scanner is about.
 _EVIDENCE_PACKAGE = "plugins.evidence"
 
-#: The one intra-package edge §7.3.7's obligation has always excluded, expressed
-#: as an identity key rather than as an ad-hoc filter: `admit_to_store` calling
-#: `admit` inside `plugins/evidence/admission.py`.
+#: The ONE intra-package call site §7.3.7's obligation has always excluded:
+#: `plugins/evidence/admission.py`'s own `admit_to_store` calling its own `admit`.
+#:
+#: THE TRIPLE CANNOT NAME A CALL SITE ON ITS OWN, AND THE EXCEPTION DOES NOT
+#: PRETEND IT CAN. A second `admit(...)` in the same scope shares all three
+#: fields, so an exclusion over the triple alone would swallow that second call —
+#: which is exactly what §7.3.13's exact-call-site standard forbids. The exception
+#: is therefore bounded by UNIQUENESS in `findings()`: it excuses AT MOST ONE
+#: matching entry per side, and more than one match means NOTHING is excused.
 INTRA_PACKAGE_EDGE = ("plugins/evidence/admission.py", "admit_to_store", "admit")
 
 _UNRESOLVABLE_CALLEES = frozenset({"getattr", "__import__", "import_module"})
@@ -340,8 +346,19 @@ class _Scopes:
                 local = alias.asname or alias.name.split(".")[0]
                 if alias.name.split(".", 1)[0] in _ACQUIRER_MODULES:
                     bindings.acquirer_modules.add(local)
-                if _is_evidence_module(alias.name):
+                if not _is_evidence_module(alias.name):
+                    continue
+                # AN UNALIASED DOTTED IMPORT BINDS ITS ROOT, NOT THE FULL PATH.
+                # `import plugins.evidence` binds the name `plugins` to the module
+                # `plugins` — the submodule is reachable AS AN ATTRIBUTE. Binding
+                # `plugins` to `plugins.evidence` made the next expansion produce
+                # `plugins.evidence.evidence.admit`: a path that does not exist,
+                # which happened to be classified as evidence anyway and so hid the
+                # defect instead of failing on it.
+                if alias.asname:
                     bindings.add_module(local, alias.name)
+                else:
+                    bindings.add_module(local, alias.name.split(".", 1)[0])
         else:  # Assign / AnnAssign
             value = node.value
             if value is None:
@@ -504,6 +521,15 @@ class _Scopes:
         for child in ast.walk(node):
             if isinstance(child, ast.Name):
                 if child.id in CANONICAL_ENTRYPOINTS or child.id in bindings.modules:
+                    return True
+                # A RESOLVED ENTRY ALIAS COUNTS. `from plugins.evidence import admit
+                # as persist` makes `persist` an entry point in this scope, and
+                # `partial(persist, ...)` is an acquisition of one. Checking only
+                # the literal spellings would miss it; checking the SCOPE'S OWN
+                # BINDINGS catches it without a special case per name — including
+                # an AMBIGUOUS binding, which is present here and fails closed
+                # later rather than being skipped.
+                if child.id in bindings.entrypoints:
                     return True
                 value = bindings.constant(child.id)
                 if value is not None and (
@@ -906,14 +932,41 @@ def findings(
     problems: list[str] = []
 
     observed_map = group_by_key(observed)
+
+    # THE INTRA-PACKAGE EXCEPTION IS BOUNDED BY UNIQUENESS, NOT BY SCOPE.
+    # The triple (path, scope, entrypoint) CANNOT name a call site — a second
+    # `admit(...)` in the same scope shares it — so excluding everything that
+    # matches it would swallow that second call silently. The exception therefore
+    # excuses AT MOST ONE matching entry on each side, and when MORE THAN ONE
+    # matches, NOTHING is excused: the ambiguity is reported and every match is
+    # reported with it.
+    excused_observed: set = set()
+    excused_unresolved: set = set()
     if exclude_intra_package_edge:
-        observed_map = {
-            key: value
-            for key, value in observed_map.items()
-            if (key[0], key[1], key[2]) != INTRA_PACKAGE_EDGE
-        }
+        observed_hits = [
+            key for key in observed_map if (key[0], key[1], key[2]) == INTRA_PACKAGE_EDGE
+        ]
+        unresolved_hits = [
+            index
+            for index, call in enumerate(unresolved)
+            if (call.path, call.scope, call.entrypoint) == INTRA_PACKAGE_EDGE
+        ]
+        if len(observed_hits) == 1:
+            excused_observed = {observed_hits[0]}
+        if len(unresolved_hits) == 1:
+            excused_unresolved = {unresolved_hits[0]}
+        for side, hits in (("observed", observed_hits), ("unresolved", unresolved_hits)):
+            if len(hits) > 1:
+                problems.append(
+                    f"INTRA-PACKAGE EXCEPTION IS AMBIGUOUS: {len(hits)} {side} entries "
+                    f"match the ONE excluded internal call site {INTRA_PACKAGE_EDGE}. "
+                    f"The exception excuses AT MOST ONE, so NOTHING is excused here and "
+                    f"every match below is reported"
+                )
 
     for key, identity in sorted(observed_map.items()):
+        if key in excused_observed:
+            continue
         if key not in approved:
             problems.append(
                 f"UNAPPROVED call site: {identity.path}:{identity.lineno} "
@@ -934,12 +987,10 @@ def findings(
                 f"scope={identity.scope} — a `**mapping` expansion does not satisfy "
                 f"§7.3.13's proof_kwarg field"
             )
-    for call in sorted(unresolved, key=lambda item: (item.path, item.lineno)):
-        if exclude_intra_package_edge and (
-            call.path,
-            call.scope,
-            call.entrypoint,
-        ) == INTRA_PACKAGE_EDGE:
+    for index, call in sorted(
+        enumerate(unresolved), key=lambda pair: (pair[1].path, pair[1].lineno)
+    ):
+        if index in excused_unresolved:
             continue
         problems.append(
             f"UNRESOLVED production call form: {call.path}:{call.lineno} "

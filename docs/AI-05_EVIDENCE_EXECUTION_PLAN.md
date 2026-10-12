@@ -2398,12 +2398,25 @@ THE STANDARD — EXACT CALL-SITE AUTHORISATION.
                           NOT NORMALISED INTO IT — it is carried as `callee`
                           instead, because the two answer different questions.
                           LINENO AND COL_OFFSET ARE EXCLUDED.
-      control_context     the enclosing statement kinds, where they are needed to
-                          distinguish two otherwise identical calls in one scope
-      proof_kwarg         the call passes `producer_proof` EXPLICITLY as a keyword
-                          argument. A `**mapping` expansion does NOT satisfy this
-                          and MUST FAIL — the argument is then not verifiable from
-                          the source.
+
+  THE KEY IS THOSE SIX FIELDS. THE APPROVED MAPPING IS COMPARED AGAINST THE KEY AND
+  NOTHING ELSE, and three further things are RECORDED WITHOUT BEING PART OF IT.
+  Conflating them with the key is how an earlier revision came to describe "seven
+  fields" while listing eight:
+
+      control_context     AN INPUT TO `fingerprint`, NOT A SEPARATE KEY FIELD. It is
+                          hashed INTO the digest, so two calls separated only by
+                          their enclosing statement chain already have different
+                          fingerprints. It is not compared as a field of its own.
+      proof_kwarg         AN INDEPENDENT ACCEPTANCE CONDITION, checked SEPARATELY
+                          from the mapping comparison. A call site can match the
+                          approved key exactly and still FAIL on this: the call
+                          passes `producer_proof` EXPLICITLY as a keyword, and a
+                          `**mapping` expansion does NOT satisfy it, because the
+                          argument is then not verifiable from the source.
+      lineno              NEVER PART OF THE IDENTITY. Recorded for a reader and for
+                          messages only; it moves when anything above it moves,
+                          which is exactly why it cannot carry an approval.
 
   THE IDENTITY IS THEREFORE STRICT ABOUT THE CALLEE. Two calls at the SAME scope,
   the SAME `ast_path` and with the SAME arguments, reaching the SAME canonical
@@ -7410,11 +7423,14 @@ and 8 recorded about §7 and §30.
 
         resolves aliases WITHIN THEIR OWN SCOPE — a local assignment in one
           function says nothing about a same-named local in another
-        records a per-call identity of SEVEN fields, and the list is the contract's
-          own (§7.3.13 above): `path`, `scope`, `entrypoint`, **`callee`** — the
-          ORIGINAL source form of the callee expression, carried SEPARATELY from
-          the canonical entry point — `ast_path`, `fingerprint`, `control_context`,
-          and `proof_kwarg`
+        records a per-call IDENTITY KEY OF SIX FIELDS — `path`, `scope`,
+          `entrypoint`, **`callee`** (the ORIGINAL source form of the callee
+          expression, carried SEPARATELY from the canonical entry point),
+          `ast_path`, `fingerprint` — and the approved mapping is compared against
+          THAT KEY and nothing else. `control_context` is an INPUT TO the
+          fingerprint rather than a key field of its own; `proof_kwarg` is an
+          INDEPENDENT acceptance condition checked separately from the mapping
+          comparison; `lineno` is never part of the identity
         computes `fingerprint` as a FULL 64-character SHA-256 hex digest over the
           call's ARGUMENTS AND CONTROL CONTEXT. The callee is NOT normalised into
           it: it is the separate `callee` field. Location attributes are excluded,
@@ -7500,18 +7516,30 @@ and 8 recorded about §7 and §30.
 (c) THE COUNTS, AND THE HISTORICAL RECORDS THAT KEEP THEIRS.
 
     WHAT MOVED — AND THESE ARE STATIC COUNTS, TAKEN FROM THE SOURCE TREE, NOT
-    FROM A RUN. They are presented as counts of what the matrix WILL invoke, and a
-    report that wants to say more than that must show a run whose head it names.
+    FROM A RUN. THEY ARE THREE DIFFERENT THINGS AND NONE MAY BE QUOTED FOR ANOTHER.
+    A report that wants to say more than "what the matrix will invoke" must show a
+    run whose head it names.
 
-        G1 matrix node ids                 34 -> 56   (+22)   <- counted in preflight.yml
-        process-isolated matrix cases      46 -> 68   (+22)   <- the same 68 node ids
-        test functions in the module       45 -> 56   (+11)   <- counted in the module
+        MATRIX INVOCATIONS      the number of node-id references in
+          `preflight.yml`, which is the number of times pytest is asked to run a
+          case across the isolated configurations
+                                    46 -> 74   (+28)
 
-    THE TWO DELTAS DIFFER ON PURPOSE, AND QUOTING ONE FOR THE OTHER IS THE ERROR
-    THIS PARAGRAPH EXISTS TO PREVENT. A parametrized test contributes ONE node id
-    per CASE and ONE test function per DEFINITION: `18g`, `18i` and `18l` contribute
-    fourteen node ids between them from three definitions. So +22 node ids and +11
-    test functions are both correct, and neither is a count of the other.
+        UNIQUE NODE IDS         the same references AFTER DE-DUPLICATION. One node
+          id, `test_obligation_06c_reader_is_consistent`, is invoked under BOTH
+          `collision_unregistered` and `collision_unregistered_b` — §7.3.2's two
+          policies for the one case they differ on — so it is two invocations and
+          ONE node id
+                                    45 -> 73   (+28)
+
+        TEST FUNCTION DEFINITIONS  `def test_...` in the acceptance module. A
+          parametrized test is ONE definition and MANY node ids
+                                    45 -> 61   (+16)
+
+    THE THREE DELTAS DIFFER ON PURPOSE. `18g`, `18i`, `18l` and `18q` contribute
+    node ids from four definitions, and one node id is counted twice above. An
+    earlier revision of this record said "the same 68 node ids" and gave a single
+    number for two of these measures; both readings were wrong and are replaced.
 
     WHAT DID NOT MOVE, AND MUST NOT
         Amendment 7 (d), §35.3 and `## Status` record "46 RAN / 0 skipped" as the

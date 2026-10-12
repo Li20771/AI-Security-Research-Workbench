@@ -59,6 +59,7 @@ from trust_harness import (
     proof_for_record,
 )
 
+import callsite_identity
 from callsite_identity import findings, group_by_key, scan_tree
 
 pytestmark = pytest.mark.layer1
@@ -1760,6 +1761,182 @@ class TestObligation18ApprovedCallSiteSet:
         assert problems == [], (
             "a resolvable attribute that is not an entry point must NOT be "
             f"reported — otherwise the rule has become a blanket block: {problems}"
+        )
+
+    # -- the intra-package exception, bounded by uniqueness --------------------
+
+    @staticmethod
+    def _plant_admission(tmp_path, body: str):
+        """Plant a `plugins/evidence/admission.py` and scan its root.
+
+        The exception is keyed on THAT path, so a fixture anywhere else would not
+        exercise it.
+        """
+        target = tmp_path / "plugins" / "evidence" / "admission.py"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(body, encoding="utf-8")
+        return scan_tree(tmp_path, skip_paths=())
+
+    _ADMIT_DEF = (
+        "def admit(raw, *, producer_proof=None, clock=None):\n"
+        "    return raw\n"
+        "\n"
+        "\n"
+    )
+
+    def test_obligation_18n_the_intra_package_edge_is_excused(self, tmp_path):
+        """THE ONE EXCEPTION §7.3.7 HAS ALWAYS CARRIED, AND IT STILL WORKS.
+
+        `admit_to_store` calling its own module's `admit` is not a production
+        caller of the entry point; it is the entry point calling the entry point.
+        With exactly ONE such call the check is clean.
+        """
+        observed, unresolved, failures = self._plant_admission(
+            tmp_path,
+            self._ADMIT_DEF
+            + "def admit_to_store(raw, *, store=None, producer_proof=None, clock=None):\n"
+            + "    result = admit(raw, producer_proof=producer_proof)\n"
+            + "    return result\n",
+        )
+        problems = _problems(observed, {}, unresolved, failures)
+        assert problems == [], (
+            "the single canonical intra-package edge must be excused, and nothing "
+            f"else may be reported: {problems}"
+        )
+
+    def test_obligation_18o_a_second_call_in_the_same_scope_is_not_excused(self, tmp_path):
+        """THE EXCEPTION NAMES ONE CALL SITE, NOT A SCOPE.
+
+        A second `admit(...)` in the SAME `admit_to_store` shares all three fields
+        of the exception's key. An exclusion over that triple alone would swallow
+        it silently; the exception is bounded by uniqueness instead, so an
+        ambiguous match excuses NOTHING and both calls are reported with it.
+        """
+        observed, unresolved, failures = self._plant_admission(
+            tmp_path,
+            self._ADMIT_DEF
+            + "def admit_to_store(raw, *, store=None, producer_proof=None, clock=None):\n"
+            + "    first = admit(raw, producer_proof=producer_proof)\n"
+            + "    return admit(first, producer_proof=producer_proof)\n",
+        )
+        problems = _problems(observed, {}, unresolved, failures)
+        assert any("INTRA-PACKAGE EXCEPTION IS AMBIGUOUS" in problem for problem in problems), (
+            f"two matches for a one-call-site exception must be reported: {problems}"
+        )
+        reported = [problem for problem in problems if "UNRESOLVED production call form" in problem]
+        assert len(reported) == 2, (
+            "NEITHER call may be excused once the match is ambiguous — both must "
+            f"appear, not just one: {problems}"
+        )
+
+    def test_obligation_18p_a_same_key_unresolved_form_is_not_excused(self, tmp_path):
+        """A DIFFERENT FORM SHARING THE KEY IS NOT THE EXCUSED CALL SITE.
+
+        The second call below is an immediately-invoked acquisition, not the
+        plain internal call the exception is for — yet it shares path, scope and
+        entry point with it. Sharing the key must not be enough.
+        """
+        observed, unresolved, failures = self._plant_admission(
+            tmp_path,
+            self._ADMIT_DEF
+            + "from functools import partial\n"
+            + "\n"
+            + "\n"
+            + "def admit_to_store(raw, *, store=None, producer_proof=None, clock=None):\n"
+            + "    result = admit(raw, producer_proof=producer_proof)\n"
+            + "    other = partial(admit, raw)(producer_proof=producer_proof)\n"
+            + "    return result or other\n",
+        )
+        problems = _problems(observed, {}, unresolved, failures)
+        assert any("INTRA-PACKAGE EXCEPTION IS AMBIGUOUS" in problem for problem in problems), (
+            f"a second same-key entry must make the match ambiguous: {problems}"
+        )
+        assert any("immediately-invoked acquisition" in problem for problem in problems), (
+            f"the acquisition form must be reported on its own terms: {problems}"
+        )
+        assert problems, "sharing the exception's key must not produce a clean result"
+
+    # -- dotted imports and resolved entry aliases -----------------------------
+
+    @pytest.mark.parametrize(
+        "planted",
+        [
+            pytest.param(
+                "import plugins.evidence\n"
+                "\n"
+                "\n"
+                "def submit(record, proof):\n"
+                "    return plugins.evidence.admit(record, producer_proof=proof)\n",
+                id="unaliased-dotted-package",
+            ),
+            pytest.param(
+                "import plugins.evidence.admission\n"
+                "\n"
+                "\n"
+                "def submit(record, proof):\n"
+                "    return plugins.evidence.admission.admit(record, producer_proof=proof)\n",
+                id="unaliased-dotted-submodule",
+            ),
+        ],
+    )
+    def test_obligation_18q_an_unaliased_dotted_import_resolves_to_the_entry_point(
+        self, planted: str, tmp_path
+    ):
+        """AN UNALIASED DOTTED IMPORT BINDS ITS ROOT, AND THE PATH MUST NOT DOUBLE.
+
+        `import plugins.evidence` binds the name `plugins`, not the name
+        `plugins.evidence`. Binding the full path made the next expansion produce
+        `plugins.evidence.evidence.admit` — a path that does not exist, which was
+        still classified as evidence and so hid the defect rather than failing on
+        it. The assertion below checks the EXPANSION ITSELF, because the
+        downstream effect alone cannot see the difference.
+        """
+        observed, unresolved, failures = _scan_planted(tmp_path, planted)
+        assert observed, (
+            "the call must resolve to a canonical entry point and appear in the "
+            f"observed set; a silent empty result is the failure this guards: "
+            f"observed={observed} unresolved={unresolved}"
+        )
+        assert observed[0].entrypoint == "admit"
+        assert not unresolved, f"no form here is unresolvable: {unresolved}"
+
+        tree = ast.parse(planted)
+        scopes = callsite_identity._Scopes(tree)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and node.attr == "evidence":
+                expanded = scopes.dotted(node, scopes.for_node(node))
+                assert expanded == "plugins.evidence", (
+                    f"the dotted expansion doubled: got {expanded!r}"
+                )
+
+    def test_obligation_18r_a_resolved_entry_alias_is_a_partial_target(self, tmp_path):
+        """AN ALIAS IS AN ENTRY POINT IN ITS OWN SCOPE, INCLUDING AS A partial TARGET.
+
+        `persist` is `admit`. `partial(persist, ...)` is an acquisition of an entry
+        point, and the rule must find that through the scope's bindings rather than
+        through a special case for the name `persist`.
+        """
+        planted = (
+            "from functools import partial\n"
+            "from plugins.evidence import admit as persist\n"
+            "\n"
+            "\n"
+            "def submit(record, proof):\n"
+            "    writer = partial(persist, record, producer_proof=proof)\n"
+            "    return writer()\n"
+        )
+        observed, unresolved, failures = _scan_planted(tmp_path, planted)
+        problems = _problems(observed, {}, unresolved, failures)
+        assert observed == [], (
+            "the call must NOT be recorded as a resolved direct call site — it is "
+            f"an acquisition and a later call through a name: {observed}"
+        )
+        assert problems, (
+            "the acquisition must be carried onto `writer` and the later call must "
+            f"be reported: observed={observed} unresolved={unresolved}"
+        )
+        assert any("UNRESOLVED production call form" in problem for problem in problems), (
+            f"the later call must be UNRESOLVED: {problems}"
         )
 
 
