@@ -148,7 +148,7 @@ jobs:
             "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18l_dynamic_names_and_aliased_acquirers_fail_closed[module-qualified-partial-acquisition]" \
             "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18l_dynamic_names_and_aliased_acquirers_fail_closed[aliased-immediately-invoked-acquisition]" \
             "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18m_a_resolvable_non_entry_point_attribute_is_not_reported" \
-            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18n_the_intra_package_edge_is_excused" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18n_the_intra_package_edge_is_a_verified_observed_identity" \
             "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18o_a_second_call_in_the_same_scope_is_not_excused" \
             "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18p_a_same_key_unresolved_form_is_not_excused" \
             "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18q_an_unaliased_dotted_import_resolves_to_the_entry_point[unaliased-dotted-package]" \
