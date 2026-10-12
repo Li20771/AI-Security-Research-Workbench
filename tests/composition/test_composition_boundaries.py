@@ -8,6 +8,7 @@ across the CONNECTED path rather than inside one layer.
 
 from __future__ import annotations
 
+import ast
 import pathlib
 
 import pytest
@@ -148,31 +149,521 @@ def test_wiring_did_not_verify_a_capability(tmp_path) -> None:
     )
 
 
-def test_the_composition_reaches_no_evidence_writer() -> None:
-    """B5 stays BLOCKED: no module here imports, admits or stores a record.
+_PLUGINS_ROOT = "plugins"
+_EVIDENCE_ROOT = "plugins.evidence"
+_ADMISSION_ENTRY_POINTS = frozenset({"admit", "admit_to_store"})
 
-    Checked by IMPORT and by CALL rather than by the word: the docstrings explain
-    the rule, and a word scan would flag the explanation as the violation — the
-    same distinction `layer0_policy` makes when it reads identifiers rather than
-    text.
+
+def _dotted(node: ast.expr) -> str | None:
+    """The dotted source of a Name/Attribute chain, or None if it is not one."""
+    parts: list[str] = []
+    current: ast.expr = node
+    while isinstance(current, ast.Attribute):
+        parts.append(current.attr)
+        current = current.value
+    if not isinstance(current, ast.Name):
+        return None
+    parts.append(current.id)
+    return ".".join(reversed(parts))
+
+
+def _reaches_evidence(
+    dotted: str, module_roots: set[str], plugin_roots: set[str]
+) -> bool:
+    """Whether a dotted module chain names the Evidence package or a submodule of it.
+
+    THREE ROOTED FORMS, each statically resolvable, and each a different binding:
+
+        <root>.<...>            `root` bound to `plugins.evidence` or a submodule —
+                                `import plugins.evidence.admission as adm`
+        <root>.evidence.<...>   `root` bound to the PARENT `plugins` package —
+                                `import plugins as p`, `from plugins import evidence`
+        plugins.evidence.<...>  fully qualified, with no alias at all
+
+    `plugin_roots` exists because the parent package is a binding like any other:
+    `import plugins as p` puts `plugins` under the name `p`, and the chain that
+    reaches Evidence from there is `p.evidence...`, not `p...`.
     """
-    import ast
+    if dotted == _EVIDENCE_ROOT or dotted.startswith(_EVIDENCE_ROOT + "."):
+        return True
+    root, _, rest = dotted.partition(".")
+    if root in module_roots:
+        return True
+    if root in plugin_roots:
+        return rest == "evidence" or rest.startswith("evidence.")
+    return False
 
-    package = pathlib.Path(__file__).resolve().parents[2] / "composition"
-    for path in sorted(package.glob("*.py")):
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+
+def _denotes_entry_point(
+    node: ast.expr,
+    call_names: set[str],
+    module_roots: set[str],
+    plugin_roots: set[str],
+) -> bool:
+    """Whether `node` names an admission entry point, directly or through a module."""
+    if isinstance(node, ast.Name):
+        return node.id in call_names
+    if isinstance(node, ast.Attribute) and node.attr in _ADMISSION_ENTRY_POINTS:
+        dotted = _dotted(node.value)
+        if dotted is None:
+            return False
+        return _reaches_evidence(dotted, module_roots, plugin_roots)
+    return False
+
+
+def _admission_calls_in_tree(tree: ast.Module) -> list[tuple[int, str]]:
+    """`(lineno, what)` for every call in ONE parsed module that can reach admission.
+
+    THE POINT OF RESOLVING NAMES RATHER THAN MATCHING THEM is that the same call has
+    several spellings and a name-only check sees one of them:
+
+        from plugins.evidence import admit                  ->  admit(record)
+        from plugins.evidence.admission import
+            admit_to_store as persist                       ->  persist(record, store=..)
+        import plugins.evidence.admission as adm            ->  adm.admit(record)
+        plugins.evidence.admission.admit(record)            (fully qualified)
+
+    AND THROUGH THE PARENT `plugins` PACKAGE, which is an ordinary binding like any
+    other and reaches the same call in one more hop:
+
+        from plugins import evidence as ev  ->  ev.admission.admit_to_store(record, ..)
+        import plugins as p                 ->  p.evidence.admission.admit_to_store(..)
+        from plugins import evidence        ->  evidence.admission.admit(record)
+
+    plus a name REBOUND from any of those, in either direction:
+
+        submit = admit                 then  submit(record)          (from a NAME)
+        persist = adm.admit_to_store   then  persist(record, ...)    (from an ATTRIBUTE)
+        m = adm                        then  m.admit(record)         (a module, renamed)
+        e = p.evidence                 then  e.admission.admit(...)  (a module, renamed)
+
+    AN ANNOTATED BINDING IS A BINDING. An annotation says what a name is FOR, not
+    what it holds, so these resolve exactly as their unannotated forms do:
+
+        writer: object = admit         then  writer(record)
+        mod: object = adm              then  mod.admit(record)
+
+    A bare annotation with NO value (`writer: object`) binds nothing at runtime and
+    is skipped rather than guessed at.
+
+    followed to a fixed point, so a chain of renamings resolves however long it is.
+
+    A WILDCARD IMPORT FROM THE PACKAGE IS REFUSED RATHER THAN RESOLVED: it makes the
+    call set unknowable from this file, and a static read must not guess at one.
+
+    NOT DETECTED, stated rather than overclaimed. This reads ONE module statically,
+    and these are its limits:
+
+        `getattr(module, "admit")`, `importlib.import_module(...)`,
+          `__import__(...)`, and any name assembled from a string at runtime
+        a name imported from a THIRD module that re-exports an entry point — this
+          walk does not follow imports across files
+        a callable handed in from outside the package and invoked here, including
+          one reached through an attribute chain rooted in a PARAMETER
+        a name reached through a container (`mods = [adm]` then `mods[0].admit(..)`)
+
+    THOSE ARE NOT COVERED BY THIS TEST, and it MUST NOT be described as exhaustive.
+    They are what the Layer 0 rule and review are for.
+    """
+    call_names: set[str] = set()
+    module_roots: set[str] = set()
+    plugin_roots: set[str] = set()
+    findings: list[tuple[int, str]] = []
+
+    # Pass 1 — every import that could bind an entry point, the Evidence package, or
+    # the PARENT `plugins` package, from which Evidence is one hop further away.
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            if node.module == _PLUGINS_ROOT:
+                for alias in node.names:
+                    if alias.name == "*":
+                        findings.append(
+                            (
+                                node.lineno,
+                                f"wildcard import from {_PLUGINS_ROOT}: the call set "
+                                "cannot be resolved statically",
+                            )
+                        )
+                    elif alias.name == "evidence":
+                        module_roots.add(alias.asname or alias.name)
+                continue
+            reaches = node.module == _EVIDENCE_ROOT or node.module.startswith(
+                _EVIDENCE_ROOT + "."
+            )
+            if not reaches:
+                continue
+            for alias in node.names:
+                if alias.name == "*":
+                    findings.append(
+                        (
+                            node.lineno,
+                            f"wildcard import from {_EVIDENCE_ROOT}: the call set "
+                            "cannot be resolved statically",
+                        )
+                    )
+                elif alias.name in _ADMISSION_ENTRY_POINTS:
+                    call_names.add(alias.asname or alias.name)
+                elif alias.name == "admission":
+                    module_roots.add(alias.asname or alias.name)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == _PLUGINS_ROOT:
+                    plugin_roots.add(alias.asname or _PLUGINS_ROOT)
+                elif alias.name.startswith(_PLUGINS_ROOT + "."):
+                    if alias.asname:
+                        module_roots.add(alias.asname)
+                    else:
+                        # `import plugins.evidence.admission` binds the TOP-LEVEL
+                        # name `plugins`, so Evidence is reached THROUGH it rather
+                        # than bound directly.
+                        plugin_roots.add(_PLUGINS_ROOT)
+
+    # Pass 2 — names rebound from an already-resolved name OR ATTRIBUTE, and module
+    # aliases rebound from a module alias, followed to a fixed point. The
+    # attribute case is why this is not a single `ast.Name` comparison:
+    # `persist = adm.admit_to_store` binds an entry point to a new local name, and a
+    # call through `persist` is the same call.
+    #
+    # `ast.AnnAssign` IS HANDLED TOO, because an ANNOTATION DOES NOT CHANGE WHAT A
+    # NAME IS: `writer: object = admit` binds exactly what `writer = admit` binds,
+    # and `mod: object = adm` binds exactly what `mod = adm` binds. A bare
+    # annotation with no value (`writer: object`) binds NOTHING at runtime and is
+    # skipped rather than guessed at.
+    rounds = 1 + sum(1 for node in ast.walk(tree) if isinstance(node, ast.Name))
+    for _ in range(rounds):
+        before = (set(call_names), set(module_roots), set(plugin_roots))
         for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                assert not any(
-                    alias.name.startswith("plugins.evidence") for alias in node.names
-                ), path.name
-            elif isinstance(node, ast.ImportFrom):
-                assert not (node.module or "").startswith("plugins.evidence"), path.name
-            elif isinstance(node, ast.Call):
-                called = getattr(node.func, "id", None) or getattr(
-                    node.func, "attr", None
-                )
-                assert called not in {"admit", "admit_to_store"}, path.name
+            if isinstance(node, ast.Assign):
+                value, targets = node.value, node.targets
+            elif isinstance(node, ast.AnnAssign):
+                if node.value is None:
+                    continue
+                value, targets = node.value, [node.target]
+            else:
+                continue
+            if _denotes_entry_point(value, call_names, module_roots, plugin_roots):
+                for target in targets:
+                    if isinstance(target, ast.Name):
+                        call_names.add(target.id)
+                continue
+            if isinstance(value, ast.Name):
+                source = value.id
+            else:
+                source = _dotted(value)
+            if source is None:
+                continue
+            for target in targets:
+                if not isinstance(target, ast.Name):
+                    continue
+                if source == _PLUGINS_ROOT or (
+                    isinstance(value, ast.Name) and source in plugin_roots
+                ):
+                    plugin_roots.add(target.id)
+                elif _reaches_evidence(source, module_roots, plugin_roots):
+                    module_roots.add(target.id)
+        if (call_names, module_roots, plugin_roots) == before:
+            break
+
+    # Pass 3 — the calls themselves.
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if isinstance(func, ast.Name) and func.id in call_names:
+            findings.append((node.lineno, f"calls {func.id}()"))
+        elif isinstance(func, ast.Attribute) and func.attr in _ADMISSION_ENTRY_POINTS:
+            dotted = _dotted(func.value)
+            if dotted is None:
+                continue
+            if _reaches_evidence(dotted, module_roots, plugin_roots):
+                findings.append((node.lineno, f"calls {dotted}.{func.attr}()"))
+
+    return findings
+
+
+def _admission_call_sites(package: pathlib.Path) -> list[str]:
+    """Every call under `package/**/*.py` that can reach an admission entry point.
+
+    RECURSIVE, because a call does not stop being a call when it moves into a
+    subpackage. `composition/` is FLAT TODAY, and a check that walked only
+    `glob("*.py")` would have stopped covering the package the first time anyone
+    added a subdirectory to it — silently, and while still reporting success.
+
+    PATHS ARE REPORTED RELATIVE TO `package/`, so a finding still says WHICH module
+    it is in (`root.py` at the top level, `nested/thing.py` below it) rather than
+    collapsing every hit to a bare filename a reader cannot locate.
+
+    `__pycache__` IS SKIPPED: it holds compiled copies of files this walk already
+    reads, and a `.pyc` is not source.
+    """
+    findings: list[str] = []
+    for path in sorted(package.rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        findings.extend(
+            f"{path.relative_to(package).as_posix()}:{line} {what}"
+            for line, what in _admission_calls_in_tree(tree)
+        )
+    return findings
+
+
+def test_the_composition_reaches_no_evidence_writer() -> None:
+    """B5 stays BLOCKED: no module here CALLS admission, and that is the boundary.
+
+    THE IMPORT IS NO LONGER THE BOUNDARY. AI-14 Amendment 2 (§22.1 B5, STEP 1)
+    AUTHORIZED the composition -> Evidence edge, so `plugins.evidence` is a layer
+    this package may import and this test no longer refuses it. AN AUTHORIZED IMPORT
+    IS PERMISSION TO WRITE A CALL, NOT A CALL.
+
+    WHAT IS STILL CHECKED IS THE CALL — the current-state fact §5.1 and Appendix A
+    depend on: no module in this package calls `admit` or `admit_to_store`, which is
+    what keeps the edge IMPLEMENTED BUT NOT CONNECTED. If a call appears here, the
+    edge is being connected, and §22.1 requires that change to carry the
+    classification update in the SAME merged change rather than after it.
+
+    Checked by CALL rather than by the word: the docstrings explain the rule, and a
+    word scan would flag the explanation as the violation — the same distinction
+    `layer0_policy` makes when it reads identifiers rather than text.
+    """
+    package = pathlib.Path(__file__).resolve().parents[2] / "composition"
+    assert _admission_call_sites(package) == []
+
+
+def test_the_absence_check_allows_an_authorized_import_with_no_call(
+    tmp_path: pathlib.Path,
+) -> None:
+    """The import is PERMITTED; only the call is refused. A control, not a violation.
+
+    Without this, a check that fired on the import as well would still pass the
+    absence test above while contradicting AI-14 STEP 1.
+    """
+    package = tmp_path / "composition"
+    package.mkdir()
+    (package / "zz_imported.py").write_text(
+        "from plugins import evidence as ev\n"
+        "from plugins import evidence\n"
+        "import plugins as p\n"
+        "from plugins.evidence import ExecutionPayload, ToolCall\n"
+        "from plugins.evidence.admission import admit_to_store as persist\n"
+        "\n"
+        "writer: object = persist\n"
+        "mod: object = ev.admission\n"
+        "declared_only: object\n"
+        "\n"
+        "__all__ = [\n"
+        "    'ExecutionPayload', 'ToolCall', 'persist',\n"
+        "    'ev', 'evidence', 'p', 'writer', 'mod', 'declared_only',\n"
+        "]\n",
+        encoding="utf-8",
+    )
+    assert _admission_call_sites(package) == []
+
+
+@pytest.mark.parametrize(
+    "planted",
+    [
+        pytest.param(
+            "from plugins.evidence.admission import admit_to_store as persist\n"
+            "\n"
+            "\n"
+            "def submit(record, store):\n"
+            "    return persist(record, store=store)\n",
+            id="renamed-import-of-an-entry-point",
+        ),
+        pytest.param(
+            "from plugins.evidence import admit as submit_record\n"
+            "\n"
+            "\n"
+            "def submit(record):\n"
+            "    return submit_record(record)\n",
+            id="renamed-package-level-import",
+        ),
+        pytest.param(
+            "import plugins.evidence.admission as adm\n"
+            "\n"
+            "\n"
+            "def submit(record):\n"
+            "    return adm.admit(record)\n",
+            id="module-alias-attribute-call",
+        ),
+        pytest.param(
+            "import plugins.evidence.admission\n"
+            "\n"
+            "\n"
+            "def submit(record):\n"
+            "    return plugins.evidence.admission.admit(record)\n",
+            id="fully-qualified-call",
+        ),
+        pytest.param(
+            "from plugins.evidence import admit\n"
+            "\n"
+            "submit = admit\n"
+            "\n"
+            "\n"
+            "def go(record):\n"
+            "    return submit(record)\n",
+            id="entry-point-rebound-to-another-name",
+        ),
+        pytest.param(
+            "import plugins.evidence.admission as adm\n"
+            "\n"
+            "persist = adm.admit_to_store\n"
+            "\n"
+            "\n"
+            "def submit(record, store):\n"
+            "    return persist(record, store=store)\n",
+            id="entry-point-rebound-through-an-attribute",
+        ),
+        pytest.param(
+            "import plugins.evidence.admission as adm\n"
+            "\n"
+            "m = adm\n"
+            "\n"
+            "\n"
+            "def submit(record):\n"
+            "    return m.admit(record)\n",
+            id="module-alias-rebound-to-another-name",
+        ),
+        pytest.param(
+            "from plugins import evidence as ev\n"
+            "\n"
+            "\n"
+            "def submit(record, store, producer_proof):\n"
+            "    return ev.admission.admit_to_store(\n"
+            "        record, store=store, producer_proof=producer_proof\n"
+            "    )\n",
+            id="parent-package-import-of-evidence-aliased",
+        ),
+        pytest.param(
+            "import plugins as p\n"
+            "\n"
+            "\n"
+            "def submit(record, store, producer_proof):\n"
+            "    return p.evidence.admission.admit_to_store(\n"
+            "        record, store=store, producer_proof=producer_proof\n"
+            "    )\n",
+            id="parent-package-module-aliased",
+        ),
+        pytest.param(
+            "from plugins import evidence\n"
+            "\n"
+            "\n"
+            "def submit(record):\n"
+            "    return evidence.admission.admit(record)\n",
+            id="parent-package-import-of-evidence-unaliased",
+        ),
+        pytest.param(
+            "import plugins as p\n"
+            "\n"
+            "e = p.evidence\n"
+            "\n"
+            "\n"
+            "def submit(record):\n"
+            "    return e.admission.admit(record)\n",
+            id="parent-package-evidence-rebound-to-another-name",
+        ),
+        pytest.param(
+            "from plugins.evidence import admit\n"
+            "\n"
+            "writer: object = admit\n"
+            "\n"
+            "\n"
+            "def submit(record):\n"
+            "    return writer(record)\n",
+            id="annotated-entry-point-alias",
+        ),
+        pytest.param(
+            "import plugins.evidence.admission as adm\n"
+            "\n"
+            "mod: object = adm\n"
+            "\n"
+            "\n"
+            "def submit(record):\n"
+            "    return mod.admit(record)\n",
+            id="annotated-evidence-module-alias",
+        ),
+    ],
+)
+def test_the_absence_check_catches_an_aliased_admission_call(
+    planted: str, tmp_path: pathlib.Path
+) -> None:
+    """THE CONTROL THAT MAKES THE ABSENCE TEST MEAN SOMETHING.
+
+    Each case below is the SAME call the absence test refuses, written so that a
+    name-only match would miss it. If any of them stopped being reported, the
+    absence test above would still pass — and would have stopped meaning anything.
+    """
+    package = tmp_path / "composition"
+    package.mkdir()
+    (package / "zz_planted.py").write_text(planted, encoding="utf-8")
+    findings = _admission_call_sites(package)
+    assert findings, f"an admission call was planted and NOT detected:\n{planted}"
+
+
+@pytest.mark.parametrize(
+    "planted",
+    [
+        pytest.param(
+            "from plugins.evidence import admit\n"
+            "\n"
+            "\n"
+            "def submit(record):\n"
+            "    return admit(record)\n",
+            id="direct-call-in-a-subpackage",
+        ),
+        pytest.param(
+            "import plugins as p\n"
+            "\n"
+            "\n"
+            "def submit(record, store, producer_proof):\n"
+            "    return p.evidence.admission.admit_to_store(\n"
+            "        record, store=store, producer_proof=producer_proof\n"
+            "    )\n",
+            id="parent-package-call-in-a-nested-subpackage",
+        ),
+    ],
+)
+def test_the_absence_check_walks_subpackages(
+    planted: str, tmp_path: pathlib.Path
+) -> None:
+    """A CALL DOES NOT STOP BEING A CALL WHEN IT MOVES INTO A SUBDIRECTORY.
+
+    `composition/` IS FLAT TODAY, which is exactly why this matters: a check that
+    walked only the top level would keep reporting success after the package grew a
+    subdirectory, and would have stopped covering the package without saying so.
+
+    The finding must ALSO name the subdirectory. A hit reported as a bare filename
+    that exists in two places is a hit a reader cannot locate.
+    """
+    package = tmp_path / "composition"
+    nested = package / "nested" / "deeper"
+    nested.mkdir(parents=True)
+    (nested / "zz_planted.py").write_text(planted, encoding="utf-8")
+    findings = _admission_call_sites(package)
+    assert findings, f"a nested admission call was planted and NOT detected:\n{planted}"
+    assert findings[0].startswith("nested/deeper/zz_planted.py:"), findings
+
+
+def test_the_absence_check_ignores_compiled_copies(tmp_path: pathlib.Path) -> None:
+    """`__pycache__` holds compiled copies of files the walk already reads.
+
+    A `.py` planted there is not source and must NOT produce a finding — otherwise
+    the check could be tripped by a build artefact, and a real finding could be
+    buried in noise.
+    """
+    package = tmp_path / "composition"
+    cached = package / "__pycache__"
+    cached.mkdir(parents=True)
+    (cached / "zz_stale.py").write_text(
+        "from plugins.evidence import admit\n"
+        "\n"
+        "\n"
+        "def submit(record):\n"
+        "    return admit(record)\n",
+        encoding="utf-8",
+    )
+    assert _admission_call_sites(package) == []
 
 
 def test_the_composition_adds_no_authority_vocabulary() -> None:
