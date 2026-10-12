@@ -1586,16 +1586,26 @@ B3  Workflow StepExecutor -> execution     DONE      composition/executor.py
                                                      declare routing input is OPEN and
                                                      this phase invents none
 B4  controlled verification caller         DONE      composition/verification.py
-B5  composition -> Evidence                BLOCKED   NOT STARTED. AI-14 STEP 1 is
-                                                     MADE (Amendment 2): the import is
-                                                     AUTHORIZED and layer 0 no longer
-                                                     refuses it. STILL BLOCKED BY: no
-                                                     call site; row 1′ (the §6.5 row and
-                                                     the own-contract clause for each
-                                                     phase whose facts would be
-                                                     admitted); and the unresolved
-                                                     joint-delivery mechanism. NO
-                                                     PRODUCER TOKEN WAS ADDED and none
+B5  composition -> Evidence                BLOCKED   NOT STARTED. AI-14 STEP 1 is NOT
+                                                     FULLY DISCHARGED. Its
+                                                     AUTHORIZATION CHANGE is proposed
+                                                     in Amendment 2 — an OPEN pull
+                                                     request, IN FORCE ON ITS MERGE and
+                                                     not before — which authorizes the
+                                                     import and stops layer 0 refusing
+                                                     it. ONE ENUMERATED CLAUSE REMAINS
+                                                     OPEN for the AI-15 owner: the
+                                                     `§13 producer_token identifier
+                                                     refusal` it names is not a rule
+                                                     this contract contains. STILL
+                                                     BLOCKED BY: no call site; row 1′
+                                                     (the §6.5 row and the own-contract
+                                                     clause for each phase whose facts
+                                                     would be admitted); and the
+                                                     unresolved joint-delivery
+                                                     mechanism. STEP 2 AND STEP 3 HAVE
+                                                     NOT BEGUN. NO PRODUCER TOKEN WAS
+                                                     ADDED and none
                                                      exists for AI-08/AI-10/AI-11/AI-13
 B6  end-to-end composition + boundaries    DONE      composition/root.py, and
                                                      tests/composition/test_boundaries.py
@@ -1778,8 +1788,11 @@ AND IT DOES NOT CLOSE THE B3 OPEN ITEM
 ```text
 AMENDMENT 2 — 2026-10-11 — B5 IS AUTHORIZED. THE CLASSIFICATION DOES NOT MOVE.
 
-IN FORCE on the merge of the change that carries it. The merge IS the approval, and
-the text below is the final text.
+NOT YET IN FORCE ON `main`. This amendment is PROPOSED in an OPEN pull request, and
+becomes IN FORCE on THAT PULL REQUEST'S MERGE and not before. The merge IS the
+approval, and the text below is the final text. UNTIL THEN `main` still refuses the
+`plugins.evidence` import from `composition/`, and every status line about this
+amendment MUST say so.
 
 AUTHORIZATION ONLY. This amendment changes the RULES that stood in front of the
 composition -> Evidence edge. It connects nothing, classifies nothing and writes no

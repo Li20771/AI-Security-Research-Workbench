@@ -166,6 +166,20 @@ def _dotted(node: ast.expr) -> str | None:
     return ".".join(reversed(parts))
 
 
+def _denotes_entry_point(
+    node: ast.expr, call_names: set[str], module_roots: set[str]
+) -> bool:
+    """Whether `node` names an admission entry point, directly or through a module."""
+    if isinstance(node, ast.Name):
+        return node.id in call_names
+    if isinstance(node, ast.Attribute) and node.attr in _ADMISSION_ENTRY_POINTS:
+        dotted = _dotted(node.value)
+        if dotted is None:
+            return False
+        return dotted.split(".")[0] in module_roots or dotted.startswith(_EVIDENCE_ROOT)
+    return False
+
+
 def _admission_calls_in_tree(tree: ast.Module) -> list[tuple[int, str]]:
     """`(lineno, what)` for every call in ONE parsed module that can reach admission.
 
@@ -178,8 +192,13 @@ def _admission_calls_in_tree(tree: ast.Module) -> list[tuple[int, str]]:
         import plugins.evidence.admission as adm            ->  adm.admit(record)
         plugins.evidence.admission.admit(record)            (fully qualified)
 
-    plus a name REBOUND from any of those (`f = admit` then `f(record)`), followed to
-    a fixed point.
+    plus a name REBOUND from any of those, in either direction:
+
+        submit = admit                 then  submit(record)          (from a NAME)
+        persist = adm.admit_to_store   then  persist(record, ...)    (from an ATTRIBUTE)
+        m = adm                        then  m.admit(record)         (a module, renamed)
+
+    followed to a fixed point, so a chain of renamings resolves however long it is.
 
     A WILDCARD IMPORT FROM THE PACKAGE IS REFUSED RATHER THAN RESOLVED: it makes the
     call set unknowable from this file, and a static read must not guess at one.
@@ -191,7 +210,9 @@ def _admission_calls_in_tree(tree: ast.Module) -> list[tuple[int, str]]:
           `__import__(...)`, and any name assembled from a string at runtime
         a name imported from a THIRD module that re-exports an entry point — this
           walk does not follow imports across files
-        a callable handed in from outside the package and invoked here
+        a callable handed in from outside the package and invoked here, including
+          one reached through an attribute chain rooted in a PARAMETER
+        a name reached through a container (`mods = [adm]` then `mods[0].admit(..)`)
 
     THOSE ARE NOT COVERED BY THIS TEST, and it MUST NOT be described as exhaustive.
     They are what the Layer 0 rule and review are for.
@@ -228,16 +249,26 @@ def _admission_calls_in_tree(tree: ast.Module) -> list[tuple[int, str]]:
                 ):
                     module_roots.add(alias.asname or alias.name.split(".")[0])
 
-    # Pass 2 — names rebound from an already-resolved alias, to a fixed point.
-    for _ in range(len(call_names) + 1):
-        before = set(call_names)
+    # Pass 2 — names rebound from an already-resolved name OR ATTRIBUTE, and module
+    # aliases rebound from a module alias, followed to a fixed point. The
+    # attribute case is why this is not a single `ast.Name` comparison:
+    # `persist = adm.admit_to_store` binds an entry point to a new local name, and a
+    # call through `persist` is the same call.
+    rounds = 1 + sum(1 for node in ast.walk(tree) if isinstance(node, ast.Name))
+    for _ in range(rounds):
+        before = (set(call_names), set(module_roots))
         for node in ast.walk(tree):
-            if isinstance(node, ast.Assign) and isinstance(node.value, ast.Name):
-                if node.value.id in call_names:
-                    for target in node.targets:
-                        if isinstance(target, ast.Name):
-                            call_names.add(target.id)
-        if call_names == before:
+            if not isinstance(node, ast.Assign):
+                continue
+            if _denotes_entry_point(node.value, call_names, module_roots):
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        call_names.add(target.id)
+            elif isinstance(node.value, ast.Name) and node.value.id in module_roots:
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        module_roots.add(target.id)
+        if (call_names, module_roots) == before:
             break
 
     # Pass 3 — the calls themselves.
@@ -355,6 +386,26 @@ def test_the_absence_check_allows_an_authorized_import_with_no_call(
             "def go(record):\n"
             "    return submit(record)\n",
             id="entry-point-rebound-to-another-name",
+        ),
+        pytest.param(
+            "import plugins.evidence.admission as adm\n"
+            "\n"
+            "persist = adm.admit_to_store\n"
+            "\n"
+            "\n"
+            "def submit(record, store):\n"
+            "    return persist(record, store=store)\n",
+            id="entry-point-rebound-through-an-attribute",
+        ),
+        pytest.param(
+            "import plugins.evidence.admission as adm\n"
+            "\n"
+            "m = adm\n"
+            "\n"
+            "\n"
+            "def submit(record):\n"
+            "    return m.admit(record)\n",
+            id="module-alias-rebound-to-another-name",
         ),
     ],
 )

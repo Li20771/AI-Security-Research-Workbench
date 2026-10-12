@@ -930,22 +930,30 @@ AI-11 §21.1 OPEN-1（需 AI-05 的 producer-token amendment）；DEFERRED：§3
 
 ```text
 contract = docs/AI-14_LONG_TERM_AI_WORKBENCH_EXECUTION_PLAN.md
-                           FROZEN @ PR #72; AMENDED TWICE (§25)
+                           FROZEN @ PR #72; AMENDED ONCE ON `main`
                              Amendment 1 (2026-10-04, PR #73) — the four seams
                                AI-14-B connected are recorded CONNECTED
-                             Amendment 2 (2026-10-11) — B5 IS AUTHORIZED (AI-15
-                               §15.2 STEP 1). IN FORCE on merge. THE IMPORT IS
-                               PERMITTED and Layer 0 no longer refuses it; THE
-                               CLASSIFICATION DOES NOT MOVE — the row stays
-                               IMPLEMENTED BUT NOT CONNECTED, no production call
-                               site exists, and B5 stays BLOCKED
+                             Amendment 2 (2026-10-11) — **PROPOSED IN PR #90, WHICH
+                               IS OPEN: NOT YET IN FORCE on `main`; in force on
+                               ITS OWN merge**. It implements STEP 1's
+                               AUTHORIZATION CHANGE ONLY: the composition ->
+                               Evidence IMPORT is permitted and Layer 0 no longer
+                               refuses it. THE CLASSIFICATION DOES NOT MOVE — the
+                               row stays IMPLEMENTED BUT NOT CONNECTED, no
+                               production call site exists, B5 stays BLOCKED.
+                               FULL STEP 1 IS NOT DISCHARGED: one clause AI-15
+                               §15.2 enumerates names a rule AI-14 does not
+                               contain, and its disposition is the AI-15 owner's
 AI-14-A  = COMPLETE / MERGED   final architecture freeze — DOCS ONLY
                                (PR #72 @ 4b1058a4c764a613127800426fdd95e34d164bf3)
 AI-14-B  = COMPLETE / MERGED   composition implementation
                                (PR #73 @ adf6db2476b7e3de33a585954610e9ab568b498c)
 AI-14    = COMPLETE             B5 (composition -> Evidence) remains BLOCKED / NOT
-                               STARTED. AI-14 STEP 1 is MADE (Amendment 2): the
-                               import is authorized; what is absent is a CALL SITE
+                               STARTED. AI-14 STEP 1 is NOT FULLY DISCHARGED: its
+                               authorization change is proposed in PR #90 and the
+                               import is authorized once that merges; what is
+                               absent is a CALL SITE, and one enumerated STEP 1
+                               clause is an open AI-15-owner discrepancy
 base     = main @ 4b1058a4c764a613127800426fdd95e34d164bf3
 ```
 
@@ -967,10 +975,14 @@ AI-14-B 之后（当前状态，见契约 §5.1 / Appendix A / §22.1）：
     B3 Workflow StepExecutor -> execution         CONNECTED
     B4 controlled verification caller             CONNECTED
     B5 composition -> Evidence                    BLOCKED / NOT STARTED — AI-14
-                                                  STEP 1（Amendment 2）已**授权**该
-                                                  import，但**没有连接它**：无 call
-                                                  site、row 1' 未满足、联合交付机制
-                                                  未定
+                                                  STEP 1 的**授权变更**已在 PR #90
+                                                  提出（**该 PR 仍 OPEN，合入后生效，
+                                                  当前 main 上尚未生效**）：import 一
+                                                  旦合入即被授权，但**没有连接它**：
+                                                  无 call site、row 1' 未满足、联合交付
+                                                  机制未定。**STEP 1 整体未完成** ——
+                                                  其枚举的一条子句在 AI-14 中并不存在，
+                                                  处置权属 AI-15 owner，尚未决定
     B6 composition root + boundary verification   DONE
     OPEN：workflow 驱动的 step 目前没有 routing 输入（WorkflowDefinition / RunRecord
     没有 task_class / candidates / actor），本阶段不发明
@@ -1057,9 +1069,12 @@ AI-15-A 记录的核心事实（全部可按 file:line 复核）
                             没有按 file:line 具名的调用点、没有已存储记录
                             （§8.3 条件 1、2、3、9）。**^ 本条在 AI-15-A 冻结时写作
                             「在 AI15-OPEN-1 未关闭时不满足；且 §15.2 STEP 0b gate
-                            的是写入本身」；STEP 0b 现已 SATISFIED，AI-14 的 STEP 1
-                            也已作出（AI-14 §25 Amendment 2）。现在拒绝写入的是
-                            row 1'、STEP 2 的前置条件，以及尚未确定的联合交付机制。**
+                            的是写入本身」；STEP 0b 现已 SATISFIED，import 规则亦不再
+                            拒绝（**AI-14 §25 Amendment 2 的授权变更，PR #90 仍 OPEN，
+                            合入后生效，当前 main 上尚未生效**）。**AI-14 STEP 1 整体
+                            未完成**：其一条枚举子句在 AI-14 中不存在，属未决分歧，
+                            处置权归 AI-15 owner。现在拒绝写入的是 row 1'、STEP 2 的
+                            前置条件，以及尚未确定的联合交付机制。**
     B5 依赖顺序          STEP 0a（AI-05 回答 AI15-OPEN-2）→ STEP 1（AI-14
                             授权，仅改规则，绝不标 CONNECTED）→ STEP 0b
                             （AI-05 回答、实现并测试 AI15-OPEN-1）→ STEP 2
@@ -1085,7 +1100,9 @@ AI-15 的 Amendment 1（§19）2026-10-09：记录 AI-05 Amendment 4 对 AI15-OP
     AI15-OPEN-2 = CLOSED / ANSWERED BY AI-05 AMENDMENT 4 — READING A
                    由 AI-05 在其自己的契约中作出（PR #80，03d42681）；AI-15 只记录。
     STEP 0a     = 已回答，因此 AI-14 的 STEP 1 已解除该前置条件（当时尚未动手；
-                  该步已于 2026-10-11 由 AI-14 §25 Amendment 2 作出）
+                  2026-10-11 其**授权变更**由 AI-14 §25 Amendment 2 提出，
+                  **PR #90 仍 OPEN，合入后生效**；**STEP 1 整体仍未完成** ——
+                  一条枚举子句在 AI-14 中不存在，处置权归 AI-15 owner）
 
 AI-15 的 Amendment 2（§19）2026-10-11：记录 AI-05 Amendment 5 与 6，并更正 AI15-OPEN-1
     仍为 OPEN 的**理由**
@@ -1120,8 +1137,12 @@ AI-15 的 Amendment 3（§19）2026-10-11：记录 AI-05 Amendment 7 —— 标�
               ACCEPTANCE TESTS 已 RUN（run #301）。§15.2 STEP 0b 不再 gate 写入。
     **STEP 0b 满足不等于 B5 完成**：B5 仍 BLOCKED、未 CONNECTED，AI-15-B 仍
     NOT STARTED / BLOCKED。现在拒绝写入的是 row 1'、STEP 2 自身的前置条件，以及
-    尚未确定的联合交付机制 —— 既不是 STEP 0b，也不是 AI-14 的 STEP 1，后者已于
-    2026-10-11 由 AI-14 §25 Amendment 2 作出。
+    尚未确定的联合交付机制 —— 既不是 STEP 0b，也不是 import 规则（AI-14 §25
+    Amendment 2 的**授权变更**已在 PR #90 提出；**该 PR 仍 OPEN，合入后生效，
+    当前 main 上尚未生效**）。
+    **AI-14 STEP 1 整体未完成**：其枚举的一条子句（§13 的 producer_token
+    identifier refusal）在 AI-14 源码中并不存在，处置权属 **AI-15 owner**，尚未决定，
+    本仓库不代为决定。**STEP 2 与 STEP 3 尚未开始。**
 
 AI-15 不解除它不拥有的任何其他 BLOCKER：
     AI-11 §21.1 OPEN-1 = OPEN（producer-token amendment）— 问的是 WHICH PRODUCERS
@@ -1129,9 +1150,12 @@ AI-15 不解除它不拥有的任何其他 BLOCKER：
                          注册表仍是六行四个 token。关闭 AI15-OPEN-1 **不移动它**。
     AI15-OPEN-3 = OPEN（AI-04）· AI15-OPEN-4 = OPEN（AI-13 / AI-14）
     STEP 0b = SATISFIED（三项齐备；见上）
-    STEP 1 = MADE（AI-14 §25 Amendment 2，2026-10-11）：只改授权规则，未标 CONNECTED，
-              未创建 call site
-              · STEP 1' / 2 / 3 = 未完成
+    STEP 1 = **未完成**。其**授权变更**已在 AI-14 §25 Amendment 2 提出（PR #90，
+              **OPEN；合入后生效，当前 main 上尚未生效**）：只改授权规则，未标
+              CONNECTED，未创建 call site。**但一条枚举子句未履行** —— AI-15 §15.2
+              所列「§13 的 producer_token identifier refusal」在 AI-14 中不存在，
+              属**未决契约分歧**，处置权归 AI-15 owner。
+              · STEP 2 / 3 = 未开始
     row 1' = 未满足，且与 STEP 0b、STEP 1 相互独立
     B5 = BLOCKED / NOT STARTED（无 seam CONNECTED，无生产 Evidence writer）
     AI-05 = INCOMPLETE（§35.1 DEFERRED）
@@ -1261,7 +1285,7 @@ SecurityLab
 | AI-11 | **COMPLETE / CLOSED** — contract `6f7548a1` (PR #62 + Amendment 1), benchmark core `ce880282` (PR #63), measured campaign `6bbe526b5bedeb29fb138f8979f0a4cb6df1b3ce` (PR #65); five tasks PASS, A.6 BLOCKED by `PRECONDITION_UNMET:environment:vcan0-exclusive`; see [AI-11_EVIDENCE_2026-10-03.md](AI-11_EVIDENCE_2026-10-03.md) |
 | AI-12 | **AI-12-A COMPLETE / MERGED** (`60c630d8`), **AI-12-B COMPLETE / MERGED** (`fa892eb1`, PR #67) — the policy core; **AI-12-C BLOCKED / NOT STARTED**, **AI-12 NOT CLOSED**, model-comparative prerequisite BLOCKED; see [AI-12-B_EVIDENCE_2026-10-03.md](AI-12-B_EVIDENCE_2026-10-03.md) |
 | AI-13 | **COMPLETE / MERGED / CLOSED** — contract `1e0a7fdf4dd96230a6177d3ca21bda03ec9c19ba` (PR #69), workflow core `95f0d08c47c8137813013ad7fe318e8fd0ebf12a` (PR #70), human approval point `98d4f57ad0bd78a54b9eb2ea44f30d2db394ee97` (PR #71), Amendments 1–4 applied; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
-| AI-14 | **COMPLETE** — AI-14-A (freeze) `4b1058a4c764a613127800426fdd95e34d164bf3` (PR #72) and AI-14-B (composition) `adf6db2476b7e3de33a585954610e9ab568b498c` (PR #73) both merged; contract **FROZEN + AMENDED TWICE** (§25) — **Amendment 2 (2026-10-11) makes AI-14 STEP 1: B5 IS AUTHORIZED**, the composition → Evidence **import is permitted** and Layer 0 no longer refuses it, **without moving the classification**; **B5 (composition → Evidence) remains BLOCKED / NOT STARTED AND NOT CONNECTED** — no production call site, **row 1′** unsatisfied, **joint-delivery mechanism** unresolved, **no producer token or §6.5 row added**; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
+| AI-14 | **COMPLETE** — AI-14-A (freeze) `4b1058a4c764a613127800426fdd95e34d164bf3` (PR #72) and AI-14-B (composition) `adf6db2476b7e3de33a585954610e9ab568b498c` (PR #73) both merged; contract **FROZEN + AMENDED ONCE ON `main`** (§25) — **Amendment 2 (2026-10-11) is PROPOSED IN PR #90 (OPEN): NOT YET IN FORCE on `main`, in force on its own merge**. It implements **STEP 1's AUTHORIZATION CHANGE ONLY**: the composition → Evidence **import becomes permitted** and Layer 0 stops refusing it, **without moving the classification**. **AI-14 STEP 1 IS NOT FULLY DISCHARGED** — one clause AI-15 §15.2 enumerates names a rule AI-14 does not contain, and its **disposition is the AI-15 owner's and is undecided**. **B5 (composition → Evidence) remains BLOCKED / NOT STARTED AND NOT CONNECTED** — no production call site, **row 1′** unsatisfied, **joint-delivery mechanism** unresolved, **STEP 2 and STEP 3 not begun**, **no producer token or §6.5 row added**; see [PROJECT_STATUS.md](PROJECT_STATUS.md) |
 | AI-15 | **AI-15-A COMPLETE / MERGED** — architecture / contract freeze, **DOCS ONLY** `6e814a8b6d214a0203deb73b1abbf21ae50b68cc` (PR #78), a true two-parent merge of `37f354c`; contract **FROZEN + AMENDED THREE TIMES** — §19 Amendment 1 (2026-10-09) closed **AI15-OPEN-2** (*AI-05 Amendment 4, READING A*), so **STEP 0a is satisfied** and AI-14's STEP 1 was unblocked — **it is now MADE (AI-14 §25 Amendment 2, 2026-10-11)**, authorizing the composition → Evidence import without moving the classification; §19 Amendment 2 (2026-10-11) recorded **AI-05 Amendments 5 and 6** — the producer-authentication **standard DEFINED, trust configuration FROZEN, both DOCS ONLY**; §19 Amendment 3 (2026-10-11) records **AI-05 Amendment 7** — **AI-05 IMPLEMENTED and TESTED the mechanism** (PR #87 `d09ce69e…`; CI run #301: **46 cases RAN, 0 skipped**, `Layer 0 = PASS (24 checks)`) and **CLOSED AI15-OPEN-1 by its OWNER, in AI-05's contract** (`9e1b4c45…`) — so **AI15-OPEN-1 is CLOSED** and **STEP 0b is SATISFIED**; AI-15 only RECORDED it. **AI-15-B NOT STARTED / BLOCKED**, **B5 still BLOCKED / NOT STARTED**, no seam CONNECTED, no production Evidence writer; **AI-11 §21.1 OPEN-1 remains OPEN**, and **row 1′** — which asks a different question — remains **UNSATISFIED / UNRESOLVED**; **the two are INDEPENDENT of each other and of the closure**, and neither is moved by it; see [PROJECT_STATUS.md](PROJECT_STATUS.md) and [AI-15_EVIDENCE_PRODUCTION_EXECUTION_PLAN.md](AI-15_EVIDENCE_PRODUCTION_EXECUTION_PLAN.md) |
 
 ---
