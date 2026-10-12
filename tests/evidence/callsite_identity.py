@@ -61,9 +61,10 @@ _EVIDENCE_PACKAGE = "plugins.evidence"
 #: THE TRIPLE CANNOT NAME A CALL SITE ON ITS OWN, AND THE EXCEPTION DOES NOT
 #: PRETEND IT CAN. A second `admit(...)` in the same scope shares all three
 #: fields, so an exclusion over the triple alone would swallow that second call —
-#: which is exactly what §7.3.13's exact-call-site standard forbids. The exception
-#: is therefore bounded by UNIQUENESS in `findings()`: it excuses AT MOST ONE
-#: matching entry per side, and more than one match means NOTHING is excused.
+#: which is exactly what §7.3.13's exact-call-site standard forbids.
+#:
+#: THIS CONSTANT ONLY SELECTS CANDIDATES. Whether a candidate is excused is
+#: `findings()`'s decision, and the rules there are the whole of the exception.
 INTRA_PACKAGE_EDGE = ("plugins/evidence/admission.py", "admit_to_store", "admit")
 
 #: THE FULL IDENTITY OF THAT ONE CALL SITE — the six fields of §7.3.13's key, and
@@ -983,13 +984,26 @@ def findings(
 
     observed_map = group_by_key(observed)
 
-    # THE INTRA-PACKAGE EXCEPTION IS BOUNDED BY UNIQUENESS, NOT BY SCOPE.
-    # The triple (path, scope, entrypoint) CANNOT name a call site — a second
-    # `admit(...)` in the same scope shares it — so excluding everything that
-    # matches it would swallow that second call silently. The exception therefore
-    # excuses AT MOST ONE matching entry on each side, and when MORE THAN ONE
-    # matches, NOTHING is excused: the ambiguity is reported and every match is
-    # reported with it.
+    # THE INTRA-PACKAGE EXCEPTION, IN FULL. Five rules, and the code below is
+    # their only implementation:
+    #
+    #   1  the observed candidates and the unresolved candidates form ONE POOL.
+    #      There is no per-list decision anywhere: judging the lists separately let
+    #      a single observed entry and a single unresolved entry each satisfy its
+    #      own `== 1` and BOTH be excused — two excused entries from an exception
+    #      that names one call site.
+    #   2  a candidate is excused ONLY when it is the pool's ONLY candidate AND it
+    #      is an OBSERVED identity equal to INTRA_PACKAGE_CALL_SITE in full — all
+    #      six fields of §7.3.13's key, not the triple.
+    #   3  a LONE UNRESOLVED candidate is NOT excused. An identity that cannot be
+    #      confirmed is not an identity that has been approved.
+    #   4  TWO OR MORE candidates in the pool excuse NOTHING, whatever mix of
+    #      observed and unresolved they are, and however they are formed.
+    #   5  a LONE OBSERVED candidate whose full identity does not match is NOT
+    #      excused: a differing callee, AST path or fingerprint is a DIFFERENT
+    #      call site, and the triple matching does not make it the approved one.
+    #
+    # An empty pool creates no exception and skips no check.
     excused_observed: set = set()
     excused_unresolved: set = set()
     if exclude_intra_package_edge:
