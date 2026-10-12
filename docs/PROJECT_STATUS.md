@@ -12,7 +12,7 @@ other phase's contract touched. It **froze a contract**; it connected no seam.
 **AI-15-B is NOT STARTED and BLOCKED**, and **B5 (composition → Evidence) remains
 BLOCKED / NOT STARTED**.
 
-**AI-15's contract has since been AMENDED THREE TIMES.**
+**AI-15's contract has since been AMENDED FOUR TIMES.**
 
 **§19 Amendment 1** (2026-10-09) records AI-05 Amendment 4's answer to **AI15-OPEN-2** —
 **READING A**, merged as PR #80 (`03d42681cb8b2110773654822655117daea44ad5`) — so
@@ -21,10 +21,14 @@ IT DID NOT COMPLETE THE STEP.** It unblocked *beginning* AI-14's STEP 1, and beg
 the step is not discharging it: **AI-14 STEP 1 IS NOT FULLY DISCHARGED.** AI-14 §25
 **Amendment 2**'s authorization change **is MERGED and IN FORCE on `main`** (PR #90,
 merge `a98e389b91ee10858abc67e7c66509cd12fae9dc`), **but it is the AUTHORIZATION CHANGE
-ONLY** — **one clause AI-15 §15.2 enumerates names a rule AI-14 does not contain**, and
-its disposition belongs to the **AI-15 owner** and is **undecided**. **STEP 1 MUST NOT
-BE REPORTED AS COMPLETE** while that discrepancy is open. See the AI-14 status section
-below.
+ONLY**. The one clause AI-15 §15.2 enumerated that **names a rule AI-14 does not
+contain** has been **WITHDRAWN BY AI-15'S OWN OWNER**: **AI-15 §19 Amendment 4
+(2026-10-12) chose Option A, withdrew it from STEP 1's work list as an invalid
+cross-contract reference, and recorded it as a NO-OP.** **AI-14'S OWN CONTRACT HAS NOT
+BEEN UPDATED BY AI-14**, so AI-14's document still carries the older OPEN / UNDECIDED
+record; correcting that is **AI-14's act, under AI-14 §24**. **UNTIL AI-14's OWNER ACTS,
+THE AUTHORITATIVE CONTRACT STATUS REMAINS CONSERVATIVE: AI-14 STEP 1 IS NOT FULLY
+DISCHARGED AND MUST NOT BE REPORTED AS COMPLETE.** See the AI-14 status section below.
 
 **§19 Amendment 2** (2026-10-11) records **AI-05 Amendment 5** and **AI-05 Amendment 6**
 and corrected the reason **AI15-OPEN-1** was *then* still OPEN:
@@ -57,6 +61,12 @@ CI run #301         46 process-isolated cases RAN, 0 skipped;
                     https://github.com/Li20771/AI-Security-Research-Workbench/actions/runs/38146118977
 ```
 
+**§19 Amendment 4** (2026-10-12) is AI-15's **OWN** act: it **WITHDRAWS** the invalid
+`§13 producer_token identifier refusal` clause from §15.2 STEP 1's work list — **AI-14
+§13 contains no such rule** — and records it as a **NO-OP**. **No rule changed, no
+submitter-side refusal rule was added, and nothing was relaxed.** **AI-14's contract is
+NOT touched by it.**
+
 **AI15-OPEN-1 is CLOSED, and §15.2 STEP 0b is SATISFIED — all THREE of its parts.** The
 **MECHANISM is DEFINED** (AI-05 Amendments 5 and 6, counted **ONCE**, because the trust
 configuration Amendment 6 froze is **part of defining the mechanism**, not a second part
@@ -82,13 +92,22 @@ change and nothing more: the **composition → Evidence import is AUTHORIZED** a
 no longer refuses it. **AUTHORIZED IS NOT CONNECTED** — no call site exists, and the
 classification has not moved.
 
-**ONE CLAUSE AI-15 §15.2 ENUMERATES FOR STEP 1 IS UNSATISFIED AND REMAINS AN OPEN
-CONTRACT DISCREPANCY.** That clause — "§13's `producer_token` identifier refusal, where
-it reaches the SUBMITTING caller rather than the composition" — **names a rule that does
-not exist in AI-14**: §13 contains no producer-token rule, and the rules that do mention
-`producer_token` apply to `composition/` only. **The disposition is the AI-15 owner's,
-and it is NOT decided here.** Until it exists, **STEP 1 MUST NOT be reported as
-complete**.
+**THE ONE CLAUSE AI-15 §15.2 ENUMERATED FOR STEP 1 HAS BEEN WITHDRAWN BY AI-15'S OWN
+OWNER.** That clause — "§13's `producer_token` identifier refusal, where it reaches the
+SUBMITTING caller rather than the composition" — **names a rule that does not exist in
+AI-14**: §13 contains no producer-token rule, and the rules that do mention
+`producer_token` apply to `composition/` only. **AI-15 §19 Amendment 4 (2026-10-12)
+chose Option A**, withdrew it from STEP 1's effective work list as an **invalid
+cross-contract reference**, and recorded it as a **NO-OP**. **No rule was changed, no
+submitter-side refusal rule was added, and the composition-only identifier prohibition
+and §22.1 B5's `NEVER` clause both continue to stand.**
+
+**THE AI-15 DECISION IS MADE; AI-14'S CONTRACT HAS NOT BEEN UPDATED BY AI-14.** AI-14's
+document still records this reference as OPEN / UNDECIDED, and correcting that is
+**AI-14's act, under AI-14 §24** — **AI-15 does not speak for AI-14, and this file does
+not declare STEP 1 complete on AI-14's behalf**. **UNTIL AI-14's OWNER ACTS, THE
+AUTHORITATIVE CONTRACT STATUS REMAINS CONSERVATIVE: AI-14 STEP 1 = NOT FULLY
+DISCHARGED, AND MUST NOT BE REPORTED AS COMPLETE.**
 
 What refuses the write is **row 1′**, **STEP 2's own precondition**, and the
 **unresolved joint-delivery mechanism**. **STEP 2 and STEP 3 have not begun.** AI-15
@@ -200,7 +219,7 @@ AI-14    = AI-14-A COMPLETE / MERGED; AI-14-B COMPLETE / MERGED
 AI-14-A  = COMPLETE / MERGED   final architecture freeze   (PR #72 @ 4b1058a4c764a613127800426fdd95e34d164bf3)
 AI-14-B  = COMPLETE / MERGED   composition implementation  (PR #73 @ adf6db2476b7e3de33a585954610e9ab568b498c)
 contract = docs/AI-14_LONG_TERM_AI_WORKBENCH_EXECUTION_PLAN.md
-                           FROZEN @ PR #72; AMENDED TWICE ON `main`
+                           FROZEN @ PR #72; AMENDED THREE TIMES ON `main`
                              Amendment 1 (2026-10-04, PR #73) — the four seams
                                AI-14-B connected are recorded CONNECTED
                              Amendment 2 (2026-10-11) — **MERGED AND IN FORCE on
@@ -211,10 +230,19 @@ contract = docs/AI-14_LONG_TERM_AI_WORKBENCH_EXECUTION_PLAN.md
                                and Layer 0 no longer refuses it. THE
                                CLASSIFICATION DOES NOT MOVE: the row stays
                                IMPLEMENTED BUT NOT CONNECTED, no production call
-                               site exists, and B5 stays BLOCKED. FULL STEP 1 IS
-                               NOT FULLY DISCHARGED — one clause AI-15 §15.2
-                               enumerates names a rule AI-14 does not contain,
-                               and its disposition is the AI-15 owner's
+                               site exists, and B5 stays BLOCKED
+                             Amendment 3 (2026-10-12, PR #92) — **MERGED AND IN
+                               FORCE on `main`** (merge
+                               71c5adeff2452d3d109b0c7f69340d2655b986cb). It
+                               corrects Amendment 2's proposal-time preamble and
+                               the document's amendment count. STATUS RECORDS
+                               ONLY: no classification, no authority and no
+                               requirement moves. FULL STEP 1 IS STILL NOT FULLY
+                               DISCHARGED — the clause AI-15 §15.2 enumerated has
+                               been WITHDRAWN by AI-15's owner as an invalid
+                               reference (AI-15 §19 Amendment 4), and AI-14'S OWN
+                               CONTRACT STILL CARRIES THE OLDER OPEN RECORD AND
+                               HAS NOT BEEN UPDATED BY AI-14
 home     = composition/  — the glue between frozen layers; not a component (§3)
 ```
 
@@ -677,11 +705,15 @@ AI-14   Long-term AI Workbench                COMPLETE  AI-14-A MERGED (PR #72)
   **AI-14 STEP 1 IS NOT FULLY DISCHARGED.** Its **authorization change** is **MERGED
   AND IN FORCE on `main`** (AI-14 §25 Amendment 2 — PR #90, merge
   `a98e389b91ee10858abc67e7c66509cd12fae9dc`): the composition → Evidence **import is
-  AUTHORIZED** and Layer 0 no longer refuses it. **ONE ENUMERATED CLAUSE REMAINS
-  OPEN**: the `§13 producer_token identifier refusal` it names **does not exist in
-  AI-14**, and the disposition is the **AI-15 owner's**, undecided. That change
-  **connects nothing and closes nothing** — there is still **no production call site**,
-  **row 1′** is still unsatisfied, the **joint-delivery mechanism** is still
+  AUTHORIZED** and Layer 0 no longer refuses it. **THE ONE ENUMERATED CLAUSE HAS BEEN
+  WITHDRAWN BY AI-15'S OWN OWNER**: the `§13 producer_token identifier refusal` it named
+  **does not exist in AI-14**, and **AI-15 §19 Amendment 4 (2026-10-12) chose Option A**,
+  withdrew it from STEP 1's work list and recorded it as a **NO-OP**. **AI-14'S OWN
+  CONTRACT HAS NOT BEEN UPDATED BY AI-14**, so it still carries the older OPEN record;
+  correcting that is AI-14's act under AI-14 §24, and **until it happens the
+  authoritative status remains conservative: AI-14 STEP 1 = NOT FULLY DISCHARGED.** That
+  change **connects nothing and closes nothing** — there is still **no production call
+  site**, **row 1′** is still unsatisfied, the **joint-delivery mechanism** is still
   unresolved, **STEP 2 and STEP 3 have not begun**, and **B5 remains BLOCKED / NOT
   CONNECTED**
 - AI-15 — **AI-15-A is COMPLETE / MERGED** (PR #78), the contract frozen; **AI-15-B is
@@ -1012,9 +1044,11 @@ CONNECTED**; AI-15-B remains **NOT STARTED / BLOCKED**; and no production Eviden
 is authorized. §15.2 STEP 0b **no longer gates the write**, because it is satisfied, and the
 **import rule no longer refuses it** either (AI-14 §25 Amendment 2 — **MERGED, IN FORCE on
 `main`**, PR #90 merge `a98e389b91ee10858abc67e7c66509cd12fae9dc`). **AI-14 STEP 1 IS NOT
-FULLY DISCHARGED**: one clause AI-15 §15.2 enumerates names a rule AI-14 does not contain,
-and the **AI-15 owner** has not disposed of it. What refuses the write is **row 1′**,
-**STEP 2's own precondition**, and the **unresolved joint-delivery mechanism**.
+FULLY DISCHARGED**: the clause AI-15 §15.2 enumerated named a rule AI-14 does not contain,
+and **AI-15's own owner has disposed of it** — **AI-15 §19 Amendment 4 chose Option A and
+records it as a NO-OP** — **while AI-14's own contract still carries the older OPEN record
+and has not been updated by AI-14**. What refuses the write is **row 1′**, **STEP 2's own
+precondition**, and the **unresolved joint-delivery mechanism**.
 
 Also remaining: §35.1's deferrals (F-10, and the storage-backend record).
 Full evidence in [AI-05-B1_EVIDENCE_2026-10-01.md](AI-05-B1_EVIDENCE_2026-10-01.md),
@@ -1924,7 +1958,7 @@ AI-14-A  = COMPLETE / MERGED   final architecture freeze — DOCS ONLY
 AI-14-B  = COMPLETE / MERGED   composition implementation
                                (PR #73 @ adf6db2476b7e3de33a585954610e9ab568b498c)
 contract = docs/AI-14_LONG_TERM_AI_WORKBENCH_EXECUTION_PLAN.md
-                           FROZEN @ PR #72; AMENDED TWICE ON `main`
+                           FROZEN @ PR #72; AMENDED THREE TIMES ON `main`
                              Amendment 1 (2026-10-04, PR #73) — the four seams
                                AI-14-B connected are recorded CONNECTED
                              Amendment 2 (2026-10-11) — **MERGED AND IN FORCE on
@@ -1935,10 +1969,19 @@ contract = docs/AI-14_LONG_TERM_AI_WORKBENCH_EXECUTION_PLAN.md
                                and Layer 0 no longer refuses it. THE
                                CLASSIFICATION DOES NOT MOVE: the row stays
                                IMPLEMENTED BUT NOT CONNECTED, no production call
-                               site exists, and B5 stays BLOCKED. FULL STEP 1 IS
-                               NOT FULLY DISCHARGED — one clause AI-15 §15.2
-                               enumerates names a rule AI-14 does not contain,
-                               and its disposition is the AI-15 owner's
+                               site exists, and B5 stays BLOCKED
+                             Amendment 3 (2026-10-12, PR #92) — **MERGED AND IN
+                               FORCE on `main`** (merge
+                               71c5adeff2452d3d109b0c7f69340d2655b986cb). It
+                               corrects Amendment 2's proposal-time preamble and
+                               the document's amendment count. STATUS RECORDS
+                               ONLY: no classification, no authority and no
+                               requirement moves. FULL STEP 1 IS STILL NOT FULLY
+                               DISCHARGED — the clause AI-15 §15.2 enumerated has
+                               been WITHDRAWN by AI-15's owner as an invalid
+                               reference (AI-15 §19 Amendment 4), and AI-14'S OWN
+                               CONTRACT STILL CARRIES THE OLDER OPEN RECORD AND
+                               HAS NOT BEEN UPDATED BY AI-14
 
 merge    = adf6db2476b7e3de33a585954610e9ab568b498c
                      true two-parent merge; not squashed, not rebased
@@ -1966,14 +2009,17 @@ than echoing the selection back as if it had run it.
 B5 (composition -> Evidence) is BLOCKED / NOT STARTED, and AI-14 STEP 1 IS NOT FULLY
 DISCHARGED. Its AUTHORIZATION CHANGE is MERGED AND IN FORCE on `main` (AI-14 §25
 Amendment 2 — PR #90, merge `a98e389b91ee10858abc67e7c66509cd12fae9dc`) — which makes
-the `plugins.evidence` import AUTHORIZED and stops Layer 0 refusing it. ONE ENUMERATED
-CLAUSE REMAINS OPEN for the AI-15 owner: the `§13 producer_token identifier refusal`
-it names is not a rule AI-14 contains. STILL BLOCKED BY: no call site; row 1′ (the §6.5
-row AND the own-contract clause for each phase whose facts would be admitted); and the
-unresolved joint-delivery mechanism. STEP 2 and STEP 3 have not begun. NO PRODUCER
-TOKEN WAS ADDED. (This line said "AI-05 C-1 is DEFERRED"; C-1 has been CLOSED since
-2026-10-04 by Amendment 3, and the line contradicted this file's own AI-05 status block.
-THE CORRECTION CHANGES THE REASON GIVEN, NOT THE STATE — and the state is still
+the `plugins.evidence` import AUTHORIZED and stops Layer 0 refusing it. THE ONE ENUMERATED
+CLAUSE HAS BEEN WITHDRAWN BY AI-15'S OWN OWNER: the `§13 producer_token identifier
+refusal` it named is not a rule AI-14 contains, and AI-15 §19 Amendment 4 chose Option A
+and records it as a NO-OP. AI-14'S OWN CONTRACT STILL CARRIES THE OLDER OPEN RECORD AND
+HAS NOT BEEN UPDATED BY AI-14 — that is AI-14's act, under AI-14 §24, and until it
+happens the authoritative status stays conservative. STILL BLOCKED BY: no call site;
+row 1′ (the §6.5 row AND the own-contract clause for each phase whose facts would be
+admitted); and the unresolved joint-delivery mechanism. STEP 2 and STEP 3 have not begun.
+NO PRODUCER TOKEN WAS ADDED. (This line said "AI-05 C-1 is DEFERRED"; C-1 has been CLOSED
+since 2026-10-04 by Amendment 3, and the line contradicted this file's own AI-05 status
+block. THE CORRECTION CHANGES THE REASON GIVEN, NOT THE STATE — and the state is still
 BLOCKED.)
 ```
 
@@ -2077,11 +2123,11 @@ AI-15-A  = COMPLETE / MERGED   architecture / contract freeze — DOCS ONLY
 AI-15-B  = NOT STARTED         BLOCKED — the AI-15 plan §16.2 lists every blocker,
                                each with an owner and the §15.2 step it gates
 contract = docs/AI-15_EVIDENCE_PRODUCTION_EXECUTION_PLAN.md
-                           FROZEN @ PR #78; AMENDED THREE TIMES
+                           FROZEN @ PR #78; AMENDED FOUR TIMES
                            (§19 Amendment 1, 2026-10-09; §19 Amendment 2, 2026-10-11;
-                            §19 Amendment 3, 2026-10-11)
+                            §19 Amendment 3, 2026-10-11; §19 Amendment 4, 2026-10-12)
                            contract blob = a206d90d0d357f08a214b0731a0b7f63d3771ea2
-                                         (the blob at the freeze; the three amendments
+                                         (the blob at the freeze; the four amendments
                                           supersede it and are the current text)
 amendment= Amendment 1         records AI-05 Amendment 4's answer to AI15-OPEN-2
                                (READING A), merged as PR #80
@@ -2096,7 +2142,15 @@ amendment= Amendment 1         records AI-05 Amendment 4's answer to AI15-OPEN-2
                                contract, under AI-05's amendment rule (PR #88
                                9e1b4c451deed34605d021b4203fccd16dad4cd0). It also
                                syncs this document's status records. AI-15 RECORDED
-                               THE CLOSURE AND DID NOT MAKE IT. STEP 0b IS NOW
+                               THE CLOSURE AND DID NOT MAKE IT.
+           Amendment 4         WITHDRAWS the invalid `§13 producer_token identifier
+                               refusal` clause from §15.2 STEP 1's work list and
+                               records it as a NO-OP — AI-14 §13 contains no such
+                               rule. AI-15'S OWNER MADE THAT DECISION, in AI-15's
+                               own contract, under AI-15's amendment rule. NO RULE
+                               CHANGED and NOTHING WAS RELAXED. AI-14'S CONTRACT IS
+                               NOT TOUCHED: it still carries the older OPEN record
+                               and has not been updated by AI-14. STEP 0b IS NOW
                                SATISFIED; B5 REMAINS BLOCKED AND IS NOT CONNECTED,
                                and AI-15-B remains NOT STARTED / BLOCKED.
 
@@ -2308,8 +2362,10 @@ row 1′                                  UNSATISFIED and SEPARATE — it asks W
 > - `STEP 0a … AI-14's STEP 1 is unblocked and NOT made` → **the import rule no longer
 >   refuses it** (AI-14 §25 Amendment 2, **MERGED AND IN FORCE on `main`** — PR #90,
 >   merge `a98e389b91ee10858abc67e7c66509cd12fae9dc`). **AI-14 STEP 1 IS NOT FULLY
->   DISCHARGED** — one enumerated clause names a rule AI-14 does not contain, and the
->   **AI-15 owner** has not disposed of it.
+>   DISCHARGED** — the enumerated clause names a rule AI-14 does not contain, and
+>   **AI-15's own owner has WITHDRAWN it** (AI-15 §19 **Amendment 4**, Option A, a
+>   NO-OP) **while AI-14's contract still carries the older OPEN record and has not
+>   been updated by AI-14**. Until AI-14's owner acts, the status stays conservative.
 >
 > Everything else in the block stands unchanged, **including `AI-11 §21.1 OPEN-1 = OPEN`
 > and `row 1′ = UNSATISFIED and SEPARATE`** — neither is moved by either amendment.
