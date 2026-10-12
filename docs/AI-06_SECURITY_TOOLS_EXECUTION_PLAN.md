@@ -1155,6 +1155,78 @@ FROZEN: THE CALLER ASSIGNS `ordinal` AND NOTHING ELSE. AI-05 §11.1 makes the
         OTHER projected field: `what_ran` and `status` come from the ToolResult
         through §15.2 and §15.3, and a caller that could set them could sign a
         claim the tool did not make.
+```
+
+```text
+FROZEN: CHECKING THE EXECUTION PAYLOAD IS NOT ENOUGH, BECAUSE THE SIGNED INPUT IS
+        THE COMPLETE SUBMITTED MAPPING. AI-05 §7.3.4 signs the canonical
+        serialization of the WHOLE mapping — domain tag, separators, protocol
+        version and every field — not of the payload alone. A helper that verified
+        the payload and then signed whatever else the caller supplied would produce
+        a VALID signature over a FORGED claim: the signature would verify, and the
+        forged actor, workspace or event would be inside it.
+
+        SO EVERY SEMANTIC FIELD THE SIGNATURE COVERS MUST HAVE A DEFINED SOURCE,
+        and a field with no defined source is REFUSED BEFORE SIGNING. The sources
+        are exactly three, and there is no fourth:
+
+            DERIVED FROM THE ToolResults
+                the execution payload, through §15.2 and §15.3 — `what_ran` and
+                `status` come from the result and from nothing else
+
+            CALLER-ASSIGNED, WHERE A CONTRACT NAMES THE CALLER
+                `ordinal`, and ONLY `ordinal`, because AI-05 §11.1 gives the caller
+                that job. This contract names no other field a caller may choose,
+                and a caller choosing one is refused rather than obeyed
+
+            SUPPLIED BY THE DEPLOYMENT OR BY THE OWNING PHASE'S DECLARATION
+                the producer token (deployment-designated, AI-05 §7.3.2), the
+                event/kind/family (AI-05 §6.5's registry row), the actor and the
+                workspace identity (the owning phase's declaration, AI-05 §18.1
+                and §12). THE SIGNING HELPER DOES NOT INVENT THESE AND DOES NOT
+                ACCEPT THEM AS FREE-FORM INPUT: it is given them by the party that
+                owns them, and it refuses when a value it was given disagrees with
+                what that party's own source says.
+
+FROZEN: A MISMATCH OR AN UNCONFIRMABLE FIELD REFUSES BEFORE THE SIGNATURE IS MADE.
+        The order is CHECK, THEN SIGN — never sign and check afterwards, and never
+        sign whatever was supplied because the payload happened to be right. A
+        refusal produces no proof at all, which AI-05 §7.3.8 already makes REJECTED
+        rather than a weaker admission.
+FROZEN: AI-05 §7.3.4's signed input IS THE ONLY SIGNING SERIALIZATION. This section
+        adds no serializer, no intermediate envelope format and no second canonical
+        form; a signed input built any other way would be a signature over bytes
+        the verifier never reconstructs.
+```
+
+```text
+WHAT PR-2 MUST PROVIDE, AND WHAT IT MUST SHOW. The field-source rules above are a
+CONTRACT. They are not an implementation, and NOTHING IN THIS REPOSITORY MINTS A
+PROOF TODAY: there is no signer runtime, no key, and no production caller. PR-2 —
+the joint change — MUST ship the negative tests that show the rules hold, and it
+MUST show that ONE VALID ToolResult cannot be turned into a valid signature for a
+forged claim:
+
+    [ ] a submission whose execution payload is NOT `execution_payload_for(results)`
+        is REFUSED and produces NO proof
+    [ ] the SAME valid ToolResult, with a FORGED actor, is refused — and if a proof
+        were somehow produced it would not verify, so the test asserts REFUSAL at
+        the source rather than only a verification failure downstream
+    [ ] the SAME valid ToolResult, with a FORGED workspace identity, is refused
+    [ ] a FORGED producer token is refused: a signer speaking for another token
+        cannot produce a proof that verifies under this token's key (AI-05 §7.3.5
+        V3/V4), and the helper refuses before signing
+    [ ] a FORGED event kind or family is refused against the §6.5 registry row
+    [ ] a caller-chosen field the contract does NOT assign to the caller is REFUSED
+        — the test names the field, so "only ordinal is caller-assigned" is checked
+        rather than asserted
+    [ ] an UNSIGNED submission produces no proof and is REJECTED with
+        AUTHENTICATION_PROOF_MISSING rather than admitted
+    [ ] no test in the matrix holds or generates a real private key; the matrix
+        uses fakes
+
+    UNTIL THOSE TESTS EXIST AND RUN, THIS BOUNDARY IS A RULE AND NOT A DEMONSTRATED
+    PROPERTY, and no report may describe it as demonstrated.
 FROZEN: THE PROOF IS OVER AI-05'S CANONICAL SUBMISSION CONTENT. The bytes signed
         are AI-05 §7.3.4's signed input for the SUBMITTED MAPPING — AI-05's
         serializer, not a serializer of AI-06's. AI-06 does not define a second

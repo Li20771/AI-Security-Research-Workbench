@@ -134,6 +134,13 @@ jobs:
             "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18g_unresolvable_forms_fail_closed[partial-application]" \
             "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18g_unresolvable_forms_fail_closed[container-dispatch]" \
             "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18h_producer_proof_must_be_an_explicit_keyword" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18i_acquired_then_called_forms_fail_closed[a-getattr-acquired-then-called]" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18i_acquired_then_called_forms_fail_closed[b-partial-created-then-called]" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18i_acquired_then_called_forms_fail_closed[c-dynamic-import-result-called]" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18i_acquired_then_called_forms_fail_closed[d-container-callable-called]" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18i_acquired_then_called_forms_fail_closed[e-ambiguous-local-name]" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18j_a_changed_callee_form_is_not_the_approved_site" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18k_an_unreadable_module_fails_the_scan" \
             "$A::TestObligation19NoCallerSelectedTrustRoot::test_obligation_19_no_violation_is_reported" \
             "$A::TestObligation19NoCallerSelectedTrustRoot::test_obligation_19_the_rule_can_identify_its_target_violation" \
             "$A::TestObligation22Cj1Vectors::test_obligation_22a_vector_1_bytes" \

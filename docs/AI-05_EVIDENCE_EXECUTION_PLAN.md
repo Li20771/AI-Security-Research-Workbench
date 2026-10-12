@@ -2384,18 +2384,35 @@ THE STANDARD — EXACT CALL-SITE AUTHORISATION.
       entrypoint          the CANONICAL entry-point name the call resolves to —
                           "admit" or "admit_to_store" — never an alias and never a
                           local binding name
+      callee              the ORIGINAL SOURCE FORM OF THE CALLEE EXPRESSION, with
+                          location attributes excluded. THIS IS NOT `entrypoint`:
+                          `admit`, `submit_alias` and `adm.admit` are three
+                          different forms that may all resolve to `admit`, and
+                          recording the canonical name alone would collapse them
+                          into ONE identity
       ast_path            the child-field/index path from the module root to the
                           Call node (for example body[3].body[1].value)
-      fingerprint         a canonical digest over the call's OWN subtree: the callee
-                          expression NORMALISED to `entrypoint`, the argument and
-                          keyword NAMES in source order, and the chain of enclosing
-                          statement kinds. LINENO AND COL_OFFSET ARE EXCLUDED.
+      fingerprint         a canonical digest over the call's ARGUMENTS AND CONTROL
+                          CONTEXT: the argument and keyword NAMES in source order,
+                          and the chain of enclosing statement kinds. THE CALLEE IS
+                          NOT NORMALISED INTO IT — it is carried as `callee`
+                          instead, because the two answer different questions.
+                          LINENO AND COL_OFFSET ARE EXCLUDED.
       control_context     the enclosing statement kinds, where they are needed to
                           distinguish two otherwise identical calls in one scope
       proof_kwarg         the call passes `producer_proof` EXPLICITLY as a keyword
                           argument. A `**mapping` expansion does NOT satisfy this
                           and MUST FAIL — the argument is then not verifiable from
                           the source.
+
+  THE IDENTITY IS THEREFORE STRICT ABOUT THE CALLEE. Two calls at the SAME scope,
+  the SAME `ast_path` and with the SAME arguments, reaching the SAME canonical
+  entry point and differing ONLY in how the callee is SPELLED, are TWO DIFFERENT
+  call sites. An approval of one is NOT an approval of the other: when the callee's
+  syntax form changes, the old approval MUST NOT match, and the new form MUST be
+  approved again. `entrypoint` is kept as a SEPARATE field because it answers the
+  different question of which entry point the call reaches, and it is what makes an
+  alias recognisable at all.
 ```
 
 ```text
@@ -2427,6 +2444,27 @@ NO SINGLE TREE IS REQUIRED TO SATISFY BOTH. A candidate check with an EMPTY
 approved set asserts "no production call site", which is the baseline assertion —
 so one implementation serves both, provided the approved set is EMPTY on the
 baseline and non-empty only in the change that creates the call site.
+
+THE BASELINE HALF IS A ONE-TIME GATE ON THE CONNECTING CHANGE, AND IT MUST BE RUN
+AS ITS OWN STEP. The connecting change records, in its own report:
+
+    the ACTUAL base SHA it was built on — the `origin/main` commit, not a branch
+      name and not a remembered value
+    the production call-site set observed ON THAT COMMIT, which MUST BE EMPTY
+    the ACTUAL head SHA of the candidate tree
+    the production call-site set observed on the CANDIDATE, compared against the
+      approved set the change declares
+
+A REPORT THAT SHOWS ONE TREE HAS NOT SHOWN TWO. Running the candidate check on a
+tree whose approved set happens to be empty verifies the CANDIDATE, not the
+baseline, and MUST NOT be described as having verified both.
+
+THIS GATE DOES NOT BECOME A PERMANENT EMPTINESS REQUIREMENT. It is a one-time
+condition on the change that first creates a call site, not a rule that every later
+CI run must find the approved set empty — which would forbid the very connection
+the obligation exists to permit. How it is implemented is the change's business: a
+separate step, a one-shot job, or a recorded manual run are all acceptable, and
+none of them changes the number any historical run recorded.
 ```
 
 ```text
@@ -2446,6 +2484,22 @@ THE SCANNER BOUNDARY.
       dispatch through a container   a list, mapping or registry lookup, then a call
       a parameter-rooted attribute chain, or any name assembled at run time
 
+  AN UNSUPPORTED ACQUISITION IS CARRIED FORWARD ONTO THE NAME IT BINDS, AND THE
+  LATER CALL IS THE FINDING. Checking only the IMMEDIATELY-INVOKED shape is NOT
+  sufficient, and an implementation that stops there does not satisfy this clause.
+  Each of the following obtains a callable by an unsupported form and then calls it
+  through an ordinary-looking name; EVERY ONE of them MUST be reported:
+
+      writer = getattr(evidence, "admit")      then  writer(record, ...)
+      writer = partial(admit, record, ...)     then  writer()
+      mod    = importlib.import_module(...)    then  mod.admit(record, ...)
+      writer = REGISTRY["admit"]               then  writer(record, ...)
+
+  A LOCAL NAME BOUND TO MORE THAN ONE ENTRY POINT IS UNRESOLVED, NOT A CHOICE. If
+  one scope binds a name to both `admit` and `admit_to_store`, which one it denotes
+  cannot be determined, and the call MUST be reported rather than resolved to
+  either. Guessing would record an approval against a call site nobody identified.
+
   FAIL-CLOSED. A production form the scanner cannot RELIABLY resolve to a canonical
   entry point MUST NOT be treated as "no call site". It MUST be reported as
   UNRESOLVED, and MUST drive the check to FAIL or to a declared BLOCKED state.
@@ -2453,6 +2507,12 @@ THE SCANNER BOUNDARY.
   absent does not satisfy this clause.
   "THE SCANNER DOES NOT SEE IT" AND "IT CANNOT WRITE" ARE DIFFERENT STATEMENTS, and
   only the second would justify silence.
+
+  A MODULE THE SCAN CANNOT READ OR PARSE HAS UNKNOWN CALL SITES, AND UNKNOWN IS NOT
+  NONE. Every such file MUST be reported as a SCAN FAILURE — path and reason — and
+  MUST drive the check to FAIL. An implementation that skips it and reports the
+  call sites it happened to see does not satisfy this clause, because the result
+  would be clean for a tree that was never fully read.
 
   NO COMPLETENESS CLAIM. Static scanning cannot prove the absence of arbitrary
   Python dynamic behaviour: `eval`, `exec`, dynamically constructed modules and
@@ -7359,15 +7419,34 @@ and 8 recorded about §7 and §30.
         18f  an unapproved addition fails
         18g  unresolvable forms fail closed (getattr / partial / container)
         18h  `producer_proof` must be an EXPLICIT keyword; `**mapping` does not count
+        18i  an unsupported ACQUISITION carried onto a name and then CALLED fails
+             closed (five forms: getattr-acquired, partial-created, dynamic-import
+             result, container callable, and an AMBIGUOUS local name)
+        18j  a CHANGED CALLEE FORM is not the approved call site, at the same scope,
+             the same AST path, the same arguments and the same canonical entry
+             point
+        18k  a module the scan cannot read or parse FAILS the scan
+
+    ^ 18i, 18j AND 18k ANSWER REVIEW FINDINGS, AND EACH CLOSES A DIFFERENT HOLE.
+    18i: checking only the immediately-invoked shape — `getattr(...)(...)`,
+    `partial(...)()`, `container[...](...)` — sees an ordinary call to an unknown
+    local and reports NOTHING. The acquisition is therefore carried FORWARD onto
+    the name it binds, so the later call is the finding.
+    18j: the fingerprint NORMALISED the callee into itself, which made a direct
+    call and an alias call at the same AST path, with the same arguments, share one
+    identity — while §7.3.13's own text claimed the fingerprint distinguished
+    different call expressions. The callee is now its own identity field.
+    18k: `scan_tree` skipped a file it could not parse and reported the rest as
+    clean, which is a clean result for a tree that was never fully read.
 ```
 
 ```text
 (c) THE COUNTS, AND THE HISTORICAL RECORDS THAT KEEP THEIRS.
 
     WHAT MOVED
-        G1 matrix node ids                 34 -> 42   (+8)
-        process-isolated matrix cases      46 -> 54   (+8)
-        test functions in the module       45 -> 53   (+8)
+        G1 matrix node ids                 34 -> 49   (+15)
+        process-isolated matrix cases      46 -> 61   (+15)
+        test functions in the module       45 -> 60   (+15)
 
     WHAT DID NOT MOVE, AND MUST NOT
         Amendment 7 (d), §35.3 and `## Status` record "46 RAN / 0 skipped" as the

@@ -41,6 +41,7 @@ from dataclasses import dataclass, field
 __all__ = [
     "CallSiteIdentity",
     "UnresolvedCall",
+    "ScanFailure",
     "CANONICAL_ENTRYPOINTS",
     "INTRA_PACKAGE_EDGE",
     "scan_tree",
@@ -79,6 +80,7 @@ class CallSiteIdentity:
     path: str
     scope: str
     entrypoint: str
+    callee: str
     ast_path: str
     fingerprint: str
     control_context: str
@@ -86,8 +88,19 @@ class CallSiteIdentity:
     lineno: int = 0
 
     @property
-    def key(self) -> tuple[str, str, str, str, str]:
-        return (self.path, self.scope, self.entrypoint, self.ast_path, self.fingerprint)
+    def key(self) -> tuple[str, str, str, str, str, str]:
+        """The identity compared against the approved set (§7.3.13).
+
+        `callee` IS PART OF THE IDENTITY, and it is the ORIGINAL source form of
+        the callee expression — not the canonical entry point it resolves to. The
+        canonical name is carried separately, because it answers a DIFFERENT
+        question: "which entry point does this reach". Two calls that reach the
+        same entry point through different expressions are two DIFFERENT call
+        sites, and an approval of one is not an approval of the other. Recording
+        only the canonical name would let a direct call and an alias call at the
+        same AST path, with the same arguments, share one identity.
+        """
+        return (self.path, self.scope, self.entrypoint, self.callee, self.ast_path, self.fingerprint)
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,6 +116,20 @@ class UnresolvedCall:
     lineno: int
     reason: str
     entrypoint: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ScanFailure:
+    """A file the scan could not READ or PARSE.
+
+    A file that could not be read is a file whose call sites are UNKNOWN, and
+    "unknown" is not "none". Reporting it as an auditable failure is the same rule
+    §7.3.13 applies to an unresolvable CALL, applied to an unresolvable MODULE: a
+    scanner that silently skipped it would be reporting silence as safety.
+    """
+
+    path: str
+    reason: str
 
 
 # --------------------------------------------------------------------------
@@ -122,12 +149,21 @@ class _Bindings:
 
     entrypoints: dict[str, set[str]] = field(default_factory=dict)
     modules: dict[str, set[str]] = field(default_factory=dict)
+    #: Names bound to a callable this scanner CANNOT trace, where the right-hand
+    #: side plausibly denotes an admission entry point. The value is the reason.
+    #: A call through such a name is reported, not ignored — that is the whole
+    #: point of carrying the taint instead of only checking the immediate form.
+    tainted: dict[str, str] = field(default_factory=dict)
 
     def copy(self) -> "_Bindings":
         return _Bindings(
             entrypoints={name: set(values) for name, values in self.entrypoints.items()},
             modules={name: set(values) for name, values in self.modules.items()},
+            tainted=dict(self.tainted),
         )
+
+    def taint(self, name: str, reason: str) -> None:
+        self.tainted.setdefault(name, reason)
 
     def add_entrypoint(self, name: str, canonical: str) -> None:
         self.entrypoints.setdefault(name, set()).add(canonical)
@@ -154,6 +190,39 @@ class _Bindings:
 
 def _is_evidence_module(dotted: str) -> bool:
     return dotted == _EVIDENCE_PACKAGE or dotted.startswith(_EVIDENCE_PACKAGE + ".")
+
+
+#: Call forms that ACQUIRE a callable this scanner cannot follow to its target.
+_UNTRACEABLE_ACQUISITIONS = frozenset({"getattr", "__import__", "import_module", "partial"})
+
+
+def _mentions_evidence(node: ast.AST) -> bool:
+    """Whether `node` names an admission entry point or the evidence package.
+
+    Used to decide whether an untraceable acquisition is RELEVANT. A `getattr`
+    that mentions neither is not an admission call and is not reported; one that
+    mentions either could be, and is.
+    """
+    for child in ast.walk(node):
+        if isinstance(child, ast.Name) and child.id in CANONICAL_ENTRYPOINTS:
+            return True
+        if isinstance(child, ast.Attribute) and child.attr in CANONICAL_ENTRYPOINTS:
+            return True
+        if isinstance(child, ast.Constant) and isinstance(child.value, str):
+            if child.value in CANONICAL_ENTRYPOINTS or _EVIDENCE_PACKAGE in child.value:
+                return True
+    return False
+
+
+def _callee_form(func: ast.expr) -> str:
+    """The ORIGINAL source form of a callee expression (§7.3.13).
+
+    THIS IS NOT THE CANONICAL ENTRY POINT. `admit`, `submit` and `adm.admit` are
+    three different forms that may all resolve to `admit`, and recording the
+    canonical name alone would collapse them into one identity. Location
+    attributes are excluded so the form does not move with the lines above it.
+    """
+    return ast.dump(func, annotate_fields=True, include_attributes=False)
 
 
 class _Scopes:
@@ -212,12 +281,26 @@ class _Scopes:
             if self._scope_node_of(node) is scope and isinstance(node, (ast.Import, ast.ImportFrom, ast.Assign, ast.AnnAssign))
         ]
         for _ in range(len(statements) + 2):
-            before = (sum(len(v) for v in bindings.entrypoints.values()), sum(len(v) for v in bindings.modules.values()))
+            before = self._size(bindings)
             for node in statements:
                 self._apply_one(node, bindings)
-            after = (sum(len(v) for v in bindings.entrypoints.values()), sum(len(v) for v in bindings.modules.values()))
+            after = self._size(bindings)
             if before == after:
                 return
+
+    @staticmethod
+    def _size(bindings: _Bindings) -> tuple[int, int, int]:
+        """A monotone size, so the fixed point terminates.
+
+        `tainted` is counted too: a taint established late in a pass must still
+        make the NEXT pass run, or a chain like `a = getattr(...)` / `b = a` would
+        stop one step short of the name that is actually called.
+        """
+        return (
+            sum(len(values) for values in bindings.entrypoints.values()),
+            sum(len(values) for values in bindings.modules.values()),
+            len(bindings.tainted),
+        )
 
     def _apply_one(self, node: ast.AST, bindings: _Bindings) -> None:
         if isinstance(node, ast.ImportFrom):
@@ -242,6 +325,16 @@ class _Scopes:
                 return
             resolved = self._resolve_value(value, bindings)
             if resolved is None:
+                # THE VALUE COULD NOT BE RESOLVED. Before giving up, ask whether it
+                # is an UNTRACEABLE ACQUISITION of something that may be an entry
+                # point; if it is, the NAME it is bound to carries that fact
+                # forward, so a later call THROUGH that name is reported rather
+                # than looking like an ordinary unknown call.
+                reason = self._taint_reason(value, bindings)
+                if reason is not None:
+                    for target in node.targets:
+                        if isinstance(target, ast.Name):
+                            bindings.taint(target.id, reason)
                 return
             kind, dotted = resolved
             for target in node.targets:
@@ -251,6 +344,46 @@ class _Scopes:
                     bindings.add_entrypoint(target.id, dotted)
                 else:
                     bindings.add_module(target.id, dotted)
+
+    def _taint_reason(self, value: ast.expr, bindings: _Bindings) -> str | None:
+        """Why `value` is a callable this scanner cannot trace, or None.
+
+        The rule is deliberately narrow: the value must PLAUSIBLY denote an
+        admission entry point. Everything else is left alone, because reporting
+        every unresolvable expression in a repository buries the real findings.
+        """
+        if isinstance(value, ast.Name):
+            return bindings.tainted.get(value.id)
+        if isinstance(value, ast.Attribute):
+            dotted = self.dotted(value, bindings)
+            root = (dotted or value.attr).split(".", 1)[0]
+            if root in bindings.tainted:
+                return bindings.tainted[root]
+            if value.attr in CANONICAL_ENTRYPOINTS and (
+                dotted is None or root not in bindings.modules
+            ):
+                return (
+                    f"`{value.attr}` reached through `{root}`, whose value this "
+                    f"scope does not resolve"
+                )
+            return None
+        if isinstance(value, ast.Subscript):
+            if _mentions_evidence(value):
+                return "extraction from a container, which this scanner cannot index"
+            return None
+        if isinstance(value, ast.Call):
+            func = value.func
+            name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
+            if name in _UNTRACEABLE_ACQUISITIONS:
+                if _mentions_evidence(value):
+                    return (
+                        f"`{name}(...)`, whose result is a callable this scanner "
+                        f"cannot trace to a target"
+                    )
+                return None
+            if isinstance(func, ast.expr):
+                return self._taint_reason(func, bindings)
+        return None
 
     # -- lookup -------------------------------------------------------------
 
@@ -363,24 +496,24 @@ def _control_context(parents: dict[int, ast.AST], node: ast.AST) -> str:
     return "/".join(kinds)
 
 
-def _fingerprint(call: ast.Call, canonical: str, parents: dict[int, ast.AST]) -> str:
-    """A canonical digest over the call's OWN subtree (§7.3.13).
+def _fingerprint(call: ast.Call, parents: dict[int, ast.AST]) -> str:
+    """A canonical digest over the call's ARGUMENTS and its control context.
 
-    The callee is NORMALISED to the canonical entry-point name, so two spellings
-    that reach the same entry point agree on the callee and differ, if at all, on
-    their arguments. Location attributes are excluded, which is what makes the
-    fingerprint stable against unrelated edits and sensitive to edits INSIDE the
-    call. The subtree is rebuilt rather than mutated so the caller's tree is left
-    alone.
+    THE CALLEE IS DELIBERATELY REPLACED BY A PLACEHOLDER HERE. It is not dropped:
+    it is recorded as its own identity field (`callee`, the original source form),
+    because the two answer different questions. Normalising the callee INTO this
+    digest — as an earlier revision did — would have made a direct call and an
+    alias call at the same AST path, with the same arguments, fingerprint alike,
+    and §7.3.13 treats those as two different call sites.
+
+    Location attributes are excluded, which is what makes the digest stable
+    against unrelated edits and sensitive to edits INSIDE the call.
     """
     rebuilt = ast.Call(
-        func=ast.Name(id=canonical, ctx=ast.Load()),
+        func=ast.Name(id="<callee>", ctx=ast.Load()),
         args=list(call.args),
         keywords=list(call.keywords),
     )
-    # `include_attributes=False` is what drops lineno/col_offset from the dump, so
-    # no copying is needed: the children may be shared with the caller's tree
-    # precisely because no location attribute is read.
     payload = ast.dump(rebuilt, annotate_fields=True, include_attributes=False)
     payload += "\x00" + _control_context(parents, call)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:32]
@@ -463,48 +596,80 @@ def _unresolvable_reason(call: ast.Call, scopes: _Scopes, bindings: _Bindings) -
     if isinstance(callee, ast.Subscript) and _names_an_entrypoint(callee):
         return "dispatch through a container (subscript)"
 
-    # A bare name that is an entry-point name but does not resolve here: a
-    # parameter, or a binding this scope does not establish.
-    if isinstance(callee, ast.Name) and callee.id in CANONICAL_ENTRYPOINTS:
-        if scopes is not None and bindings.ambiguous(callee.id):
-            return f"`{callee.id}` resolves to more than one entry point in this scope"
-        return f"`{callee.id}` is called but not bound to an entry point in this scope"
+    # A NAME. Three ways it can fail to resolve, and they are reported separately
+    # because they call for different fixes.
+    if isinstance(callee, ast.Name):
+        taint = bindings.tainted.get(callee.id)
+        if taint is not None:
+            return (
+                f"`{callee.id}` was bound to {taint}, and is called HERE — the "
+                f"acquisition form is unsupported, so the call's real target "
+                f"cannot be determined"
+            )
+        if bindings.ambiguous(callee.id):
+            return (
+                f"`{callee.id}` resolves to MORE THAN ONE entry point in this "
+                f"scope ({', '.join(sorted(bindings.entrypoints[callee.id]))}), so "
+                f"which one it denotes cannot be determined"
+            )
+        if callee.id in CANONICAL_ENTRYPOINTS:
+            return (
+                f"`{callee.id}` is called but not bound to an entry point in this "
+                f"scope — a parameter, or a binding this scope does not establish"
+            )
+        return None
 
-    # An attribute whose tail is an entry-point name but whose root is unknown:
-    # a parameter-rooted chain, i.e. an object handed in from outside.
-    if isinstance(callee, ast.Attribute) and callee.attr in CANONICAL_ENTRYPOINTS:
+    # AN ATTRIBUTE. A tainted root is reported first: the chain's real target is
+    # already unknown, and the tail's spelling does not make it known again.
+    if isinstance(callee, ast.Attribute):
         dotted = scopes.dotted(callee, bindings)
-        if dotted is None:
-            return "callee is an attribute chain with no resolvable root"
-        root = dotted.split(".", 1)[0]
-        if root not in bindings.modules and root not in bindings.entrypoints:
-            return f"callee rooted in `{root}`, which this scope does not bind"
+        root = (dotted or callee.attr).split(".", 1)[0]
+        if root in bindings.tainted:
+            return (
+                f"`{dotted or callee.attr}` is reached through `{root}`, which was "
+                f"bound to {bindings.tainted[root]}"
+            )
+        if callee.attr in CANONICAL_ENTRYPOINTS:
+            if dotted is None:
+                return "callee is an attribute chain with no resolvable root"
+            if root not in bindings.modules and root not in bindings.entrypoints:
+                return f"callee rooted in `{root}`, which this scope does not bind"
 
     return None
 
 
 def scan_tree(
     root: pathlib.Path, *, skip_paths: tuple[str, ...] = ()
-) -> tuple[list[CallSiteIdentity], list[UnresolvedCall]]:
-    """Every candidate call site and every unresolvable form under `root`.
+) -> tuple[list[CallSiteIdentity], list[UnresolvedCall], list[ScanFailure]]:
+    """Every candidate call site, every unresolvable form, and every unreadable file.
 
     `skip_paths` names path parts to exclude (the `tests` tree, for a PRODUCTION
     check), and it is named rather than assumed.
+
+    THE THIRD LIST IS NOT DECORATION. A file that cannot be read or parsed is a
+    file whose call sites are unknown, and unknown is not none: it is returned as
+    a `ScanFailure` and `findings()` turns it into a failure, so a production
+    module the scanner cannot read cannot silently disappear from the result.
     """
     found: list[CallSiteIdentity] = []
     unresolved: list[UnresolvedCall] = []
+    failures: list[ScanFailure] = []
     root = pathlib.Path(root)
     for path in sorted(root.rglob("*.py")):
         if ".git" in path.parts or "__pycache__" in path.parts:
             continue
         if any(part in path.parts for part in skip_paths):
             continue
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        except (SyntaxError, UnicodeDecodeError, OSError):
-            continue
 
         relative = path.relative_to(root).as_posix()
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        except (SyntaxError, UnicodeDecodeError, OSError) as exc:
+            failures.append(
+                ScanFailure(path=relative, reason=f"{type(exc).__name__}: {exc}")
+            )
+            continue
+
         scopes = _Scopes(tree)
         parents = scopes.parents()
 
@@ -531,14 +696,15 @@ def scan_tree(
                     path=relative,
                     scope=scopes.scope_name(node),
                     entrypoint=canonical,
+                    callee=_callee_form(node.func),
                     ast_path=_ast_path(parents, node),
-                    fingerprint=_fingerprint(node, canonical, parents),
+                    fingerprint=_fingerprint(node, parents),
                     control_context=_control_context(parents, node),
                     proof_kwarg=_proof_kwarg(node),
                     lineno=node.lineno,
                 )
             )
-    return found, unresolved
+    return found, unresolved, failures
 
 
 def _canonical_of(func: ast.expr, scopes: _Scopes, bindings: _Bindings) -> str | None:
@@ -563,15 +729,16 @@ def _canonical_of(func: ast.expr, scopes: _Scopes, bindings: _Bindings) -> str |
 
 def group_by_key(
     identities: list[CallSiteIdentity],
-) -> dict[tuple[str, str, str, str, str], CallSiteIdentity]:
+) -> dict[tuple[str, str, str, str, str, str], CallSiteIdentity]:
     """The OBSERVED mapping, keyed by identity (§7.3.13)."""
     return {identity.key: identity for identity in identities}
 
 
 def findings(
     observed: list[CallSiteIdentity],
-    approved: dict[tuple[str, str, str, str, str], CallSiteIdentity] | None,
+    approved: dict[tuple[str, str, str, str, str, str], CallSiteIdentity] | None,
     unresolved: list[UnresolvedCall] | None = None,
+    failures: list[ScanFailure] | None = None,
     *,
     exclude_intra_package_edge: bool = True,
 ) -> list[str]:
@@ -584,6 +751,7 @@ def findings(
     """
     approved = {} if approved is None else approved
     unresolved = [] if unresolved is None else unresolved
+    failures = [] if failures is None else failures
     problems: list[str] = []
 
     observed_map = group_by_key(observed)
@@ -626,5 +794,11 @@ def findings(
             f"UNRESOLVED production call form: {call.path}:{call.lineno} "
             f"scope={call.scope} — {call.reason}. §7.3.13 makes this FAIL rather "
             f"than count as 'no call site'"
+        )
+    for failure in sorted(failures, key=lambda item: item.path):
+        problems.append(
+            f"UNREADABLE production module: {failure.path} — {failure.reason}. A "
+            f"file the scan could not read has UNKNOWN call sites, and unknown is "
+            f"not none; §7.3.13 makes this FAIL rather than disappear"
         )
     return problems
