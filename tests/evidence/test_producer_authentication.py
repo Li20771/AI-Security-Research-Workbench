@@ -1597,6 +1597,19 @@ class TestObligation18ApprovedCallSiteSet:
         (tmp_path / "zz_planted.py").write_text(aliased, encoding="utf-8")
         observed_alias, unresolved_alias, failures_alias = scan_tree(tmp_path, skip_paths=())
 
+        assert len(observed_direct[0].fingerprint) == 64, (
+            "the fingerprint is the FULL SHA-256 hex digest — 64 characters, not "
+            "truncated. A shortened digest is a DIFFERENT identity with a weaker "
+            "collision assumption than AI-05 §7.3.13 states"
+        )
+        assert all(character in "0123456789abcdef" for character in observed_direct[0].fingerprint), (
+            "the fingerprint must be lowercase hexadecimal"
+        )
+        assert observed_direct[0].callee, "the original callee form must be recorded"
+        assert observed_alias[0].callee != observed_direct[0].callee, (
+            "the two forms differ in the callee, so their `callee` fields must differ"
+        )
+
         assert len(observed_alias) == 1, "the fixture must keep the count unchanged"
         assert observed_alias[0].entrypoint == observed_direct[0].entrypoint, (
             "both forms must resolve to the SAME canonical entry point — otherwise "
@@ -1636,6 +1649,117 @@ class TestObligation18ApprovedCallSiteSet:
         problems = _problems(observed, {}, unresolved, failures)
         assert any("UNREADABLE production module" in problem for problem in problems), (
             f"a scan failure must drive the check to FAIL: {problems}"
+        )
+
+    @pytest.mark.parametrize(
+        "planted",
+        [
+            pytest.param(
+                "import plugins.evidence as ev\n"
+                "\n"
+                "\n"
+                "def submit(record, field, proof):\n"
+                "    writer = getattr(ev, field)\n"
+                "    return writer(record, producer_proof=proof)\n",
+                id="dynamic-attribute-name-parameter",
+            ),
+            pytest.param(
+                "import plugins.evidence as ev\n"
+                "\n"
+                "\n"
+                "def submit(record, proof):\n"
+                '    field = "admit"\n'
+                "    writer = getattr(ev, field)\n"
+                "    return writer(record, producer_proof=proof)\n",
+                id="attribute-name-through-a-variable",
+            ),
+            pytest.param(
+                "import plugins.evidence as admissions\n"
+                "\n"
+                "\n"
+                "def submit(record, field, proof):\n"
+                "    writer = getattr(admissions, field)\n"
+                "    return writer(record, producer_proof=proof)\n",
+                id="evidence-package-under-an-import-alias",
+            ),
+            pytest.param(
+                "from functools import partial as p\n"
+                "from plugins.evidence import admit\n"
+                "\n"
+                "\n"
+                "def submit(record, proof):\n"
+                "    writer = p(admit, record, producer_proof=proof)\n"
+                "    return writer()\n",
+                id="aliased-partial-acquisition",
+            ),
+            pytest.param(
+                "import functools as ft\n"
+                "from plugins.evidence import admit\n"
+                "\n"
+                "\n"
+                "def submit(record, proof):\n"
+                "    writer = ft.partial(admit, record, producer_proof=proof)\n"
+                "    return writer()\n",
+                id="module-qualified-partial-acquisition",
+            ),
+            pytest.param(
+                "from functools import partial as p\n"
+                "from plugins.evidence import admit\n"
+                "\n"
+                "\n"
+                "def submit(record, proof):\n"
+                "    return p(admit, record)(producer_proof=proof)\n",
+                id="aliased-immediately-invoked-acquisition",
+            ),
+        ],
+    )
+    def test_obligation_18l_dynamic_names_and_aliased_acquirers_fail_closed(
+        self, planted: str, tmp_path
+    ):
+        """THE RECEIVER DECIDES, NOT THE SPELLING OF THE ATTRIBUTE — AND AN ALIASED
+        ACQUISITION IS THE SAME HOLE UNDER ANOTHER NAME.
+
+        `getattr(ev, field)` may be `admit` at run time. "We could not read the
+        name" is NOT "it is not an entry point", and an implementation that assumed
+        otherwise would report a clean scan for a call it never resolved. The same
+        applies to `partial` reached through an alias or through its module, which
+        is why the acquirer is resolved through the scope's own bindings rather
+        than by matching three literal spellings.
+        """
+        observed, unresolved, failures = _scan_planted(tmp_path, planted)
+        problems = _problems(observed, {}, unresolved, failures)
+        assert problems, (
+            "the form produced NO finding, which is the silence §7.3.13 refuses:"
+            f"\n{planted}"
+        )
+        assert any("UNRESOLVED production call form" in problem for problem in problems), (
+            f"the form must be reported as UNRESOLVED rather than dropped: {problems}"
+        )
+        assert observed == [], (
+            "nothing here is a RESOLVED call site, so the identity list must be "
+            f"empty — got {observed}"
+        )
+
+    def test_obligation_18m_a_resolvable_non_entry_point_attribute_is_not_reported(self, tmp_path):
+        """THE CONTROL THAT KEEPS 18l FROM MEANING "BLOCK EVERY getattr".
+
+        `getattr(ev, "ExecutionPayload")` names a real attribute of the package
+        that is NOT an admission entry point, and a scanner that reported it would
+        be blocking the form rather than resolving it. The rule is about what
+        cannot be RESOLVED — not about the word `getattr`.
+        """
+        planted = (
+            "import plugins.evidence as ev\n"
+            "\n"
+            "\n"
+            "def fetch():\n"
+            '    return getattr(ev, "ExecutionPayload")\n'
+        )
+        observed, unresolved, failures = _scan_planted(tmp_path, planted)
+        problems = _problems(observed, {}, unresolved, failures)
+        assert problems == [], (
+            "a resolvable attribute that is not an entry point must NOT be "
+            f"reported — otherwise the rule has become a blanket block: {problems}"
         )
 
 

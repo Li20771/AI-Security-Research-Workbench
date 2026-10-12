@@ -141,6 +141,13 @@ jobs:
             "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18i_acquired_then_called_forms_fail_closed[e-ambiguous-local-name]" \
             "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18j_a_changed_callee_form_is_not_the_approved_site" \
             "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18k_an_unreadable_module_fails_the_scan" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18l_dynamic_names_and_aliased_acquirers_fail_closed[dynamic-attribute-name-parameter]" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18l_dynamic_names_and_aliased_acquirers_fail_closed[attribute-name-through-a-variable]" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18l_dynamic_names_and_aliased_acquirers_fail_closed[evidence-package-under-an-import-alias]" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18l_dynamic_names_and_aliased_acquirers_fail_closed[aliased-partial-acquisition]" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18l_dynamic_names_and_aliased_acquirers_fail_closed[module-qualified-partial-acquisition]" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18l_dynamic_names_and_aliased_acquirers_fail_closed[aliased-immediately-invoked-acquisition]" \
+            "$A::TestObligation18ApprovedCallSiteSet::test_obligation_18m_a_resolvable_non_entry_point_attribute_is_not_reported" \
             "$A::TestObligation19NoCallerSelectedTrustRoot::test_obligation_19_no_violation_is_reported" \
             "$A::TestObligation19NoCallerSelectedTrustRoot::test_obligation_19_the_rule_can_identify_its_target_violation" \
             "$A::TestObligation22Cj1Vectors::test_obligation_22a_vector_1_bytes" \

@@ -2413,6 +2413,22 @@ THE STANDARD — EXACT CALL-SITE AUTHORISATION.
   approved again. `entrypoint` is kept as a SEPARATE field because it answers the
   different question of which entry point the call reaches, and it is what makes an
   alias recognisable at all.
+
+  THE FINGERPRINT'S DIGEST, STATED SO IT IS NOT ASSUMED:
+
+      algorithm   SHA-256, over the UTF-8 bytes of the canonical serialization of
+                  the call's arguments and keywords, a separator, and the enclosing
+                  statement-kind chain
+      output      the FULL 64-character lowercase hexadecimal digest. IT IS NOT
+                  TRUNCATED, and a reader comparing a stored identity against an
+                  implementation's output MUST compare all 64 characters
+      collision   the identity inherits SHA-256's collision resistance and NOTHING
+                  STRONGER. This is an ASSUMPTION, not a proof: a collision would
+                  make two different calls share one identity, the check does not
+                  attempt to detect one, and an approval is only as specific as the
+                  identity that carries it. A shorter digest is a DIFFERENT
+                  identity with a weaker assumption, and changing the length is a
+                  change to this section.
 ```
 
 ```text
@@ -7394,22 +7410,37 @@ and 8 recorded about §7 and §30.
 
         resolves aliases WITHIN THEIR OWN SCOPE — a local assignment in one
           function says nothing about a same-named local in another
-        records a per-call identity: path, fully-qualified scope, canonical
-          entry point, AST child-field/index path, canonical fingerprint (the
-          subtree with location attributes excluded), enclosing statement kinds,
-          and whether `producer_proof` is an EXPLICIT keyword
-        reports the forms it cannot resolve as UNRESOLVED, which drive FAIL, and
-          NEVER drops them
+        records a per-call identity of SEVEN fields, and the list is the contract's
+          own (§7.3.13 above): `path`, `scope`, `entrypoint`, **`callee`** — the
+          ORIGINAL source form of the callee expression, carried SEPARATELY from
+          the canonical entry point — `ast_path`, `fingerprint`, `control_context`,
+          and `proof_kwarg`
+        computes `fingerprint` as a FULL 64-character SHA-256 hex digest over the
+          call's ARGUMENTS AND CONTROL CONTEXT. The callee is NOT normalised into
+          it: it is the separate `callee` field. Location attributes are excluded,
+          and no line number is part of the identity
+        carries an unsupported ACQUISITION forward onto the name it binds, so a
+          later call through that name is the finding
+        resolves the acquisition callable itself through the scope's bindings, so
+          `partial` reached through an alias or through `functools` is the same
+          form and not a new hole
+        treats a callable taken from an EVIDENCE MODULE by an attribute name it
+          cannot resolve as UNRESOLVED — the name cannot be assumed NOT to be an
+          entry point
+        reports the forms it cannot resolve as UNRESOLVED, AND a module it cannot
+          read or parse as a SCAN FAILURE; both drive FAIL, and neither is dropped
         states its blind spots, which is TRANSPARENCY and NOT an acceptance
           criterion
 
     THE POSITIVE CONTROL STAYS. `test_obligation_18b` is unchanged in purpose: a
     check that cannot find a call site proves nothing about there being none.
 
-    THE FAILURE-INDEPENDENCE REQUIREMENT IS MET BY SEPARATE NODES, not by
-    assertions folded into one. Six of the seven new nodes exist because a single
-    node reporting "18a failed" cannot say WHICH condition broke, and a check that
-    cannot distinguish them is one condition with several names. The nodes are:
+    THE FAILURE-INDEPENDENCE REQUIREMENT IS MET BY SEPARATE NODE IDS, not by
+    assertions folded into one. A single node reporting "18a failed" cannot say
+    WHICH condition broke, and a check that cannot distinguish them is one
+    condition with several names. THE NODE IDS ARE LISTED ONE PER LINE, and a
+    PARAMETRIZED TEST CONTRIBUTES ONE NODE ID PER CASE — so the node count and the
+    TEST-FUNCTION count differ, and neither may be quoted for the other:
 
         18a  the approved set is exact, over the real production tree
         18b  the positive control (unchanged in purpose)
@@ -7417,17 +7448,32 @@ and 8 recorded about §7 and §30.
         18d  two calls in one scope are two identities
         18e  aliases resolve to the CANONICAL entry point
         18f  an unapproved addition fails
-        18g  unresolvable forms fail closed (getattr / partial / container)
+        18g  unresolvable forms fail closed — three node ids:
+                 [getattr-acquisition] [partial-application] [container-dispatch]
         18h  `producer_proof` must be an EXPLICIT keyword; `**mapping` does not count
-        18i  an unsupported ACQUISITION carried onto a name and then CALLED fails
-             closed (five forms: getattr-acquired, partial-created, dynamic-import
-             result, container callable, and an AMBIGUOUS local name)
+        18i  an unsupported ACQUISITION carried onto a name and then CALLED —
+             five node ids: [a-getattr-acquired-then-called]
+                            [b-partial-created-then-called]
+                            [c-dynamic-import-result-called]
+                            [d-container-callable-called]
+                            [e-ambiguous-local-name]
         18j  a CHANGED CALLEE FORM is not the approved call site, at the same scope,
              the same AST path, the same arguments and the same canonical entry
-             point
+             point; also asserts the digest is the FULL 64-character hex string
         18k  a module the scan cannot read or parse FAILS the scan
+        18l  a DYNAMIC ATTRIBUTE NAME and an ALIASED ACQUIRER fail closed —
+             six node ids: [dynamic-attribute-name-parameter]
+                           [attribute-name-through-a-variable]
+                           [evidence-package-under-an-import-alias]
+                           [aliased-partial-acquisition]
+                           [module-qualified-partial-acquisition]
+                           [aliased-immediately-invoked-acquisition]
+        18m  the CONTROL that keeps 18l from meaning "block every getattr": a
+             resolvable attribute of the package that is NOT an entry point must
+             NOT be reported
 
-    ^ 18i, 18j AND 18k ANSWER REVIEW FINDINGS, AND EACH CLOSES A DIFFERENT HOLE.
+    ^ 18i, 18j, 18k, 18l AND 18m ANSWER REVIEW FINDINGS, AND EACH CLOSES A
+    DIFFERENT HOLE.
     18i: checking only the immediately-invoked shape — `getattr(...)(...)`,
     `partial(...)()`, `container[...](...)` — sees an ordinary call to an unknown
     local and reports NOTHING. The acquisition is therefore carried FORWARD onto
@@ -7438,15 +7484,34 @@ and 8 recorded about §7 and §30.
     different call expressions. The callee is now its own identity field.
     18k: `scan_tree` skipped a file it could not parse and reported the rest as
     clean, which is a clean result for a tree that was never fully read.
+    18l: `getattr(ev, field)` defeated the taint rule. The old check asked whether
+    the CALL MENTIONED an entry point by name; `ev` is an import alias and `field`
+    is a variable, so nothing matched and no taint was recorded. THE RECEIVER NOW
+    DECIDES: when the object a callable is taken from is an EVIDENCE MODULE and the
+    attribute name cannot be resolved, the result is UNRESOLVED. The same fix
+    follows the acquisition callable through an alias, so `p(...)` after
+    `from functools import partial as p` is not a different spelling of the hole.
+    18m: the control. A rule that swallowed every `getattr` would pass 18l while
+    having stopped resolving anything, so 18m requires a resolvable non-entry-point
+    attribute to stay unreported. NO BLANKET BLOCK IS ACCEPTED AS A FIX.
 ```
 
 ```text
 (c) THE COUNTS, AND THE HISTORICAL RECORDS THAT KEEP THEIRS.
 
-    WHAT MOVED
-        G1 matrix node ids                 34 -> 49   (+15)
-        process-isolated matrix cases      46 -> 61   (+15)
-        test functions in the module       45 -> 60   (+15)
+    WHAT MOVED — AND THESE ARE STATIC COUNTS, TAKEN FROM THE SOURCE TREE, NOT
+    FROM A RUN. They are presented as counts of what the matrix WILL invoke, and a
+    report that wants to say more than that must show a run whose head it names.
+
+        G1 matrix node ids                 34 -> 56   (+22)   <- counted in preflight.yml
+        process-isolated matrix cases      46 -> 68   (+22)   <- the same 68 node ids
+        test functions in the module       45 -> 56   (+11)   <- counted in the module
+
+    THE TWO DELTAS DIFFER ON PURPOSE, AND QUOTING ONE FOR THE OTHER IS THE ERROR
+    THIS PARAGRAPH EXISTS TO PREVENT. A parametrized test contributes ONE node id
+    per CASE and ONE test function per DEFINITION: `18g`, `18i` and `18l` contribute
+    fourteen node ids between them from three definitions. So +22 node ids and +11
+    test functions are both correct, and neither is a count of the other.
 
     WHAT DID NOT MOVE, AND MUST NOT
         Amendment 7 (d), §35.3 and `## Status` record "46 RAN / 0 skipped" as the

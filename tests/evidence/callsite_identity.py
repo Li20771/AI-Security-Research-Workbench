@@ -154,16 +154,39 @@ class _Bindings:
     #: A call through such a name is reported, not ignored — that is the whole
     #: point of carrying the taint instead of only checking the immediate form.
     tainted: dict[str, str] = field(default_factory=dict)
+    #: Names bound to a plain string, so `field = "admit"` can be followed and an
+    #: attribute name that is a VARIABLE is not mistaken for an unknown one.
+    constants: dict[str, set[str]] = field(default_factory=dict)
+    #: Names that are aliases of an acquisition callable: `from functools import
+    #: partial as p` makes `p` mean `partial`. Without this, an aliased
+    #: acquisition is a different spelling of the same hole.
+    acquirers: dict[str, str] = field(default_factory=dict)
+    #: Names bound to a module that CARRIES an acquisition callable, so
+    #: `ft.partial(...)` is recognised when `ft` is `functools`.
+    acquirer_modules: set[str] = field(default_factory=set)
 
     def copy(self) -> "_Bindings":
         return _Bindings(
             entrypoints={name: set(values) for name, values in self.entrypoints.items()},
             modules={name: set(values) for name, values in self.modules.items()},
             tainted=dict(self.tainted),
+            constants={name: set(values) for name, values in self.constants.items()},
+            acquirers=dict(self.acquirers),
+            acquirer_modules=set(self.acquirer_modules),
         )
 
     def taint(self, name: str, reason: str) -> None:
         self.tainted.setdefault(name, reason)
+
+    def add_constant(self, name: str, value: str) -> None:
+        self.constants.setdefault(name, set()).add(value)
+
+    def constant(self, name: str) -> str | None:
+        """The single string `name` is bound to, or None if it is not one value."""
+        values = self.constants.get(name)
+        if not values or len(values) != 1:
+            return None
+        return next(iter(values))
 
     def add_entrypoint(self, name: str, canonical: str) -> None:
         self.entrypoints.setdefault(name, set()).add(canonical)
@@ -195,23 +218,12 @@ def _is_evidence_module(dotted: str) -> bool:
 #: Call forms that ACQUIRE a callable this scanner cannot follow to its target.
 _UNTRACEABLE_ACQUISITIONS = frozenset({"getattr", "__import__", "import_module", "partial"})
 
+#: The attribute names those callables are known by.
+_ACQUIRER_ATTRS = _UNTRACEABLE_ACQUISITIONS
 
-def _mentions_evidence(node: ast.AST) -> bool:
-    """Whether `node` names an admission entry point or the evidence package.
-
-    Used to decide whether an untraceable acquisition is RELEVANT. A `getattr`
-    that mentions neither is not an admission call and is not reported; one that
-    mentions either could be, and is.
-    """
-    for child in ast.walk(node):
-        if isinstance(child, ast.Name) and child.id in CANONICAL_ENTRYPOINTS:
-            return True
-        if isinstance(child, ast.Attribute) and child.attr in CANONICAL_ENTRYPOINTS:
-            return True
-        if isinstance(child, ast.Constant) and isinstance(child.value, str):
-            if child.value in CANONICAL_ENTRYPOINTS or _EVIDENCE_PACKAGE in child.value:
-                return True
-    return False
+#: The modules that carry them. A local name bound to one of these is recognised
+#: as a carrier, so `ft.partial(...)` is the same form as `functools.partial(...)`.
+_ACQUIRER_MODULES = frozenset({"functools", "builtins", "importlib"})
 
 
 def _callee_form(func: ast.expr) -> str:
@@ -289,17 +301,21 @@ class _Scopes:
                 return
 
     @staticmethod
-    def _size(bindings: _Bindings) -> tuple[int, int, int]:
+    def _size(bindings: _Bindings) -> tuple[int, int, int, int, int, int]:
         """A monotone size, so the fixed point terminates.
 
         `tainted` is counted too: a taint established late in a pass must still
         make the NEXT pass run, or a chain like `a = getattr(...)` / `b = a` would
-        stop one step short of the name that is actually called.
+        stop one step short of the name that is actually called. The same holds for
+        a string constant and for an acquirer alias discovered late.
         """
         return (
             sum(len(values) for values in bindings.entrypoints.values()),
             sum(len(values) for values in bindings.modules.values()),
             len(bindings.tainted),
+            sum(len(values) for values in bindings.constants.values()),
+            len(bindings.acquirers),
+            len(bindings.acquirer_modules),
         )
 
     def _apply_one(self, node: ast.AST, bindings: _Bindings) -> None:
@@ -307,21 +323,45 @@ class _Scopes:
             module = node.module or ""
             if node.level:
                 module = _EVIDENCE_PACKAGE + ("." + module if module else "")
+            root = module.split(".", 1)[0]
             for alias in node.names:
                 local = alias.asname or alias.name
                 target = f"{module}.{alias.name}" if module else alias.name
-                if alias.name in CANONICAL_ENTRYPOINTS and _is_evidence_module(module):
+                if root in _ACQUIRER_MODULES and alias.name in _ACQUIRER_ATTRS:
+                    # `from functools import partial as p` — `p` IS `partial`, and
+                    # an aliased acquisition is the same hole under another name.
+                    bindings.acquirers[local] = alias.name
+                elif alias.name in CANONICAL_ENTRYPOINTS and _is_evidence_module(module):
                     bindings.add_entrypoint(local, alias.name)
                 elif _is_evidence_module(target):
                     bindings.add_module(local, target)
         elif isinstance(node, ast.Import):
             for alias in node.names:
                 local = alias.asname or alias.name.split(".")[0]
+                if alias.name.split(".", 1)[0] in _ACQUIRER_MODULES:
+                    bindings.acquirer_modules.add(local)
                 if _is_evidence_module(alias.name):
                     bindings.add_module(local, alias.name)
         else:  # Assign / AnnAssign
             value = node.value
             if value is None:
+                return
+            # `Assign` carries `targets`, `AnnAssign` carries `target` — normalized
+            # here so every branch below treats them the same way.
+            targets = list(node.targets) if isinstance(node, ast.Assign) else [node.target]
+            if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                # `field = "admit"` — the name and the string are the same thing,
+                # and an attribute name that is a VARIABLE must not be read as an
+                # unknown one when its value is sitting right there.
+                for target in targets:
+                    if isinstance(target, ast.Name):
+                        bindings.add_constant(target.id, value.value)
+                return
+            acquirer = self.acquirer_name(value, bindings)
+            if acquirer is not None:
+                for target in targets:
+                    if isinstance(target, ast.Name):
+                        bindings.acquirers[target.id] = acquirer
                 return
             resolved = self._resolve_value(value, bindings)
             if resolved is None:
@@ -332,18 +372,58 @@ class _Scopes:
                 # than looking like an ordinary unknown call.
                 reason = self._taint_reason(value, bindings)
                 if reason is not None:
-                    for target in node.targets:
+                    for target in targets:
                         if isinstance(target, ast.Name):
                             bindings.taint(target.id, reason)
                 return
             kind, dotted = resolved
-            for target in node.targets:
+            for target in targets:
                 if not isinstance(target, ast.Name):
                     continue
                 if kind == "entrypoint":
                     bindings.add_entrypoint(target.id, dotted)
                 else:
                     bindings.add_module(target.id, dotted)
+
+    def acquirer_name(self, func: ast.expr, bindings: _Bindings) -> str | None:
+        """The acquisition callable a callee denotes, following simple aliases.
+
+        Bounded on purpose: it follows a local alias and a module attribute whose
+        root IS one of the modules that carries these callables. It does not follow
+        a callable passed in from outside, and it does not claim to.
+        """
+        if isinstance(func, ast.Name):
+            if func.id in _UNTRACEABLE_ACQUISITIONS:
+                return func.id
+            return bindings.acquirers.get(func.id)
+        if isinstance(func, ast.Attribute) and func.attr in _ACQUIRER_ATTRS:
+            root = self.dotted(func, bindings)
+            if root is None:
+                return None
+            head = root.split(".", 1)[0]
+            if head in bindings.acquirer_modules or head in _ACQUIRER_MODULES:
+                return func.attr
+        return None
+
+    def _is_evidence_receiver(self, node: ast.expr, bindings: _Bindings) -> bool:
+        """Whether `node` denotes an Evidence module through this scope's bindings.
+
+        A NAME MATCH IS NOT ENOUGH. `import plugins.evidence as ev` binds `ev`, and
+        a check that only recognised the spelling `evidence` would miss it — which
+        is how a `getattr(ev, <dynamic>)` could slip past.
+        """
+        dotted = self.dotted(node, bindings)
+        return dotted is not None and _is_evidence_module(dotted)
+
+    def _constant_string(self, node: ast.expr | None, bindings: _Bindings) -> str | None:
+        """The string value an expression is known to hold, or None."""
+        if node is None:
+            return None
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return node.value
+        if isinstance(node, ast.Name):
+            return bindings.constant(node.id)
+        return None
 
     def _taint_reason(self, value: ast.expr, bindings: _Bindings) -> str | None:
         """Why `value` is a callable this scanner cannot trace, or None.
@@ -368,22 +448,75 @@ class _Scopes:
                 )
             return None
         if isinstance(value, ast.Subscript):
-            if _mentions_evidence(value):
+            if self._mentions_evidence(value, bindings):
                 return "extraction from a container, which this scanner cannot index"
             return None
         if isinstance(value, ast.Call):
-            func = value.func
-            name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
-            if name in _UNTRACEABLE_ACQUISITIONS:
-                if _mentions_evidence(value):
+            acquirer = self.acquirer_name(value.func, bindings)
+            if acquirer is not None:
+                return self._acquisition_reason(acquirer, value, bindings)
+            if isinstance(value.func, ast.expr):
+                return self._taint_reason(value.func, bindings)
+        return None
+
+    def _acquisition_reason(self, acquirer: str, call: ast.Call, bindings: _Bindings) -> str | None:
+        """Why an acquisition call yields an untraceable callable, or None.
+
+        THE RECEIVER DECIDES, NOT THE SPELLING OF THE ATTRIBUTE. When the object a
+        callable is taken FROM is an Evidence module, an attribute name the scanner
+        cannot resolve MUST NOT be assumed harmless: `getattr(ev, field)` may be
+        `admit` at run time, and "we could not read the name" is not "it is not an
+        entry point".
+        """
+        if acquirer == "getattr" and call.args:
+            receiver = call.args[0]
+            if self._is_evidence_receiver(receiver, bindings):
+                attribute = call.args[1] if len(call.args) >= 2 else None
+                resolved = self._constant_string(attribute, bindings)
+                if resolved is None:
                     return (
-                        f"`{name}(...)`, whose result is a callable this scanner "
-                        f"cannot trace to a target"
+                        "a callable acquired from the EVIDENCE PACKAGE by an "
+                        "attribute name this scanner cannot resolve — that name "
+                        "cannot be assumed NOT to be an admission entry point"
+                    )
+                if resolved in CANONICAL_ENTRYPOINTS:
+                    return (
+                        f"`getattr(<evidence module>, {resolved!r})` — a callable "
+                        f"acquired by name rather than called directly"
                     )
                 return None
-            if isinstance(func, ast.expr):
-                return self._taint_reason(func, bindings)
+        if self._mentions_evidence(call, bindings):
+            return (
+                f"`{acquirer}(...)`, whose result is a callable this scanner "
+                f"cannot trace to a target"
+            )
         return None
+
+    def _mentions_evidence(self, node: ast.AST, bindings: _Bindings) -> bool:
+        """Whether `node` names an entry point or the evidence package, in any form.
+
+        BINDINGS-AWARE, and that is the point. A name bound to an Evidence module
+        counts — `import plugins.evidence as ev` makes `ev` a mention — and so does
+        a name bound to a string that reads `"admit"`. A check that only matched
+        the literal spellings would let an aliased or variable-carried mention
+        through.
+        """
+        for child in ast.walk(node):
+            if isinstance(child, ast.Name):
+                if child.id in CANONICAL_ENTRYPOINTS or child.id in bindings.modules:
+                    return True
+                value = bindings.constant(child.id)
+                if value is not None and (
+                    value in CANONICAL_ENTRYPOINTS or _EVIDENCE_PACKAGE in value
+                ):
+                    return True
+            elif isinstance(child, ast.Attribute):
+                if child.attr in CANONICAL_ENTRYPOINTS:
+                    return True
+            elif isinstance(child, ast.Constant) and isinstance(child.value, str):
+                if child.value in CANONICAL_ENTRYPOINTS or _EVIDENCE_PACKAGE in child.value:
+                    return True
+        return False
 
     # -- lookup -------------------------------------------------------------
 
@@ -508,6 +641,24 @@ def _fingerprint(call: ast.Call, parents: dict[int, ast.AST]) -> str:
 
     Location attributes are excluded, which is what makes the digest stable
     against unrelated edits and sensitive to edits INSIDE the call.
+
+    THE DIGEST, STATED SO IT IS NOT ASSUMED:
+
+        algorithm   SHA-256 over the UTF-8 bytes of the canonical `ast.dump` of
+                    the call's arguments and keywords, a NUL separator, and the
+                    enclosing statement-kind chain
+        output      the FULL 64-character lowercase hexadecimal digest. IT IS NOT
+                    TRUNCATED. An earlier revision took the first 32 characters,
+                    which is 128 bits; that is not what this returns now, and a
+                    reader comparing a stored identity against this function's
+                    output must compare all 64 characters
+        collision   the identity inherits SHA-256's collision resistance and
+                    nothing stronger. It is an ASSUMPTION, not a proof: a
+                    collision would make two different calls share one identity,
+                    and this scanner does not attempt to detect one. The
+                    assumption is written down because the approval's meaning
+                    depends on it — an approval is only as specific as the
+                    identity that carries it
     """
     rebuilt = ast.Call(
         func=ast.Name(id="<callee>", ctx=ast.Load()),
@@ -516,7 +667,7 @@ def _fingerprint(call: ast.Call, parents: dict[int, ast.AST]) -> str:
     )
     payload = ast.dump(rebuilt, annotate_fields=True, include_attributes=False)
     payload += "\x00" + _control_context(parents, call)
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:32]
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _proof_kwarg(call: ast.Call) -> bool:
@@ -581,15 +732,15 @@ def _unresolvable_reason(call: ast.Call, scopes: _Scopes, bindings: _Bindings) -
 
     # A call whose RESULT is immediately called: `getattr(m, "admit")(...)`,
     # `partial(admit_to_store, store=s)(...)`, `registry["admit"](...)`.
+    # The acquirer is resolved through the SAME alias-following helper the taint
+    # rule uses, so `p(...)()` after `from functools import partial as p` is the
+    # same form under another name rather than a new hole.
     if isinstance(callee, ast.Call):
-        inner = callee.func
-        if isinstance(inner, ast.Name) and inner.id in _UNRESOLVABLE_CALLEES and _names_an_entrypoint(callee):
-            return f"reflective acquisition via `{inner.id}(...)`"
-        if isinstance(inner, ast.Attribute) and inner.attr in _UNRESOLVABLE_CALLEES and _names_an_entrypoint(callee):
-            return f"reflective acquisition via `.{inner.attr}(...)`"
-        inner_name = inner.id if isinstance(inner, ast.Name) else getattr(inner, "attr", None)
-        if inner_name == "partial" and _names_an_entrypoint(callee):
-            return "partial application over an entry point"
+        acquirer = scopes.acquirer_name(callee.func, bindings)
+        if acquirer is not None:
+            reason = scopes._acquisition_reason(acquirer, callee, bindings)
+            if reason is not None:
+                return f"immediately-invoked acquisition — {reason}"
 
     # A subscript callee: `registry["admit"](...)`, `callables[0](...)` where the
     # slice names an entry point.
