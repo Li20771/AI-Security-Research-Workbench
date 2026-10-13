@@ -1,11 +1,18 @@
 # CP-A_DECISION_PACKET_v3.0
 
 > **STATUS: DRAFT — NOT APPROVED.**
-> This file is a **decision request**, not a decision. Nothing in it has been
-> approved, adopted, merged or agreed by any owner. It is **not a contract**, it
-> has **no normative force**, and it creates **no obligation** on any phase.
-> It may not be cited as authority for any change, and it must not be quoted as
-> though an owner had already decided.
+> This file is a **decision request**: it is **not a contract**, it has **no
+> normative force**, it creates **no obligation** on any phase, and it carries no
+> automatic implementation authority. **One decision is recorded in it:** §3's N1
+> block carries the project owner's decision of 2026-10-13 — **N1 = Reading 1** —
+> transcribed from the owner's formal directive and readable **only to the scope
+> the decision itself states** (a delivery-scope choice; **not**
+> production-activation approval; no call site; no gate moved). **The other eight
+> register items remain `DECISION REQUIRED`**, and nothing here may be quoted as
+> any other option having been approved, adopted or agreed by any owner. The
+> packet serves as a traceable record of the N1 decision; it is **not** authority
+> to bypass any contract or governance gate, and no clause of it may be cited as
+> such.
 >
 > It lives **outside** every phase's contract. No clause of AI-05, AI-06, AI-08,
 > AI-14 or AI-15 is amended, restated, weakened or superseded by it.
@@ -25,21 +32,26 @@
 ## 0. What this packet is and is not
 
 ```text
-DRAFT — NOT APPROVED. This is a DECISION REQUEST, not a decision.
+DRAFT — NOT APPROVED. This is a DECISION REQUEST, not a completed decision
+process.
 
-it is        a register of the questions that remain open at the baseline named
-             above, each with the facts verified against that baseline, the scope
-             of what a decision must determine, and an unsigned signature box
-it is not    a decision, an approval, a contract, an amendment, or authorisation
-             for any code, call site, producer token, registry row, test or
-             workflow change
+it is        a register of the decision questions this packet carries — eight
+             still open, and one (N1) decided by the project owner on
+             2026-10-13 and recorded in its §3 block — each with the facts
+             verified against the baseline named above, the scope of what a
+             decision must determine, and a signature box (N1's signed; the
+             other eight unsigned)
+it is not    an overall approval, a contract, an amendment, or general
+             authorisation for any code, call site, producer token, registry
+             row, test or workflow change
 it does not  amend any contract; every amendment recorded in §2 was made by the
              owner of the contract it amends, in that owner's contract, under
              that owner's amendment rule
 it does not  edit docs/PROJECT_STATUS.md or docs/MASTER_ROADMAP.md; §3 D7
              records their conflicts and asks who may correct them
-it has       no normative force, and no status in it is an owner's approval of
-             any option
+it has       no normative force; the N1 block records a project-owner decision
+             (Reading 1, 2026-10-13) to the scope that decision itself states,
+             and no other item's status is an owner's approval of any option
 ```
 
 **The register is the authority for who decides what.** Where this packet's prose
@@ -312,9 +324,11 @@ in their owners' contracts.**
 
 ## 3. OPEN decision register
 
-**All nine items below are listed. Every one is `DECISION REQUIRED`: no option in
-this packet has been approved, and no recommendation, draft or audit finding
-below is an owner's decision.**
+**All nine items below are listed. One is decided: N1 = Reading 1 (project owner,
+2026-10-13, recorded in its block below, with N1-C discharged by AI-14 Amendment
+6). The other eight are `DECISION REQUIRED`: no option they carry has been
+approved, and no recommendation, draft or audit finding below is an owner's
+decision.**
 
 | ID | Item | Authorized owner(s) | Status | Required deliverable | Gate / invariant to preserve |
 |---|---|---|---|---|---|
@@ -1135,7 +1149,7 @@ AI-15                authors nothing here (AI-15 §17.4:3521-3546)
 CP-A v3.0 is satisfied only when every row below carries a **signed** conclusion
 with a decider, a date, a reason and the contract it applies to.
 
-**One row per OPEN register item — the same nine, in the same order.**
+**One row per register item — the same nine, in the same order.**
 
 | # | Condition (register ID) | Authorized owner(s) | Status |
 |---|---|---|---|
@@ -1145,11 +1159,13 @@ with a decider, a date, a reason and the contract it applies to.
 | 4 | D6 — propagation interface decided and signed by **both** parties | implementing party + AI-14 owner | **NOT MET** |
 | 5 | D7 — status-document synchronisation assigned, with the regenerated inventory | project owner | **NOT MET** |
 | 6 | D8 — acceptance owner named, with its remit recorded | project owner | **NOT MET** |
-| 7 | N1 — the §15.8 signing-helper delivery decided (N1-C inside N1's record if Reading 1 is adopted) | project owner; the deferral path is AI-06's owner's | **NOT MET** |
+| 7 | N1 — the §15.8 signing-helper delivery decided (N1-C inside N1's record if Reading 1 is adopted) | project owner; the deferral path is AI-06's owner's | **MET — Reading 1 (2026-10-13); N1-C discharged by AI-14 Amendment 6** |
 | 8 | N3 — the `store.write` acceptance assertion decided | AI-05 owner (with the joint review as the applying surface) | **NOT MET** |
 | 9 | N4 — the AI-15 §20 naming surface decided | AI-15 contract maintainer with the project owner | **NOT MET** |
 
-**CP-A v3.0 = NOT SATISFIED. No decision box has been signed.**
+**CP-A v3.0 = NOT SATISFIED. One of the nine conditions is met (N1, Reading 1,
+2026-10-13); the other eight are NOT MET, and their decision boxes remain
+unsigned.**
 
 ---
 
@@ -1219,7 +1235,8 @@ AI-05 §35.1 (`docs/AI-05_EVIDENCE_EXECUTION_PLAN.md:7633-7648`), AI-12-C
 ## 8. What this packet is not
 
 - Not a contract or an amendment to any contract.
-- Not an approval; no box is signed.
+- Not an overall approval; one box is signed (N1, Reading 1, 2026-10-13) and the
+  other eight are not.
 - Not authorisation for code, call sites, producer tokens, registry rows or test
   changes.
 - Not an execution record: no test and no CI run was performed in preparing it.
