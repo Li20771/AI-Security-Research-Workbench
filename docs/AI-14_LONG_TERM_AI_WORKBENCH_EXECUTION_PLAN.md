@@ -1,8 +1,9 @@
 # AI-14 — Long-term AI Workbench — Execution Plan
 
 > Status: **FROZEN** (AI-14-A, 2026-10-04 — frozen by the merge of PR #72); **AMENDED
-> FIVE TIMES** (§25 — Amendment 1, 2026-10-04; Amendment 2, 2026-10-11; Amendment 3,
-> 2026-10-12; Amendment 4, 2026-10-12; Amendment 5, 2026-10-12)
+> SIX TIMES** (§25 — Amendment 1, 2026-10-04; Amendment 2, 2026-10-11; Amendment 3,
+> 2026-10-12; Amendment 4, 2026-10-12; Amendment 5, 2026-10-12; Amendment 6,
+> 2026-10-13)
 > Phase: AI-14 — Long-term AI Workbench
 > Sub-phase: **AI-14-A — Final Architecture / Long-term Workbench Freeze**
 > Prerequisite: AI-13 — COMPLETE / MERGED / CLOSED, merge commit
@@ -1522,8 +1523,15 @@ B5 — COMPOSITION -> EVIDENCE   (gated: the producing phase's own contract, and
 
                          THE CHANGE HAS THREE PARTS AND THREE AUTHORS:
                              runtime / composition   the implementing party — the
-                                                     call site, the wiring, and its
-                                                     own tests
+                                                     call site, the wiring, its own
+                                                     tests, AND THE AI-06 §15.8
+                                                     SIGNING-BOUNDARY DELIVERY: the
+                                                     ProducerSigner consumption and
+                                                     the eight negative tests
+                                                     §15.8:1209-1226 enumerates —
+                                                     which CP-A v3.0 N1's Reading 1
+                                                     (2026-10-13) puts inside the
+                                                     runtime part (Amendment 6)
                              the AI-14 part          AI-14'S OWNER — §5.1, §22.1 B5,
                                                      Appendix A, §25, the Layer 0
                                                      constant, and the composition
@@ -2339,6 +2347,138 @@ WHAT THIS AMENDMENT DOES NOT DO
       `AI14_FORBIDDEN_CALLABLES`
     it does not add, remove or change a producer token, a registry row, an admission
       outcome or an authority relation
+    it does not run any test, and it claims no test result of its own
+```
+
+---
+
+#### Amendment 6 — the joint change's runtime part carries the AI-06 §15.8 signing-boundary delivery (2026-10-13)
+
+Made because CP-A v3.0's N1 — the AI-06 §15.8 signing-helper delivery decision —
+was decided by the project owner as **Reading 1** on 2026-10-13, transcribed in
+the N1 block of `docs/CP-A_DECISION_PACKET/CP-A_DECISION_PACKET_v3.0.md` §3 and
+delivered in the same change as this amendment. Reading 1 triggers the
+conditional action **N1-C**, and N1-C names THIS act as its discharge: an AI-14
+§24 amendment recording, in §22.1 B5's joint-delivery description, that the
+joint change's runtime part carries the AI-06 §15.8 signing-boundary delivery
+and its eight negative tests.
+
+```text
+AMENDMENT TYPE — PREREQUISITE RULES, NOT A CLASSIFICATION. It changes no
+classification, no authority relation and no CONNECTED/SEAM row. §5.1,
+Appendix A and B5's per-item STATUS are UNTOUCHED: this edge remains
+IMPLEMENTED BUT NOT CONNECTED and B5 remains BLOCKED. It records WHAT the
+joint change's runtime part must carry WHEN that change is made; it does not
+make, start, authorize or schedule that change.
+```
+
+```text
+(a) §22.1 B5 `blocked by (iii)` — the runtime part's content, EXTENDED.
+    The runtime/composition row of the three-part delivery now carries, in
+    addition to the call site, the wiring and its own tests, THE AI-06 §15.8
+    SIGNING-BOUNDARY DELIVERY: the ProducerSigner consumption and the eight
+    negative tests §15.8:1209-1226 enumerates — the obligation §15.8:1202-1206
+    already places on the joint change itself. This records CP-A N1's Reading
+    1 in the place N1-C names. It adds no second author, no fourth part and
+    no new gate: the delivery stays three parts, three authors, one change,
+    one review, one merge.
+
+(b) WHAT THE PHASE 3A IMPLEMENTATION IS, AND IS NOT. A dormant implementation
+    of the §15.8 boundary exists on the unmerged branch commit
+    `97d1e0b9aaf97be622aae3657885691db81a0219`
+    (`feature/ai15-open1-producer-signing`, parent `acfdeea` = current
+    origin/main): the ProducerSigner interface, the check-then-sign helper,
+    and the eight negative tests plus the round trip. Review provenance,
+    recorded for accuracy: an earlier session relayed a Claude review of
+    that commit as PASS — a claim with no review artifact preserved in this
+    repository; the 2026-10-13 Phase 3A re-verification was performed by
+    TRAE as source inspection and self-review (the Claude CLI was
+    unavailable, API 402), which is not an independent second-party review.
+    No in-repository review artifact for that commit exists either way.
+    Reading 1 puts that work INSIDE THE JOINT DELIVERY'S SCOPE — it is the
+    candidate runtime-part content the joint change may carry. Its
+    existence on a branch is NOT a delivery: it is not merged, it creates
+    no call site, it configures no key and no trust, and §15.8's own
+    standard still stands — "UNTIL THOSE TESTS EXIST AND RUN, THIS
+    BOUNDARY IS A RULE AND NOT A DEMONSTRATED PROPERTY" (§15.8:1227-1229).
+    Nothing in this amendment marks it delivered, approved or activated,
+    and nothing here rests on any review's conclusion.
+
+(c) THE FOUR STAGES THIS AMENDMENT KEEPS DISTINCT.
+        capability preparation   the dormant boundary and its tests exist in
+                                 the tree (today: on the unmerged Phase 3A
+                                 branch only; main carries §15.8's contract
+                                 text and no helper)
+        joint delivery           the ONE change, ONE review, ONE merge of the
+                                 three parts, governed by §22.1 B5 (iii) and
+                                 B6 — NOT YET MADE, and not authorized while
+                                 the remaining CP-A register items stand
+        authorized wiring        a production call site named individually
+                                 in the §7.3.13 approved set — DOES NOT
+                                 EXIST; APPROVED_CALL_SITES stays EMPTY
+        production activation    the edge classified CONNECTED by AI-14's
+                                 owner in the same change as the call site —
+                                 FORBIDDEN until then
+    Reading 1 moves the FIRST stage's product into the SECOND stage's scope.
+    It moves no stage boundary: no stage beyond the first is satisfied,
+    started or authorized by this amendment.
+
+(d) WHO KEEPS WHAT. AI-05's acceptance obligations and CI matrix node list
+    remain AI-05's part of the joint delivery (AI-05 §7.3.7 as amended by
+    Amendment 9; the third row AI-15 §17.2d records). AI-14's contract,
+    Layer 0 constant, composition assertions and the STEP 3 classification
+    remain AI-14's owner's. The runtime part — now including the §15.8
+    delivery — remains the implementing party's. Naming the §15.8 delivery
+    inside the runtime part transfers nothing, delegates nothing and waives
+    nothing.
+
+(e) §20.1 — DERIVED, NOT CHANGED. §20.1's decision table carries the
+    deferred and blocked DEPENDENCIES of composition (AI-05 C-1, AI-12-C,
+    live provider verification, model-comparative evidence, durable review
+    evidence, clean-room DSH). The §15.8 signing-boundary delivery is not a
+    dependency of that kind: it is a content obligation of the joint
+    change's runtime part, and it is recorded where it belongs — §22.1 B5
+    (iii). §20.1 is therefore UNTOUCHED: no row is added, removed or
+    re-scoped by this amendment, and §20.3's honesty rule continues to
+    govern every row it already carries.
+
+(f) THIS AMENDMENT IS NOT THE JOINT DELIVERY. It satisfies N1-C's recording
+    act and nothing else. The joint delivery remains unmade and
+    unauthorized: D3, D4, D5, D6, D7, D8, N3 and N4 remain DECISION
+    REQUIRED in CP-A v3.0's register; §17.2d's one-change shape, row 1′ and
+    the absent call site still block STEP 2; and no part of this amendment
+    may be read as merging, approving or scheduling any part of that
+    change.
+```
+
+```text
+WHO ACTED. AI-14's contract-responsibility role, in AI-14's contract, under
+    AI-14 §24, advanced within the repository's established responsibility
+    model (the same model that delivered Amendments 2-5). The N1 decision
+    this amendment records is the PROJECT OWNER's act, made in the Phase 3B
+    session of 2026-10-13 and transcribed in CP-A v3.0 §3; this amendment
+    neither makes nor restates that decision. N1-C is discharged BY THIS
+    AMENDMENT, not by the decision record that triggered it.
+```
+
+```text
+WHAT THIS AMENDMENT DOES NOT DO
+
+    it does not connect the edge, create or authorize a call site, or move
+      B5 out of BLOCKED
+    it does not mark any seam CONNECTED, and it introduces no intermediate
+      classification for one
+    it does not authorise STEP 2 or the joint change: the remaining CP-A
+      register items and §22.1 B5's `blocked by` list still govern
+    it does not deliver, approve, merge or activate the Phase 3A
+      implementation; its branch stays unmerged, and merging it remains the
+      joint change's act under (iii), not this amendment's
+    it does not amend AI-05's, AI-06's, AI-15's or any other phase's
+      contract; §15.8 stands as AI-06's owner froze it, and its eight-test
+      obligation is recorded here, not rewritten here
+    it does not relax a Layer 0 prohibition, and it does not touch
+      `AI14_FORBIDDEN_IMPORTS`, `AI14_FORBIDDEN_IDENTIFIERS` or
+      `AI14_FORBIDDEN_CALLABLES`
     it does not run any test, and it claims no test result of its own
 ```
 
