@@ -919,10 +919,18 @@ N1 — AI-06 §15.8 SIGNING-HELPER DELIVERY
             dormant §15.8 implementation (the ProducerSigner interface, the
             check-then-sign helper, and the eight negative tests plus the
             round trip) exists on the unmerged branch commit 97d1e0b
-            (feature/ai15-open1-producer-signing, parent acfdeea), which was
-            independently reviewed PASS on 2026-10-13; under Reading 1 that
-            work enters the JOINT DELIVERY'S SCOPE and is not thereby
-            delivered, merged, wired or activated.
+            (feature/ai15-open1-producer-signing, parent acfdeea). Review
+            provenance, recorded for accuracy: an earlier session relayed a
+            Claude review of that commit as PASS — a relayed claim with no
+            review artifact preserved in this repository; the 2026-10-13
+            Phase 3A re-verification was performed by TRAE (source
+            inspection and self-review; the Claude CLI was unavailable,
+            API 402), and a self-review is not an independent second-party
+            review. No in-repository review artifact for 97d1e0b exists
+            either way, and this decision rests on the decider's directive,
+            not on any review. Under Reading 1 that work enters the JOINT
+            DELIVERY'S SCOPE and is not thereby delivered, merged, wired or
+            activated.
   contract(s) this decision applies to: AI-06 §15.8 (whose eight-test
             obligation the joint change's runtime part now carries), as
             recorded in AI-14 §22.1 B5 (iii) by AI-14 Amendment 6 — the

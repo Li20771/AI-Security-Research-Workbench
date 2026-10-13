@@ -2388,14 +2388,21 @@ make, start, authorize or schedule that change.
     `97d1e0b9aaf97be622aae3657885691db81a0219`
     (`feature/ai15-open1-producer-signing`, parent `acfdeea` = current
     origin/main): the ProducerSigner interface, the check-then-sign helper,
-    and the eight negative tests plus the round trip, independently reviewed
-    on 2026-10-13. Reading 1 puts that work INSIDE THE JOINT DELIVERY'S
-    SCOPE — it is the candidate runtime-part content the joint change may
-    carry. Its existence on a branch is NOT a delivery: it is not merged,
-    it creates no call site, it configures no key and no trust, and §15.8's
-    own standard still stands — "UNTIL THOSE TESTS EXIST AND RUN, THIS
+    and the eight negative tests plus the round trip. Review provenance,
+    recorded for accuracy: an earlier session relayed a Claude review of
+    that commit as PASS — a claim with no review artifact preserved in this
+    repository; the 2026-10-13 Phase 3A re-verification was performed by
+    TRAE as source inspection and self-review (the Claude CLI was
+    unavailable, API 402), which is not an independent second-party review.
+    No in-repository review artifact for that commit exists either way.
+    Reading 1 puts that work INSIDE THE JOINT DELIVERY'S SCOPE — it is the
+    candidate runtime-part content the joint change may carry. Its
+    existence on a branch is NOT a delivery: it is not merged, it creates
+    no call site, it configures no key and no trust, and §15.8's own
+    standard still stands — "UNTIL THOSE TESTS EXIST AND RUN, THIS
     BOUNDARY IS A RULE AND NOT A DEMONSTRATED PROPERTY" (§15.8:1227-1229).
-    Nothing in this amendment marks it delivered, approved or activated.
+    Nothing in this amendment marks it delivered, approved or activated,
+    and nothing here rests on any review's conclusion.
 
 (c) THE FOUR STAGES THIS AMENDMENT KEEPS DISTINCT.
         capability preparation   the dormant boundary and its tests exist in
