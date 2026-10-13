@@ -324,12 +324,15 @@ below is an owner's decision.**
 | D6 | `AdmissionOutcome` propagation | implementing party **and** AI-14 owner — **both must sign** | **DECISION REQUIRED** | the proposed propagation interface and runtime behaviour, plus AI-14 owner's review of its effect on the composition boundary, result semantics and STEP 3 | AI-15 §7.4's `UNDETERMINED` stands until ruled; §8.3 conditions 8 and 10 hold; no authorize stage exists and none may be added; **one signature alone decides nothing and STEP 2 stays BLOCKED** |
 | D7 | `PROJECT_STATUS.md` / `MASTER_ROADMAP.md` synchronisation | project owner | **DECISION REQUIRED** | the named maintainer, the authorised sources, the non-overclaim rule, and the timing (after re-verification) | must not mark STEP 2, STEP 3 or any seam complete; must not supply evidence to the joint change; AI-14's classification authority and AI-05's contract authority are untouched |
 | D8 | Joint integration acceptance owner | project owner | **DECISION REQUIRED** | the named accepting party, plus the signed acknowledgement that the role excludes making AI-14's STEP 3 classification | only AI-14's owner states the STEP 3 classification, and only in the same change as the call site; the accepting party's remit excludes it |
-| N1 | The AI-06 §15.8 signing-helper delivery decision | project owner (which work is undertaken); the §15.8 deferral path belongs to AI-06's owner | **DECISION REQUIRED** | a signed choice between Reading 1 and Reading 2, with the contract tension recorded either way | §15.8 as frozen says the joint change MUST ship the eight negative tests; until they exist and run, the boundary is a rule and not a demonstrated property |
+| N1 | The AI-06 §15.8 signing-helper delivery decision | project owner (which work is undertaken); the §15.8 deferral path belongs to AI-06's owner | **DECIDED — READING 1 (2026-10-13)**; N1-C discharged by AI-14 Amendment 6, same change | the signed choice is recorded in N1's block below (§3), with the contract tension acknowledged and the delivery-scope-only bound stated | §15.8 as frozen says the joint change MUST ship the eight negative tests; until they exist and run in CI, the boundary is a rule and not a demonstrated property — the decision authorizes no call site and moves no gate |
 | N3 | The `store.write` acceptance-assertion decision | AI-05 owner (if the assertion lands in the acceptance module); the joint review is the applying surface | **DECISION REQUIRED** | whether an assertion that production code contains no direct `StagedEvidenceStore.write` call outside the admission entry points is added, and if so which owner authors it | the constraint is a RULE, not a check; `StagedEvidenceStore.write` is public and callable; §8.3 condition 9 requires `admit_to_store`, not a bare `store.write` |
 | N4 | The AI-15 §20 fourth-same-change-surface decision | AI-15 contract maintainer (the act) with the project owner (the plan) | **DECISION REQUIRED** | a signed record of how AI-15 §8.3 condition 2's second naming surface is executed in the joint delivery, and by whom | §8.3 condition 2 requires the call site named by file and line in AI-14 §5.1 AND in AI-15 §20, in the same change that connects it; AI-15's contract is amended only by AI-15's owner under §19 |
 
-**No decision box in this packet has been signed. No owner input has been
-received for any item.**
+**One decision box in this packet is signed: N1 (Reading 1, 2026-10-13,
+transcribed from the project owner's formal directive in the Phase 3B session;
+N1-C discharged by AI-14 Amendment 6, delivered in the same change). No owner
+input has been received for any other item, and every other register item
+remains DECISION REQUIRED.**
 
 ---
 
@@ -876,7 +879,7 @@ path belonging to AI-06's owner.
 
 ```text
 N1 — AI-06 §15.8 SIGNING-HELPER DELIVERY
-  decision   [ ] READING 1 — the joint change's runtime part carries the
+  decision   [x] READING 1 — the joint change's runtime part carries the
                  signing-boundary consumption and the eight negative tests;
                  N1-C applies
              [ ] READING 2 — the joint change does not deliver them this round;
@@ -885,18 +888,37 @@ N1 — AI-06 §15.8 SIGNING-HELPER DELIVERY
              [ ] NEEDS MODIFICATION: ______________________________________
 
   recorded with the decision (required):
-    acknowledged  [ ] the contract tension between §15.8 as frozen and the
+    acknowledged  [x] the contract tension between §15.8 as frozen and the
                       chosen reading is recorded above
-    acknowledged  [ ] if Reading 2 is chosen, any §15.8 deferral is AI-06's
+    acknowledged  [x] if Reading 2 is chosen, any §15.8 deferral is AI-06's
                       owner's act under AI-06's amendment rule, not this
                       packet's
 
-  decider   ______________________________  date ______________
-  reason    ______________________________________________________
-  contract(s) this decision applies to: ____________________________
+  decider   the project owner         date 2026-10-13
+  reason    Directed as a formal decision in the Phase 3B execution session
+            of 2026-10-13 (expressly not requiring re-confirmation), and
+            transcribed here by the executing agent (TRAE) to the directive's
+            scope. The decider's own stated bounds are recorded with the
+            decision: Reading 1 is a DELIVERY-SCOPE decision only — it is NOT
+            production-activation approval, it authorizes no call site, and
+            it moves no gate. Context known to the decider when deciding: a
+            dormant §15.8 implementation (the ProducerSigner interface, the
+            check-then-sign helper, and the eight negative tests plus the
+            round trip) exists on the unmerged branch commit 97d1e0b
+            (feature/ai15-open1-producer-signing, parent acfdeea), which was
+            independently reviewed PASS on 2026-10-13; under Reading 1 that
+            work enters the JOINT DELIVERY'S SCOPE and is not thereby
+            delivered, merged, wired or activated.
+  contract(s) this decision applies to: AI-06 §15.8 (whose eight-test
+            obligation the joint change's runtime part now carries), as
+            recorded in AI-14 §22.1 B5 (iii) by AI-14 Amendment 6 — the
+            N1-C act, delivered in the same change as this record.
 ```
 
-**Until this block is signed, N1 = DECISION REQUIRED.**
+**N1 = DECIDED — READING 1 (2026-10-13).** The block above is signed; N1-C
+applies and is discharged by AI-14 Amendment 6 (§25), delivered in the same
+change as this record. The decision record itself is not the N1-C act. The
+other eight register items remain DECISION REQUIRED.
 
 ---
 
@@ -924,6 +946,16 @@ depends on it — AI-14 MUST NOT amend another phase's contract from here."
 
 **No signature box of its own** — N1-C is signed, if at all, inside N1's record
 when Reading 1 is adopted.
+
+**Discharge record (2026-10-13).** Reading 1 is adopted in N1's signed block
+above, so N1-C arose and is discharged by **AI-14 Amendment 6** (§25 of
+`docs/AI-14_LONG_TERM_AI_WORKBENCH_EXECUTION_PLAN.md`), which records in §22.1
+B5 (iii)'s joint-delivery description that the joint change's runtime part
+carries the AI-06 §15.8 signing-boundary delivery and its eight negative
+tests. The amendment references §15.8 without restating or authoring AI-06's
+text, and is delivered in the same change as this decision record. The
+discharge is an act of recording, not a gate: nothing in it authorizes the
+joint change, a call site, or any production activation.
 
 ---
 
