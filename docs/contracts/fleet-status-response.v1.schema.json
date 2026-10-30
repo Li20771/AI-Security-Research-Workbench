@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:dsh-fleet:contract:fleet-status-response:1.0.0",
+  "title": "Fleet status response v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract_version", "ok", "operation"],
+  "properties": {
+    "contract_version": { "const": "1.0.0" },
+    "ok": { "type": "boolean" },
+    "operation": { "const": "status" },
+    "data": { "$ref": "#/$defs/statusData" },
+    "error": {
+      "oneOf": [
+        { "$ref": "#/$defs/error" },
+        { "type": "null" }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "ok": { "const": true } }, "required": ["ok"] },
+      "then": {
+        "required": ["data"],
+        "properties": { "error": { "type": "null" } }
+      }
+    },
+    {
+      "if": { "properties": { "ok": { "const": false } }, "required": ["ok"] },
+      "then": {
+        "required": ["error"],
+        "properties": { "error": { "$ref": "#/$defs/error" } }
+      }
+    }
+  ],
+  "$defs": {
+    "statusData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runs"],
+      "properties": {
+        "runs": {
+          "type": "array",
+          "maxItems": 100,
+          "items": { "$ref": "#/$defs/runSummary" }
+        }
+      }
+    },
+    "runSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "run_id",
+        "workflow_instance_id",
+        "workflow_id",
+        "task_id",
+        "parent_run_id",
+        "role",
+        "preset_id",
+        "preset_version",
+        "workspace_id",
+        "episode_id",
+        "status",
+        "created_at",
+        "updated_at",
+        "session_id",
+        "result_ref",
+        "result_sha256",
+        "cleanup_state",
+        "reason_code",
+        "reason"
+      ],
+      "properties": {
+        "run_id": { "type": "string", "pattern": "^run_[A-Za-z0-9_-]{8,96}$" },
+        "workflow_instance_id": { "type": "string", "pattern": "^wfi_[A-Za-z0-9_-]{8,96}$" },
+        "workflow_id": { "enum": ["single", "research", "design_review", "lab_validation", "security_audit"] },
+        "task_id": { "type": "string", "pattern": "^[a-z][a-z0-9_]{1,63}$" },
+        "parent_run_id": { "type": ["string", "null"], "pattern": "^run_[A-Za-z0-9_-]{8,96}$" },
+        "role": { "enum": ["orchestrator", "researcher", "vehicle_analyst", "challenger", "evidence_verifier", "lab_runner"] },
+        "preset_id": { "type": "string", "pattern": "^preset_[a-z][a-z0-9_]{2,63}$" },
+        "preset_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+        "workspace_id": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{1,63}$" },
+        "episode_id": { "type": ["string", "null"], "pattern": "^[a-z][a-z0-9_-]{1,63}$" },
+        "status": {
+          "enum": ["created", "validated", "queued", "running", "waiting_approval", "completed", "failed", "blocked", "timed_out", "cancelled"]
+        },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" },
+        "session_id": { "type": ["string", "null"], "pattern": "^dshsess_[A-Za-z0-9_-]{8,120}$" },
+        "result_ref": { "type": ["string", "null"], "pattern": "^result://run_[A-Za-z0-9_-]{8,96}$" },
+        "result_sha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+        "cleanup_state": { "enum": ["not_needed", "succeeded", "failed", "unknown", null] },
+        "reason_code": { "type": ["string", "null"], "pattern": "^[a-z][a-z0-9-]{1,63}$" },
+        "reason": { "type": ["string", "null"], "maxLength": 2048 }
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {
+        "code": {
+          "enum": [
+            "invalid-request",
+            "identity-in-request",
+            "untrusted-binding",
+            "contract-version-mismatch",
+            "workflow-unknown",
+            "workflow-disabled",
+            "task-unknown",
+            "role-unknown",
+            "role-disabled",
+            "role-not-allowed",
+            "preset-mismatch",
+            "preset-disabled",
+            "plugin-unregistered",
+            "plugin-disabled",
+            "workspace-unknown",
+            "workspace-disabled",
+            "workspace-role-denied",
+            "memory-pack-required",
+            "memory-scope-mismatch",
+            "approval-required",
+            "approval-denied",
+            "approval-pending",
+            "concurrency-limit",
+            "deadline-exceeds-preset",
+            "budget-exceeds-preset",
+            "parent-not-found",
+            "parent-not-terminal",
+            "dependency-not-satisfied",
+            "invalid-parent-run",
+            "run-not-found",
+            "run-not-cancellable",
+            "result-not-ready",
+            "result-not-available",
+            "adapter-start-failed",
+            "adapter-timeout",
+            "adapter-cancel-failed",
+            "invalid-worker-result",
+            "cleanup-failed",
+            "session-init-blocked",
+            "ledger-integrity",
+            "internal-error"
+          ]
+        },
+        "message": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "details": {
+          "type": "object",
+          "maxProperties": 16,
+          "additionalProperties": {
+            "type": ["string", "number", "boolean", "null"]
+          }
+        }
+      }
+    }
+  }
+}

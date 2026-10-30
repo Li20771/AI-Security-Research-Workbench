@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:dsh-fleet:contract:worker-result:1.0.0",
+  "title": "Worker result payload v1",
+  "description": "Untrusted worker output payload. It is not Evidence, not a permission grant, and cannot write shared memory.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "summary",
+    "claims",
+    "citations",
+    "artifacts",
+    "memory_candidates",
+    "requested_actions",
+    "limitations"
+  ],
+  "properties": {
+    "summary": { "type": "string", "minLength": 1, "maxLength": 4000 },
+    "claims": {
+      "type": "array",
+      "maxItems": 100,
+      "items": { "$ref": "#/$defs/claim" }
+    },
+    "citations": {
+      "type": "array",
+      "maxItems": 200,
+      "items": { "$ref": "#/$defs/citation" }
+    },
+    "artifacts": {
+      "type": "array",
+      "maxItems": 100,
+      "items": { "$ref": "#/$defs/artifact" }
+    },
+    "memory_candidates": {
+      "type": "array",
+      "maxItems": 100,
+      "items": { "$ref": "#/$defs/memoryCandidate" }
+    },
+    "requested_actions": {
+      "type": "array",
+      "maxItems": 50,
+      "items": { "$ref": "#/$defs/requestedAction" }
+    },
+    "limitations": {
+      "type": "array",
+      "maxItems": 50,
+      "items": { "type": "string", "minLength": 1, "maxLength": 1000 }
+    },
+    "findings": {
+      "type": "array",
+      "maxItems": 100,
+      "items": { "$ref": "#/$defs/finding" }
+    },
+    "verdicts": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "items": { "$ref": "#/$defs/verdict" }
+    }
+  },
+  "$defs": {
+    "citation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ref", "revision", "kind"],
+      "properties": {
+        "ref": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "revision": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "kind": { "enum": ["memory", "file", "report", "artifact"] }
+      }
+    },
+    "claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim_id", "text", "citations"],
+      "properties": {
+        "claim_id": { "type": "string", "pattern": "^clm_[A-Za-z0-9_-]{4,64}$" },
+        "text": { "type": "string", "minLength": 1, "maxLength": 4000 },
+        "citations": {
+          "type": "array",
+          "maxItems": 50,
+          "items": { "$ref": "#/$defs/citation" }
+        }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ref", "sha256"],
+      "properties": {
+        "ref": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    },
+    "memoryCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidate_id", "text", "scope"],
+      "properties": {
+        "candidate_id": { "type": "string", "pattern": "^mc_[A-Za-z0-9_-]{4,64}$" },
+        "text": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "scope": { "enum": ["user-global", "workspace-shared", "episode-shared", "run-private"] },
+        "rationale": { "type": "string", "minLength": 1, "maxLength": 1000 }
+      }
+    },
+    "requestedAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "target"],
+      "properties": {
+        "action": {
+          "enum": [
+            "request_review",
+            "request_approval",
+            "propose_memory_candidate",
+            "flag_evidence_gap",
+            "request_additional_context"
+          ]
+        },
+        "target": { "type": "string", "minLength": 1, "maxLength": 256 }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["finding_id", "target", "severity", "rationale", "citations"],
+      "properties": {
+        "finding_id": { "type": "string", "pattern": "^fnd_[A-Za-z0-9_-]{4,64}$" },
+        "target": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "severity": { "enum": ["low", "medium", "high", "critical"] },
+        "rationale": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "citations": {
+          "type": "array",
+          "maxItems": 50,
+          "items": { "$ref": "#/$defs/citation" }
+        }
+      }
+    },
+    "verdict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim_id", "verdict", "evidence_refs", "rationale"],
+      "properties": {
+        "claim_id": { "type": "string", "pattern": "^clm_[A-Za-z0-9_-]{4,64}$" },
+        "verdict": { "enum": ["confirmed", "rejected", "unresolved"] },
+        "evidence_refs": {
+          "type": "array",
+          "maxItems": 50,
+          "items": { "type": "string", "minLength": 1, "maxLength": 512 }
+        },
+        "rationale": { "type": "string", "minLength": 1, "maxLength": 2000 }
+      }
+    }
+  }
+}

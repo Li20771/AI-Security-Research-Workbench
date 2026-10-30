@@ -1,0 +1,11 @@
+{
+  "contract_version": "1.0.0",
+  "ok": true,
+  "operation": "submit",
+  "data": {
+    "workflow_instance_id": "wfi_0123456789abcdef0123456789abcdef",
+    "run_id": "run_0123456789abcdef0123456789abcdef",
+    "status": "queued",
+    "accepted_at": "2026-10-30T00:00:00.000Z"
+  }
+}

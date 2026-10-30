@@ -1,0 +1,136 @@
+{
+  "contract_version": "1.0.0",
+  "workflows": [
+    {
+      "workflow_id": "single",
+      "version": "1.0.0",
+      "enabled": true,
+      "default": true,
+      "tasks": [
+        {
+          "task_id": "main",
+          "allowed_roles": ["orchestrator"],
+          "worker": false,
+          "requires_approval": false,
+          "depends_on": []
+        }
+      ]
+    },
+    {
+      "workflow_id": "research",
+      "version": "1.0.0",
+      "enabled": true,
+      "default": false,
+      "tasks": [
+        {
+          "task_id": "analysis_a",
+          "allowed_roles": ["researcher"],
+          "worker": true,
+          "requires_approval": false,
+          "depends_on": []
+        },
+        {
+          "task_id": "analysis_b",
+          "allowed_roles": ["vehicle_analyst"],
+          "worker": true,
+          "requires_approval": false,
+          "depends_on": []
+        },
+        {
+          "task_id": "challenge",
+          "allowed_roles": ["challenger"],
+          "worker": true,
+          "requires_approval": false,
+          "depends_on": ["analysis_a"]
+        },
+        {
+          "task_id": "verify",
+          "allowed_roles": ["evidence_verifier"],
+          "worker": true,
+          "requires_approval": false,
+          "depends_on": ["challenge"]
+        }
+      ]
+    },
+    {
+      "workflow_id": "design_review",
+      "version": "1.0.0",
+      "enabled": true,
+      "default": false,
+      "tasks": [
+        {
+          "task_id": "design",
+          "allowed_roles": ["vehicle_analyst"],
+          "worker": true,
+          "requires_approval": false,
+          "depends_on": []
+        },
+        {
+          "task_id": "challenge",
+          "allowed_roles": ["challenger"],
+          "worker": true,
+          "requires_approval": false,
+          "depends_on": ["design"]
+        },
+        {
+          "task_id": "verify",
+          "allowed_roles": ["evidence_verifier"],
+          "worker": true,
+          "requires_approval": false,
+          "depends_on": ["challenge"]
+        }
+      ]
+    },
+    {
+      "workflow_id": "security_audit",
+      "version": "1.0.0",
+      "enabled": true,
+      "default": false,
+      "tasks": [
+        {
+          "task_id": "analysis",
+          "allowed_roles": ["researcher", "vehicle_analyst"],
+          "worker": true,
+          "requires_approval": false,
+          "depends_on": []
+        },
+        {
+          "task_id": "challenge",
+          "allowed_roles": ["challenger"],
+          "worker": true,
+          "requires_approval": false,
+          "depends_on": ["analysis"]
+        },
+        {
+          "task_id": "validation",
+          "allowed_roles": ["lab_runner"],
+          "worker": true,
+          "requires_approval": true,
+          "depends_on": ["analysis"]
+        },
+        {
+          "task_id": "verify",
+          "allowed_roles": ["evidence_verifier"],
+          "worker": true,
+          "requires_approval": false,
+          "depends_on": ["challenge"]
+        }
+      ]
+    },
+    {
+      "workflow_id": "lab_validation",
+      "version": "1.0.0",
+      "enabled": false,
+      "default": false,
+      "tasks": [
+        {
+          "task_id": "suite_run",
+          "allowed_roles": ["lab_runner"],
+          "worker": true,
+          "requires_approval": true,
+          "depends_on": []
+        }
+      ]
+    }
+  ]
+}

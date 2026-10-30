@@ -1,0 +1,16 @@
+{
+  "contract_version": "1.0.0",
+  "server": "securitylab_ro",
+  "tool": "lab_read_file",
+  "arguments": {
+    "path": "reports/report-1.md",
+    "root_id": "reports"
+  },
+  "context": {
+    "run_id": "run_0123456789abcdef0123456789abcdef",
+    "role": "researcher",
+    "workspace_id": "ws_a",
+    "episode_id": "ep_1",
+    "tool_profile": "researcher_ro_v1"
+  }
+}

@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:dsh-memory:contract:memorypack:1.0.0",
+  "title": "MemoryPack v1",
+  "description": "Immutable read-only memory snapshot for one worker run. Not a write API and not Evidence.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "snapshot_id",
+    "snapshot_hash",
+    "generated_at",
+    "read_only",
+    "scope",
+    "role",
+    "run_id",
+    "entries",
+    "excluded",
+    "source",
+    "policy"
+  ],
+  "properties": {
+    "contract_version": { "const": "1.0.0" },
+    "snapshot_id": { "type": "string", "pattern": "^mp_[a-f0-9]{32}$" },
+    "snapshot_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "read_only": { "const": true },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workspace_id", "episode_id"],
+      "properties": {
+        "workspace_id": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{1,63}$" },
+        "episode_id": { "type": ["string", "null"], "pattern": "^[a-z][a-z0-9_-]{1,63}$" }
+      }
+    },
+    "role": { "enum": ["orchestrator", "researcher", "vehicle_analyst", "challenger", "evidence_verifier", "lab_runner"] },
+    "run_id": { "type": "string", "pattern": "^run_[A-Za-z0-9_-]{8,96}$" },
+    "entries": {
+      "type": "array",
+      "maxItems": 100,
+      "items": { "$ref": "#/$defs/entry" }
+    },
+    "excluded": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pending", "rejected", "superseded", "restricted"],
+      "properties": {
+        "pending": { "type": "integer", "minimum": 0 },
+        "rejected": { "type": "integer", "minimum": 0 },
+        "superseded": { "type": "integer", "minimum": 0 },
+        "restricted": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vault", "contract_version"],
+      "properties": {
+        "vault": { "const": "dsh-memory" },
+        "contract_version": { "const": "1.0.0" }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authorized_before_retrieval", "cross_workspace"],
+      "properties": {
+        "authorized_before_retrieval": { "const": true },
+        "cross_workspace": { "type": "boolean" }
+      }
+    }
+  },
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entry_id",
+        "path",
+        "layer",
+        "type",
+        "title",
+        "visibility",
+        "workspace_id",
+        "episode_id",
+        "authority",
+        "review_state",
+        "revision",
+        "body",
+        "sources",
+        "sha256"
+      ],
+      "properties": {
+        "entry_id": { "type": "string", "pattern": "^mem_[A-Za-z0-9_-]{8,96}$" },
+        "path": { "type": "string", "pattern": "^[A-Za-z0-9._-][A-Za-z0-9._/-]{0,511}$" },
+        "layer": { "enum": ["L1", "L2", "L3", "L4", "KB"] },
+        "type": { "enum": ["memory", "knowledge", "episode", "map", "reference"] },
+        "title": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "visibility": { "enum": ["user-global", "workspace-shared", "episode-shared", "run-private"] },
+        "workspace_id": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{1,63}$" },
+        "episode_id": { "type": ["string", "null"], "pattern": "^[a-z][a-z0-9_-]{1,63}$" },
+        "authority": { "enum": ["human-approved", "curator", "agent-observed", "source-document"] },
+        "review_state": { "const": "approved" },
+        "revision": { "type": "string", "pattern": "^[a-f0-9]{12,64}$" },
+        "body": { "type": "string", "maxLength": 65536 },
+        "sources": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ref"],
+            "properties": {
+              "ref": { "type": "string", "minLength": 1, "maxLength": 512 },
+              "revision": { "type": "string", "minLength": 1, "maxLength": 128 },
+              "kind": { "enum": ["memory", "file", "report", "artifact"] }
+            }
+          }
+        },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    }
+  }
+}

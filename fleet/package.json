@@ -1,0 +1,22 @@
+{
+  "name": "@ai-security-research-workbench/fleet",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "DSH Agent Fleet v3.0 fake-only core. Fleet API 1.0.0; MemoryPack 1.1.0.",
+  "engines": {
+    "node": ">=22.6.0"
+  },
+  "scripts": {
+    "typecheck": "node node_modules/typescript/bin/tsc -p tsconfig.json --noEmit",
+    "test": "node --experimental-strip-types --test \"test/*.test.ts\"",
+    "test:contracts": "node --experimental-strip-types --test test/contracts.test.ts",
+    "contracts:check": "node --experimental-strip-types scripts/check-contracts.ts"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.19",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "typescript": "5.9.3"
+  }
+}

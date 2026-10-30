@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:dsh-fleet:contract:fleet-status-query:1.0.0",
+  "title": "Fleet status query v1",
+  "description": "Either a single run_id, or a workflow_instance_id with an optional task_id. Unbounded listing is not part of the contract.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract_version"],
+  "properties": {
+    "contract_version": { "const": "1.0.0" },
+    "run_id": {
+      "type": "string",
+      "pattern": "^run_[A-Za-z0-9_-]{8,96}$"
+    },
+    "workflow_instance_id": {
+      "type": "string",
+      "pattern": "^wfi_[A-Za-z0-9_-]{8,96}$"
+    },
+    "task_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{1,63}$"
+    }
+  },
+  "oneOf": [
+    {
+      "required": ["run_id"],
+      "not": {
+        "anyOf": [
+          { "required": ["workflow_instance_id"] },
+          { "required": ["task_id"] }
+        ]
+      }
+    },
+    {
+      "required": ["workflow_instance_id"],
+      "not": { "required": ["run_id"] }
+    }
+  ]
+}

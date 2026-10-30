@@ -1,0 +1,30 @@
+{
+  "contract_version": "1.0.0",
+  "ok": true,
+  "operation": "status",
+  "data": {
+    "runs": [
+      {
+        "run_id": "run_0123456789abcdef0123456789abcdef",
+        "workflow_instance_id": "wfi_0123456789abcdef0123456789abcdef",
+        "workflow_id": "research",
+        "task_id": "analysis_a",
+        "parent_run_id": null,
+        "role": "researcher",
+        "preset_id": "preset_researcher",
+        "preset_version": "1.0.0",
+        "workspace_id": "ws_a",
+        "episode_id": "ep_1",
+        "status": "completed",
+        "created_at": "2026-10-30T00:00:00.000Z",
+        "updated_at": "2026-10-30T00:01:00.000Z",
+        "session_id": "dshsess_fake_0001",
+        "result_ref": "result://run_0123456789abcdef0123456789abcdef",
+        "result_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "cleanup_state": "succeeded",
+        "reason_code": null,
+        "reason": null
+      }
+    ]
+  }
+}

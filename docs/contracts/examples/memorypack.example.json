@@ -1,0 +1,45 @@
+{
+  "contract_version": "1.0.0",
+  "snapshot_id": "mp_0123456789abcdef0123456789abcdef",
+  "snapshot_hash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "generated_at": "2026-10-30T00:00:00.000Z",
+  "read_only": true,
+  "scope": {
+    "workspace_id": "ws_a",
+    "episode_id": "ep_1"
+  },
+  "role": "researcher",
+  "run_id": "run_0123456789abcdef0123456789abcdef",
+  "entries": [
+    {
+      "entry_id": "mem_0123456789abcdef0123456789abcdef",
+      "path": "workspaces/ws_a/memory/2026-10-30-note.md",
+      "layer": "L4",
+      "type": "memory",
+      "title": "Synthetic episode note",
+      "visibility": "episode-shared",
+      "workspace_id": "ws_a",
+      "episode_id": "ep_1",
+      "authority": "agent-observed",
+      "review_state": "approved",
+      "revision": "0123456789ab",
+      "body": "Synthetic canary content for contract tests. No real project data.",
+      "sources": [],
+      "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    }
+  ],
+  "excluded": {
+    "pending": 0,
+    "rejected": 0,
+    "superseded": 0,
+    "restricted": 0
+  },
+  "source": {
+    "vault": "dsh-memory",
+    "contract_version": "1.0.0"
+  },
+  "policy": {
+    "authorized_before_retrieval": true,
+    "cross_workspace": false
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "summary": "Challenger review of the synthetic analysis.",
+  "claims": [
+    {
+      "claim_id": "clm_0001",
+      "text": "The analysis does not state the fixture version.",
+      "citations": []
+    }
+  ],
+  "citations": [],
+  "artifacts": [],
+  "memory_candidates": [],
+  "requested_actions": [
+    {
+      "action": "flag_evidence_gap",
+      "target": "clm_0001"
+    }
+  ],
+  "limitations": [
+    "Only the supplied synthetic claim was reviewed."
+  ],
+  "findings": [
+    {
+      "finding_id": "fnd_0001",
+      "target": "clm_0001",
+      "severity": "medium",
+      "rationale": "The claim cannot be tied to a fixture revision.",
+      "citations": []
+    }
+  ]
+}

@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:dsh-fleet:contract:run-ledger:1.0.0",
+  "title": "RunLedger event v1",
+  "description": "Append-only operational event. No prompt, credential, environment, or worker payload is permitted.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "seq",
+    "event_id",
+    "at",
+    "type",
+    "workflow_instance_id",
+    "run_id",
+    "task_id",
+    "role",
+    "data",
+    "prev_hash",
+    "hash"
+  ],
+  "properties": {
+    "contract_version": { "const": "1.0.0" },
+    "seq": { "type": "integer", "minimum": 1 },
+    "event_id": { "type": "string", "pattern": "^evt_[A-Za-z0-9_-]{8,96}$" },
+    "at": { "type": "string", "format": "date-time" },
+    "type": {
+      "enum": [
+        "run.created",
+        "run.validated",
+        "run.queued",
+        "run.waiting_approval",
+        "run.approved",
+        "run.session_opened",
+        "run.started",
+        "run.completed",
+        "run.failed",
+        "run.blocked",
+        "run.timed_out",
+        "run.cancelled",
+        "run.cleanup",
+        "run.reconciled",
+        "request.rejected"
+      ]
+    },
+    "workflow_instance_id": {
+      "type": ["string", "null"],
+      "pattern": "^wfi_[A-Za-z0-9_-]{8,96}$"
+    },
+    "run_id": {
+      "type": ["string", "null"],
+      "pattern": "^run_[A-Za-z0-9_-]{8,96}$"
+    },
+    "task_id": {
+      "type": ["string", "null"],
+      "pattern": "^[a-z][a-z0-9_]{1,63}$"
+    },
+    "role": {
+      "enum": ["orchestrator", "researcher", "vehicle_analyst", "challenger", "evidence_verifier", "lab_runner", null]
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "maxProperties": 32,
+      "properties": {
+        "status": {
+          "enum": ["created", "validated", "queued", "running", "waiting_approval", "completed", "failed", "blocked", "timed_out", "cancelled"]
+        },
+        "reason_code": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,63}$" },
+        "reason": { "type": "string", "maxLength": 2048 },
+        "request_id": { "type": "string", "pattern": "^req_[A-Za-z0-9_-]{8,96}$" },
+        "input_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "workflow_id": { "enum": ["single", "research", "design_review", "lab_validation", "security_audit"] },
+        "parent_run_id": { "type": ["string", "null"], "pattern": "^run_[A-Za-z0-9_-]{8,96}$" },
+        "session_id": { "type": "string", "pattern": "^dshsess_[A-Za-z0-9_-]{8,120}$" },
+        "preset_id": { "type": "string", "pattern": "^preset_[a-z][a-z0-9_]{2,63}$" },
+        "preset_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+        "workspace_id": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{1,63}$" },
+        "episode_id": { "type": ["string", "null"], "pattern": "^[a-z][a-z0-9_-]{1,63}$" },
+        "base_sha": { "type": ["string", "null"], "pattern": "^([a-f0-9]{40}|[a-f0-9]{64})$" },
+        "memory_pack_snapshot_id": { "type": ["string", "null"], "pattern": "^mp_[a-f0-9]{32}$" },
+        "memory_pack_snapshot_hash": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+        "tool_profile": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "approval_ref": { "type": ["string", "null"], "maxLength": 256 },
+        "deadline_ms": { "type": "integer", "minimum": 1, "maximum": 86400000 },
+        "budget": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["max_tokens", "max_cost_usd"],
+          "properties": {
+            "max_tokens": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+            "max_cost_usd": { "type": "number", "minimum": 0, "maximum": 1000 }
+          }
+        },
+        "result_ref": { "type": ["string", "null"], "pattern": "^result://run_[A-Za-z0-9_-]{8,96}$" },
+        "result_sha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+        "artifact_refs": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ref", "sha256"],
+            "properties": {
+              "ref": { "type": "string", "minLength": 1, "maxLength": 512 },
+              "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+            }
+          }
+        },
+        "cleanup_state": { "enum": ["not_needed", "succeeded", "failed", "unknown"] },
+        "cleanup_detail": { "type": "string", "maxLength": 1024 },
+        "worker": { "type": "boolean" },
+        "parent_task_id": { "type": "string", "pattern": "^[a-z][a-z0-9_]{1,63}$" },
+        "reconciled_from_seq": { "type": "integer", "minimum": 1 },
+        "adapter": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "duration_ms": { "type": "integer", "minimum": 0 },
+        "output_bytes": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "prev_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+  }
+}

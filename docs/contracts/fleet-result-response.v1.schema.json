@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:dsh-fleet:contract:fleet-result-response:1.0.0",
+  "title": "Fleet result response v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract_version", "ok", "operation"],
+  "properties": {
+    "contract_version": { "const": "1.0.0" },
+    "ok": { "type": "boolean" },
+    "operation": { "const": "result" },
+    "data": { "$ref": "#/$defs/resultData" },
+    "error": {
+      "oneOf": [
+        { "$ref": "#/$defs/error" },
+        { "type": "null" }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "ok": { "const": true } }, "required": ["ok"] },
+      "then": {
+        "required": ["data"],
+        "properties": { "error": { "type": "null" } }
+      }
+    },
+    {
+      "if": { "properties": { "ok": { "const": false } }, "required": ["ok"] },
+      "then": {
+        "required": ["error"],
+        "properties": { "error": { "$ref": "#/$defs/error" } }
+      }
+    }
+  ],
+  "$defs": {
+    "resultData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "run_id",
+        "status",
+        "result_ref",
+        "result_sha256",
+        "untrusted",
+        "admission",
+        "evidence",
+        "result",
+        "artifacts"
+      ],
+      "properties": {
+        "run_id": { "type": "string", "pattern": "^run_[A-Za-z0-9_-]{8,96}$" },
+        "status": { "const": "completed" },
+        "result_ref": { "type": "string", "pattern": "^result://run_[A-Za-z0-9_-]{8,96}$" },
+        "result_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "untrusted": { "const": true },
+        "admission": { "const": "none" },
+        "evidence": { "const": false },
+        "result": { "$ref": "#/$defs/workerResultEnvelope" },
+        "artifacts": {
+          "type": "array",
+          "maxItems": 100,
+          "items": { "$ref": "#/$defs/artifactRef" }
+        }
+      }
+    },
+    "workerResultEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "schema_id",
+        "run_id",
+        "role",
+        "received_at",
+        "untrusted",
+        "admission",
+        "evidence",
+        "payload_sha256",
+        "payload"
+      ],
+      "properties": {
+        "contract_version": { "const": "1.0.0" },
+        "schema_id": { "const": "worker-result.v1" },
+        "run_id": { "type": "string", "pattern": "^run_[A-Za-z0-9_-]{8,96}$" },
+        "role": { "enum": ["orchestrator", "researcher", "vehicle_analyst", "challenger", "evidence_verifier", "lab_runner"] },
+        "received_at": { "type": "string", "format": "date-time" },
+        "untrusted": { "const": true },
+        "admission": { "const": "none" },
+        "evidence": { "const": false },
+        "payload_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "payload": { "$ref": "urn:dsh-fleet:contract:worker-result:1.0.0" }
+      }
+    },
+    "artifactRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ref", "sha256"],
+      "properties": {
+        "ref": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {
+        "code": {
+          "enum": [
+            "invalid-request",
+            "identity-in-request",
+            "untrusted-binding",
+            "contract-version-mismatch",
+            "workflow-unknown",
+            "workflow-disabled",
+            "task-unknown",
+            "role-unknown",
+            "role-disabled",
+            "role-not-allowed",
+            "preset-mismatch",
+            "preset-disabled",
+            "plugin-unregistered",
+            "plugin-disabled",
+            "workspace-unknown",
+            "workspace-disabled",
+            "workspace-role-denied",
+            "memory-pack-required",
+            "memory-scope-mismatch",
+            "approval-required",
+            "approval-denied",
+            "approval-pending",
+            "concurrency-limit",
+            "deadline-exceeds-preset",
+            "budget-exceeds-preset",
+            "parent-not-found",
+            "parent-not-terminal",
+            "dependency-not-satisfied",
+            "invalid-parent-run",
+            "run-not-found",
+            "run-not-cancellable",
+            "result-not-ready",
+            "result-not-available",
+            "adapter-start-failed",
+            "adapter-timeout",
+            "adapter-cancel-failed",
+            "invalid-worker-result",
+            "cleanup-failed",
+            "session-init-blocked",
+            "ledger-integrity",
+            "internal-error"
+          ]
+        },
+        "message": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "details": {
+          "type": "object",
+          "maxProperties": 16,
+          "additionalProperties": {
+            "type": ["string", "number", "boolean", "null"]
+          }
+        }
+      }
+    }
+  }
+}

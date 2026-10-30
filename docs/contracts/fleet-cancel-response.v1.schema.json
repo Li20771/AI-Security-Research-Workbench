@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:dsh-fleet:contract:fleet-cancel-response:1.0.0",
+  "title": "Fleet cancel response v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract_version", "ok", "operation"],
+  "properties": {
+    "contract_version": { "const": "1.0.0" },
+    "ok": { "type": "boolean" },
+    "operation": { "const": "cancel" },
+    "data": { "$ref": "#/$defs/cancelData" },
+    "error": {
+      "oneOf": [
+        { "$ref": "#/$defs/error" },
+        { "type": "null" }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "ok": { "const": true } }, "required": ["ok"] },
+      "then": {
+        "required": ["data"],
+        "properties": { "error": { "type": "null" } }
+      }
+    },
+    {
+      "if": { "properties": { "ok": { "const": false } }, "required": ["ok"] },
+      "then": {
+        "required": ["error"],
+        "properties": { "error": { "$ref": "#/$defs/error" } }
+      }
+    }
+  ],
+  "$defs": {
+    "cancelData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run_id", "status", "cleanup"],
+      "properties": {
+        "run_id": { "type": "string", "pattern": "^run_[A-Za-z0-9_-]{8,96}$" },
+        "status": { "enum": ["cancelled", "blocked"] },
+        "cleanup": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state"],
+          "properties": {
+            "state": { "enum": ["not_needed", "succeeded", "failed", "unknown"] },
+            "detail": { "type": ["string", "null"], "maxLength": 1024 }
+          }
+        }
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {
+        "code": {
+          "enum": [
+            "invalid-request",
+            "identity-in-request",
+            "untrusted-binding",
+            "contract-version-mismatch",
+            "workflow-unknown",
+            "workflow-disabled",
+            "task-unknown",
+            "role-unknown",
+            "role-disabled",
+            "role-not-allowed",
+            "preset-mismatch",
+            "preset-disabled",
+            "plugin-unregistered",
+            "plugin-disabled",
+            "workspace-unknown",
+            "workspace-disabled",
+            "workspace-role-denied",
+            "memory-pack-required",
+            "memory-scope-mismatch",
+            "approval-required",
+            "approval-denied",
+            "approval-pending",
+            "concurrency-limit",
+            "deadline-exceeds-preset",
+            "budget-exceeds-preset",
+            "parent-not-found",
+            "parent-not-terminal",
+            "dependency-not-satisfied",
+            "invalid-parent-run",
+            "run-not-found",
+            "run-not-cancellable",
+            "result-not-ready",
+            "result-not-available",
+            "adapter-start-failed",
+            "adapter-timeout",
+            "adapter-cancel-failed",
+            "invalid-worker-result",
+            "cleanup-failed",
+            "session-init-blocked",
+            "ledger-integrity",
+            "internal-error"
+          ]
+        },
+        "message": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "details": {
+          "type": "object",
+          "maxProperties": 16,
+          "additionalProperties": {
+            "type": ["string", "number", "boolean", "null"]
+          }
+        }
+      }
+    }
+  }
+}
