@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:dsh-fleet:contract:fleet-submit-request:1.0.0",
+  "title": "Fleet submit request v1",
+  "description": "fleet.submit request. Identity and permission fields are forbidden; they live in the trusted binding.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract_version", "workflow_id", "task_id", "input"],
+  "properties": {
+    "contract_version": { "const": "1.0.0" },
+    "workflow_id": {
+      "enum": ["single", "research", "design_review", "lab_validation", "security_audit"]
+    },
+    "task_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{1,63}$"
+    },
+    "input": {
+      "type": "object",
+      "maxProperties": 32,
+      "propertyNames": { "maxLength": 64 },
+      "additionalProperties": true
+    },
+    "parent_run_id": {
+      "type": ["string", "null"],
+      "pattern": "^run_[A-Za-z0-9_-]{8,96}$"
+    },
+    "deadline_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 86400000
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_tokens", "max_cost_usd"],
+      "properties": {
+        "max_tokens": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+        "max_cost_usd": { "type": "number", "minimum": 0, "maximum": 1000 }
+      }
+    }
+  }
+}

@@ -1,0 +1,64 @@
+{
+  "contract_version": "1.1.0",
+  "snapshot_id": "mp_0123456789abcdef0123456789abcdef",
+  "snapshot_hash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "generated_at": "2026-10-30T00:00:00.000Z",
+  "read_only": true,
+  "scope": {
+    "workspace_id": "ws_a",
+    "episode_id": "ep_1"
+  },
+  "role": "researcher",
+  "run_id": "run_0123456789abcdef0123456789abcdef",
+  "entries": [
+    {
+      "entry_id": "mem_0123456789abcdef0123456789abcdef",
+      "path": "workspaces/ws_a/memory/2026-10-30-结论.md",
+      "layer": "L4",
+      "type": "episode",
+      "title": "Unicode path episode note",
+      "visibility": "episode-shared",
+      "workspace_id": "ws_a",
+      "episode_id": "ep_1",
+      "authority": "agent-observed",
+      "review_state": "approved",
+      "revision": "0123456789ab",
+      "body": "Synthetic Unicode-path canary. No real project data.",
+      "sources": [],
+      "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    },
+    {
+      "entry_id": "mem_fedcba9876543210fedcba9876543210",
+      "path": "kb/全球约束.md",
+      "layer": "L1",
+      "type": "knowledge",
+      "title": "Explicit user-global note without an origin workspace",
+      "visibility": "user-global",
+      "workspace_id": "global",
+      "episode_id": null,
+      "authority": "human-approved",
+      "review_state": "approved",
+      "revision": "abcdef012345",
+      "body": "Synthetic global canary. No real project data.",
+      "sources": [],
+      "sha256": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+    }
+  ],
+  "excluded": {
+    "pending": 0,
+    "rejected": 0,
+    "superseded": 0,
+    "restricted": 0,
+    "unmarked": 0,
+    "path_invalid": 0,
+    "entry_invalid": 0
+  },
+  "source": {
+    "vault": "dsh-memory",
+    "contract_version": "1.1.0"
+  },
+  "policy": {
+    "authorized_before_retrieval": true,
+    "cross_workspace": true
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "contract_version": "1.0.0",
+  "workflow_id": "research",
+  "task_id": "analysis_a",
+  "input": {
+    "brief": "Assess the synthetic UDS diagnostic surface.",
+    "scenario": "synthetic fixture; no real ECU"
+  },
+  "parent_run_id": null,
+  "deadline_ms": 60000,
+  "budget": {
+    "max_tokens": 1000,
+    "max_cost_usd": 0.0
+  }
+}

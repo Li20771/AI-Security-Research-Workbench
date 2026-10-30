@@ -50,6 +50,20 @@ Workbench 不是一个单一模型，也不是 DSH 的 fork。
                          SecurityLab
 ```
 
+## DSH Agent Fleet v3.0（新目标架构）
+
+本仓库正在从旧 Workbench 架构迁移为 **DSH Fleet / 编排 / 权限基础**，而不是再实现一套
+LLM Agent。新实现位于 [`fleet/`](fleet/README.md)，共享接口契约位于
+[`docs/contracts/`](docs/contracts/README.md)（版本 `1.0.0`），当前实施状态见
+[`docs/architecture/FLEET_V3_STATUS.md`](docs/architecture/FLEET_V3_STATUS.md)。
+
+- 旧 AI-00–AI-15 文档与 `agents/`、`providers/`、`routing/`、`composition/` 是历史/参考资产，
+  不代表新 Fleet 已实现；处置表见
+  [`FLEET_V3_MODULE_DISPOSITION.md`](docs/architecture/FLEET_V3_MODULE_DISPOSITION.md)。
+- 本轮为 fake-only：真实 DSH SDK/runtime、provider/model、dsh-memory、SecurityLab/vcan
+  连接均为 `NOT_RUN` 或 `IMPLEMENTED BUT NOT CONNECTED`。
+- `lab_runner` 与 `securitylab_vcan` 默认 disabled；AI-15 Evidence writer/B5 仍为 `BLOCKED`。
+
 ## 设计原则
 
 1. **人负责最终决策**：Agent 可以分析、验证、提出修改，但高影响操作必须经过明确授权。
@@ -66,9 +80,9 @@ Workbench 不是一个单一模型，也不是 DSH 的 fork。
 
 ## 当前阶段
 
-**AI-00 — Requirements / Architecture Freeze**
-
-当前只冻结范围、边界、数据结构和演进路线；暂不把后续阶段的实现混入 AI-00。
+旧 AI-00–AI-15 阶段文档保留为历史记录，不再代表当前目标架构。当前 v3.0 Fleet
+实施状态、测试矩阵与 `BLOCKED` / `NOT_RUN` 项见
+[docs/architecture/FLEET_V3_STATUS.md](docs/architecture/FLEET_V3_STATUS.md)。
 
 ## 文档
 

@@ -1,0 +1,20 @@
+{
+  "contract_version": "1.0.0",
+  "server": "securitylab_ro",
+  "tool": "lab_read_file",
+  "ok": true,
+  "data": {
+    "content": "Synthetic report. No real target data.",
+    "bytes": 37,
+    "truncated": false
+  },
+  "error": null,
+  "meta": {
+    "identity_source": "server-binding",
+    "executed": true,
+    "side_effects": 0,
+    "redacted": false,
+    "output_limit": 65536,
+    "bytes": 37
+  }
+}

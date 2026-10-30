@@ -1,0 +1,76 @@
+{
+  "contract_version": "1.0.0",
+  "ok": true,
+  "operation": "result",
+  "data": {
+    "run_id": "run_0123456789abcdef0123456789abcdef",
+    "status": "completed",
+    "result_ref": "result://run_0123456789abcdef0123456789abcdef",
+    "result_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "untrusted": true,
+    "admission": "none",
+    "evidence": false,
+    "result": {
+      "contract_version": "1.0.0",
+      "schema_id": "worker-result.v1",
+      "run_id": "run_0123456789abcdef0123456789abcdef",
+      "role": "researcher",
+      "received_at": "2026-10-30T00:01:00.000Z",
+      "untrusted": true,
+      "admission": "none",
+      "evidence": false,
+      "payload_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "payload": {
+        "summary": "Synthetic analysis only; no live target was contacted.",
+        "claims": [
+          {
+            "claim_id": "clm_0001",
+            "text": "The synthetic fixture exposes one diagnostic service.",
+            "citations": [
+              {
+                "ref": "reports/report-1.md",
+                "revision": "0123456789ab",
+                "kind": "report"
+              }
+            ]
+          }
+        ],
+        "citations": [
+          {
+            "ref": "reports/report-1.md",
+            "revision": "0123456789ab",
+            "kind": "report"
+          }
+        ],
+        "artifacts": [
+          {
+            "ref": "artifacts/run_0123456789abcdef0123456789abcdef/summary.json",
+            "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          }
+        ],
+        "memory_candidates": [
+          {
+            "candidate_id": "mc_0001",
+            "text": "The synthetic fixture has one diagnostic service.",
+            "scope": "run-private"
+          }
+        ],
+        "requested_actions": [
+          {
+            "action": "request_review",
+            "target": "clm_0001"
+          }
+        ],
+        "limitations": [
+          "Synthetic fixture; no real ECU or network target was used."
+        ]
+      }
+    },
+    "artifacts": [
+      {
+        "ref": "artifacts/run_0123456789abcdef0123456789abcdef/summary.json",
+        "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      }
+    ]
+  }
+}

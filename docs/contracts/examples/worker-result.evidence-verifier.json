@@ -1,0 +1,44 @@
+{
+  "summary": "Verification is unresolved because the fixture revision is missing.",
+  "claims": [
+    {
+      "claim_id": "clm_0001",
+      "text": "The synthetic fixture exposes one diagnostic service.",
+      "citations": [
+        {
+          "ref": "reports/report-1.md",
+          "revision": "0123456789ab",
+          "kind": "report"
+        }
+      ]
+    }
+  ],
+  "citations": [
+    {
+      "ref": "reports/report-1.md",
+      "revision": "0123456789ab",
+      "kind": "report"
+    }
+  ],
+  "artifacts": [],
+  "memory_candidates": [],
+  "requested_actions": [
+    {
+      "action": "request_additional_context",
+      "target": "fixture revision"
+    }
+  ],
+  "limitations": [
+    "No executable test was run; this is a document-level check only."
+  ],
+  "verdicts": [
+    {
+      "claim_id": "clm_0001",
+      "verdict": "unresolved",
+      "evidence_refs": [
+        "reports/report-1.md"
+      ],
+      "rationale": "The report does not identify the fixture revision."
+    }
+  ]
+}
