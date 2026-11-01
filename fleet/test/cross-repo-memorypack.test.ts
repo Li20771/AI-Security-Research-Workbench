@@ -27,12 +27,12 @@ const Ajv2020 = require("ajv/dist/2020") as new (options?: Record<string, unknow
 const addFormats = require("ajv-formats") as (ajv: AjvLike) => void;
 
 const CONTRACTS = join(process.cwd(), "..", "docs", "contracts");
-const SCHEMA_ID = "urn:dsh-memory:contract:memorypack:1.1.0";
+const SCHEMA_ID = "urn:dsh-memory:contract:memorypack:1.2.0";
 const FIXTURE = join(
   process.cwd(),
   "test",
   "fixtures",
-  "memorypack.v1.1.dsh-memory.json"
+  "memorypack.v1.2.dsh-memory.json"
 );
 
 const LAYER_ORDER: Readonly<Record<string, number>> = {
@@ -51,7 +51,7 @@ function makeAjv(): AjvLike {
     allowUnionTypes: true
   });
   addFormats(ajv);
-  for (const file of ["memorypack.v1.1.schema.json"]) {
+  for (const file of ["memorypack.v1.2.schema.json"]) {
     const schema = JSON.parse(readFileSync(join(CONTRACTS, file), "utf8")) as Record<
       string,
       unknown
@@ -69,10 +69,10 @@ function expectedHash(pack: MemoryPack): string {
   return snapshotHashFor(pack.scope, pack.role, pack.entries);
 }
 
-test("the dsh-memory synthetic producer pack satisfies Workbench v1.1 schema and semantics", () => {
+test("the dsh-memory synthetic producer pack satisfies Workbench v1.2 schema and semantics", () => {
   const ajv = makeAjv();
   const validate = ajv.getSchema(SCHEMA_ID);
-  assert.ok(validate, "memorypack v1.1 schema is registered");
+  assert.ok(validate, "memorypack v1.2 schema is registered");
   const pack = readFixture();
   const ok = validate(pack);
   assert.equal(
@@ -81,9 +81,9 @@ test("the dsh-memory synthetic producer pack satisfies Workbench v1.1 schema and
     ajv.errorsText(validate.errors, { separator: "\n" })
   );
 
-  assert.equal(pack.contract_version, "1.1.0");
+  assert.equal(pack.contract_version, "1.2.0");
   assert.equal(pack.source.vault, "dsh-memory");
-  assert.equal(pack.source.contract_version, "1.1.0");
+  assert.equal(pack.source.contract_version, "1.2.0");
   assert.equal(pack.read_only, true);
   assert.equal(pack.policy.authorized_before_retrieval, true);
   assert.ok(pack.entries.length > 0 && pack.entries.length <= 100);
@@ -156,6 +156,12 @@ test("Workbench rejects a dsh-memory pack whose content no longer matches its sn
   const validate = ajv.getSchema(SCHEMA_ID);
   assert.ok(validate);
   const wrongVersion = structuredClone(pack);
-  (wrongVersion as unknown as Record<string, unknown>).contract_version = "1.2.0";
+  (wrongVersion as unknown as Record<string, unknown>).contract_version = "1.3.0";
   assert.equal(validate(wrongVersion), false, "unsupported contract versions are rejected");
+
+  // The previous contract version must not be silently accepted either.
+  const previous = structuredClone(pack);
+  (previous as unknown as Record<string, unknown>).contract_version = "1.1.0";
+  (previous.source as Record<string, unknown>).contract_version = "1.1.0";
+  assert.equal(validate(previous), false, "a v1.1.0 pack is rejected by the v1.2.0 schema");
 });

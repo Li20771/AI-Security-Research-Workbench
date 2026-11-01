@@ -17,3 +17,8 @@
 # rewrites them to CRLF and every byte/sha256 comparison outside CI reports a
 # spurious drift. Pinning them to LF makes the rule hold on any platform.
 docs/contracts/** text eol=lf
+
+# The cross-repo MemoryPack fixture is a verbatim copy of the dsh-memory
+# producer's output and is compared byte for byte. Keep it LF so a Windows
+# checkout does not rewrite it and break that equality.
+fleet/test/fixtures/*.json text eol=lf
