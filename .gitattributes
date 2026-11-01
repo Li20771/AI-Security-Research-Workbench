@@ -6,7 +6,14 @@
 # syntax error. Git already stores these blobs with LF, so CI on Linux is
 # unaffected -- but the scripts are unrunnable for anyone who checks out on
 # Windows, which Layer 0 exercises directly.
-#
-# Scoped to shell scripts only: nothing else in the repository depends on its
-# line endings.
 *.sh text eol=lf
+
+# Shared contract files must stay byte-identical across repositories.
+#
+# docs/contracts/README.md requires this directory to match
+# `brief/contracts/` byte for byte, and SecurityLab pins the mirrored MCP
+# schemas by sha256 (securitylab_mcp/tests/test_contract.py). Git stores these
+# blobs with LF, so Linux CI already agrees; a `core.autocrlf=true` checkout
+# rewrites them to CRLF and every byte/sha256 comparison outside CI reports a
+# spurious drift. Pinning them to LF makes the rule hold on any platform.
+docs/contracts/** text eol=lf
