@@ -27,6 +27,7 @@ import type {
 import {
   GLOBAL_WORKSPACE_ID,
   MEMORYPACK_CONTRACT_VERSION,
+  compareCodePoints,
   entrySha256,
   freezeMemoryPack,
   MemoryPackError,
@@ -410,7 +411,7 @@ export class FakeMemoryPackClient implements MemoryPackClient {
       if (layerDiff !== 0) {
         return layerDiff;
       }
-      return left.path.localeCompare(right.path);
+      return compareCodePoints(left.path, right.path);
     });
     const selected = included.slice(0, context.max_entries);
     const scope = {

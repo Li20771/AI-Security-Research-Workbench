@@ -116,8 +116,14 @@ interface DshLifecycleHooks {
 - 两个事件类型不同，payload 不同，调用点不同，测试分别覆盖。
 - `promptBeforeInitialize` 的 payload **不含** `path`/`working_directory`；如果调用
   方把路径塞进 prompt hook，返回 `prompt-hook-misused-for-path`。
-- `wdBeforeInitialize` 的 payload 含 `workspace_root` + `working_directory`；
-  必须做 canonicalization + containment；越界返回 `wd-out-of-root`。
+- `wdBeforeInitialize` 的 payload 含 `workspace_root` + `working_directory`。
+  `workspace_root` 必须来自 trusted workspace registry，不得来自请求/模型：
+  未知或缺失 root -> `workspace-root-unknown`；与 registry 不一致 ->
+  `workspace-root-mismatch`；非绝对路径 -> `workspace-root-invalid`。
+- 先做 lexical containment；越界返回 `wd-out-of-root`。随后对 root 与
+  working directory 做 realpath canonicalization 并再次 containment：
+  路径不存在/不可解析 -> `wd-root-unavailable`；symlink/junction 逃逸 ->
+  `wd-symlink-escape`。不得只做词法检查就启动 session。
 - 不得用 prompt hook 代替工作目录安全检查，也不得用 wd hook 处理 prompt 内容。
 - 两个 hook 都必须调用；任一失败 -> session 初始化失败（`session-init-blocked`），
   不启动 worker。
@@ -142,6 +148,9 @@ interface DshLifecycleHooks {
 - 本契约不声明真实 DSH SDK 的包名、版本、方法签名、事件格式或平台兼容性。
 - 本契约不授权建立真实 session、连接真实 DSH、调用 provider/model 或读取凭据。
 - fake adapter 通过不等于真实 runtime 集成通过；真实结果保持 `NOT_RUN`。
+- **2026-11-01 澄清（不改变接口/版本）：** wd hook 的 trusted root、realpath 与
+  symlink/junction containment 规则及上述错误码为 v1.0.0 的 fail-closed 语义；
+  fake/offline 测试使用 synthetic 临时目录，真实 runtime 验证仍为 `NOT_RUN`。
 - Windows Desktop / WSL / Linux/macOS 不互相推定兼容；首个受支持平台需显式
   写入测试矩阵并单独验证。
 
