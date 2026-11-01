@@ -40,7 +40,12 @@ export const RUN_PRIVATE_ID = "run_11111111111111111111111111111111";
 interface MemorySeed {
   entry_id: string;
   path: string;
-  layer: MemoryLayer;
+  /**
+   * Resolved layer, or `null` when the seed deliberately reproduces a record
+   * whose `type`/`layer` cannot be resolved. A `null` seed must never be
+   * emitted as `KB`; it is counted under `excluded.unspecified_layer`.
+   */
+  layer: MemoryLayer | null;
   type: MemoryType;
   title: string;
   /** Missing means legacy `unmarked`; never inferred from type. */
@@ -256,6 +261,23 @@ const SEEDS: readonly MemorySeed[] = deepFreeze([
     review_state: "approved",
     revision: "444444444444",
     body: "OTHER_EPISODE_CANARY"
+  },
+  {
+    // Authorized, in-slice, but its type/layer cannot be resolved. v1.2.0
+    // requires this to be counted as `unspecified_layer` rather than silently
+    // emitted with `layer: KB`.
+    entry_id: "mem_a_unspecified_0001",
+    path: "workspaces/ws_a/memory/unclassified.md",
+    layer: null,
+    type: "memory",
+    title: "unclassified note",
+    visibility: "workspace-shared",
+    workspace_id: "ws_a",
+    episode_id: null,
+    authority: "agent-observed",
+    review_state: "approved",
+    revision: "999999999999",
+    body: "UNSPECIFIED_LAYER_CANARY"
   }
 ]);
 
@@ -286,7 +308,7 @@ function includeAllowed(seed: MemorySeed, context: MemoryPackContext): boolean {
   return true;
 }
 
-function toEntry(seed: MemorySeed): MemoryPackEntry {
+function toEntry(seed: MemorySeed & { layer: MemoryLayer }): MemoryPackEntry {
   const path = seed.path.normalize("NFC");
   return {
     entry_id: seed.entry_id,
@@ -370,7 +392,8 @@ export class FakeMemoryPackClient implements MemoryPackClient {
       restricted: 0,
       unmarked: 0,
       path_invalid: 0,
-      entry_invalid: 0
+      entry_invalid: 0,
+      unspecified_layer: 0
     };
     for (const seed of SEEDS) {
       if (!inSlice(seed, context)) {
@@ -404,7 +427,15 @@ export class FakeMemoryPackClient implements MemoryPackClient {
         excluded.entry_invalid += 1;
         continue;
       }
-      included.push(toEntry(seed));
+      // An unresolvable layer is its own exclusion reason. It must not be
+      // relabelled as KB: KB is the knowledge/research-output layer, and
+      // silently parking unclassified records there pollutes it and pushes
+      // them to the tail of the pack where max_entries truncates first.
+      if (seed.layer === null) {
+        excluded.unspecified_layer += 1;
+        continue;
+      }
+      included.push(toEntry({ ...seed, layer: seed.layer }));
     }
     included.sort((left, right) => {
       const layerDiff = LAYER_ORDER[left.layer] - LAYER_ORDER[right.layer];

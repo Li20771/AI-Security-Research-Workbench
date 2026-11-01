@@ -34,6 +34,7 @@ const schemaFiles = [
   "role-preset.v1.schema.json",
   "memorypack.v1.schema.json",
   "memorypack.v1.1.schema.json",
+  "memorypack.v1.2.schema.json",
   "securitylab-tool-call.v1.schema.json",
   "securitylab-tool-result.v1.schema.json"
 ];
@@ -67,6 +68,7 @@ const cases: Case[] = [
   { schema: "urn:dsh-fleet:contract:role-preset:1.0.0", example: "role-preset.registry.json" },
   { schema: "urn:dsh-memory:contract:memorypack:1.0.0", example: "memorypack.example.json" },
   { schema: "urn:dsh-memory:contract:memorypack:1.1.0", example: "memorypack.v1.1.example.json" },
+  { schema: "urn:dsh-memory:contract:memorypack:1.2.0", example: "memorypack.v1.2.example.json" },
   { schema: "urn:securitylab:contract:tool-call:1.0.0", example: "securitylab-tool-call.example.json" },
   { schema: "urn:securitylab:contract:tool-result:1.0.0", example: "securitylab-tool-result.example.json" }
 ];

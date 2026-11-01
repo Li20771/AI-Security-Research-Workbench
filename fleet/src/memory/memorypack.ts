@@ -8,7 +8,7 @@ import type {
 } from "../contract.ts";
 
 /** MemoryPack is versioned independently from the Fleet API contract. */
-export const MEMORYPACK_CONTRACT_VERSION = "1.1.0" as const;
+export const MEMORYPACK_CONTRACT_VERSION = "1.2.0" as const;
 
 /** Reserved owner for an explicit user-global entry without an origin scope. */
 export const GLOBAL_WORKSPACE_ID = "global" as const;
@@ -88,6 +88,12 @@ export interface MemoryPack {
     unmarked: number;
     path_invalid: number;
     entry_invalid: number;
+    /**
+     * Authorized records whose layer could not be resolved (missing/unknown
+     * `type` and no valid explicit `layer`). They never enter `entries` and are
+     * never relabelled as `KB`.
+     */
+    unspecified_layer: number;
   };
   source: {
     vault: "dsh-memory";

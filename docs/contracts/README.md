@@ -1,6 +1,6 @@
 # DSH Agent Fleet v3.0 — 共享接口契约
 
-**契约版本：** Fleet API `1.0.0`；MemoryPack `1.1.0`
+**契约版本：** Fleet API `1.0.0`；MemoryPack `1.2.0`
 **冻结日期：** `2026-10-30`
 **状态：** `FROZEN`（三仓库共享基线；Workbench / dsh-memory / SecurityLab）
 **实现性质：** fake-only。真实 DSH SDK/runtime、provider/model、SecurityLab/vcan/设备实验均为 `NOT_RUN`。
@@ -22,7 +22,8 @@
 |---|---|---|
 | `FLEET_API_V1.md` | Fleet 公共 API、可信绑定、workflow/role/preset、状态机、结果信封、错误码 | 1.0.0 |
 | `MEMORYPACK_V1.md` | dsh-memory 只读 MemoryPack（历史版本，保留不复写） | 1.0.0 |
-| `MEMORYPACK_V1_1.md` | dsh-memory 只读 MemoryPack：显式 visibility、Unicode/NFC 路径、迁移清单 | 1.1.0 |
+| `MEMORYPACK_V1_1.md` | dsh-memory 只读 MemoryPack（历史版本，保留不复写） | 1.1.0 |
+| `MEMORYPACK_V1_2.md` | dsh-memory 只读 MemoryPack：显式层级解析、`unspecified_layer`、Unicode/NFC 路径、迁移清单 | 1.2.0 |
 | `SECURITYLAB_MCP_V1.md` | SecurityLab MCP 只读工具面、路径限制、输出限制、disabled vcan | 1.0.0 |
 | `RUN_LEDGER_V1.md` | append-only RunLedger、事件、哈希链、字段禁令 | 1.0.0 |
 | `DSH_SDK_ADAPTER_V1.md` | DSH SDK runtime adapter 接口与两个独立 lifecycle hook | 1.0.0 |
@@ -37,10 +38,11 @@
 | `workflow-registry.v1.schema.json` | 固定 workflow registry 文档 | 1.0.0 |
 | `role-preset.v1.schema.json` | 固定 role/preset registry 文档 | 1.0.0 |
 | `memorypack.v1.schema.json` | MemoryPack 文档（历史版本） | 1.0.0 |
-| `memorypack.v1.1.schema.json` | MemoryPack 文档（当前版本） | 1.1.0 |
+| `memorypack.v1.1.schema.json` | MemoryPack 文档（历史版本） | 1.1.0 |
+| `memorypack.v1.2.schema.json` | MemoryPack 文档（当前版本） | 1.2.0 |
 | `securitylab-tool-call.v1.schema.json` | SecurityLab MCP 调用 | 1.0.0 |
 | `securitylab-tool-result.v1.schema.json` | SecurityLab MCP 结果 | 1.0.0 |
-| `examples/` | 与上述 schema 对应的示例 | 1.0.0 / 1.1.0 |
+| `examples/` | 与上述 schema 对应的示例 | 1.0.0 / 1.1.0 / 1.2.0 |
 
 ## 2. 共同安全前提
 
@@ -58,8 +60,8 @@
 
 ## 3. 版本与同步规则
 
-- Fleet API 契约版本：`1.0.0`。MemoryPack 是独立组件版本：当前 `1.1.0`
-  （`MEMORYPACK_V1_1.md` / `memorypack.v1.1.schema.json`），v1.0.0 保留为历史。
+- Fleet API 契约版本：`1.0.0`。MemoryPack 是独立组件版本：当前 `1.2.0`
+  （`MEMORYPACK_V1_2.md` / `memorypack.v1.2.schema.json`），v1.0.0 与 v1.1.0 保留为历史。
   消费者不得假定所有组件版本号相同，必须按各自 `contract_version` 校验。
 - 破坏性变化提升主版本；新增可选字段提升次版本；仅澄清文字提升补丁版本。
 - 任何版本变化必须同步 `brief\contracts\`，并在交付报告中写明旧/新版本和影响仓库。
