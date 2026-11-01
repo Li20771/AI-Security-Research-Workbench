@@ -1,5 +1,7 @@
+import { realpath } from "node:fs/promises";
+import path from "node:path";
 import { isPlainObject } from "../canonical-json.ts";
-import { checkContainment } from "../path-safety.ts";
+import { checkContainment, detectPathStyle } from "../path-safety.ts";
 import type {
   DshLifecycleHooks,
   HookResult,
@@ -20,11 +22,38 @@ function hasKey(value: Record<string, unknown>, key: string): boolean {
   return Object.hasOwn(value, key);
 }
 
+function normalizeRoot(value: string): string | null {
+  const style = detectPathStyle(value);
+  const pathModule = style === "win32" ? path.win32 : path.posix;
+  if (!pathModule.isAbsolute(value)) {
+    return null;
+  }
+  const resolved = pathModule.resolve(value);
+  return style === "win32" ? resolved.toLowerCase() : resolved;
+}
+
+export type Canonicalizer = (value: string) => Promise<string>;
+
+const defaultCanonicalizer: Canonicalizer = (value) => realpath(value);
+
+/**
+ * Trusted workspace-root registry used by the DSH working-directory hook.
+ *
+ * `roots` must come from the trusted host/workspace registry, never from a
+ * request or model output. An unknown workspace, a missing root entry, a root
+ * mismatch, a lexically escaping directory, a non-existent root/directory or a
+ * symlink/junction escaping the canonical root all fail closed.
+ */
 export class WorkspaceLifecycleHooks implements DshLifecycleHooks {
   #roots: Readonly<Record<string, string>>;
+  #canonicalize: Canonicalizer;
 
-  constructor(roots: Readonly<Record<string, string>>) {
+  constructor(
+    roots: Readonly<Record<string, string>>,
+    canonicalize: Canonicalizer = defaultCanonicalizer
+  ) {
     this.#roots = { ...roots };
+    this.#canonicalize = canonicalize;
   }
 
   async promptBeforeInitialize(event: PromptBeforeInitializeEvent): Promise<HookResult> {
@@ -74,13 +103,41 @@ export class WorkspaceLifecycleHooks implements DshLifecycleHooks {
     ) {
       return fail("wd-event-invalid");
     }
+    if (!Object.hasOwn(this.#roots, workspaceId)) {
+      return fail("workspace-root-unknown");
+    }
     const expectedRoot = this.#roots[workspaceId];
-    if (expectedRoot !== undefined && expectedRoot !== workspaceRoot) {
+    if (typeof expectedRoot !== "string" || expectedRoot.trim() === "") {
+      return fail("workspace-root-unknown");
+    }
+    const normalizedExpected = normalizeRoot(expectedRoot);
+    const normalizedEvent = normalizeRoot(workspaceRoot);
+    if (normalizedExpected === null || normalizedEvent === null) {
+      return fail("workspace-root-invalid");
+    }
+    if (normalizedExpected !== normalizedEvent) {
       return fail("workspace-root-mismatch");
     }
-    const containment = checkContainment(workspaceRoot, workingDirectory);
-    if (!containment.contained) {
-      return fail("wd-out-of-root", containment.reason ?? "outside-root");
+    const lexical = checkContainment(expectedRoot, workingDirectory);
+    if (!lexical.contained) {
+      return fail("wd-out-of-root", lexical.reason ?? "outside-root");
+    }
+
+    // Lexical containment is not enough: a working directory below a symlink or
+    // junction can resolve outside the trusted root. The runtime event may only
+    // use a directory that really exists; an unavailable root/directory fails
+    // closed rather than silently degrading to a lexical-only check.
+    let canonicalRoot: string;
+    let canonicalWorkingDirectory: string;
+    try {
+      canonicalRoot = await this.#canonicalize(expectedRoot);
+      canonicalWorkingDirectory = await this.#canonicalize(workingDirectory);
+    } catch {
+      return fail("wd-root-unavailable");
+    }
+    const canonical = checkContainment(canonicalRoot, canonicalWorkingDirectory);
+    if (!canonical.contained) {
+      return fail("wd-symlink-escape", canonical.reason ?? "outside-canonical-root");
     }
     return { ok: true };
   }

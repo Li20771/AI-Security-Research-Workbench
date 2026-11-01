@@ -158,12 +158,6 @@ const TERMINAL_EVENT: Readonly<Record<TerminalStatus, RunLedgerEventType>> = {
   cancelled: "run.cancelled"
 };
 
-const DEFAULT_WORKSPACE_ROOTS: Readonly<Record<string, string>> = {
-  ws_a: "D:\\lab\\ws_a",
-  ws_b: "D:\\lab\\ws_b",
-  ws_disabled: "D:\\lab\\ws_disabled"
-};
-
 function minBudget(left: Budget, right: Budget): Budget {
   return {
     max_tokens: Math.min(left.max_tokens, right.max_tokens),
@@ -203,7 +197,10 @@ export class FleetController {
     this.#approval = deps.approvalVerifier ?? new DenyAllApprovalVerifier();
     this.#clock = deps.clock ?? new SystemClock();
     this.#ids = deps.idGenerator ?? new UuidIdGenerator();
-    this.#roots = deps.workspaceRoots ?? DEFAULT_WORKSPACE_ROOTS;
+    // The root registry is trusted host state. There is deliberately no
+    // built-in fallback path: a worker whose workspace has no trusted root is
+    // blocked instead of being given an invented working directory.
+    this.#roots = deps.workspaceRoots ?? {};
     this.#hooks = new WorkspaceLifecycleHooks(this.#roots);
   }
 
@@ -883,7 +880,10 @@ export class FleetController {
     const { run, preset, binding, request } = active;
     try {
       this.#transition(run, "running");
-      const workspaceRoot = this.#roots[run.workspace_id] ?? `workspace://${run.workspace_id}`;
+      const workspaceRoot = this.#roots[run.workspace_id];
+      if (typeof workspaceRoot !== "string" || workspaceRoot.trim() === "") {
+        throw new DshAdapterError("session-init-blocked", "workspace root is not trusted");
+      }
       const sessionRequest: DshSessionRequest = {
         run_id: run.run_id,
         role: run.role,

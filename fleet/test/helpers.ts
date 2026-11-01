@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { RoleId, WorkflowId } from "../src/contract.ts";
 import { FleetController } from "../src/fleet-controller.ts";
 import { FleetApi } from "../src/fleet-api.ts";
@@ -36,8 +39,29 @@ export interface SubmitOptions extends BindingOverrides {
   budget?: { max_tokens: number; max_cost_usd: number };
 }
 
+let harnessRootsDir: string | null = null;
+
+function syntheticWorkspaceRoots(): Readonly<Record<string, string>> {
+  if (harnessRootsDir === null) {
+    harnessRootsDir = mkdtempSync(join(tmpdir(), "dsh-fleet-ws-"));
+    process.once("exit", () => {
+      if (harnessRootsDir !== null) {
+        rmSync(harnessRootsDir, { recursive: true, force: true });
+      }
+    });
+  }
+  const roots: Record<string, string> = {};
+  for (const workspaceId of ["ws_a", "ws_b", "ws_disabled"]) {
+    const root = join(harnessRootsDir, workspaceId);
+    mkdirSync(root, { recursive: true });
+    roots[workspaceId] = root;
+  }
+  return roots;
+}
+
 export function makeHarness(options: HarnessOptions = {}) {
   const clock = new FixedClock("2026-10-30T00:00:00.000Z");
+  const workspaceRoots = syntheticWorkspaceRoots();
   const ids = new DeterministicIdGenerator();
   const issuer = new TrustedBindingIssuer({ idGenerator: ids, clock });
   const ledger = new InMemoryRunLedger({ idGenerator: ids, clock });
@@ -52,7 +76,8 @@ export function makeHarness(options: HarnessOptions = {}) {
     resultStore,
     approvalVerifier: approval,
     clock,
-    idGenerator: ids
+    idGenerator: ids,
+    workspaceRoots
   });
   const api = new FleetApi(controller);
 

@@ -1,8 +1,8 @@
 # DSH Agent Fleet v3.0 — 实施状态
 
-**仓库基线：** `fcbc266f899823db4dbe6f3d521c33fee9d08f1e`
-**工作分支：** `codex/fleet-v3-workbench`
-**实施日期：** 2026-10-30
+**仓库基线：** `21fe4e71c47e7bb95c22c103d4c14bce295490b9`（GitHub `main`；PR #103 已于 2026-10-30 合入）
+**工作分支：** `fix/fleet-v3-round2-hardening`（基于上述 `main`；本轮改动位于本地工作树，尚未 commit/push/merge）
+**实施日期：** 2026-10-30 首轮；2026-11-01 round 2 加固
 **性质：** fake-only、离线、可审查实现；不是真实 DSH/provider/SecurityLab 验收。
 
 本文件区分 `IMPLEMENTED`、`IMPLEMENTED BUT NOT CONNECTED`、`BLOCKED`、`NOT_RUN`。
@@ -56,8 +56,9 @@ MemoryPack 1.1.0 只允许显式 `user-global` 跨 workspace；无显式 visibil
 
 ```text
 TypeScript typecheck                         PASS  0 errors
-Fleet fake tests (node:test)                 PASS  78 passed / 0 failed / 0 skipped
+Fleet fake tests (node:test)                 PASS  85 passed / 0 failed / 0 skipped
 Contract schema/examples check               PASS  14 schemas / 13 JSON examples / 7 ledger events（14 个示例文件）
+Cross-repo MemoryPack v1.1 fixture           PASS  2 passed（dsh-memory producer 产物由 Workbench schema/hash 校验）
 git diff --check                             PASS  (见交付报告)
 ```
 
@@ -82,8 +83,15 @@ Set-Location 'D:\claude-work\DSH-Fleet-v3\01-workbench\fleet'
 - run 重试新 run id；原失败记录保留；依赖 parent 校验。
 - RunLedger 哈希链、篡改检测、禁止字段、JSONL 重启、损坏 fail closed。
 - MemoryPack visibility/scope/top-k/pending/restricted/run-private/episode-shared。
+- MemoryPack 确定性：Unicode code point 排序、`snapshot_hash` 与输入顺序无关、
+  locale 无关；hardcoded hash 锁定顺序规则。
+- 跨仓库 fake acceptance：`test/cross-repo-memorypack.test.ts` 校验 dsh-memory
+  producer 生成的 synthetic pack（schema、NFC、entry sha256、snapshot hash、
+  `excluded`、`policy.cross_workspace`），并验证篡改/未知版本会被拒绝。
 - SecurityLab 路径 traversal/absolute/drive/UNC/NUL/ADS/symlink、identity args、disabled vcan、输出上限/脱敏。
-- 两个 lifecycle hook 分开调用/拒绝；prompt hook 不处理路径，wd hook 不处理 prompt。
+- 两个 lifecycle hook 分开调用/拒绝；prompt hook 不处理路径，wd hook 不处理 prompt；
+  wd hook 对未知/缺失 root、root mismatch、不存在路径、symlink/junction escape
+  全部 fail closed。
 - 静态检查：无 `process.env`、无 spawn/network、无旧模块/Evidence writer import。
 
 ## 4. 关键边界
@@ -113,7 +121,10 @@ Evidence   = producer/provenance/scope/admission gate；Fleet 不写、不绕过
   做 canonicalization + containment；**不处理** prompt 语义。
 
 `fleet/test/hooks.test.ts` 分别覆盖两个 hook，并验证把路径塞进 prompt hook 会被拒绝；
-把 prompt 塞进 wd hook 会被拒绝。
+把 prompt 塞进 wd hook 会被拒绝。wd hook 的 root 只来自 `workspaceRoots` 受信
+registry（`FleetController` 不再提供内置 fallback）；未知/缺失 root、root mismatch、
+不存在路径和 realpath/symlink/junction escape 均 fail closed。当前测试用 synthetic
+临时目录验证，真实 DSH runtime 仍为 `NOT_RUN`。
 
 ### 4.4 旧模块
 
@@ -136,9 +147,23 @@ Evidence   = producer/provenance/scope/admission gate；Fleet 不写、不绕过
 
 ## 6. 明确声明
 
-- 未 push、未 merge、未改远端。
+- GitHub `main` 已包含首轮 PR #103 的合入（基线 `21fe4e71…`）；本轮改动位于本地
+  分支 `fix/fleet-v3-round2-hardening` 的工作树，未 commit/push/merge，未修改远端。
 - 未运行真实 DSH SDK/runtime、provider/model 或 SecurityLab/vcan/设备实验。
 - 未读取/复制 credential/token/key 文件或环境变量值；未 dump 全量环境。
 - path-traversal 测试只做路径计算/containment 断言，未写入被测逃逸目标。
 - 未接入 AI-15 Evidence writer/B5；未绕过 producer/admission gate。
 - fake-only 测试结果不代表真实 DSH/MCP/Memory/provider 集成通过。
+
+## 7. Round 2 加固（2026-11-01）
+
+| 修正 | 状态 | 实现/证据 |
+|---|---|---|
+| cwd root trust：unknown/missing root 拒绝；root 只来自 trusted registry；realpath/symlink containment | `IMPLEMENTED`（fake/offline） | `fleet/src/adapters/lifecycle-hooks.ts`, `fleet-controller.ts`, `test/hooks.test.ts` |
+| MemoryPack 确定性排序：Unicode code point；合同澄清 | `IMPLEMENTED` | `fleet/src/memory/memorypack.ts`, `test/memorypack.test.ts`, `docs/contracts/MEMORYPACK_V1_1.md` §3/§9 |
+| 跨仓库 MemoryPack v1.1 fake acceptance（dsh-memory producer → Workbench schema/semantic/hash） | `IMPLEMENTED`（synthetic fixture） | `fleet/test/cross-repo-memorypack.test.ts`, `test/fixtures/` |
+| 状态文档与合并基线更新 | `IMPLEMENTED` | 本文件 |
+
+上述均为离线/synthetic 结果。真实 DSH SDK/runtime、真实 dsh-memory IPC、真实
+SecurityLab MCP 进程连接、provider/model 和任何实验仍为 `NOT_RUN` 或
+`IMPLEMENTED BUT NOT CONNECTED`；不得把本轮 fake acceptance 写成真实集成通过。

@@ -122,6 +122,15 @@ MemoryPack 请求由可信 host/Fleet context 发起，至少绑定：
   `{contract_version, scope, role, entries}`)，entries 按 `path`、`revision`
   排序；`generated_at`、`run_id`、`excluded`、`policy` 不参与 hash。
   `run_id` 是读取上下文，不是 snapshot 身份。
+- **确定性排序规则：** `path` 与 `revision` 均按 **Unicode code point 顺序**
+  逐 code point 比较；一个字符串是另一个的前缀时，较短者在前。禁止使用
+  `localeCompare`、依赖 locale/ICU 的排序或平台相关的字符串比较来决定
+  `snapshot_hash` 或 `max_entries` 选择顺序。该规则对 NFC 规范化后的 `path`
+  同样适用，中文、emoji 与私有区字符均按 code point 排序，不因机器语言环境
+  改变。
+- `entries` 的输出顺序（与 hash 排序不同）为：`layer` 顺序
+  `L1 < L2 < L3 < L4 < KB`，同层内按 `path` 的 Unicode code point 顺序；
+  `max_entries` 在这个确定性顺序上截断，且截断发生在授权过滤之后。
 - `read_only` 必须为 `true`。
 - `entries` ≤ 100；每条 `body` ≤ 65536 字符；整个 pack 建议 ≤ 1 MiB。
 - `path` 必须是 **NFC 规范化**的 vault-root 相对路径，使用 `/` 分隔。仍拒绝：
@@ -212,5 +221,9 @@ MemoryPackClient.getPack(context) -> MemoryPack
 - 当前 MemoryPack 版本 `1.1.0`；Fleet API 仍为 `1.0.0`。
 - 任何字段/visibility/错误码变化必须同步 Workbench、dsh-memory、`brief/contracts/`
   与三仓库测试。
+- **2026-11-01 排序澄清（不改变字段/版本号）：** 原合同只写“按 path、revision
+  排序”，未规定比较函数；现明确使用 Unicode code point 顺序，禁止
+  `localeCompare`/locale 相关排序，避免不同机器产生不同 `snapshot_hash` 或
+  `max_entries` 选择。Workbench 与 dsh-memory 的 producer/consumer 必须使用同一规则。
 - 真实 dsh-memory 连接、索引/检索实现和长期写入接口不在本轮范围，状态为
   `IMPLEMENTED BUT NOT CONNECTED` / `NOT_RUN`。

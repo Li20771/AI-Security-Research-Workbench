@@ -1,8 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { FakeMemoryPackClient, RUN_PRIVATE_ID } from "../src/memory/fake-memorypack-client.ts";
-import { MemoryPackError } from "../src/memory/memorypack.ts";
-import type { MemoryPackContext } from "../src/memory/memorypack.ts";
+import {
+  MEMORYPACK_CONTRACT_VERSION,
+  MemoryPackError,
+  compareCodePoints,
+  snapshotHashFor
+} from "../src/memory/memorypack.ts";
+import type { MemoryPackContext, MemoryPackEntry } from "../src/memory/memorypack.ts";
+import { sha256OfJson } from "../src/canonical-json.ts";
 import { FixedClock } from "../src/time.ts";
 
 function context(overrides: Partial<MemoryPackContext> = {}): MemoryPackContext {
@@ -73,6 +79,12 @@ test("snapshot hashes are deterministic for the same authorized entry set", asyn
   const second = await client.getPack(context());
   assert.equal(first.snapshot_hash, second.snapshot_hash);
   assert.equal(first.snapshot_id, second.snapshot_id);
+  // Locks locale-independent code-point ordering and canonical JSON hashing.
+  assert.equal(
+    first.snapshot_hash,
+    "1cc74ad9a67b090eb398d501e32f278bf7f4f001765dd693aa299e17f1401994"
+  );
+  assert.equal(first.snapshot_id, "mp_1cc74ad9a67b090eb398d501e32f278b");
 });
 
 test("unmarked legacy records never cross workspaces", async () => {
@@ -144,6 +156,67 @@ test("missing/invalid context fails closed and the interface has no write method
   assert.equal(record.write, undefined);
   assert.equal(record.update, undefined);
   assert.equal(record.delete, undefined);
+});
+
+test("memorypack ordering uses locale-independent Unicode code points", () => {
+  // These pairs distinguish code-point order from both UTF-16 code-unit order
+  // and host-locale collation.
+  assert.ok(compareCodePoints("z.md", "Ä.md") < 0, "U+007A < U+00C4");
+  assert.ok(compareCodePoints("Ä.md", "é.md") < 0, "U+00C4 < U+00E9");
+  assert.ok(compareCodePoints("é.md", "😀.md") < 0, "U+00E9 < U+1F600");
+  assert.ok("a😀.md" < "a\uE000.md", "UTF-16 code units order the surrogate first");
+  assert.ok(
+    compareCodePoints("a😀.md", "a\uE000.md") > 0,
+    "code-point order places U+1F600 after U+E000"
+  );
+  assert.ok(compareCodePoints("a", "ab") < 0, "a proper prefix sorts first");
+  assert.equal(compareCodePoints("same", "same"), 0);
+});
+
+test("snapshot hash is independent of entry input order and is code-point ordered", () => {
+  const first = {
+    entry_id: "mem_b",
+    path: "workspaces/ws_a/memory/é.md",
+    revision: "000000000002"
+  } as MemoryPackEntry;
+  const second = {
+    entry_id: "mem_a",
+    path: "workspaces/ws_a/memory/z.md",
+    revision: "000000000001"
+  } as MemoryPackEntry;
+  const scope = { workspace_id: "ws_a", episode_id: "ep_1" };
+  const forward = snapshotHashFor(scope, "researcher", [first, second]);
+  const reverse = snapshotHashFor(scope, "researcher", [second, first]);
+  assert.equal(forward, reverse);
+  const changed = snapshotHashFor(scope, "researcher", [
+    { ...first, revision: "000000000003" },
+    second
+  ]);
+  assert.notEqual(changed, forward);
+
+  // A surrogate-pair path and a private-use path differ under UTF-16 but the
+  // contract orders by code point. Rebuild the expected canonical hash by hand
+  // in that order so a future comparator regression is visible here too.
+  const astral = {
+    entry_id: "mem_astral",
+    path: "a/😀.md",
+    revision: "000000000004"
+  } as MemoryPackEntry;
+  const privateUse = {
+    entry_id: "mem_private",
+    path: "a/\uE000.md",
+    revision: "000000000005"
+  } as MemoryPackEntry;
+  const codePointHash = snapshotHashFor(scope, "researcher", [astral, privateUse]);
+  assert.equal(
+    codePointHash,
+    sha256OfJson({
+      contract_version: MEMORYPACK_CONTRACT_VERSION,
+      scope,
+      role: "researcher",
+      entries: [privateUse, astral]
+    })
+  );
 });
 
 test("createPackRef produces a stable read-only snapshot reference for bindings", async () => {

@@ -26,7 +26,7 @@ fleet/
     adapters/               DSH runtime adapter 接口、fake adapter、hook 分离
     memory/                 只读 MemoryPack client + fake endpoint
     mcp/                    SecurityLab MCP client + fake server
-  test/                     离线 fake tests（node:test）
+  test/                     离线 fake tests（node:test）；含 dsh-memory 产物 fixture
   scripts/                  contract check / ledger example generator
 ```
 
@@ -46,11 +46,17 @@ fleet/
 - fake DSH adapter：成功、启动失败、timeout、cancel、malformed output、crash、
   并发隔离、kill/close failure、restart orphan。
 - 只读 MemoryPack fake client：user-global/workspace-shared/episode-shared/run-private/
-  restricted；先授权后 top-k；pending/rejected/superseded/restricted 不进入 pack。
+  restricted；先授权后 top-k；pending/rejected/superseded/restricted 不进入 pack；
+  另含跨仓库 fake acceptance：用 dsh-memory 真实 producer 生成的 synthetic pack
+  fixture 验证 Workbench v1.1 schema、semantic、NFC、hash 与 `cross_workspace`。
 - SecurityLab MCP fake client：`securitylab_ro`、`lab_catalog/status/read_file/get_report/
   get_run_result`；路径 containment、输出上限/脱敏；`securitylab_vcan` disabled。
 - 两个独立 DSH lifecycle hook：`session.promptBeforeInitialize` 与
-  `session.wd.beforeInitialize`，分别测试，不合并语义。
+  `session.wd.beforeInitialize`，分别测试，不合并语义。wd hook 只接受 trusted
+  workspace registry 中的 root；未知/缺失 root 拒绝，并在 lexical containment 后
+  对 root 与 working directory 做 realpath containment，拒绝 symlink/junction escape。
+- MemoryPack 排序使用 **Unicode code point** 比较（不使用 `localeCompare`）；同一
+  snapshot hash 与 `max_entries` 选择顺序不随机器 locale 改变。
 - 静态边界：Fleet 源码不读 `process.env`、不 spawn、不联网、不 import 旧
   agents/providers/routing/composition/Evidence writer。
 

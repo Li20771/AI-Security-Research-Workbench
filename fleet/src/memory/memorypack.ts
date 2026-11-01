@@ -103,19 +103,38 @@ export interface MemoryPackClient {
   getPack(context: MemoryPackContext): Promise<MemoryPack>;
 }
 
+/**
+ * Locale-independent Unicode code-point comparison.
+ *
+ * `localeCompare` depends on the host locale/ICU data and must never decide
+ * MemoryPack ordering or the snapshot hash. Comparing code points is stable
+ * across processes, platforms and locales; a proper prefix sorts first.
+ */
+export function compareCodePoints(left: string, right: string): number {
+  const leftPoints = Array.from(left, (char) => char.codePointAt(0) as number);
+  const rightPoints = Array.from(right, (char) => char.codePointAt(0) as number);
+  const shared = Math.min(leftPoints.length, rightPoints.length);
+  for (let index = 0; index < shared; index += 1) {
+    const leftPoint = leftPoints[index] as number;
+    const rightPoint = rightPoints[index] as number;
+    if (leftPoint !== rightPoint) {
+      return leftPoint < rightPoint ? -1 : 1;
+    }
+  }
+  return leftPoints.length - rightPoints.length;
+}
+
 export function snapshotHashFor(
   scope: { workspace_id: string; episode_id: string | null },
   role: RoleId,
   entries: readonly MemoryPackEntry[]
 ): string {
   const sorted = [...entries].sort((left, right) => {
-    if (left.path < right.path) {
-      return -1;
+    const pathOrder = compareCodePoints(left.path, right.path);
+    if (pathOrder !== 0) {
+      return pathOrder;
     }
-    if (left.path > right.path) {
-      return 1;
-    }
-    return left.revision.localeCompare(right.revision);
+    return compareCodePoints(left.revision, right.revision);
   });
   return sha256OfJson({
     contract_version: MEMORYPACK_CONTRACT_VERSION,
