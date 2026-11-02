@@ -54,6 +54,9 @@
 Workbench TypeScript typecheck                 PASS
 Workbench Fleet fake tests                     PASS  99 passed / 0 failed / 0 skipped
 RealDshAdapter fake SDK tests                  PASS  8 passed
+Linux CI: Workbench fleet workflow             PASS
+Linux CI: dsh-memory memory workflow           PASS
+Linux CI: SecurityLab CI                       PASS
 ```
 
 真实 C runtime smoke（2026-11-02，限定环境）：

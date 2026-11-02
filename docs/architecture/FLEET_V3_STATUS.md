@@ -66,6 +66,9 @@ TypeScript typecheck                         PASS  0 errors
 Fleet fake tests (node:test)                 PASS  99 passed / 0 failed / 0 skipped
 Contract schema/examples check               PASS  14 schemas / 13 JSON examples / 7 ledger events（14 个示例文件）
 Cross-repo MemoryPack v1.1 fixture           PASS  2 passed（dsh-memory producer 产物由 Workbench schema/hash 校验）
+Linux CI: Workbench fleet workflow           PASS  typecheck + fake tests + contracts
+Linux CI: dsh-memory memory workflow         PASS  offline tests（含 symlink/path cases）
+Linux CI: SecurityLab CI                     PASS  fast QA（ruff + mypy + offline tests）
 git diff --check                             PASS  (见交付报告)
 ```
 
@@ -92,6 +95,8 @@ Set-Location 'D:\claude-work\DSH-Fleet-v3\01-workbench\fleet'
 - MemoryPack visibility/scope/top-k/pending/restricted/run-private/episode-shared。
 - MemoryPack delivery fail closed：无 client、snapshot/hash、contract version、workspace
   或 run scope 不匹配时，worker session 不启动且 run failed。
+- MCP delivery fail closed：未配置 server、args 缺少 `{binding}` 时拒绝启动；per-run
+  binding 包含 run/role/workspace/episode/tool_profile。
 - MemoryPack 确定性：Unicode code point 排序、`snapshot_hash` 与输入顺序无关、
   locale 无关；hardcoded hash 锁定顺序规则。
 - 跨仓库 fake acceptance：`test/cross-repo-memorypack.test.ts` 校验 dsh-memory
@@ -261,8 +266,10 @@ analysis_a 调用了 `mcp__securitylab_ro__lab_status` 并得到 ready/disabled/
 
 - dsh-memory 独立 service/IPC 模式（当前是部署侧导入真实 producer library；
   非进程间服务；真实用户 vault 未使用）；
-- MCP 的负向路径/identity/disabled-tool 真实测试与每个 role 的工具面审计；
-- 独立的真实 path/env/profile 负向测试与 Linux CI；
+- MCP 的负向路径/identity/disabled-tool 真实测试与每个 role 的工具面审计
+  （SecurityLab 离线 tests 已覆盖服务端拒绝，但尚未逐个 role 跑真实 DSH 负向）；
+- 真实 path/env/profile 负向 DSH 测试（Linux CI 已跑 Fleet fake tests、
+  dsh-memory 与 SecurityLab 离线 suites）；
 - 真实 provider/model 的独立费用/网络边界确认。
 
 旧 Python 全量测试与旧 UI 审计仍为 `NOT_RUN`；不在 Fleet v3 完成标准内。
