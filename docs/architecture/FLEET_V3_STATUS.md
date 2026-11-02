@@ -97,6 +97,9 @@ Set-Location 'D:\claude-work\DSH-Fleet-v3\01-workbench\fleet'
   或 run scope 不匹配时，worker session 不启动且 run failed。
 - MCP delivery fail closed：未配置 server、args 缺少 `{binding}` 时拒绝启动；per-run
   binding 包含 run/role/workspace/episode/tool_profile。
+- SecurityLab 真实角色矩阵（`test_service.py::test_role_tool_surface_and_denials`）：
+  六个角色的工具面、`tool-not-allowed`、traversal、`identity-in-args`、
+  challenger 无 run-result、`lab_runner` vcan `tool-disabled` 且 `side_effects=0`。
 - MemoryPack 确定性：Unicode code point 排序、`snapshot_hash` 与输入顺序无关、
   locale 无关；hardcoded hash 锁定顺序规则。
 - 跨仓库 fake acceptance：`test/cross-repo-memorypack.test.ts` 校验 dsh-memory
@@ -267,7 +270,7 @@ analysis_a 调用了 `mcp__securitylab_ro__lab_status` 并得到 ready/disabled/
 - dsh-memory 独立 service/IPC 模式（当前是部署侧导入真实 producer library；
   非进程间服务；真实用户 vault 未使用）；
 - MCP 的负向路径/identity/disabled-tool 真实测试与每个 role 的工具面审计
-  （SecurityLab 离线 tests 已覆盖服务端拒绝，但尚未逐个 role 跑真实 DSH 负向）；
+  （SecurityLab 离线 role matrix 已 PASS；真实 DSH 内逐 role 负向调用仍待补）；
 - 真实 path/env/profile 负向 DSH 测试（Linux CI 已跑 Fleet fake tests、
   dsh-memory 与 SecurityLab 离线 suites）；
 - 真实 provider/model 的独立费用/网络边界确认。
