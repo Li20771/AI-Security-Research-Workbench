@@ -37,7 +37,6 @@ const schemaFiles = [
   "role-preset.v1.schema.json",
   "memorypack.v1.schema.json",
   "memorypack.v1.1.schema.json",
-  "memorypack.v1.2.schema.json",
   "securitylab-tool-call.v1.schema.json",
   "securitylab-tool-result.v1.schema.json"
 ];
@@ -78,7 +77,6 @@ test("all frozen examples validate against their schemas", () => {
     ["urn:dsh-fleet:contract:role-preset:1.0.0", "role-preset.registry.json"],
     ["urn:dsh-memory:contract:memorypack:1.0.0", "memorypack.example.json"],
     ["urn:dsh-memory:contract:memorypack:1.1.0", "memorypack.v1.1.example.json"],
-    ["urn:dsh-memory:contract:memorypack:1.2.0", "memorypack.v1.2.example.json"],
     ["urn:securitylab:contract:tool-call:1.0.0", "securitylab-tool-call.example.json"],
     ["urn:securitylab:contract:tool-result:1.0.0", "securitylab-tool-result.example.json"]
   ];
@@ -95,36 +93,6 @@ test("all frozen examples validate against their schemas", () => {
     assertValid(ajv, "urn:dsh-fleet:contract:run-ledger:1.0.0", event, "run-ledger example");
   }
   assert.equal(verifyLedgerEvents(ledgerEvents as never).ok, true);
-});
-
-test("MemoryPack v1.2 requires the unspecified_layer counter and rejects v1.1 packs", () => {
-  const ajv = makeAjv();
-  const v12 = "urn:dsh-memory:contract:memorypack:1.2.0";
-  const v11 = "urn:dsh-memory:contract:memorypack:1.1.0";
-  const validate12 = ajv.getSchema(v12);
-  const validate11 = ajv.getSchema(v11);
-  assert.ok(validate12);
-  assert.ok(validate11);
-
-  const base = JSON.parse(
-    readFileSync(join(EXAMPLES, "memorypack.v1.2.example.json"), "utf8")
-  ) as Record<string, unknown>;
-  assertValid(ajv, v12, base, "v1.2 example");
-
-  // `excluded` is a closed set, so dropping the new bucket must fail.
-  const missingBucket = structuredClone(base) as Record<string, unknown>;
-  delete (missingBucket.excluded as Record<string, unknown>).unspecified_layer;
-  assert.equal(validate12(missingBucket), false, "unspecified_layer is required");
-
-  // A 1.1.0 pack must not validate against 1.2.0 (fail closed, no silent compat).
-  const asOld = structuredClone(base) as Record<string, unknown>;
-  asOld.contract_version = "1.1.0";
-  (asOld.source as Record<string, unknown>).contract_version = "1.1.0";
-  assert.equal(validate12(asOld), false, "1.1.0 pack is rejected by the 1.2.0 schema");
-
-  const extraBucket = structuredClone(base) as Record<string, unknown>;
-  (extraBucket.excluded as Record<string, unknown>).unexpected = 0;
-  assert.equal(validate12(extraBucket), false, "excluded stays a closed set");
 });
 
 test("MemoryPack v1.1 accepts NFC Unicode paths and rejects traversal/unsafe paths", () => {

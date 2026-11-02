@@ -49,6 +49,8 @@ fleet/
   restricted；先授权后 top-k；pending/rejected/superseded/restricted 不进入 pack；
   另含跨仓库 fake acceptance：用 dsh-memory 真实 producer 生成的 synthetic pack
   fixture 验证 Workbench v1.1 schema、semantic、NFC、hash 与 `cross_workspace`。
+  端到端 fake run 用该 pack 作为 binding、在 worker 内调用 SecurityLab fake MCP
+  只读工具，验证身份/scope、工具执行、untrusted result 与 RunLedger。
 - SecurityLab MCP fake client：`securitylab_ro`、`lab_catalog/status/read_file/get_report/
   get_run_result`；路径 containment、输出上限/脱敏；`securitylab_vcan` disabled。
 - 两个独立 DSH lifecycle hook：`session.promptBeforeInitialize` 与

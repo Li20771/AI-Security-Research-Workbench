@@ -215,7 +215,7 @@ export class FakeDshAdapter implements DshRuntimeAdapter {
       throw new DshCancelledError("session-cancelled");
     }
     if (this.resultFactory !== null) {
-      return this.resultFactory({ handle, request: state.request, input: state.input });
+      return await this.resultFactory({ handle, request: state.request, input: state.input });
     }
     return defaultResult(state.request.role);
   }

@@ -134,7 +134,7 @@ export const CONTRACT_SCHEMA_IDS = {
   runLedger: "urn:dsh-fleet:contract:run-ledger:1.0.0",
   workflowRegistry: "urn:dsh-fleet:contract:workflow-registry:1.0.0",
   rolePreset: "urn:dsh-fleet:contract:role-preset:1.0.0",
-  memoryPack: "urn:dsh-memory:contract:memorypack:1.0.0",
+  memoryPack: "urn:dsh-memory:contract:memorypack:1.1.0",
   securityLabCall: "urn:securitylab:contract:tool-call:1.0.0",
   securityLabResult: "urn:securitylab:contract:tool-result:1.0.0"
 } as const;

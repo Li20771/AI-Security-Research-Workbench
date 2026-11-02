@@ -1,8 +1,8 @@
 # DSH Agent Fleet v3.0 — 实施状态
 
-**仓库基线：** `21fe4e71c47e7bb95c22c103d4c14bce295490b9`（GitHub `main`；PR #103 已于 2026-10-30 合入）
-**工作分支：** `fix/fleet-v3-round2-hardening`（基于上述 `main`；本轮改动位于本地工作树，尚未 commit/push/merge）
-**实施日期：** 2026-10-30 首轮；2026-11-01 round 2 加固
+**仓库审计基线：** `1d3c5252bf554ef299aa744ba9d8dcfa9fd6cd19`（GitHub `main`，2026-11-02）
+**审计修正：** 按《DSH_AGENT_FLEET_V3_UNIFIED_ARCHITECTURE.md》v3.0 回退未授权的 MemoryPack v1.2.0 与 AI-15 OPEN-1 signing 代码；改动位于本地工作树，尚未 commit/push/merge
+**实施日期：** 2026-10-30 首轮；2026-11-01 round 2 加固；2026-11-02 架构基线对齐
 **性质：** fake-only、离线、可审查实现；不是真实 DSH/provider/SecurityLab 验收。
 
 本文件区分 `IMPLEMENTED`、`IMPLEMENTED BUT NOT CONNECTED`、`BLOCKED`、`NOT_RUN`。
@@ -24,6 +24,11 @@ Fake test 通过不等于真实 runtime 集成通过。
 一致副本：`D:\claude-work\DSH-Fleet-v3\brief\contracts\`。版本不一致时消费方必须拒绝。
 MemoryPack 1.1.0 只允许显式 `user-global` 跨 workspace；无显式 visibility 的旧记录
 不进入 worker pack，只能由 Curator 通过只读迁移清单确认后迁移；路径为 NFC Unicode。
+
+**2026-11-02 架构对齐：** GitHub `main` 曾把 MemoryPack 提升到 `1.2.0`；v3.0 架构文档
+规定当前契约为 `1.1.0`，且任何共享字段/版本变更必须先获用户批准。该未经批准的
+`1.2.0` 文件、schema、example、fixture 与消费代码已在本轮工作树回退；本仓库当前
+工作树只保留 `1.0.0`（历史）与 `1.1.0`（当前）。
 
 ## 2. 实现矩阵
 
@@ -56,7 +61,7 @@ MemoryPack 1.1.0 只允许显式 `user-global` 跨 workspace；无显式 visibil
 
 ```text
 TypeScript typecheck                         PASS  0 errors
-Fleet fake tests (node:test)                 PASS  85 passed / 0 failed / 0 skipped
+Fleet fake tests (node:test)                 PASS  87 passed / 0 failed / 0 skipped
 Contract schema/examples check               PASS  14 schemas / 13 JSON examples / 7 ledger events（14 个示例文件）
 Cross-repo MemoryPack v1.1 fixture           PASS  2 passed（dsh-memory producer 产物由 Workbench schema/hash 校验）
 git diff --check                             PASS  (见交付报告)
@@ -88,6 +93,9 @@ Set-Location 'D:\claude-work\DSH-Fleet-v3\01-workbench\fleet'
 - 跨仓库 fake acceptance：`test/cross-repo-memorypack.test.ts` 校验 dsh-memory
   producer 生成的 synthetic pack（schema、NFC、entry sha256、snapshot hash、
   `excluded`、`policy.cross_workspace`），并验证篡改/未知版本会被拒绝。
+- 跨仓库端到端 fake run：`test/cross-repo-e2e.test.ts` 用 dsh-memory v1.1 pack
+  作为 binding、在 worker 中调用 SecurityLab fake MCP 只读工具，验证身份/scope、
+  工具执行、untrusted result、RunLedger 与跨 workspace canary 不泄露。
 - SecurityLab 路径 traversal/absolute/drive/UNC/NUL/ADS/symlink、identity args、disabled vcan、输出上限/脱敏。
 - 两个 lifecycle hook 分开调用/拒绝；prompt hook 不处理路径，wd hook 不处理 prompt；
   wd hook 对未知/缺失 root、root mismatch、不存在路径、symlink/junction escape
@@ -101,7 +109,9 @@ Set-Location 'D:\claude-work\DSH-Fleet-v3\01-workbench\fleet'
 `workflow_instance_id`、`role`、`preset_version`、`workspace_id`、`episode_id`、
 `tool_profile`、`memory_pack`、`approval_ref` 由 host 签发 binding；请求中的同名字段
 一律 `identity-in-request`。binding 通过进程内 opaque WeakSet 验证，普通 JSON 对象/
-深拷贝不可伪造。
+深拷贝不可伪造。`memory_pack.workspace_id` 必须等于 binding workspace，
+`memory_pack.episode_id` 必须与 binding `episode_id` 完全一致（`null` 与具体 episode
+不是同一 scope；workspace-wide pack 不得满足 episode-bound worker run）。
 
 ### 4.2 数据
 
@@ -147,8 +157,8 @@ registry（`FleetController` 不再提供内置 fallback）；未知/缺失 root
 
 ## 6. 明确声明
 
-- GitHub `main` 已包含首轮 PR #103 的合入（基线 `21fe4e71…`）；本轮改动位于本地
-  分支 `fix/fleet-v3-round2-hardening` 的工作树，未 commit/push/merge，未修改远端。
+- 本轮审计基线为 GitHub `main` `1d3c525…`（已包含 PR #103、round-2 PR #104 及其后
+  的文档/契约提交）；本轮的架构对齐修正位于本地工作树，未 commit/push/merge，未修改远端。
 - 未运行真实 DSH SDK/runtime、provider/model 或 SecurityLab/vcan/设备实验。
 - 未读取/复制 credential/token/key 文件或环境变量值；未 dump 全量环境。
 - path-traversal 测试只做路径计算/containment 断言，未写入被测逃逸目标。
@@ -167,3 +177,24 @@ registry（`FleetController` 不再提供内置 fallback）；未知/缺失 root
 上述均为离线/synthetic 结果。真实 DSH SDK/runtime、真实 dsh-memory IPC、真实
 SecurityLab MCP 进程连接、provider/model 和任何实验仍为 `NOT_RUN` 或
 `IMPLEMENTED BUT NOT CONNECTED`；不得把本轮 fake acceptance 写成真实集成通过。
+
+## 8. 架构基线对齐（2026-11-02）
+
+| 偏差 | 处置 | 架构依据 |
+|---|---|---|
+| MemoryPack 契约被提升到 `1.2.0`，新增 `excluded.unspecified_layer`，Workbench 与 dsh-memory 同步消费 | 在本轮工作树回退到 `1.1.0`；删除 v1.2 合同/schema/example/fixture 与消费代码；跨仓库 fixture 恢复为 v1.1.0 并保持与 dsh-memory producer byte-identical | §2.4 当前 MemoryPack 契约 `1.1.0`；§14.2 共享字段变更须先获用户确认并版本化 |
+| 合入 AI-15 OPEN-1 phase 3A `plugins/security_tools/signing.py`、错误类型与测试（dormant，无调用点） | 在本轮工作树回退该提交；保留既有 AI-15 legacy 文档/代码，不新增 Evidence writer 能力 | §12.1 / §16：AI-15 Evidence writer/B5 为 `BLOCKED/UNCHANGED`；§13.1 旧 AI 路径仅作 legacy/reference |
+| MemoryPack binding 只比较 workspace；episode-bound run 可接受 `episode_id: null` 的 workspace-wide pack，scope 被放宽 | 改为 `memory_pack.episode_id` 与 binding `episode_id` 完全一致；新增双向 mismatch 测试 | §3.3 `pack workspace` 必须相同、`episode` 不可不一致；§5.3.1 step 7 |
+
+回退后的离线验证：
+
+```text
+TypeScript typecheck                         PASS
+Fleet fake tests (node:test)                 PASS  87 passed / 0 failed / 0 skipped
+Contract schema/examples check               PASS  14 schemas / 13 JSON examples / 7 ledger events
+Cross-repo MemoryPack v1.1 fixture           PASS  2 passed（fixture 与 dsh-memory 产物 byte-identical）
+Cross-repo end-to-end fake run               PASS  1 passed（dsh-memory pack + SecurityLab fake MCP + Fleet）
+```
+
+真实 DSH SDK/runtime、真实 dsh-memory IPC、真实 SecurityLab MCP 进程连接、
+provider/model 和任何实验仍为 `NOT_RUN` 或 `IMPLEMENTED BUT NOT CONNECTED`。

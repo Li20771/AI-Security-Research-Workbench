@@ -101,18 +101,18 @@ function validateMemoryPackRef(
   ) {
     fail("memory-scope-mismatch", "memory_pack.episode_id is invalid");
   }
-  if (
-    episodeId !== null &&
-    typeof packEpisode === "string" &&
-    packEpisode !== episodeId
-  ) {
+  const normalizedPackEpisode = typeof packEpisode === "string" ? packEpisode : null;
+  // The pack scope must match the binding exactly. A workspace-wide pack
+  // (episode_id null) is broader than an episode-bound worker run and must not
+  // be accepted as an equal scope.
+  if (normalizedPackEpisode !== episodeId) {
     fail("memory-scope-mismatch", "memory_pack episode does not match the binding");
   }
   return {
     snapshot_id: snapshotId,
     snapshot_hash: snapshotHash,
     workspace_id: packWorkspace,
-    episode_id: typeof packEpisode === "string" ? packEpisode : null
+    episode_id: normalizedPackEpisode
   };
 }
 

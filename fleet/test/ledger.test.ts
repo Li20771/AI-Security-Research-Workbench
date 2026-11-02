@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { appendFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { jsonByteLength } from "../src/canonical-json.ts";
 import { FleetPolicyError } from "../src/errors.ts";
 import { InMemoryRunLedger, JsonlRunLedger, verifyLedgerEvents } from "../src/ledger.ts";
 import { DeterministicIdGenerator } from "../src/ids.ts";
@@ -60,6 +61,39 @@ test("ledger events form a verified hash chain and are frozen", () => {
   assert.equal(started.prev_hash, created.hash);
   assert.equal(Object.isFrozen(created), true);
   assert.equal(ledger.verify().ok, true);
+});
+
+test("a ledger event over 16 KiB is rejected even when data alone is within the data limit", () => {
+  let data: Record<string, unknown> | null = null;
+  for (let count = 1; count <= 100; count += 1) {
+    const candidate = {
+      artifact_refs: Array.from({ length: count }, (_, index) => ({
+        ref: `a/${"x".repeat(120)}${index}`,
+        sha256: "a".repeat(64)
+      }))
+    };
+    const bytes = jsonByteLength(candidate);
+    // The event envelope adds a few hundred bytes on top of `data`; pick a
+    // data size that is still valid but makes the whole event exceed 16 KiB.
+    if (bytes > 16_050 && bytes <= 16_384) {
+      data = candidate;
+      break;
+    }
+  }
+  assert.ok(data, "a data payload just below the data limit is available");
+  assert.throws(
+    () =>
+      newLedger().append({
+        type: "run.created",
+        workflow_instance_id: wfiId,
+        run_id: runId,
+        task_id: "analysis_a",
+        role: "researcher",
+        data
+      }),
+    (error) =>
+      error instanceof FleetPolicyError && /event exceeds 16 KiB/.test(error.message)
+  );
 });
 
 test("tampering breaks verification without mutating the ledger", () => {

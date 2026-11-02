@@ -28,7 +28,7 @@ test("ws_a pack includes approved scoped memory and excludes foreign/pending/res
   const client = new FakeMemoryPackClient(new FixedClock());
   const pack = await client.getPack(context());
   const bodies = pack.entries.map((entry) => entry.body);
-  assert.equal(pack.contract_version, "1.2.0");
+  assert.equal(pack.contract_version, "1.1.0");
   assert.equal(pack.read_only, true);
   assert.equal(pack.scope.workspace_id, "ws_a");
   assert.ok(bodies.includes("WS_A_CANARY"));
@@ -55,7 +55,6 @@ test("ws_a pack includes approved scoped memory and excludes foreign/pending/res
   assert.equal(pack.excluded.unmarked, 1);
   assert.equal(pack.excluded.path_invalid, 1);
   assert.equal(pack.excluded.entry_invalid, 0);
-  assert.equal(pack.excluded.unspecified_layer, 1);
   // The explicit user-global seed has no origin scope and must use `global`,
   // not the requester's workspace id; that makes cross_workspace true.
   const global = pack.entries.find((entry) => entry.body === "GLOBAL_CANARY");
@@ -83,9 +82,9 @@ test("snapshot hashes are deterministic for the same authorized entry set", asyn
   // Locks locale-independent code-point ordering and canonical JSON hashing.
   assert.equal(
     first.snapshot_hash,
-    "91e81033658b75099adbec469ab82ad6ce738ab447871c8acf64fc52a2c96831"
+    "1cc74ad9a67b090eb398d501e32f278bf7f4f001765dd693aa299e17f1401994"
   );
-  assert.equal(first.snapshot_id, "mp_91e81033658b75099adbec469ab82ad6");
+  assert.equal(first.snapshot_id, "mp_1cc74ad9a67b090eb398d501e32f278b");
 });
 
 test("unmarked legacy records never cross workspaces", async () => {
@@ -139,30 +138,8 @@ test("top-k happens after authorization and cannot promote foreign records", asy
     restricted: 1,
     unmarked: 1,
     path_invalid: 1,
-    entry_invalid: 0,
-    unspecified_layer: 1
+    entry_invalid: 0
   });
-});
-
-test("an unresolvable layer is counted, not relabelled as KB (v1.2.0)", async () => {
-  const client = new FakeMemoryPackClient(new FixedClock());
-  const pack = await client.getPack(context({ max_entries: 100 }));
-
-  // The seed with layer === null must not surface as an entry at all.
-  const bodies = pack.entries.map((entry) => entry.body);
-  assert.equal(bodies.includes("UNSPECIFIED_LAYER_CANARY"), false);
-
-  // Specifically, it must not have been silently parked in the KB layer.
-  const kb = pack.entries.filter((entry) => entry.layer === "KB");
-  assert.equal(
-    kb.some((entry) => entry.path === "workspaces/ws_a/memory/unclassified.md"),
-    false,
-    "unclassified records must never be emitted as KB"
-  );
-
-  // It is visible as its own exclusion reason, not folded into entry_invalid.
-  assert.equal(pack.excluded.unspecified_layer, 1);
-  assert.equal(pack.excluded.entry_invalid, 0);
 });
 
 test("missing/invalid context fails closed and the interface has no write method", async () => {

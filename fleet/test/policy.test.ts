@@ -232,4 +232,39 @@ test("binding issuer rejects workspace, preset, and memory scope mismatches", as
       }),
     (error: unknown) => error instanceof FleetPolicyError && error.code === "memory-scope-mismatch"
   );
+
+  // A workspace-wide pack is broader than an episode-bound binding and must not
+  // be accepted as the same scope.
+  const broadPack = { ...foreignPack, workspace_id: "ws_a", episode_id: null };
+  assert.throws(
+    () =>
+      h.issuer.issue({
+        workflow_instance_id: "wfi_00000000000000000000000000000004",
+        workspace_id: "ws_a",
+        episode_id: "ep_1",
+        role: "researcher",
+        preset_id: "preset_researcher",
+        preset_version: "1.0.0",
+        tool_profile: "researcher_ro_v1",
+        memory_pack: broadPack
+      }),
+    (error: unknown) => error instanceof FleetPolicyError && error.code === "memory-scope-mismatch"
+  );
+
+  // The reverse direction is also a scope mismatch.
+  const episodePack = { ...foreignPack, workspace_id: "ws_a", episode_id: "ep_1" };
+  assert.throws(
+    () =>
+      h.issuer.issue({
+        workflow_instance_id: "wfi_00000000000000000000000000000005",
+        workspace_id: "ws_a",
+        episode_id: null,
+        role: "researcher",
+        preset_id: "preset_researcher",
+        preset_version: "1.0.0",
+        tool_profile: "researcher_ro_v1",
+        memory_pack: episodePack
+      }),
+    (error: unknown) => error instanceof FleetPolicyError && error.code === "memory-scope-mismatch"
+  );
 });

@@ -340,6 +340,9 @@ function buildEvent(
     data: input.data,
     prev_hash: prevHash
   };
+  if (jsonByteLength(withoutHash) > MAX_EVENT_BYTES) {
+    unsafe("ledger event exceeds 16 KiB", "event");
+  }
   const event: RunLedgerEvent = {
     ...withoutHash,
     hash: eventHash(withoutHash)

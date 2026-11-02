@@ -839,11 +839,9 @@ export class FleetController {
     if (pack.workspace_id !== binding.workspace_id) {
       return false;
     }
-    if (
-      binding.episode_id !== null &&
-      pack.episode_id !== null &&
-      pack.episode_id !== binding.episode_id
-    ) {
+    // Exact scope equality: null and ep_1 are different scopes. A broader
+    // workspace pack must not satisfy an episode-bound run.
+    if (pack.episode_id !== binding.episode_id) {
       return false;
     }
     return true;
