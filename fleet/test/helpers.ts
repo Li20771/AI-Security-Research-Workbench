@@ -20,7 +20,7 @@ import type { MemoryPackRef } from "../src/binding.ts";
 
 export interface HarnessOptions {
   adapter?: FakeDshAdapterOptions;
-  memoryPackClient?: MemoryPackClient;
+  memoryPackClient?: MemoryPackClient | null;
 }
 
 export interface BindingOverrides {
@@ -71,13 +71,14 @@ export function makeHarness(options: HarnessOptions = {}) {
   const resultStore = new InMemoryResultStore();
   const approval = new FakeApprovalRegistry();
   const memory = new FakeMemoryPackClient(clock);
+  const packClient = options.memoryPackClient === undefined ? memory : options.memoryPackClient;
   const controller = new FleetController({
     bindingIssuer: issuer,
     ledger,
     adapter,
     resultStore,
     approvalVerifier: approval,
-    memoryPackClient: options.memoryPackClient ?? memory,
+    memoryPackClient: packClient === null ? undefined : packClient,
     clock,
     idGenerator: ids,
     workspaceRoots

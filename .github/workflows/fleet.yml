@@ -1,0 +1,41 @@
+name: fleet
+
+on:
+  push:
+    paths:
+      - "fleet/**"
+      - "docs/contracts/**"
+      - "docs/architecture/FLEET_V3_STATUS.md"
+      - "docs/architecture/DSH_SDK_STATIC_COMPARISON.md"
+      - ".github/workflows/fleet.yml"
+  pull_request:
+    paths:
+      - "fleet/**"
+      - "docs/contracts/**"
+      - "docs/architecture/FLEET_V3_STATUS.md"
+      - "docs/architecture/DSH_SDK_STATIC_COMPARISON.md"
+      - ".github/workflows/fleet.yml"
+  workflow_dispatch:
+
+jobs:
+  fleet:
+    name: Fleet offline tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: fleet
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: fleet/package-lock.json
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Fake Fleet tests
+        run: npm test
+      - name: Contract schema/examples check
+        run: npm run contracts:check

@@ -52,7 +52,7 @@
 
 ```text
 Workbench TypeScript typecheck                 PASS
-Workbench Fleet fake tests                     PASS  95 passed / 0 failed / 0 skipped
+Workbench Fleet fake tests                     PASS  99 passed / 0 failed / 0 skipped
 RealDshAdapter fake SDK tests                  PASS  8 passed
 ```
 

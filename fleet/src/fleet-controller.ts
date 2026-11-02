@@ -1051,11 +1051,13 @@ export class FleetController {
       const cleanup = await this.#cleanup(active, "failure");
       const adapterError = error instanceof DshAdapterError ? error : null;
       const code: FleetErrorCode =
-        adapterError?.code === "session-init-blocked"
-          ? "session-init-blocked"
-          : !hadHandle
-            ? "adapter-start-failed"
-            : "internal-error";
+        error instanceof FleetPolicyError
+          ? error.code
+          : adapterError?.code === "session-init-blocked"
+            ? "session-init-blocked"
+            : !hadHandle
+              ? "adapter-start-failed"
+              : "internal-error";
       await this.#finalize(
         active,
         cleanup.state === "succeeded" || cleanup.state === "not_needed" ? "failed" : "blocked",

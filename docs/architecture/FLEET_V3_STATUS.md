@@ -63,7 +63,7 @@ MemoryPack 1.1.0 只允许显式 `user-global` 跨 workspace；无显式 visibil
 
 ```text
 TypeScript typecheck                         PASS  0 errors
-Fleet fake tests (node:test)                 PASS  95 passed / 0 failed / 0 skipped
+Fleet fake tests (node:test)                 PASS  99 passed / 0 failed / 0 skipped
 Contract schema/examples check               PASS  14 schemas / 13 JSON examples / 7 ledger events（14 个示例文件）
 Cross-repo MemoryPack v1.1 fixture           PASS  2 passed（dsh-memory producer 产物由 Workbench schema/hash 校验）
 git diff --check                             PASS  (见交付报告)
@@ -90,6 +90,8 @@ Set-Location 'D:\claude-work\DSH-Fleet-v3\01-workbench\fleet'
 - run 重试新 run id；原失败记录保留；依赖 parent 校验。
 - RunLedger 哈希链、篡改检测、禁止字段、JSONL 重启、损坏 fail closed。
 - MemoryPack visibility/scope/top-k/pending/restricted/run-private/episode-shared。
+- MemoryPack delivery fail closed：无 client、snapshot/hash、contract version、workspace
+  或 run scope 不匹配时，worker session 不启动且 run failed。
 - MemoryPack 确定性：Unicode code point 排序、`snapshot_hash` 与输入顺序无关、
   locale 无关；hardcoded hash 锁定顺序规则。
 - 跨仓库 fake acceptance：`test/cross-repo-memorypack.test.ts` 校验 dsh-memory
@@ -192,7 +194,7 @@ SecurityLab MCP 进程连接、provider/model 和任何实验仍为 `NOT_RUN` �
 
 ```text
 TypeScript typecheck                         PASS
-Fleet fake tests (node:test)                 PASS  95 passed / 0 failed / 0 skipped
+Fleet fake tests (node:test)                 PASS  99 passed / 0 failed / 0 skipped
 Contract schema/examples check               PASS  14 schemas / 13 JSON examples / 7 ledger events
 Cross-repo MemoryPack v1.1 fixture           PASS  2 passed（fixture 与 dsh-memory 产物 byte-identical）
 Cross-repo end-to-end fake run               PASS  1 passed（dsh-memory pack + SecurityLab fake MCP + Fleet）
