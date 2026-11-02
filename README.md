@@ -93,7 +93,8 @@ Fleet、MemoryPack、worker result 和 RunLedger 都不能绕过或替代 Eviden
 | SecurityLab/vcan/CAN/ECU/车辆/设备实验 | `NOT_RUN` |
 | AI-15 Evidence writer / B5 | `BLOCKED` / `UNCHANGED` |
 
-- 旧 AI-00–AI-15 文档与 `agents/`、`providers/`、`routing/`、`composition/` 是历史/参考资产，
+- 旧 AI-00–AI-15 文档与 `agents/`、`providers/` 是历史/参考资产；`routing/`（旧 Router + AI-12 policy core）
+  与 `composition/`（旧内部编排层）已随 v3.0 一并移除。
   不代表新 Fleet 已实现，也不得被新 Fleet import 或调用。**其中可发起真实 provider 请求的
   代码已物理移除**（live runner、`http_transport.py`、live workflow、`tests/live/`）：
   本仓库没有 provider 调用路径，Layer 0 强制它不得回归。处置表见

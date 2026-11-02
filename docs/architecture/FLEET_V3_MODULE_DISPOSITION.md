@@ -11,8 +11,8 @@
 |---|---|---|---|
 | `agents/` | `REFERENCE / LEGACY` | 旧 Agent execution/runtime；新 worker 由 DSH runtime 执行 | 不导入；保留源码与测试；新 Fleet 不把它当作已实现 |
 | `providers/` | `DEFER / REFERENCE`；**provider 调用面已删除** | DSH profile/model selection 决定 worker model | 不导入；不复制 provider/router；不调用任何 provider。live runner、`http_transport.py`、live workflow、`tests/live/` 已删除，Layer 0 强制其不得回归 |
-| `routing/` | `DEFER / REFERENCE` | 旧 Router v1/v2；新 Fleet 不做模型路由 | 不导入；保留测试/证据；不声称与 Fleet 连接 |
-| `composition/` | `ARCHIVE / REFERENCE` | 旧 Workbench 内部层 glue；由 Fleet controller + DSH plugin/API 入口取代 | 不导入；B5 仍 `BLOCKED`；不构造 live Invoker |
+| `routing/` | **REMOVED（2026-11-02）** | 旧 Router v1/v2 + AI-12 policy core；新 Fleet 不做模型路由 | 目录、测试、config/routing 及其 Layer 0 检查已删除；AI-07/AI-12 契约检查随实现一并移除 |
+| `composition/` | **REMOVED（2026-11-02）** | 旧 Workbench 内部层 glue；由 Fleet controller + DSH plugin/API 入口取代 | 目录与测试已删除；AI-14 composition 检查随实现一并移除；B5 仍 `BLOCKED` |
 | `plugins/guard/` | `REFERENCE` | 旧 Guard 策略语义可参考；新执行边界是 Fleet run policy + MCP server policy | 不导入；避免 Fleet/Guard/MCP 多重互相矛盾的授权器 |
 | `plugins/context/` | `REFERENCE` | 旧只读 context；新 MemoryPack/workspace snapshot 是独立边界 | 不导入；不把 context 当长期记忆 |
 | `plugins/security_tools/` + `tools/` | `REFERENCE` | 旧通用分发/占位工具；SecurityLab 工具由 MCP server 拥有 | 不导入；不搬 SecurityLab 业务实现进 Fleet |
@@ -49,7 +49,7 @@ capability 词汇。它只定义 gate 与词汇，不含传输、也不导入传
 `fleet/test/static-boundary.test.ts` 对 `fleet/src/**/*.ts` 做静态检查：
 
 - 不出现 `process.env` / `process.exit` / `child_process` / 网络 client；
-- 不 import `agents/`、`providers/`、`routing/`、`composition/`；
+- 不 import `agents/`、`providers/`；`routing/` 与 `composition/` 已移除，Layer 0 断言其不得回归；
 - 不引用 `plugins/evidence`、`EvidenceRecord`、`admit(`、`evidence_store`；
 - 文件系统写入只允许出现在 `ledger.ts`（append-only RunLedger）；
 - 两个 DSH lifecycle hook 名称保持独立。
@@ -59,8 +59,9 @@ capability 词汇。它只定义 gate 与词汇，不含传输、也不导入传
 
 ## 3. 未做的事
 
-- 没有删除旧模块、旧测试或旧文档。
+- 除已明确标记 `REMOVED` 的 `routing/`、`composition/` 及其测试、`config/routing/` 与 provider 调用面外，
+  没有删除其它旧模块、旧测试或旧文档。
 - 没有把旧模块改写成 Python/TypeScript 双实现。
 - 没有在旧目录逐文件加 deprecation banner；本文件是统一处置记录，旧模块保持可审查历史。
-- 没有把旧 `agents/`、旧 `providers/` 或旧 `composition/` 当作新 Fleet 已连接。
+- 没有把旧 `agents/`、旧 `providers/` 当作新 Fleet 已连接；`routing/` 与 `composition/` 已删除。
 - 没有把旧 AI-15 Evidence writer/B5 接入新 Fleet。

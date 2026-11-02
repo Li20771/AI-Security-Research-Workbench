@@ -128,7 +128,7 @@ registry（`FleetController` 不再提供内置 fallback）；未知/缺失 root
 
 ### 4.4 旧模块
 
-旧 `agents/`、`providers/`、`routing/`、`composition/` 不参与新 Fleet 路径；
+旧 `agents/`、`providers/` 不参与新 Fleet 路径；`routing/` 与 `composition/` 已于 2026-11-02 删除；
 `fleet/src` 静态检查禁止 import。详见
 [FLEET_V3_MODULE_DISPOSITION.md](FLEET_V3_MODULE_DISPOSITION.md)。
 
