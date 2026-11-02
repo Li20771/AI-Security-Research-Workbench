@@ -366,7 +366,11 @@ DEFAULT_WORKFLOWS = frozenset({"preflight.yml"})
 #: AI-02-B6 introduced the first one. Permission is granted by *satisfying
 #: conditions*, never by a file merely existing -- a workflow that is not
 #: classified here is a finding, not an allowance.
-LIVE_WORKFLOWS = frozenset({"live-model-verification.yml"})
+#: Empty by design after the v3.0 cleanup removed the live provider path.
+#: Kept so that a future live workflow has to be *declared* here before it can
+#: pass `check_workflow_cannot_reach_a_provider`, rather than slipping in
+#: unclassified.
+LIVE_WORKFLOWS: frozenset[str] = frozenset()
 
 #: The only trigger a live workflow may declare. Stated positively: the
 #: question is not "does this list a forbidden trigger" but "is
@@ -3785,6 +3789,54 @@ def check_ai14_composition_layer(base: "Path | None" = None) -> list[str]:
     return problems
 
 
+#: The provider-call surface removed in the v3.0 cleanup. Reintroducing any of
+#: these restores the ability to contact a provider from this repository.
+REMOVED_PROVIDER_CALL_PATHS = (
+    "providers/http_transport.py",
+    "scripts/live",
+    "tests/live",
+    ".github/workflows/live-model-verification.yml",
+)
+
+#: Any of these in `providers/` would be a network implementation coming back.
+PROVIDER_NETWORK_MARKERS = (
+    "urllib.request",
+    "http.client",
+    "httpx.",
+    "requests.",
+    "socket.socket",
+)
+
+
+def check_provider_call_surface_stays_removed() -> list[str]:
+    """This repository must not be able to call a provider.
+
+    v3.0 has no provider/model calling path: Fleet delegates model execution to
+    the DSH runtime, which is not connected. The live transport, runner and
+    workflow were removed, and this check makes their return a CI failure
+    rather than something a reviewer has to notice.
+    """
+    problems: list[str] = []
+    for rel in REMOVED_PROVIDER_CALL_PATHS:
+        if (ROOT / rel).exists():
+            problems.append(
+                f"{rel} exists; the provider-call surface was removed in v3.0 "
+                "and must not be reintroduced"
+            )
+    providers = ROOT / "providers"
+    if providers.is_dir():
+        for path in sorted(providers.glob("*.py")):
+            text = path.read_text(encoding="utf-8")
+            for marker in PROVIDER_NETWORK_MARKERS:
+                if marker in text:
+                    problems.append(
+                        f"{_display(path)} references {marker!r}; no module "
+                        "under providers/ may perform network I/O"
+                    )
+                    break
+    return problems
+
+
 def main() -> int:
     print("Layer 0 - repository policy")
     report = Report()
@@ -3796,6 +3848,10 @@ def main() -> int:
     report.check(
         "example configs carry no credential values",
         check_example_configs_have_no_credentials(),
+    )
+    report.check(
+        "the provider-call surface stays removed",
+        check_provider_call_surface_stays_removed(),
     )
     report.check(
         "default workflows cannot reach a provider",

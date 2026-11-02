@@ -128,7 +128,6 @@ enablement.**
 ## Live
 
 Nothing in this package contacts a provider. The default path injects the shared
-fake transport, and `providers/http_transport.py` is referenced nowhere under
-`integrations/`. A live observation, if one is ever wanted, goes through AI-02's
-existing `LiveVerifier` / `ProbeAuthorisation` path and promotes nothing on its
-own.
+fake transport. The concrete HTTP transport was removed in the v3.0 cleanup, so
+there is no shipped code path here that could open a connection even if a caller
+wanted one.
