@@ -129,6 +129,12 @@ function validateConfig(config: RealDshAdapterConfig): void {
         throw new DshAdapterError("session-init-blocked", "mcp args must be strings");
       }
     }
+    if (!server.argsTemplate.some((arg) => arg.includes("{binding}"))) {
+      throw new DshAdapterError(
+        "session-init-blocked",
+        "mcp args must include the {binding} placeholder"
+      );
+    }
   }
 }
 

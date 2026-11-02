@@ -249,6 +249,22 @@ test("real adapter writes a per-run MCP binding and patch, and fails closed when
     () => unconfigured.openSession(request({ mcp_server: "securitylab_ro" })),
     /mcp server is not configured/
   );
+
+  assert.throws(
+    () =>
+      new RealDshAdapter(
+        config(new FakeFactory(), {
+          mcpServers: {
+            securitylab_ro: {
+              serverName: "securitylab_ro",
+              command: "python",
+              argsTemplate: ["-m", "securitylab_mcp.server"]
+            }
+          }
+        })
+      ),
+    /binding/
+  );
 });
 
 test("real adapter cancel closes the runtime and removes the per-run home", async () => {
