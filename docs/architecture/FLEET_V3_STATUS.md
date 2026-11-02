@@ -52,6 +52,7 @@ MemoryPack 1.1.0 只允许显式 `user-global` 跨 workspace；无显式 visibil
 | 真实 dsh-memory service（stdio JSON-RPC） | `PASS`（C smoke） | `tools/memorypack-service.mjs` 独立进程；只读 `getPack`/`createPackRef`；Workbench 部署 client 通过 JSON-RPC 调用 |
 | 真实 SecurityLab MCP server（C smoke） | `IMPLEMENTED` | 部署侧 DSH MCP client 启动真实只读 stdio server；per-run binding/patch；analysis_a 调用 `mcp__securitylab_ro__lab_status` |
 | 真实 DSH 逐 role MCP 负向调用 | `PASS`（6 roles） | researcher/vehicle_analyst/challenger/evidence_verifier/lab_runner/orchestrator；见 §10 |
+| DSH Desktop Fleet plugin | `IMPLEMENTED`（已安装；Desktop 重启待验收） | `fleet_submit/status/result/cancel` → 独立 fleet-host；见 `DSH_DESKTOP_PLUGIN.md` |
 | Workbench 旧 provider/model 调用面 | `NOT_RUN`（**调用面已移除**） | live runner、`http_transport.py`、live workflow、`tests/live/` 已删除；Layer 0 强制不得回归 |
 | DSH SDK runtime model call（C smoke） | `PASS`（受信部署 route） | 不属 Fleet 职责；由 DSH runtime 调用，route 由受信部署配置提供；见 §10 |
 | SecurityLab/vcan/CAN/ECU/车辆/设备实验 | `NOT_RUN` | `lab_runner` / `securitylab_vcan` disabled |
@@ -293,6 +294,8 @@ analysis_a 调用了 `mcp__securitylab_ro__lab_status` 并得到 ready/disabled/
 
 **仍未完成的 C 项：**
 
+- DSH Desktop 插件已安装，但 Desktop 重启后的聊天内工具调用尚未由本会话验收；
+  插件固定单一 workspace；
 - 生产部署仍使用 synthetic vault；真实用户 vault、service 生命周期/重启和大
   vault 性能未验证；
 - 真实 provider/model 的费用/网络边界仅对 tokenrhythm C smoke 确认；其他
