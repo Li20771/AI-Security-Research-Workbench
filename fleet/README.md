@@ -23,7 +23,8 @@ fleet/
     path-safety.ts          canonicalization/containment 纯计算
     env.ts                  仅 allowlist 变量名；不读 process.env
     registries/             workflow / role-preset / plugin / workspace 固定 registry
-    adapters/               DSH runtime adapter 接口、fake adapter、hook 分离
+    adapters/               DSH runtime adapter 接口、fake adapter、hook 分离、
+                            官方 SDK port 与 RealDshAdapter（deployment factory 注入）
     memory/                 只读 MemoryPack client + fake endpoint
     mcp/                    SecurityLab MCP client + fake server
   test/                     离线 fake tests（node:test）；含 dsh-memory 产物 fixture
@@ -45,6 +46,10 @@ fleet/
   blocked/timed_out/cancelled；重试新 run id；timeout/cancel 清理失败 -> blocked。
 - fake DSH adapter：成功、启动失败、timeout、cancel、malformed output、crash、
   并发隔离、kill/close failure、restart orphan。
+- 真实 DSH SDK 窄 port + `RealDshAdapter`（fake SDK tests）：每 run 临时
+  `DSH_HOME`、显式 env allowlist、受信 deployment route/profile、strict JSON、
+  close 即 cancel、清理失败 fail closed；官方 SDK 由 deployment factory 注入，
+  Fleet 不直接 import。
 - 只读 MemoryPack fake client：user-global/workspace-shared/episode-shared/run-private/
   restricted；先授权后 top-k；pending/rejected/superseded/restricted 不进入 pack；
   另含跨仓库 fake acceptance：用 dsh-memory 真实 producer 生成的 synthetic pack

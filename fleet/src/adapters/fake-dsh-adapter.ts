@@ -100,6 +100,7 @@ export class FakeDshAdapter implements DshRuntimeAdapter {
   #closeCalls = 0;
   #maxConcurrent = 0;
   #hookCalls: FakeHookCall[] = [];
+  #sessionRequests: DshSessionRequest[] = [];
 
   constructor(options: FakeDshAdapterOptions = {}) {
     this.adapter_id = options.adapterId ?? "fake-dsh-adapter-v1";
@@ -112,6 +113,7 @@ export class FakeDshAdapter implements DshRuntimeAdapter {
 
   async openSession(request: DshSessionRequest): Promise<DshSessionHandle> {
     this.#openCalls += 1;
+    this.#sessionRequests.push(request);
     if (this.mode === "start-failure") {
       throw new DshAdapterError("adapter-start-failed", "fake start failure");
     }
@@ -297,5 +299,9 @@ export class FakeDshAdapter implements DshRuntimeAdapter {
 
   get sessionIds(): readonly string[] {
     return [...this.#sessions.keys()];
+  }
+
+  get sessionRequests(): readonly DshSessionRequest[] {
+    return this.#sessionRequests.slice();
   }
 }

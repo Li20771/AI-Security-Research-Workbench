@@ -1,25 +1,27 @@
 # DSH SDK Runtime Adapter v1
 
 **契约 ID：** `dsh-fleet.dsh-adapter`
-**版本：** `1.0.0`
-**状态：** `FROZEN`（2026-10-30）
-**实现状态：** 接口 + fake adapter `IMPLEMENTED`；真实 DSH SDK/runtime `NOT_RUN`。
-**消费者：** Workbench Fleet controller、未来的 DSH SDK adapter 实现。
+**版本：** `1.1.0`
+**状态：** `FROZEN`（2026-10-30；2026-11-02 增加只读 `memory_pack_entries`）
+**实现状态：** 接口 + fake adapter `IMPLEMENTED`；官方 SDK port/RealDshAdapter
+`IMPLEMENTED`；真实 DSH SDK/runtime 在限定环境完成 C runtime smoke。
+**消费者：** Workbench Fleet controller、DSH SDK adapter 实现。
 
 本契约定义 Fleet 与 DSH runtime 之间的**窄接口**。Fleet 不复制 DSH 的模型循环、
 prompt loop 或原生 subagent 机制；每个 worker 是由 DSH runtime 执行的独立角色化
 Agent preset。
 
-## 1. 本轮静态检查结论
+## 1. 静态/API 检查结论
 
-- 工作区内**未发现**官方 DSH SDK 源码/包（未发现 `real-runtime.mjs`、SDK package
-  或 `@deepseek-harness/*` 已安装依赖）。
-- 因此对官方 SDK 的静态/API 结构检查为 **`BLOCKED`**（输入缺失），真实 SDK
-  session/handshake/initialize/prompt/event/cancel probe 为 **`NOT_RUN`**。
+- 官方基线 `dsh-v0.2.1-rc.2`、`@deepseek-ai/dsh@0.2.1-rc.2`、
+  `@deepseek-ai/dsh-sdk-client@0.2.1-rc.2` 已完成静态/API 对照，详见
+  `docs/architecture/DSH_SDK_STATIC_COMPARISON.md`。
+- 官方 SDK 通过 stdio JSON-RPC 启动 `dsh --profile sdk`；`initialize` 必须传
+  provider/model；没有轮次中 cancel；`env` 整体替换；`finalResponse` 是文本。
+- 限定环境 C runtime smoke 已通过；这不授权真实 SecurityLab/vcan/硬件实验，
+  也不等于真实 dsh-memory/MCP 进程连接完成。
 - 本文件中的接口是 Fleet 侧稳定边界，不是对官方 SDK 具体方法签名的声明；
-  接入真实 SDK 时必须重新做静态 API 对照并单独授权。
-- 禁止在本轮建立真实 SDK session、启动真实 DSH、发送 prompt、读取 event stream
-  或做真实 cancel probe。
+  接入其他 SDK 版本时必须重新做静态 API 对照并单独授权。
 
 ## 2. 适配器接口
 
@@ -61,6 +63,24 @@ interface DshRuntimeAdapter {
   "workspace_root": "D:\\lab\\ws_a",
   "working_directory": "D:\\lab\\ws_a",
   "memory_pack": { "snapshot_id": "mp_…", "snapshot_hash": "…" },
+  "memory_pack_entries": [
+    {
+      "entry_id": "mem_…",
+      "path": "workspaces/ws_a/memory/note.md",
+      "layer": "L4",
+      "type": "memory",
+      "title": "…",
+      "visibility": "workspace-shared",
+      "workspace_id": "ws_a",
+      "episode_id": "ep_1",
+      "authority": "curator",
+      "review_state": "approved",
+      "revision": "…",
+      "body": "…",
+      "sources": [],
+      "sha256": "…"
+    }
+  ],
   "env_allowlist": ["LANG", "LC_ALL", "TZ"],
   "lifecycle_hooks": { }
 }
@@ -71,6 +91,16 @@ interface DshRuntimeAdapter {
 - `plugin_manifest` 必须与 preset 的登记 manifest 一致；未登记/disabled 插件在
   Fleet 入口已被拒绝。
 - `memory_pack` 是只读引用；adapter 不得写入 dsh-memory。
+- `memory_pack_entries`（v1.1.0 新增）是 Fleet 在 binding 校验后从受信
+  MemoryPack client 取得、并验证 `contract_version`/snapshot/scope/role/run 的
+  只读 entries。adapter 只能把它们作为只读上下文使用，不得改写、重新生成或
+  写入 dsh-memory；缺失时 adapter 不得自行从不可信来源补全。
+- `memory_pack_entries` 可为空/缺省用于非 worker 或部署提供的受信上下文；
+  worker run 的真实 pack 内容仍由 Fleet 控制。
+- `mcp_server` 只是部署登记的 MCP server profile 名称；command/args/path/env
+  必须来自受信部署配置，request 不能提供。adapter 必须为每个 session 使用当前
+  `run_id`/`role`/`workspace_id`/`episode_id`/`tool_profile` 生成 MCP binding，
+  server 启动或绑定失败即 fail closed；MCP 参数/结果原文不进入 RunLedger。
 
 ### 2.2 结果
 
@@ -145,17 +175,23 @@ interface DshLifecycleHooks {
 
 ## 5. 非声明
 
-- 本契约不声明真实 DSH SDK 的包名、版本、方法签名、事件格式或平台兼容性。
-- 本契约不授权建立真实 session、连接真实 DSH、调用 provider/model 或读取凭据。
-- fake adapter 通过不等于真实 runtime 集成通过；真实结果保持 `NOT_RUN`。
-- **2026-11-01 澄清（不改变接口/版本）：** wd hook 的 trusted root、realpath 与
-  symlink/junction containment 规则及上述错误码为 v1.0.0 的 fail-closed 语义；
-  fake/offline 测试使用 synthetic 临时目录，真实 runtime 验证仍为 `NOT_RUN`。
+- 本契约的静态对照只覆盖 `dsh-v0.2.1-rc.2`；不声明其他 DSH SDK 版本的
+  包名、方法签名、事件格式或平台兼容性。
+- 本契约不授权真实 SecurityLab/vcan/硬件实验、真实 provider 费用或凭据读取；
+  真实 C smoke 使用受信部署 route 与隔离 home，结果见状态文档。
+- fake adapter 通过不等于真实 runtime 集成通过；真实 dsh-memory/MCP 进程连接
+  仍需单独完成与记录。
+- **2026-11-01 澄清：** wd hook 的 trusted root、realpath 与 symlink/junction
+  containment 规则及上述错误码为 v1.0.0 的 fail-closed 语义；fake/offline 测试
+  使用 synthetic 临时目录。
 - Windows Desktop / WSL / Linux/macOS 不互相推定兼容；首个受支持平台需显式
   写入测试矩阵并单独验证。
 
 ## 6. 版本与同步
 
-- 当前版本 `1.0.0`；与 `FLEET_API_V1.md` 同一版本。
-- 接入真实 SDK 前必须新增 adapter 实现、静态 API 对照记录、独立授权和测试矩阵；
+- 当前版本 `1.1.0`；1.0.0 保留为历史。`memory_pack_entries` 为 1.1.0 新增的
+  可选只读字段；同版本澄清 per-run MCP binding 由受信部署配置提供，不改变
+  `mcp_server` 字段或 Fleet API 版本。
+- 接入新的 SDK 版本前必须更新静态 API 对照记录、adapter 配置和测试矩阵；
   不得只改本文件就声称已连接。
+- 与 `FLEET_API_V1.md` 独立版本化；Fleet API 仍为 `1.0.0`。

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { makeHarness } from "./helpers.ts";
 import { FakeSecurityLabMcpClient } from "../src/mcp/securitylab-client.ts";
 import type { SecurityLabContext } from "../src/mcp/securitylab-client.ts";
-import type { MemoryPack } from "../src/memory/memorypack.ts";
+import type { MemoryPack, MemoryPackContext } from "../src/memory/memorypack.ts";
 
 const FIXTURE = join(
   process.cwd(),
@@ -21,9 +21,23 @@ function readFixture(): MemoryPack {
 test("end-to-end fake run: dsh-memory pack + SecurityLab fake tool + Fleet ledger/result", async () => {
   const pack = readFixture();
   const client = new FakeSecurityLabMcpClient();
+  const fixtureClient = {
+    async getPack(context: MemoryPackContext): Promise<MemoryPack> {
+      return {
+        ...pack,
+        scope: {
+          workspace_id: context.workspace_id,
+          episode_id: context.episode_id
+        },
+        role: context.role,
+        run_id: context.run_id
+      };
+    }
+  };
   const toolCalls: Array<{ tool: string; ok: boolean; executed: boolean; identity: string }> = [];
 
   const h = makeHarness({
+    memoryPackClient: fixtureClient,
     adapter: {
       resultFactory: async ({ request }) => {
         const context: SecurityLabContext = {

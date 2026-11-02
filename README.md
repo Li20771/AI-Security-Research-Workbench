@@ -76,7 +76,7 @@ Fleet、MemoryPack、worker result 和 RunLedger 都不能绕过或替代 Eviden
 | MemoryPack | `1.1.0` |
 | SecurityLab MCP | `1.0.0` |
 | RunLedger | `1.0.0` |
-| DSH runtime adapter | `1.0.0` |
+| DSH runtime adapter | `1.1.0` |
 | worker-result | `1.0.0` |
 
 消费方收到不支持的版本必须拒绝，不得"尽力兼容"。共享接口契约位于
@@ -86,9 +86,9 @@ Fleet、MemoryPack、worker result 和 RunLedger 都不能绕过或替代 Eviden
 | 能力 | 状态 |
 |---|---|
 | 四个固定 Fleet API（submit/status/result/cancel）、registry、state machine、RunLedger | `IMPLEMENTED`（fake-only） |
-| DSH runtime adapter | `IMPLEMENTED`（interface + fake）；真实 SDK `NOT_RUN` |
-| dsh-memory 连接 | Workbench 侧只读 client `IMPLEMENTED BUT NOT CONNECTED` |
-| SecurityLab MCP 连接 | Workbench 侧 client + fake server `IMPLEMENTED BUT NOT CONNECTED` |
+| DSH runtime adapter | `IMPLEMENTED`（interface + fake + RealDshAdapter）；限定环境 C smoke `PASS` |
+| dsh-memory 连接 | 真实 producer in-process C smoke `PASS`；独立 service/IPC `NOT_RUN` |
+| SecurityLab MCP 连接 | 真实只读 stdio server via DSH MCP C smoke `PASS`；Workbench fake client 仅用于离线单测 |
 | provider/model 调用 | `NOT_RUN` |
 | SecurityLab/vcan/CAN/ECU/车辆/设备实验 | `NOT_RUN` |
 | AI-15 Evidence writer / B5 | `BLOCKED` / `UNCHANGED` |

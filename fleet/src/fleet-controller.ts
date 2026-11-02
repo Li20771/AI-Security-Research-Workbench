@@ -67,6 +67,8 @@ import {
   artifactsForEnvelope,
   createWorkerResultEnvelope
 } from "./worker-result.ts";
+import type { MemoryPackClient, MemoryPackEntry } from "./memory/memorypack.ts";
+import { MEMORYPACK_CONTRACT_VERSION } from "./memory/memorypack.ts";
 
 export interface FleetControllerDeps {
   bindingIssuer: TrustedBindingIssuer;
@@ -74,6 +76,7 @@ export interface FleetControllerDeps {
   adapter: DshRuntimeAdapter;
   resultStore: ResultStore;
   approvalVerifier?: ApprovalVerifier;
+  memoryPackClient?: MemoryPackClient;
   clock?: Clock;
   idGenerator?: IdGenerator;
   workspaceRoots?: Readonly<Record<string, string>>;
@@ -179,6 +182,7 @@ export class FleetController {
   #adapter: DshRuntimeAdapter;
   #resultStore: ResultStore;
   #approval: ApprovalVerifier;
+  #memoryPackClient: MemoryPackClient | undefined;
   #clock: Clock;
   #ids: IdGenerator;
   #roots: Readonly<Record<string, string>>;
@@ -195,6 +199,7 @@ export class FleetController {
     this.#adapter = deps.adapter;
     this.#resultStore = deps.resultStore;
     this.#approval = deps.approvalVerifier ?? new DenyAllApprovalVerifier();
+    this.#memoryPackClient = deps.memoryPackClient;
     this.#clock = deps.clock ?? new SystemClock();
     this.#ids = deps.idGenerator ?? new UuidIdGenerator();
     // The root registry is trusted host state. There is deliberately no
@@ -847,6 +852,58 @@ export class FleetController {
     return true;
   }
 
+  async #loadMemoryPackEntries(
+    run: RunRecord,
+    binding: TrustedBinding
+  ): Promise<readonly MemoryPackEntry[] | null> {
+    const ref = binding.memory_pack;
+    if (ref === null) {
+      return null;
+    }
+    if (this.#memoryPackClient === undefined) {
+      throw new FleetPolicyError(
+        "memory-pack-required",
+        "a memory pack client is required for worker runs"
+      );
+    }
+    const pack = await this.#memoryPackClient.getPack({
+      workspace_id: run.workspace_id,
+      episode_id: run.episode_id,
+      role: run.role,
+      run_id: run.run_id,
+      task_id: run.task_id,
+      purpose: "fleet-worker-context",
+      max_entries: 100
+    });
+    if (
+      pack.contract_version !== MEMORYPACK_CONTRACT_VERSION ||
+      pack.source.contract_version !== MEMORYPACK_CONTRACT_VERSION
+    ) {
+      throw new FleetPolicyError(
+        "memory-scope-mismatch",
+        "memory pack contract version mismatch"
+      );
+    }
+    if (pack.snapshot_id !== ref.snapshot_id || pack.snapshot_hash !== ref.snapshot_hash) {
+      throw new FleetPolicyError(
+        "memory-scope-mismatch",
+        "memory pack snapshot does not match the binding"
+      );
+    }
+    if (
+      pack.scope.workspace_id !== run.workspace_id ||
+      pack.scope.episode_id !== run.episode_id ||
+      pack.role !== run.role ||
+      pack.run_id !== run.run_id
+    ) {
+      throw new FleetPolicyError(
+        "memory-scope-mismatch",
+        "memory pack scope does not match the binding"
+      );
+    }
+    return pack.entries;
+  }
+
   #startWorker(
     run: RunRecord,
     request: SubmitRequest,
@@ -882,6 +939,7 @@ export class FleetController {
       if (typeof workspaceRoot !== "string" || workspaceRoot.trim() === "") {
         throw new DshAdapterError("session-init-blocked", "workspace root is not trusted");
       }
+      const memoryPackEntries = await this.#loadMemoryPackEntries(run, binding);
       const sessionRequest: DshSessionRequest = {
         run_id: run.run_id,
         role: run.role,
@@ -896,6 +954,7 @@ export class FleetController {
         workspace_root: workspaceRoot,
         working_directory: workspaceRoot,
         memory_pack: binding.memory_pack,
+        memory_pack_entries: memoryPackEntries,
         env_allowlist: preset.env_allowlist,
         lifecycle_hooks: this.#hooks
       };

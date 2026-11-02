@@ -14,11 +14,13 @@ import { FixedClock } from "../src/time.ts";
 import { FakeDshAdapter } from "../src/adapters/fake-dsh-adapter.ts";
 import type { FakeDshAdapterOptions } from "../src/adapters/fake-dsh-adapter.ts";
 import { FakeMemoryPackClient } from "../src/memory/fake-memorypack-client.ts";
+import type { MemoryPackClient } from "../src/memory/memorypack.ts";
 import { getRolePreset } from "../src/registries/roles.ts";
 import type { MemoryPackRef } from "../src/binding.ts";
 
 export interface HarnessOptions {
   adapter?: FakeDshAdapterOptions;
+  memoryPackClient?: MemoryPackClient;
 }
 
 export interface BindingOverrides {
@@ -75,6 +77,7 @@ export function makeHarness(options: HarnessOptions = {}) {
     adapter,
     resultStore,
     approvalVerifier: approval,
+    memoryPackClient: options.memoryPackClient ?? memory,
     clock,
     idGenerator: ids,
     workspaceRoots

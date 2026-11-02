@@ -25,7 +25,7 @@
 | `MEMORYPACK_V1_1.md` | dsh-memory 只读 MemoryPack：显式 visibility、Unicode/NFC 路径、迁移清单 | 1.1.0 |
 | `SECURITYLAB_MCP_V1.md` | SecurityLab MCP 只读工具面、路径限制、输出限制、disabled vcan | 1.0.0 |
 | `RUN_LEDGER_V1.md` | append-only RunLedger、事件、哈希链、字段禁令 | 1.0.0 |
-| `DSH_SDK_ADAPTER_V1.md` | DSH SDK runtime adapter 接口与两个独立 lifecycle hook | 1.0.0 |
+| `DSH_SDK_ADAPTER_V1.md` | DSH SDK runtime adapter 接口、只读 `memory_pack_entries` 与两个独立 lifecycle hook | 1.1.0 |
 | `fleet-submit-request.v1.schema.json` | `fleet.submit` 请求 | 1.0.0 |
 | `fleet-status-query.v1.schema.json` | `fleet.status` 查询 | 1.0.0 |
 | `fleet-submit-response.v1.schema.json` | `fleet.submit` 响应 | 1.0.0 |

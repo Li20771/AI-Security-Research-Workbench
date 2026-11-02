@@ -1,5 +1,6 @@
 import type { Budget, PluginRef, RoleId } from "../contract.ts";
 import type { MemoryPackRef } from "../binding.ts";
+import type { MemoryPackEntry } from "../memory/memorypack.ts";
 
 export const PROMPT_HOOK_NAME = "session.promptBeforeInitialize" as const;
 export const WD_HOOK_NAME = "session.wd.beforeInitialize" as const;
@@ -46,6 +47,8 @@ export interface DshSessionRequest {
   workspace_root: string;
   working_directory: string;
   memory_pack: MemoryPackRef | null;
+  /** Read-only entries from the bound MemoryPack; Fleet fetches and verifies them. */
+  memory_pack_entries?: readonly MemoryPackEntry[] | null;
   env_allowlist: readonly string[];
   lifecycle_hooks: DshLifecycleHooks;
 }

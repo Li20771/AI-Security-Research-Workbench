@@ -18,6 +18,9 @@ test("research worker completes, returns untrusted result, and leaves prompt con
   assert.equal(h.adapter.cancelCalls, 0);
   assert.equal(h.adapter.closeCalls, 1);
   assert.equal(h.adapter.activeSessionCount, 0);
+  const entries = h.adapter.sessionRequests[0]?.memory_pack_entries;
+  assert.ok(entries && entries.length > 0, "worker receives verified MemoryPack entries");
+  assert.ok(entries.some((entry) => entry.body === "WS_A_CANARY"));
 
   const status = h.api.status({ contract_version: "1.0.0", run_id: runId }, submission.binding);
   assert.equal(status.ok, true);
