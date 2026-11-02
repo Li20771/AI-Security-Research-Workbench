@@ -152,12 +152,123 @@ class GuardUnavailable(ToolError):
     reason_code = "GUARD_UNAVAILABLE"
 
 
+# --------------------------------------------------------------------------
+# The signing boundary (§15.8) — the capability is injected, and what it
+# covers is checked before anything is signed
+# --------------------------------------------------------------------------
+
+
+class SignerUnavailable(ToolError):
+    """No usable signing capability was injected (contract §15.8).
+
+    The capability is the deployment's to inject and this repository's only
+    to consume. An absent capability is REFUSED, not faked: no placeholder
+    proof, no empty proof, no proof signed by anything else, and no
+    submission asserted to be ready. A submission that was not signed is a
+    submission with no proof, and AI-05 §7.3.8 already makes that REJECTED
+    with AUTHENTICATION_PROOF_MISSING — a different phase's outcome, never
+    this one's exception.
+    """
+
+    reason_code = "SIGNER_UNAVAILABLE"
+
+
+class SignerTokenMismatch(ToolError):
+    """The injected signer does not speak for the mapping's claimed producer.
+
+    The mint-side token binding (§15.8): a signer speaking for another token
+    cannot produce a proof for this claim, so the operation fails BEFORE the
+    signer is asked to sign anything.
+    """
+
+    reason_code = "SIGNER_TOKEN_MISMATCH"
+
+
+class SigningFieldUnmapped(ToolError):
+    """A key, or a container shape, outside the closed field-source map.
+
+    §15.8 fixes exactly three source classes for every field the signature
+    covers, and a field with no defined source is REFUSED BEFORE SIGNING.
+    This is also the refusal for the fields AI-05 itself generates
+    (`evidence_id`, the digest fields, the `integrity` and `identity`
+    blocks, `recorded_at`): a caller supplying one is choosing a field the
+    contract does not assign to the caller.
+    """
+
+    reason_code = "SIGNING_FIELD_UNMAPPED"
+
+
+class SigningPayloadMismatch(ToolError):
+    """The mapping's execution payload is not the projection of the results.
+
+    §15.2's projection is the ONLY way a ToolResult becomes record content,
+    and a proof over content that is not the canonical projection would
+    authenticate a claim about facts that were never projected — worse than
+    no proof at all.
+    """
+
+    reason_code = "SIGNING_PAYLOAD_MISMATCH"
+
+
+class SigningActorMismatch(ToolError):
+    """The mapping's actor is not the owning phase's declared actor.
+
+    The actor is a runtime fact of the execution, declared by the phase that
+    ran it. A caller choosing a different one is signing a claim about an
+    act somebody else performed.
+    """
+
+    reason_code = "SIGNING_ACTOR_MISMATCH"
+
+
+class SigningWorkspaceMismatch(ToolError):
+    """The mapping's workspace identity is not the single source's value.
+
+    The workspace identity has one source (AI-15 §12.2), and the helper is
+    given that source's value; a mapping naming another workspace is refused
+    at the source rather than discovered downstream.
+    """
+
+    reason_code = "SIGNING_WORKSPACE_MISMATCH"
+
+
+class SigningRegistryMismatch(ToolError):
+    """The event is not consistent with the §6.5 registry row for the token.
+
+    Kind, family, actor type and producer type are row-derived, not free
+    declaration; a forged event kind or family is refused against the row
+    before a signature exists.
+    """
+
+    reason_code = "SIGNING_REGISTRY_MISMATCH"
+
+
+class SignerSignatureMalformed(ToolError):
+    """The signer returned something that is not a 64-byte signature.
+
+    The interface (§15.8) returns the signature over EXACTLY those bytes as
+    64 raw bytes; a signer returning an encoding of them is unusable, and
+    the failure is the helper's to make rather than the verifier's to
+    discover.
+    """
+
+    reason_code = "SIGNER_SIGNATURE_MALFORMED"
+
+
 __all__ = [
     "ArgumentInvalid",
     "ExecutionRefused",
     "GuardUnavailable",
     "PathEscapesWorkspace",
     "PermissionLevelMissing",
+    "SignerSignatureMalformed",
+    "SignerTokenMismatch",
+    "SignerUnavailable",
+    "SigningActorMismatch",
+    "SigningFieldUnmapped",
+    "SigningPayloadMismatch",
+    "SigningRegistryMismatch",
+    "SigningWorkspaceMismatch",
     "TargetRefused",
     "TimeoutMissing",
     "ToolError",
