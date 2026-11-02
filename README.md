@@ -87,7 +87,7 @@ Fleet、MemoryPack、worker result 和 RunLedger 都不能绕过或替代 Eviden
 |---|---|
 | 四个固定 Fleet API（submit/status/result/cancel）、registry、state machine、RunLedger | `IMPLEMENTED`（fake-only） |
 | DSH runtime adapter | `IMPLEMENTED`（interface + fake + RealDshAdapter）；限定环境 C smoke `PASS` |
-| dsh-memory 连接 | 真实 producer in-process C smoke `PASS`；独立 service/IPC `NOT_RUN` |
+| dsh-memory 连接 | 独立只读 stdio service C smoke `PASS`；真实用户 vault 未验证 |
 | SecurityLab MCP 连接 | 真实只读 stdio server via DSH MCP C smoke `PASS`；Workbench fake client 仅用于离线单测 |
 | provider/model 调用 | `NOT_RUN` |
 | SecurityLab/vcan/CAN/ECU/车辆/设备实验 | `NOT_RUN` |

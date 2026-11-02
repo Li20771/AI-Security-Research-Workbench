@@ -41,10 +41,12 @@
 
 ## 4. 尚未接通的 C 部分
 
-- **MemoryPack 内容**：`DshSessionRequest` v1.1.0 已增加只读 `memory_pack_entries`；Fleet controller 从受信 MemoryPack client 读取 pack，校验 contract version、snapshot、scope、role、run 后交给 adapter。C smoke 使用真实 dsh-memory producer（synthetic vault，in-process library）；dsh-memory 的独立 service/IPC 模式和真实用户 vault 仍未连接。
+- **MemoryPack 内容**：`DshSessionRequest` v1.1.0 已增加只读 `memory_pack_entries`；Fleet controller 从受信 MemoryPack client 读取 pack，校验 contract version、snapshot、scope、role、run 后交给 adapter。C smoke 使用独立 dsh-memory stdio service（`tools/memorypack-service.mjs`，synthetic vault）；真实用户 vault、service 重启和大 vault 性能未验证。
 - **MCP profile**：`tool_profile`/`mcp_server` 由 Fleet 逻辑字段映射到部署侧 DSH MCP patch；`RealDshAdapter` 每个 run 生成 `mcp-binding.json` 与 `mcp.patch.yml`，由 `@deepseek-ai/dsh-mcp-client` 启动真实 SecurityLab stdio server。C smoke 已调用 `mcp__securitylab_ro__lab_status`；Workbench 自带的 fake MCP client 仍只用于离线单测。
 - **真实 provider/model**：C smoke 使用受信部署 route；provider/model 选择不属于 Fleet，Fleet 只传递部署配置。
-- **真实 session 验收**：已在限定环境执行 initialize/prompt/cancel/cleanup；真实 path/env/profile 负向测试与 Linux CI 仍未执行。
+- **真实 session 验收**：已在限定环境执行 initialize/prompt/cancel/cleanup，
+  以及 path/env/profile 负向测试；Linux CI 已跑 Fleet、dsh-memory 与 SecurityLab
+  的离线 suites。真实 vcan/CAN/ECU/车辆/设备实验仍 `NOT_RUN`。
 
 ## 5. 验证
 
@@ -68,13 +70,19 @@ Linux CI: SecurityLab CI                       PASS
 凭据:             TOKENRHYTHM_API_KEY（DSH credential store；仅子进程 env）
 隔离:             per-run temp DSH_HOME，close 后删除
 maxTokens:        2048（512 在 challenger 上产生空 finalResponse）
-MemoryPack:       dsh-memory v1.1.0 producer, synthetic vault, 2 entries;
-                  createPackRef == getPack snapshot hash
+MemoryPack:       independent dsh-memory stdio service (JSON-RPC 1.0.0),
+                  synthetic vault, 2 entries; createPackRef == getPack hash
 SecurityLab MCP:  real stdio server per run via @deepseek-ai/dsh-mcp-client;
                   analysis_a called mcp__securitylab_ro__lab_status
                   -> ready / execution disabled / vcan disabled
 MCP negative roles: 6/6 PASS (not-found, tool-disabled, absent tool surface;
                   executed=false, side_effects=0 on every refusal)
+Forced MCP negatives: traversal/absolute -> path-out-of-root;
+                  identity arg -> identity-in-args; side_effects=0
+Path negative audit: unknown root / mismatch / outside / lexical traversal /
+                  missing dir / junction escape all refused
+Profile/env probe: no shell/fs/web/subagent/jobs tools; no ambient
+                  DEEPSEEK/ANTHROPIC/CLAUDE env; MCP tool present
 analysis_a:       completed, untrusted=true, admission=none, evidence=false
 challenge:        completed, findings=1
 verify:           completed, verdicts=1
@@ -83,8 +91,7 @@ cancel:           cleaned=true, pending run rejected, health=closed
 ```
 
 该结果证明真实 SDK 子进程、initialize、prompt、模型调用、严格 JSON、
-真实 dsh-memory producer pack 传递、真实 SecurityLab MCP stdio 工具调用、
-Fleet worker-result 校验、RunLedger 和 close/cancel cleanup 在指定环境可用；
-不证明 dsh-memory 独立 service/IPC、真实用户 vault、真实 DSH 内强制执行的
-traversal/identity 负向调用（模型自身会先拒绝；服务端 refusal 由 server-level
-audit 与 SecurityLab 离线 tests 覆盖）、Linux/其他平台或全部负向安全测试通过。
+独立 dsh-memory service pack 传递、真实 SecurityLab MCP stdio 工具调用、
+Fleet worker-result 校验、RunLedger、close/cancel cleanup，以及 forced
+traversal/identity、path/env/profile 负向检查在指定环境可用；不证明真实用户
+vault、service 重启/大 vault 性能、其他平台或全部负向安全测试通过。

@@ -48,8 +48,8 @@ MemoryPack 1.1.0 只允许显式 `user-global` 跨 workspace；无显式 visibil
 | 旧模块隔离/处置记录 | `IMPLEMENTED` | `docs/architecture/FLEET_V3_MODULE_DISPOSITION.md` |
 | 真实 official DSH SDK adapter/API 静态对照 | `IMPLEMENTED` | `docs/architecture/DSH_SDK_STATIC_COMPARISON.md`；官方 `0.2.1-rc.2` 源码/包已确认 |
 | 真实 DSH SDK port + `RealDshAdapter`（fake SDK tests） | `IMPLEMENTED` | `fleet/src/adapters/dsh-sdk-port.ts`, `real-dsh-adapter.ts`, `test/real-dsh-adapter.test.ts` |
-| 真实 DSH session/prompt/cancel/cleanup（C runtime smoke） | `PASS`（限定环境，见 §10） | 官方 SDK `0.2.1-rc.2` + 受信部署 tokenrhythm route；真实 dsh-memory producer/MCP 已接入 C smoke；独立 service/IPC 仍未连接 |
-| 真实 dsh-memory producer（in-process） | `IMPLEMENTED`（C smoke） | 部署 client 导入真实 dsh-memory MemoryPack producer；只读 entries 经 Fleet 校验后进入 session；独立 service/IPC 仍 `NOT_RUN` |
+| 真实 DSH session/prompt/cancel/cleanup（C runtime smoke） | `PASS`（限定环境，见 §10） | 官方 SDK `0.2.1-rc.2` + 受信部署 tokenrhythm route；真实 dsh-memory service/MCP 已接入 C smoke |
+| 真实 dsh-memory service（stdio JSON-RPC） | `PASS`（C smoke） | `tools/memorypack-service.mjs` 独立进程；只读 `getPack`/`createPackRef`；Workbench 部署 client 通过 JSON-RPC 调用 |
 | 真实 SecurityLab MCP server（C smoke） | `IMPLEMENTED` | 部署侧 DSH MCP client 启动真实只读 stdio server；per-run binding/patch；analysis_a 调用 `mcp__securitylab_ro__lab_status` |
 | 真实 DSH 逐 role MCP 负向调用 | `PASS`（6 roles） | researcher/vehicle_analyst/challenger/evidence_verifier/lab_runner/orchestrator；见 §10 |
 | Workbench 旧 provider/model 调用面 | `NOT_RUN`（**调用面已移除**） | live runner、`http_transport.py`、live workflow、`tests/live/` 已删除；Layer 0 强制不得回归 |
@@ -67,6 +67,8 @@ TypeScript typecheck                         PASS  0 errors
 Fleet fake tests (node:test)                 PASS  99 passed / 0 failed / 0 skipped
 Contract schema/examples check               PASS  14 schemas / 13 JSON examples / 7 ledger events（14 个示例文件）
 Cross-repo MemoryPack v1.1 fixture           PASS  2 passed（dsh-memory producer 产物由 Workbench schema/hash 校验）
+dsh-memory stdio service tests               PASS  2 passed（real subprocess JSON-RPC）
+dsh-memory offline suite                     PASS  230 passed / 1 skipped / 231
 Linux CI: Workbench fleet workflow           PASS  typecheck + fake tests + contracts
 Linux CI: dsh-memory memory workflow         PASS  offline tests（含 symlink/path cases）
 Linux CI: SecurityLab CI                     PASS  fast QA（ruff + mypy + offline tests）
@@ -105,6 +107,14 @@ Set-Location 'D:\claude-work\DSH-Fleet-v3\01-workbench\fleet'
   得到 `not-found`，lab_runner 得到 `tool-disabled`，challenger 的 run-result
   tool 不在 DSH 工具面，orchestrator 无 MCP 工具；失败均 `executed=false`、
   `side_effects=0`。
+- 真实 DSH forced MCP 负向：test-only probe 直接经 DSH tool registry 调用真实
+  MCP server，traversal/absolute -> `path-out-of-root`，identity arg ->
+  `identity-in-args`，`side_effects=0`。
+- 真实 path 负向：unknown/mismatch/outside/lexical traversal/missing dir/
+  junction escape 全部拒绝；profile/env probe：无 shell/fs/web/subagent/jobs，
+  无 ambient DEEPSEEK/ANTHROPIC/CLAUDE env。
+- dsh-memory 独立 stdio service：`initialize`/`getPack`/`createPackRef`/
+  `shutdown`，非法 role/未知方法拒绝；C smoke 通过 JSON-RPC 调用真实 service。
 - MemoryPack 确定性：Unicode code point 排序、`snapshot_hash` 与输入顺序无关、
   locale 无关；hardcoded hash 锁定顺序规则。
 - 跨仓库 fake acceptance：`test/cross-repo-memorypack.test.ts` 校验 dsh-memory
@@ -161,11 +171,14 @@ registry（`FleetController` 不再提供内置 fallback）；未知/缺失 root
 
 ## 5. 未完成 / 阻塞 / 未运行
 
-- 官方 DSH SDK 静态/API 对照：`BLOCKED`（工作区没有 SDK 源码/包）；接入前必须重新
-  对照官方 API 并单独授权。
-- 真实 DSH runtime：`NOT_RUN`；没有 handshake/initialize/session prompt/event/cancel。
-- 真实 dsh-memory/SecurityLab MCP 连接：`IMPLEMENTED BUT NOT CONNECTED`。
-- 真实 provider/model、SecurityLab/vcan/设备实验：`NOT_RUN`。
+- 官方 DSH SDK 静态/API 对照：`IMPLEMENTED`，限定环境 C smoke `PASS`；其他版本/
+  平台仍需重新对照与单独授权。
+- 真实 DSH runtime：限定环境 C smoke `PASS`（initialize/prompt/cancel/cleanup）；
+  真实 SecurityLab/vcan/设备实验仍 `NOT_RUN`。
+- 真实 dsh-memory service：stdio JSON-RPC `PASS`（C smoke）；SecurityLab MCP
+  stdio `PASS`（C smoke）。
+- 真实 provider/model：由受信部署 route 提供，C smoke `PASS`；旧 Workbench
+  provider/router/composition 调用面保持移除；其他 provider 的费用/网络边界未确认。
 - durable result store、sidecar/plugin host 部署形态：未实现；当前 in-memory result store。
 - `waiting_approval` 状态与 host-internal `grantApproval` 已实现，但 v1 冻结 registry 中所有
   `requires_approval` task 都属于 disabled `lab_runner`，因此本轮公共 API 不可达；保留给
@@ -191,9 +204,9 @@ registry（`FleetController` 不再提供内置 fallback）；未知/缺失 root
 | 跨仓库 MemoryPack v1.1 fake acceptance（dsh-memory producer → Workbench schema/semantic/hash） | `IMPLEMENTED`（synthetic fixture） | `fleet/test/cross-repo-memorypack.test.ts`, `test/fixtures/` |
 | 状态文档与合并基线更新 | `IMPLEMENTED` | 本文件 |
 
-上述均为离线/synthetic 结果。真实 DSH SDK/runtime、真实 dsh-memory IPC、真实
-SecurityLab MCP 进程连接、provider/model 和任何实验仍为 `NOT_RUN` 或
-`IMPLEMENTED BUT NOT CONNECTED`；不得把本轮 fake acceptance 写成真实集成通过。
+上述 Round 2 项均为离线/synthetic 结果。后续 C smoke 已额外验证真实 DSH SDK/
+runtime、真实 dsh-memory service、真实 SecurityLab MCP 和受信部署 provider route；
+真实 vcan/CAN/ECU/车辆/设备实验仍为 `NOT_RUN`，不得把 fake acceptance 写成真实实验通过。
 
 ## 8. 架构基线对齐（2026-11-02）
 
@@ -249,12 +262,18 @@ Smoke runner 是部署 glue（位于 Fleet 包外），Fleet 不依赖官方 SDK
 **结果：**
 
 ```text
-MemoryPack producer     dsh-memory v1.1.0, synthetic vault, 2 entries
+dsh-memory service      stdio JSON-RPC; getPack/createPackRef; 2 entries
                         createPackRef == getPack snapshot (hash match)
 SecurityLab MCP         real stdio server per run; analysis_a called
                         mcp__securitylab_ro__lab_status -> ready/disabled/disabled
 MCP negative roles      6/6 PASS: not-found / tool-disabled / absent tools;
                         all failures executed=false, side_effects=0
+Forced MCP negatives    traversal/absolute -> path-out-of-root;
+                        identity arg -> identity-in-args; side_effects=0
+Path negative audit     unknown root / mismatch / outside / lexical traversal /
+                        missing dir / junction escape all refused
+Profile/env probe       no shell/fs/web/subagent/jobs tools; no ambient
+                        DEEPSEEK/ANTHROPIC/CLAUDE env; MCP tool present
 research/analysis_a   completed  untrusted=true admission=none evidence=false
 research/challenge    completed  untrusted=true admission=none evidence=false  findings=2
 research/verify       completed  untrusted=true admission=none evidence=false  verdicts=1
@@ -274,13 +293,11 @@ analysis_a 调用了 `mcp__securitylab_ro__lab_status` 并得到 ready/disabled/
 
 **仍未完成的 C 项：**
 
-- dsh-memory 独立 service/IPC 模式（当前是部署侧导入真实 producer library；
-  非进程间服务；真实用户 vault 未使用）；
-- MCP 真实 DSH 逐 role 负向调用已 PASS（6/6）；traversal/identity 的模型侧
-  尝试被模型自身拒绝，服务端 refusal 由 server-level role audit 与
-  SecurityLab 离线 tests 覆盖，未强制模型执行危险调用；
-- 真实 path/env/profile 负向 DSH 测试（Linux CI 已跑 Fleet fake tests、
-  dsh-memory 与 SecurityLab 离线 suites）；
-- 真实 provider/model 的独立费用/网络边界确认。
+- 生产部署仍使用 synthetic vault；真实用户 vault、service 生命周期/重启和大
+  vault 性能未验证；
+- 真实 provider/model 的费用/网络边界仅对 tokenrhythm C smoke 确认；其他
+  provider 未验证；
+- 真实 vcan/CAN/ECU/车辆/设备实验仍 `NOT_RUN`；
+- durable result store、sidecar/plugin-host 部署形态仍未实现。
 
 旧 Python 全量测试与旧 UI 审计仍为 `NOT_RUN`；不在 Fleet v3 完成标准内。
