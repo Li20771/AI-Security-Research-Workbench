@@ -360,7 +360,7 @@ EVIDENCE_FORBIDDEN_BUILTINS = ("eval", "exec", "compile", "__import__")
 EVIDENCE_STORE_FORBIDDEN_LITERALS = ("docs/", "docs\\", "plugins/context", "plugins/guard")
 
 #: Workflows that must never touch a provider. Held to the strict deny rules.
-DEFAULT_WORKFLOWS = frozenset({"preflight.yml"})
+DEFAULT_WORKFLOWS = frozenset({"preflight.yml", "fleet.yml"})
 
 #: Workflows permitted to contact a provider, under strict structural rules.
 #: AI-02-B6 introduced the first one. Permission is granted by *satisfying
