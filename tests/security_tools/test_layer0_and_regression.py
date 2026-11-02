@@ -243,7 +243,23 @@ class TestT46Regression:
             check=False,
         ).stdout.split()
 
+        #: v3.0 (2026-11-02) deliberately removed the provider-call surface. Those
+        #: paths are exempt because removing them IS the change the architecture
+        #: calls for; every other path under `providers/` still trips the guard.
+        #: The exemption is a closed list, not a prefix, so a new provider module
+        #: cannot ride along with it.
+        v30_provider_call_removal = {
+            "providers/http_transport.py",
+            "providers/README.md",
+            "scripts/live/run_live_verification.py",
+            "scripts/live/__pycache__/run_live_verification.cpython-314.pyc",
+            "tests/live/test_live_connectivity.py",
+            ".github/workflows/live-model-verification.yml",
+        }
+
         for path in changed:
+            if path in v30_provider_call_removal:
+                continue
             assert not path.startswith("providers/"), path
             assert not path.startswith("plugins/context/"), path
             assert not path.startswith("plugins/guard/"), path

@@ -19,7 +19,6 @@ required_files=(
   config/dsh/config.example.yaml
   config/codex/config.example.yaml
   config/providers/providers.example.yaml
-  config/routing/rules.example.yaml
   evidence/schema/experiment.schema.yaml
   plugins/context/__init__.py
   plugins/context/context.py
@@ -42,7 +41,6 @@ required_dirs=(
   config/dsh
   config/codex
   config/providers
-  config/routing
   docs/adr
   docs/architecture
   evidence/schema
@@ -54,7 +52,6 @@ required_dirs=(
   providers/deepseek
   providers/mimo
   providers/openai-compatible
-  routing
   scripts/bootstrap
   scripts/maintenance
   scripts/repro

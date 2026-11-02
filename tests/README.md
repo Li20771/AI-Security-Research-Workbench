@@ -9,7 +9,6 @@ Workbench validation, organised into the five layers defined in
 | **1** | contract and schema — provider and model profiles, `model_ref` resolution, credential references, the capability truth model | `trust_harness.py regression -- pytest -m layer1` | yes |
 | **2** | behaviour through a fake transport — normalization, finish states, error taxonomy, the capability gate, metrics, pricing | `pytest -m layer2` | yes |
 | **3** | offline contract fixtures pinned by provenance | `pytest -m layer3`, `fixtures/` | yes |
-| **4** | **live connectivity verification** | `tests/live/`, `scripts/live/` | **never** |
 
 ## Running the layers
 
@@ -83,53 +82,21 @@ produced no business verdict. A configuration group that fails fails the job; a
 case that could not produce a verdict is reported as such rather than counted as
 a refusal by the authentication logic.
 
-## Layer 4 is never run by default
+## The live (layer 4) path was removed
 
-`pytest.ini` deselects it (`-m "not layer4"`), and the default workflow
-contains no opt-in flag, no provider endpoint, no HTTP client, and no `-m
-layer4`. `scripts/ci/layer0_policy.py` asserts all four against the workflow
-files, so the exclusion is checked rather than promised.
+This repository has **no provider-call path**. The v3.0 cleanup deleted the
+live runner (`scripts/live/`), the concrete HTTP transport
+(`providers/http_transport.py`), the `tests/live/` layer-4 suite and
+`.github/workflows/live-model-verification.yml`.
 
-The barrier is that CI never calls Layer 4. It is deliberately **not** "the
-network happened to be unreachable" — an unreachable endpoint is not evidence
-that a live check was never attempted.
+Layer 0 fails if any of them returns, or if a module under `providers/` names a
+network client. `providers/live_verification.py` stays only because
+`plugins/evidence` imports its vocabulary; it defines gates and statuses, not
+connections.
 
-Layer 4's absence is `NOT_RUN`, and `NOT_RUN != PASS`: a check that did not run
-supports no capability claim.
-
-### Running it
-
-`.github/workflows/live-model-verification.yml` is `workflow_dispatch` only —
-no push or pull request trigger — and is the only place a provider is
-contacted. It additionally requires:
-
-```text
-WORKBENCH_LIVE_TESTS=1        explicit opt-in
-+ provider in the allowlist   deepseek | mimo
-+ a resolvable credential     from repository secrets
-+ a registered model_ref
-```
-
-Locally:
-
-```bash
-WORKBENCH_LIVE_TESTS=1 python -m pytest -m layer4
-```
-
-Absent any precondition the run records `BLOCKED` or `NOT_RUN` and performs no
-network activity, and the tests assert that rather than assuming it.
-
-### What a live run produces
-
-An **evidence artefact**, never a grant. `evidence/runs/` is gitignored, and
-the workflow declares `permissions: contents: read`, so nothing can commit.
-Each capability carries a *candidate* status for a human to review; applying it
-to a profile is a separate, reviewed change.
-
-A passing text completion promotes nothing. Tool calling, structured output,
-streaming, reasoning, and prompt caching each need their own observation, and
-the ones with no safe bounded probe — streaming, reasoning, prompt caching —
-stay `UNKNOWN` with the reason recorded.
+`tests/unit/test_live_verification.py` keeps its offline coverage of that
+vocabulary and gate logic — it runs with a fake transport and asserts
+`transport.requests == []`.
 
 ## Every module belongs to exactly one layer
 

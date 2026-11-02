@@ -12,7 +12,8 @@ Structured research evidence and audit records.
 ```text
 runs/       AI-02 live-verification records, shaped by
             schema/live_verification.schema.yaml.
-            Written by scripts/live/run_live_verification.py.
+            HISTORICAL: the live runner was removed in the v3.0 cleanup, so
+            nothing writes here any more. Existing files stay as records.
             Generated and gitignored.
 
 staged/     AI-05 EvidenceRecords (§5 envelope), written by

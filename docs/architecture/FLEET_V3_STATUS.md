@@ -50,7 +50,7 @@ MemoryPack 1.1.0 只允许显式 `user-global` 跨 workspace；无显式 visibil
 | 真实 DSH session/runtime | `NOT_RUN` | 未建立 session，未启动 DSH |
 | 真实 dsh-memory 服务 | `IMPLEMENTED BUT NOT CONNECTED` | 只有 Workbench 侧 client + fake endpoint |
 | 真实 SecurityLab MCP server | `IMPLEMENTED BUT NOT CONNECTED` | 只有 Workbench 侧 client + fake server |
-| provider/model 调用 | `NOT_RUN` | 无 network、无 credential、无 prompt |
+| provider/model 调用 | `NOT_RUN`（**调用面已移除**） | live runner、`http_transport.py`、live workflow、`tests/live/` 已删除；Layer 0 强制不得回归 |
 | SecurityLab/vcan/CAN/ECU/车辆/设备实验 | `NOT_RUN` | `lab_runner` / `securitylab_vcan` disabled |
 | AI-15 Evidence writer / B5 | `BLOCKED / UNCHANGED` | Fleet 不写 Evidence，不绕过 producer/admission |
 | 旧 Python 全量测试套件 | `NOT_RUN` | 本轮只运行新增 Fleet 离线 tests；旧测试保留 |
@@ -138,7 +138,7 @@ registry（`FleetController` 不再提供内置 fallback）；未知/缺失 root
 
 ### 4.4 旧模块
 
-旧 `agents/`、`providers/`、`routing/`、`composition/` 不参与新 Fleet 路径；
+旧 `agents/`、`providers/` 不参与新 Fleet 路径；`routing/` 与 `composition/` 已于 2026-11-02 删除；
 `fleet/src` 静态检查禁止 import。详见
 [FLEET_V3_MODULE_DISPOSITION.md](FLEET_V3_MODULE_DISPOSITION.md)。
 

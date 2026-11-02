@@ -193,41 +193,6 @@ class TestNoNetworkNoSubprocessNoProvider:
         assert "OfflineCodexBackend" in names
 
 
-class TestTheRouterBoundary:
-    """T8 — §6.3."""
-
-    def test_routing_does_not_import_the_agent_layer(self):
-        for path in sorted(pathlib.Path("routing").rglob("*.py")):
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-            for node in ast.walk(tree):
-                if isinstance(node, ast.Import):
-                    assert not any(a.name.startswith("agents") for a in node.names), path
-                if isinstance(node, ast.ImportFrom) and node.module:
-                    assert not node.module.startswith("agents"), path
-
-    def test_the_agent_layer_does_not_import_the_router(self):
-        for path in agent_modules():
-            names = code_names(path)
-            assert not any(n == "routing" or n.startswith("routing.") for n in names), path
-
-    def test_a_router_decision_carries_no_agent_result(self):
-        """AI-07 §11: a hint is a hint, and a decision is not an execution."""
-        from routing.decision import RouterDecision
-
-        fields = {f.name for f in dataclasses.fields(RouterDecision)}
-        assert "agent_hint" in fields
-        annotations = "".join(str(h) for h in RouterDecision.__annotations__.values())
-        assert "AgentResult" not in annotations
-        assert "findings" not in fields
-
-    def test_a_hint_still_needs_the_identity_boundary(self):
-        """§6.2: a hint becomes an identity only through resolve_agent."""
-        from agents.vocabulary import UnknownAgent, resolve_agent
-
-        with pytest.raises(UnknownAgent):
-            resolve_agent("the-hint-string")
-
-
 class TestAgentResultIsItsOwnType:
     """T27, T28 — §10."""
 
@@ -237,12 +202,10 @@ class TestAgentResultIsItsOwnType:
         from plugins.guard import DecisionRecord
         from plugins.security_tools import ToolResult
         from providers.invocation import InvocationResult
-        from routing.decision import RouterDecision
 
         for other in (
             InvocationResult,
             ToolResult,
-            RouterDecision,
             ContextResponse,
             DecisionRecord,
             EvidenceRecord,
@@ -289,43 +252,24 @@ class TestTheLayerIsACoreLayer:
         assert not pathlib.Path("plugins/dsh").exists()
 
     def test_it_is_reached_as_a_namespace_package(self):
-        """§17: exactly as routing/ and tests/ are."""
+        """§17: agents/ is a namespace package, like every other core layer."""
         assert not (AGENTS_DIR / "__init__.py").exists()
-        assert not pathlib.Path("routing/__init__.py").exists()
 
-    def test_no_agent_execution_lives_in_routing(self):
-        for path in sorted(pathlib.Path("routing").rglob("*.py")):
-            assert "execute" not in {
-                node.name
-                for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
-                if isinstance(node, ast.FunctionDef)
-            }, path
+    def test_the_router_layer_is_gone(self):
+        """v3.0 removed the model router and the policy core with it.
 
-    def test_no_agent_tests_were_added_under_tests_routing(self):
-        """§17. `tests/routing/` is the ROUTING layer's test home.
-
-        This asserted an exact file set, which was a true proxy while AI-07 was the
-        only phase with tests there. AI-12 legitimately added the policy core's
-        tests, so the file set is no longer the claim — the claim is that nothing
-        under this directory belongs to the AGENT layer. An agent, Codex or DSH test
-        living in the routing layer's home would mean the boundary this class exists
-        for had been crossed, and that is what is asserted now.
-
-        The routing suite itself is still required to be there: a directory that
-        satisfies this by being empty would satisfy it vacuously.
+        These used to assert that no agent execution lived under `routing/` and
+        that `tests/routing/` held no agent tests. The directory is gone now, so
+        the boundary is stronger and simpler: it must not come back. Layer 0's
+        `check_provider_call_surface_stays_removed` covers the provider side;
+        this covers the router side.
         """
-        directory = pathlib.Path("tests/routing")
-        assert (directory / "test_router.py").is_file(), (
-            "AI-07's suite is gone; an empty home would pass the check below for the "
-            "wrong reason"
+        assert not pathlib.Path("routing").exists(), (
+            "routing/ reappeared; v3.0 removed the model router and AI-12 policy core"
         )
-        for path in sorted(directory.glob("test_*.py")):
-            lowered = path.name.lower()
-            for forbidden in ("agent", "codex", "dsh"):
-                assert forbidden not in lowered, (
-                    f"{path} is named for the agent layer; tests/routing/ is the "
-                    "routing layer's home"
-                )
+        assert not pathlib.Path("tests/routing").exists(), (
+            "tests/routing/ reappeared; the router layer it tested is gone"
+        )
 
 
 class TestTheLayerZeroGate:

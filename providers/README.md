@@ -55,8 +55,8 @@ providers/
   invocation.py        normalized invocation         (contract §7, §5.8)
   metrics.py           metric observation/aggregation (contract §9)
   pricing.py           pricing metadata, cost         (contract §9.3)
-  live_verification.py opt-in live probes             (contract §11, §13)
-  http_transport.py    the one concrete Transport     (live-only)
+  live_verification.py probe vocabulary + gate logic  (contract §11, §13)
+                       — imports only; no transport implementation ships here
   deepseek/provider.yaml         declared provider profile
   deepseek/models/*.yaml         declared model profiles
   mimo/provider.yaml             declared provider profile
@@ -227,27 +227,21 @@ a reason — never `0`, because zero claims the call was free, which is a
 different statement from "we cannot say". Token counts are the durable fact;
 cost is a projection that changes when the price list does.
 
-## Live verification (opt-in)
+## Live verification (removed)
 
-Layer 4, and the only code that contacts a provider. Off unless **all** of
-these hold: `WORKBENCH_LIVE_TESTS=1`, the provider is in the allowlist
-(`deepseek`, `mimo`), a credential resolves, and the model ref is registered.
-Absent any one, the run records `BLOCKED` or `NOT_RUN` and performs no network
-activity.
+**This repository has no provider-call path.** The v3.0 cleanup removed the
+live runner (`scripts/live/`), the concrete transport
+(`providers/http_transport.py`), the `tests/live/` layer-4 suite and
+`.github/workflows/live-model-verification.yml`. `scripts/ci/layer0_policy.py`
+fails if any of them comes back, or if a module under `providers/` starts
+naming a network client.
 
-It is driven by `.github/workflows/live-model-verification.yml` —
-`workflow_dispatch` only, `contents: read`, no commit step.
+`live_verification.py` remains because `plugins/evidence` imports its status
+and capability vocabulary. It defines probe intent and gate logic; it does not
+open a connection, and it has no transport to open one with.
 
-**A live run produces evidence, never a grant.** It cannot modify a profile.
-Each capability gets a *candidate* status for a human to review; promotion is a
-separate, reviewed change. A passing text completion promotes nothing — each
-capability needs its own observation, and streaming, reasoning and prompt
-caching have no safe bounded probe, so they stay `UNKNOWN` with the reason
-recorded rather than being guessed at.
-
-`http_transport.py` is the one concrete `Transport`. It refuses redirects (a
-redirect could forward the `Authorization` header to a host nobody authorised)
-and never retries.
+Model execution belongs to the DSH runtime, which is not connected in this
+phase (`NOT_RUN`). Fleet never calls a provider.
 
 ## Rules
 
