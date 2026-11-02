@@ -73,6 +73,8 @@ MemoryPack:       dsh-memory v1.1.0 producer, synthetic vault, 2 entries;
 SecurityLab MCP:  real stdio server per run via @deepseek-ai/dsh-mcp-client;
                   analysis_a called mcp__securitylab_ro__lab_status
                   -> ready / execution disabled / vcan disabled
+MCP negative roles: 6/6 PASS (not-found, tool-disabled, absent tool surface;
+                  executed=false, side_effects=0 on every refusal)
 analysis_a:       completed, untrusted=true, admission=none, evidence=false
 challenge:        completed, findings=1
 verify:           completed, verdicts=1
@@ -83,5 +85,6 @@ cancel:           cleaned=true, pending run rejected, health=closed
 该结果证明真实 SDK 子进程、initialize、prompt、模型调用、严格 JSON、
 真实 dsh-memory producer pack 传递、真实 SecurityLab MCP stdio 工具调用、
 Fleet worker-result 校验、RunLedger 和 close/cancel cleanup 在指定环境可用；
-不证明 dsh-memory 独立 service/IPC、真实用户 vault、MCP 负向路径/identity/
-disabled-tool 测试、Linux/其他平台或全部负向安全测试通过。
+不证明 dsh-memory 独立 service/IPC、真实用户 vault、真实 DSH 内强制执行的
+traversal/identity 负向调用（模型自身会先拒绝；服务端 refusal 由 server-level
+audit 与 SecurityLab 离线 tests 覆盖）、Linux/其他平台或全部负向安全测试通过。

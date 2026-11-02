@@ -51,6 +51,7 @@ MemoryPack 1.1.0 只允许显式 `user-global` 跨 workspace；无显式 visibil
 | 真实 DSH session/prompt/cancel/cleanup（C runtime smoke） | `PASS`（限定环境，见 §10） | 官方 SDK `0.2.1-rc.2` + 受信部署 tokenrhythm route；真实 dsh-memory producer/MCP 已接入 C smoke；独立 service/IPC 仍未连接 |
 | 真实 dsh-memory producer（in-process） | `IMPLEMENTED`（C smoke） | 部署 client 导入真实 dsh-memory MemoryPack producer；只读 entries 经 Fleet 校验后进入 session；独立 service/IPC 仍 `NOT_RUN` |
 | 真实 SecurityLab MCP server（C smoke） | `IMPLEMENTED` | 部署侧 DSH MCP client 启动真实只读 stdio server；per-run binding/patch；analysis_a 调用 `mcp__securitylab_ro__lab_status` |
+| 真实 DSH 逐 role MCP 负向调用 | `PASS`（6 roles） | researcher/vehicle_analyst/challenger/evidence_verifier/lab_runner/orchestrator；见 §10 |
 | Workbench 旧 provider/model 调用面 | `NOT_RUN`（**调用面已移除**） | live runner、`http_transport.py`、live workflow、`tests/live/` 已删除；Layer 0 强制不得回归 |
 | DSH SDK runtime model call（C smoke） | `PASS`（受信部署 route） | 不属 Fleet 职责；由 DSH runtime 调用，route 由受信部署配置提供；见 §10 |
 | SecurityLab/vcan/CAN/ECU/车辆/设备实验 | `NOT_RUN` | `lab_runner` / `securitylab_vcan` disabled |
@@ -100,6 +101,10 @@ Set-Location 'D:\claude-work\DSH-Fleet-v3\01-workbench\fleet'
 - SecurityLab 真实角色矩阵（`test_service.py::test_role_tool_surface_and_denials`）：
   六个角色的工具面、`tool-not-allowed`、traversal、`identity-in-args`、
   challenger 无 run-result、`lab_runner` vcan `tool-disabled` 且 `side_effects=0`。
+- 真实 DSH 逐 role MCP 负向调用：researcher/vehicle_analyst/evidence_verifier
+  得到 `not-found`，lab_runner 得到 `tool-disabled`，challenger 的 run-result
+  tool 不在 DSH 工具面，orchestrator 无 MCP 工具；失败均 `executed=false`、
+  `side_effects=0`。
 - MemoryPack 确定性：Unicode code point 排序、`snapshot_hash` 与输入顺序无关、
   locale 无关；hardcoded hash 锁定顺序规则。
 - 跨仓库 fake acceptance：`test/cross-repo-memorypack.test.ts` 校验 dsh-memory
@@ -248,6 +253,8 @@ MemoryPack producer     dsh-memory v1.1.0, synthetic vault, 2 entries
                         createPackRef == getPack snapshot (hash match)
 SecurityLab MCP         real stdio server per run; analysis_a called
                         mcp__securitylab_ro__lab_status -> ready/disabled/disabled
+MCP negative roles      6/6 PASS: not-found / tool-disabled / absent tools;
+                        all failures executed=false, side_effects=0
 research/analysis_a   completed  untrusted=true admission=none evidence=false
 research/challenge    completed  untrusted=true admission=none evidence=false  findings=2
 research/verify       completed  untrusted=true admission=none evidence=false  verdicts=1
@@ -269,8 +276,9 @@ analysis_a 调用了 `mcp__securitylab_ro__lab_status` 并得到 ready/disabled/
 
 - dsh-memory 独立 service/IPC 模式（当前是部署侧导入真实 producer library；
   非进程间服务；真实用户 vault 未使用）；
-- MCP 的负向路径/identity/disabled-tool 真实测试与每个 role 的工具面审计
-  （SecurityLab 离线 role matrix 已 PASS；真实 DSH 内逐 role 负向调用仍待补）；
+- MCP 真实 DSH 逐 role 负向调用已 PASS（6/6）；traversal/identity 的模型侧
+  尝试被模型自身拒绝，服务端 refusal 由 server-level role audit 与
+  SecurityLab 离线 tests 覆盖，未强制模型执行危险调用；
 - 真实 path/env/profile 负向 DSH 测试（Linux CI 已跑 Fleet fake tests、
   dsh-memory 与 SecurityLab 离线 suites）；
 - 真实 provider/model 的独立费用/网络边界确认。
